@@ -1,4 +1,4 @@
-import Fastify, { type FastifyInstance } from 'fastify'
+import Fastify, { type FastifyInstance, type FastifyServerOptions } from 'fastify'
 import fastifyStatic from '@fastify/static'
 import fastifyWebsocket from '@fastify/websocket'
 import { homedir } from 'node:os'
@@ -40,6 +40,7 @@ import { createServiceStatusProvider } from './providers/service-status.js'
 import { findInstance } from './config/instances.js'
 import { BYTES_CSP, isByteRoute } from './http/headers.js'
 import { isAllowedHost, isReadMethod } from './http/guard.js'
+import { LOGGER_OPTIONS } from './http/logging.js'
 import { isOriginAllowed } from './ws/routes.js'
 import { tr } from './i18n.js'
 
@@ -61,7 +62,10 @@ export interface AppOptions {
 }
 
 export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
-  const app = Fastify({ logger: opts.logger ?? false })
+  // The query string is stripped from every logged request line: see http/logging.ts. Typed
+  // explicitly, or an inline object literal sends TypeScript down Fastify's http2 overload.
+  const serverOptions: FastifyServerOptions = { logger: opts.logger ? LOGGER_OPTIONS : false }
+  const app = Fastify(serverOptions)
 
   const store = new ConfigStore(join(opts.dataDir, 'fremkit.json'))
   await store.load()

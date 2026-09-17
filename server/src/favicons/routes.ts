@@ -8,7 +8,8 @@ import { isLoopbackAddress } from '../net/loopback.js'
  * Only the origin of the URL is used, so every button on one site shares a single cached icon
  * and the path (which may carry a token or a private page) never leaves this machine beyond the
  * request the widget already made. A failure answers a bodyless 404: no message that could
- * repeat the URL back to a caller, and nothing is ever logged.
+ * repeat the URL back to a caller, and nothing is ever logged — including by the request log
+ * itself, whose serializer drops the query string (see http/logging.ts).
  */
 export async function faviconRoutes(app: FastifyInstance, opts: { dir: string; store?: FaviconStore }): Promise<void> {
   const store = opts.store ?? new FaviconStore({ dir: opts.dir })

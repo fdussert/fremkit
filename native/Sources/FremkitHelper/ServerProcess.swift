@@ -563,16 +563,39 @@ final class ServerProcess {
 
     // MARK: - Log
 
+    /// Largest the log may be when a server is spawned. Past this it is rolled over.
+    static let maxLogBytes: UInt64 = 4 * 1024 * 1024
+
+    /**
+     Opens the server log for appending, rolling it over first when it has grown too large.
+
+     Nothing rotated this file: a server that logs a line per request per second filled it for
+     months, and it is the file a user would attach when asking for help. One previous generation
+     is kept as `server.log.1` — enough to still see what happened before a crash — and the older
+     one is dropped.
+     */
     private static func openLog() -> FileHandle? {
         let url = logURL
         let directory = url.deletingLastPathComponent()
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        rollLogIfTooLarge(url)
         if !FileManager.default.fileExists(atPath: url.path) {
             FileManager.default.createFile(atPath: url.path, contents: nil)
         }
         guard let handle = FileHandle(forWritingAtPath: url.path) else { return nil }
         handle.seekToEndOfFile()
         return handle
+    }
+
+    /// Moves the log aside when it is past `maxLogBytes`, replacing any previous generation.
+    private static func rollLogIfTooLarge(_ url: URL) {
+        let manager = FileManager.default
+        guard let size = try? manager.attributesOfItem(atPath: url.path)[.size] as? UInt64,
+              size > maxLogBytes else { return }
+        let previous = url.appendingPathExtension("1")
+        try? manager.removeItem(at: previous)
+        // A failed move must not stop the server from starting: worst case the log keeps growing.
+        try? manager.moveItem(at: url, to: previous)
     }
 
     private func closeLog() {
