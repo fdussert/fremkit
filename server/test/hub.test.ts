@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { EventEmitter } from 'node:events'
-import { Hub } from '../src/ws/hub.js'
+import { Hub, MAX_CHANNELS_PER_SOCKET } from '../src/ws/hub.js'
 import { ProviderRegistry } from '../src/providers/registry.js'
 
 class FakeSocket extends EventEmitter {
@@ -125,5 +125,60 @@ describe('the cached last value of a channel', () => {
     // stop(), and the hub must not keep handing the last snapshot out after that.
     first.emit('close')
     expect(subscribe(hub, 'clipboard').sent).toEqual([])
+  })
+})
+
+describe('what one socket may ask for', () => {
+  it('stops subscribing past the cap, and says so', () => {
+    let hub!: Hub
+    const registry = new ProviderRegistry((c, d) => hub.broadcast(c, d), (c) => hub.forget(c))
+    hub = new Hub(registry)
+    const socket = new FakeSocket()
+    hub.attach(socket, { loopback: true })
+    for (let i = 0; i < MAX_CHANNELS_PER_SOCKET + 5; i++) {
+      socket.receive({ type: 'subscribe', channel: `ch-${i}` })
+    }
+    const errors = socket.sent.filter((m) => m.type === 'error')
+    expect(errors).toHaveLength(5)
+    expect(errors[0].error).toMatch(/trop de canaux/)
+  })
+
+  it('does not count a repeated subscribe against the cap', () => {
+    let hub!: Hub
+    const registry = new ProviderRegistry((c, d) => hub.broadcast(c, d), (c) => hub.forget(c))
+    hub = new Hub(registry)
+    const socket = new FakeSocket()
+    hub.attach(socket, { loopback: true })
+    for (let i = 0; i < MAX_CHANNELS_PER_SOCKET * 2; i++) {
+      socket.receive({ type: 'subscribe', channel: 'volume' })
+    }
+    expect(socket.sent.filter((m) => m.type === 'error')).toEqual([])
+  })
+
+  it('frees a slot when a channel is unsubscribed', () => {
+    let hub!: Hub
+    const registry = new ProviderRegistry((c, d) => hub.broadcast(c, d), (c) => hub.forget(c))
+    hub = new Hub(registry)
+    const socket = new FakeSocket()
+    hub.attach(socket, { loopback: true })
+    for (let i = 0; i < MAX_CHANNELS_PER_SOCKET; i++) socket.receive({ type: 'subscribe', channel: `ch-${i}` })
+    socket.receive({ type: 'unsubscribe', channel: 'ch-0' })
+    socket.receive({ type: 'subscribe', channel: 'something-new' })
+    expect(socket.sent.filter((m) => m.type === 'error')).toEqual([])
+  })
+
+  it('refuses an empty channel name instead of subscribing to it', () => {
+    let hub!: Hub
+    const subscribed: string[] = []
+    const registry = new ProviderRegistry((c, d) => hub.broadcast(c, d), (c) => hub.forget(c))
+    const add = registry.addSubscriber.bind(registry)
+    registry.addSubscriber = (channel: string) => { subscribed.push(channel); add(channel) }
+    hub = new Hub(registry)
+    const socket = new FakeSocket()
+    hub.attach(socket, { loopback: true })
+    socket.receive({ type: 'subscribe', channel: '' })
+    expect(subscribed).toEqual([])
+    // It falls through to the same refusal any malformed message gets.
+    expect(socket.sent).toEqual([{ type: 'error', error: 'message inconnu' }])
   })
 })

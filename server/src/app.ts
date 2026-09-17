@@ -42,6 +42,7 @@ import { findInstance } from './config/instances.js'
 import { BYTES_CSP, isByteRoute } from './http/headers.js'
 import { isAllowedHost, isReadMethod } from './http/guard.js'
 import { LOGGER_OPTIONS } from './http/logging.js'
+import { MAX_WS_PAYLOAD_BYTES } from './ws/hub.js'
 import { isOriginAllowed } from './ws/routes.js'
 import { tr } from './i18n.js'
 
@@ -155,7 +156,10 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     return payload
   })
 
-  await app.register(fastifyWebsocket)
+  // A widget's messages are a channel name or a small command payload; 64 kB is already an order
+  // of magnitude more than any of them. Without a cap a single socket could make the server hold
+  // an arbitrary amount of memory before anything got round to validating it.
+  await app.register(fastifyWebsocket, { options: { maxPayload: MAX_WS_PAYLOAD_BYTES } })
   await app.register(fastifyStatic, { root: opts.widgetsDir, serve: false, decorateReply: true })
 
   await app.register(configRoutes, { store, catalog })

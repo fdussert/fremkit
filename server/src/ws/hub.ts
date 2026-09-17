@@ -1,6 +1,24 @@
 import type { ProviderRegistry } from '../providers/registry.js'
 import type { CommandContext } from '../providers/types.js'
 
+/**
+ * Largest message a socket may send.
+ *
+ * A widget's messages are a channel name or a small command payload. 64 kB is an order of
+ * magnitude more than any of them need, and a cap is what stops one socket making the server
+ * hold arbitrary memory before anything validates the content.
+ */
+export const MAX_WS_PAYLOAD_BYTES = 64 * 1024
+
+/**
+ * Most channels one socket may subscribe to.
+ *
+ * The dashboard opens one socket and every widget on the page shares it, so the real number is
+ * the number of widgets — a few dozen at the very most. Each subscription makes the registry
+ * activate a provider, so an unbounded list is an unbounded number of pollers.
+ */
+export const MAX_CHANNELS_PER_SOCKET = 64
+
 export interface SocketLike {
   send(data: string): void
   on(event: 'message' | 'close', cb: (...args: any[]) => void): void
@@ -59,8 +77,12 @@ export class Hub {
     }
     switch (msg?.type) {
       case 'subscribe': {
-        if (typeof msg.channel !== 'string') break
+        if (typeof msg.channel !== 'string' || msg.channel === '') break
         if (!channels.has(msg.channel)) {
+          // Each subscription starts a provider polling, so the list is bounded.
+          if (channels.size >= MAX_CHANNELS_PER_SOCKET) {
+            return this.safeSend(socket, JSON.stringify({ type: 'error', error: 'trop de canaux' }))
+          }
           channels.add(msg.channel)
           this.registry.addSubscriber(msg.channel)
         }

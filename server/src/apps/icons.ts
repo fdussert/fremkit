@@ -30,6 +30,9 @@ const sipsConvert: Convert = async (icns, out) => {
  * points at but that is not in the Dock — is extracted here from the bundle itself and cached in
  * `data/icons/apps`, so the conversion happens once per application and never per render.
  */
+/** Most "this application has no readable icon" answers kept in memory at once. */
+export const MAX_REMEMBERED_MISSES = 500
+
 export class AppIcons {
   private readonly dir: string
   private readonly apps: Pick<InstalledApps, 'find'>
@@ -81,10 +84,23 @@ export class AppIcons {
     }
   }
 
+  /**
+   * Remembers that this bundle id has no icon we can read, so the next few requests are answered
+   * without shelling out to `sips` again.
+   *
+   * Expired entries go on every call, but a caller asking for thousands of distinct ids inside
+   * one TTL window would still grow the map without the ceiling: past it the oldest go.
+   */
   private miss(bundleId: string): null {
     const t = this.now()
     for (const [key, until] of this.misses) if (until <= t) this.misses.delete(key)
     this.misses.set(bundleId, t + ICON_MISS_TTL_MS)
+    // Map iteration is insertion-ordered, so the front of it is the oldest.
+    while (this.misses.size > MAX_REMEMBERED_MISSES) {
+      const oldest = this.misses.keys().next()
+      if (oldest.done) break
+      this.misses.delete(oldest.value)
+    }
     return null
   }
 }

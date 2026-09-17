@@ -12,6 +12,14 @@ export const MAX_HTML_BYTES = 64 * 1024
 export const MAX_ICON_BYTES = 512 * 1024
 /** One hop for the site's own canonicalisation, a couple more for a CDN. */
 export const MAX_REDIRECTS = 3
+/**
+ * Most icons kept on disk.
+ *
+ * One per origin, and a dashboard watches a handful of sites — but the cache is filled by
+ * whatever a widget's settings point at, so it needs a ceiling. Past it the least recently
+ * written go first.
+ */
+export const MAX_CACHED_ICONS = 200
 const TIMEOUT_MS = 5_000
 
 /**
@@ -218,6 +226,26 @@ export class FaviconStore {
     return null
   }
 
+  /**
+   * Keeps at most `MAX_CACHED_ICONS` files, dropping the least recently written.
+   *
+   * Cheap because it only runs after a fresh icon was written, which is once a week per origin.
+   */
+  private async trim(): Promise<void> {
+    let names: string[]
+    try { names = await readdir(this.dir) } catch { return }
+    const files = names.filter((n) => CACHED_EXTENSIONS.some((ext) => n.endsWith(`.${ext}`)))
+    if (files.length <= MAX_CACHED_ICONS) return
+    const dated: { name: string; mtimeMs: number }[] = []
+    for (const name of files) {
+      try { dated.push({ name, mtimeMs: (await stat(join(this.dir, name))).mtimeMs }) } catch { /* gone */ }
+    }
+    dated.sort((a, b) => a.mtimeMs - b.mtimeMs)
+    for (const { name } of dated.slice(0, dated.length - MAX_CACHED_ICONS)) {
+      try { await unlink(join(this.dir, name)) } catch { /* gone already */ }
+    }
+  }
+
   private async write(origin: string, icon: FaviconIcon): Promise<void> {
     const ext = extensionFor(icon.contentType)
     if (!ext) return
@@ -232,6 +260,7 @@ export class FaviconStore {
       if (other === ext) continue
       try { await unlink(join(this.dir, `${key}.${other}`)) } catch { /* never existed */ }
     }
+    await this.trim()
   }
 }
 

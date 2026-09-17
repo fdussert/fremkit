@@ -45,6 +45,20 @@ export function isAllowedHost(host: string | undefined, port?: number): boolean 
   return true
 }
 
+/**
+ * True when a browser says this request came from another site.
+ *
+ * `Sec-Fetch-Site` is the only thing that catches a cross-site *read*: a page embedding
+ * `<img src="http://127.0.0.1:4242/api/favicon?url=…">` sends no Origin at all, so the
+ * write-only Origin gate never sees it, and the server would happily go and fetch whatever host
+ * that page named. A request with no such header — curl, the hook scripts, the helper — is not a
+ * browser and passes.
+ */
+export function isCrossSiteFetch(headers: { 'sec-fetch-site'?: string | string[] }): boolean {
+  const site = headers['sec-fetch-site']
+  return (Array.isArray(site) ? site[0] : site) === 'cross-site'
+}
+
 /** True when a request only reads, and so needs no trusted origin. */
 export function isReadMethod(method: string): boolean {
   return READ_METHODS.has(method.toUpperCase())

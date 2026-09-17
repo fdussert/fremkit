@@ -1,6 +1,8 @@
 import type { FastifyInstance } from 'fastify'
 import { FaviconStore } from './store.js'
 import { isLoopbackAddress } from '../net/loopback.js'
+import { resolvesToPrivate } from '../net/private.js'
+import { isCrossSiteFetch } from '../http/guard.js'
 
 /**
  * `GET /api/favicon?url=…` — the icon of the site a link button points at.
@@ -18,11 +20,18 @@ export async function faviconRoutes(app: FastifyInstance, opts: { dir: string; s
 
   app.get<{ Querystring: { url?: string } }>('/api/favicon', async (req, reply) => {
     if (!isLoopbackAddress(req.ip)) return reply.code(403).send()
+    // A page on another site can embed this as an <img> and send no Origin at all, which would
+    // make the server go and fetch whatever host that page named.
+    if (isCrossSiteFetch(req.headers)) return reply.code(403).send()
     const raw = req.query.url
     if (typeof raw !== 'string' || raw === '') return reply.code(400).send()
     let target: URL
     try { target = new URL(raw) } catch { return reply.code(400).send() }
     if (target.protocol !== 'http:' && target.protocol !== 'https:') return reply.code(400).send()
+    // The same rule as the widget proxy: this server must not be a way to knock on the machine's
+    // own services or on a cloud metadata endpoint. A 404 rather than a 403, like every other
+    // refusal here, so the answer says nothing about the URL it was given.
+    if (await resolvesToPrivate(target.hostname)) return reply.code(404).send()
 
     const icon = await store.get(target.origin)
     if (!icon) return reply.code(404).send()

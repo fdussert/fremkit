@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { isAllowedHost, isReadMethod, parseHostHeader } from '../src/http/guard.js'
+import { isAllowedHost, isCrossSiteFetch, isReadMethod, parseHostHeader } from '../src/http/guard.js'
 
 describe('parseHostHeader', () => {
   it('splits a name and a port', () => {
@@ -43,5 +43,24 @@ describe('isReadMethod', () => {
   it('counts the methods that only read', () => {
     for (const m of ['GET', 'get', 'HEAD', 'OPTIONS']) expect(isReadMethod(m), m).toBe(true)
     for (const m of ['POST', 'PUT', 'DELETE', 'PATCH', 'put']) expect(isReadMethod(m), m).toBe(false)
+  })
+})
+
+describe('isCrossSiteFetch', () => {
+  it('catches the one case the Origin gate cannot see', () => {
+    // A cross-site <img> sends no Origin at all, so only this header gives it away.
+    expect(isCrossSiteFetch({ 'sec-fetch-site': 'cross-site' })).toBe(true)
+  })
+  it('lets the browser cases we serve through', () => {
+    for (const site of ['same-origin', 'same-site', 'none']) {
+      expect(isCrossSiteFetch({ 'sec-fetch-site': site }), site).toBe(false)
+    }
+  })
+  it('lets a non-browser through: curl, the hook scripts, the helper', () => {
+    expect(isCrossSiteFetch({})).toBe(false)
+    expect(isCrossSiteFetch({ 'sec-fetch-site': undefined })).toBe(false)
+  })
+  it('reads the first value when a header arrives repeated', () => {
+    expect(isCrossSiteFetch({ 'sec-fetch-site': ['cross-site', 'same-origin'] })).toBe(true)
   })
 })

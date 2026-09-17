@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import Fastify from 'fastify'
 import { pickIconHref, largestSize } from '../src/favicons/pick.js'
-import { FaviconStore, cacheKey, extensionFor, isFresh, sniffImageType, FAVICON_TTL_MS, MAX_ICON_BYTES } from '../src/favicons/store.js'
+import { FaviconStore, cacheKey, extensionFor, isFresh, sniffImageType, FAVICON_TTL_MS, MAX_ICON_BYTES, MAX_CACHED_ICONS } from '../src/favicons/store.js'
 import { faviconRoutes } from '../src/favicons/routes.js'
 
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64')
@@ -290,6 +290,34 @@ describe('GET /api/favicon', () => {
     }
   })
 
+  it('refuses a cross-site read, which is how a page would embed it as an <img>', async () => {
+    const store = new FaviconStore({ dir, fetchImpl: fakeFetch({}) })
+    const res = await app(store).inject({
+      url: `/api/favicon?url=${encodeURIComponent('https://example.com/')}`,
+      headers: { 'sec-fetch-site': 'cross-site' },
+    })
+    expect(res.statusCode).toBe(403)
+    // Same-site, same-origin and no header at all (curl, the helper) still pass.
+    for (const site of ['same-origin', 'same-site', 'none', undefined]) {
+      const ok = await app(store).inject({
+        url: `/api/favicon?url=${encodeURIComponent('https://example.com/')}`,
+        headers: site ? { 'sec-fetch-site': site } : {},
+      })
+      expect(ok.statusCode, String(site)).not.toBe(403)
+    }
+  })
+
+  it('refuses a private or local host, so it cannot knock on this machine', async () => {
+    const calls: string[] = []
+    const store = new FaviconStore({ dir, fetchImpl: fakeFetch({}, calls) })
+    for (const url of ['http://127.0.0.1:4242/', 'http://localhost:4242/', 'http://169.254.169.254/',
+      'http://10.0.0.1/', 'http://[::1]/']) {
+      const res = await app(store).inject({ url: `/api/favicon?url=${encodeURIComponent(url)}` })
+      expect(res.statusCode, url).toBe(404)
+    }
+    expect(calls).toEqual([])
+  })
+
   it('serves a file the cache already holds without any fetch', async () => {
     await mkdir(dir, { recursive: true })
     await writeFile(join(dir, `${cacheKey('https://example.com')}.png`), PNG)
@@ -298,5 +326,30 @@ describe('GET /api/favicon', () => {
     const res = await app(store).inject({ url: `/api/favicon?url=${encodeURIComponent('https://example.com/other')}` })
     expect(res.statusCode).toBe(200)
     expect(calls).toEqual([])
+  })
+})
+
+describe('the size of the icon cache', () => {
+  it('keeps at most MAX_CACHED_ICONS files, dropping the least recently written', async () => {
+    await mkdir(dir, { recursive: true })
+    // One more than the cap, each with a distinct mtime so "oldest" is unambiguous.
+    const origins = Array.from({ length: MAX_CACHED_ICONS + 3 }, (_, i) => `https://site-${i}.example`)
+    for (const [i, origin] of origins.entries()) {
+      const file = join(dir, `${cacheKey(origin)}.png`)
+      await writeFile(file, PNG)
+      const when = new Date(1_000_000 + i * 1000)
+      await utimes(file, when, when)
+    }
+    const store = new FaviconStore({ dir, fetchImpl: fakeFetch({
+      'https://fresh.example/': { type: 'text/html', body: '<link rel="icon" href="/a.png">' },
+      'https://fresh.example/a.png': { type: 'image/png', body: PNG },
+    }) })
+    // Writing one more is what triggers the trim.
+    expect((await store.get('https://fresh.example'))?.contentType).toBe('image/png')
+    const remaining = await readdir(dir)
+    expect(remaining.length).toBe(MAX_CACHED_ICONS)
+    // The newcomer stayed and the three oldest went.
+    expect(remaining).toContain(`${cacheKey('https://fresh.example')}.png`)
+    for (const gone of origins.slice(0, 3)) expect(remaining).not.toContain(`${cacheKey(gone)}.png`)
   })
 })
