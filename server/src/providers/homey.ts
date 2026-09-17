@@ -2,6 +2,7 @@ import { z } from 'zod'
 import type { ConnectionProviderContext } from '../connections/types.js'
 import type { Provider } from './types.js'
 import { USER_AGENT } from '../version.js'
+import { tr } from '../i18n.js'
 
 /**
  * Homey Pro (2023) over its **local** Web API.
@@ -217,16 +218,51 @@ export const flowKey = (flow: { id: string; advanced?: boolean }): string =>
 /** A capability id as the Homey writes them: `onoff`, `measure_temperature`, `alarm_motion`. */
 const CapabilityId = z.string().min(1).max(64).regex(/^[a-z0-9_.]+$/)
 
+/**
+ * Every id the Homey hands out is a UUID, and these go straight into a request path.
+ *
+ * `encodeURIComponent` escapes a slash but not a dot, so a plain string let `..` through as a
+ * path segment and the URL parser then walked it up: `/devices/device/../capability/onoff`
+ * resolves to `/devices/capability/onoff`, which is a different endpoint on the user's Homey.
+ * A UUID cannot spell that.
+ */
+const HomeyId = z.string().uuid()
+
+/**
+ * Capabilities a command may write when the snapshot has not said otherwise.
+ *
+ * The real rule is the Homey's own `setable` flag, read from the last snapshot. This list is the
+ * cold-start fallback for the seconds before the first poll lands, and it is the three the
+ * widgets here actually drive — a switch, a dimmer, a thermostat. Anything else has to be
+ * marked settable by the device itself.
+ */
+export const WRITABLE_CAPABILITIES = new Set(['onoff', 'dim', 'target_temperature'])
+
 export const SetCapabilityPayload = z.object({
-  deviceId: z.string().min(1).max(128),
+  deviceId: HomeyId,
   capability: CapabilityId,
   value: z.union([z.boolean(), z.number(), z.string().max(256)]),
 })
 
 export const TriggerFlowPayload = z.object({
-  flowId: z.string().min(1).max(128),
+  flowId: HomeyId,
   advanced: z.boolean().default(false),
 })
+
+/**
+ * Whether one capability of one device may be written.
+ *
+ * A device the snapshot knows decides for itself, through the `setable` flag the Homey reports.
+ * A device it does not know yet — the first poll has not landed — falls back to the short list
+ * above, so a tap in the first few seconds still works without opening writes to everything.
+ */
+export function isWritableCapability(snapshot: HomeySnapshot, deviceId: string, capability: string): boolean {
+  const device = snapshot.devices.find((d) => d.id === deviceId)
+  if (!device) return WRITABLE_CAPABILITIES.has(capability)
+  const cap = device.capabilities.find((c) => c.id === capability)
+  if (!cap) return false
+  return cap.settable === true || (cap.settable === undefined && WRITABLE_CAPABILITIES.has(capability))
+}
 
 export interface HomeyProviderDeps { fetchFn?: typeof fetch }
 
@@ -238,7 +274,11 @@ export interface HomeyProviderDeps { fetchFn?: typeof fetch }
  */
 export function createHomeyProvider(ctx: ConnectionProviderContext, deps: HomeyProviderDeps = {}): Provider {
   const fetchFn = deps.fetchFn ?? fetch
-  const base = homeyBaseUrl(ctx.fields.host ?? '')
+  const host = ctx.fields.host ?? ''
+  // Judged once, here, rather than at every call site: a connection whose address is not one the
+  // provider can dial polls as `unconfigured` and accepts no command at all.
+  const hostOk = isValidHomeyHost(host)
+  const base = homeyBaseUrl(host)
   // Built once. The key is never logged, never put in a URL and never quoted in an error.
   const headers = {
     Authorization: `Bearer ${ctx.secrets.apiKey ?? ''}`,
@@ -281,7 +321,7 @@ export function createHomeyProvider(ctx: ConnectionProviderContext, deps: HomeyP
     get intervalMs() { return failed ? RETRY_AFTER_FAILURE_MS : POLL_EVERY_MS },
 
     async poll(): Promise<HomeySnapshot> {
-      if (!isValidHomeyHost(ctx.fields.host ?? '')) return { devices: [], flows: [], error: 'unconfigured' }
+      if (!hostOk) return { devices: [], flows: [], error: 'unconfigured' }
       try {
         const [devicesJson, flowsJson] = await Promise.all([
           get('/api/manager/devices/device'),
@@ -315,7 +355,15 @@ export function createHomeyProvider(ctx: ConnectionProviderContext, deps: HomeyP
     commands: {
       /** Sets one capability of one device: the toggle and the dimmer of the devices widget. */
       setCapability: async (payload) => {
-        const { deviceId, capability, value } = SetCapabilityPayload.parse(payload)
+        if (!hostOk) throw new Error(tr(undefined, 'homey.invalidAddress'))
+        const parsed = SetCapabilityPayload.safeParse(payload)
+        // Never the raw ZodError: it echoes the payload back to the caller.
+        if (!parsed.success) throw new Error(tr(undefined, 'homey.invalidCommand'))
+        const { deviceId, capability, value } = parsed.data
+        // The device decides what may be written to it; we do not take the caller's word.
+        if (!isWritableCapability(last, deviceId, capability)) {
+          throw new Error(tr(undefined, 'homey.notWritable'))
+        }
         await send(
           `/api/manager/devices/device/${encodeURIComponent(deviceId)}/capability/${encodeURIComponent(capability)}`,
           'PUT',
@@ -326,7 +374,10 @@ export function createHomeyProvider(ctx: ConnectionProviderContext, deps: HomeyP
 
       /** Runs a flow, or an Advanced Flow, which lives under its own path. */
       triggerFlow: async (payload) => {
-        const { flowId, advanced } = TriggerFlowPayload.parse(payload)
+        if (!hostOk) throw new Error(tr(undefined, 'homey.invalidAddress'))
+        const parsed = TriggerFlowPayload.safeParse(payload)
+        if (!parsed.success) throw new Error(tr(undefined, 'homey.invalidCommand'))
+        const { flowId, advanced } = parsed.data
         const kind = advanced ? 'advancedflow' : 'flow'
         await send(`/api/manager/flow/${kind}/${encodeURIComponent(flowId)}/trigger`, 'POST', {})
         return { ok: true }

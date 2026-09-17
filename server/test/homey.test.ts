@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import {
   createHomeyProvider,
+  isWritableCapability,
   homeyBaseUrl,
   isValidHomeyHost,
   keepsCapability,
@@ -204,46 +205,52 @@ describe('homey provider', () => {
 })
 
 describe('homey commands', () => {
+  // A real Homey hands out UUIDs, and these go straight into a request path, so the provider
+  // insists on the shape. The readable ids elsewhere in this file are snapshot data, not paths.
+  const LAMP = 'c5a00914-6cfe-4c0e-b2df-47f11f1f2ab5'
+  const FLOW = '4d4d607f-7d3d-406a-920a-4e7b2cb752e7'
+  const ADVANCED = '422d61bc-bf23-4bf3-86bc-e89af7a1642d'
+
   const run = async (name: string, payload: unknown, fetchFn: typeof fetch) =>
     createHomeyProvider(ctx, { fetchFn }).commands![name](payload)
 
   it('setCapability PUTs the value on the device capability path', async () => {
     const fetchFn = vi.fn(async () => new Response('', { status: 200 })) as unknown as typeof fetch
-    await run('setCapability', { deviceId: 'dev-lamp-1', capability: 'onoff', value: true }, fetchFn)
+    await run('setCapability', { deviceId: LAMP, capability: 'onoff', value: true }, fetchFn)
     const [url, init] = (fetchFn as any).mock.calls[0]
-    expect(url).toBe('http://192.0.2.10/api/manager/devices/device/dev-lamp-1/capability/onoff')
+    expect(url).toBe(`http://192.0.2.10/api/manager/devices/device/${LAMP}/capability/onoff`)
     expect(init.method).toBe('PUT')
     expect(JSON.parse(init.body)).toEqual({ value: true })
   })
 
   it('setCapability carries a dim level as a number', async () => {
     const fetchFn = vi.fn(async () => new Response('', { status: 200 })) as unknown as typeof fetch
-    await run('setCapability', { deviceId: 'dev-lamp-1', capability: 'dim', value: 0.25 }, fetchFn)
+    await run('setCapability', { deviceId: LAMP, capability: 'dim', value: 0.25 }, fetchFn)
     expect(JSON.parse((fetchFn as any).mock.calls[0][1].body)).toEqual({ value: 0.25 })
   })
 
   it('setCapability refuses a bad payload before touching the network', async () => {
     const fetchFn = vi.fn() as unknown as typeof fetch
     await expect(run('setCapability', { deviceId: '', capability: 'onoff', value: true }, fetchFn)).rejects.toThrow()
-    await expect(run('setCapability', { deviceId: 'd', capability: '../../system', value: true }, fetchFn)).rejects.toThrow()
-    await expect(run('setCapability', { deviceId: 'd', capability: 'onoff' }, fetchFn)).rejects.toThrow()
+    await expect(run('setCapability', { deviceId: LAMP, capability: '../../system', value: true }, fetchFn)).rejects.toThrow()
+    await expect(run('setCapability', { deviceId: LAMP, capability: 'onoff' }, fetchFn)).rejects.toThrow()
     expect(fetchFn).not.toHaveBeenCalled()
   })
 
   it('setCapability surfaces a refusal as a status, without the key', async () => {
     const fetchFn = vi.fn(async () => new Response('', { status: 403 })) as unknown as typeof fetch
-    await expect(run('setCapability', { deviceId: 'd', capability: 'onoff', value: true }, fetchFn))
+    await expect(run('setCapability', { deviceId: LAMP, capability: 'onoff', value: true }, fetchFn))
       .rejects.toThrow('homey HTTP 403')
   })
 
   it('triggerFlow POSTs on the flow path, and on the advanced one when asked', async () => {
     const fetchFn = vi.fn(async () => new Response('', { status: 200 })) as unknown as typeof fetch
-    await run('triggerFlow', { flowId: 'flow-morning' }, fetchFn)
-    await run('triggerFlow', { flowId: 'adv-movie', advanced: true }, fetchFn)
+    await run('triggerFlow', { flowId: FLOW }, fetchFn)
+    await run('triggerFlow', { flowId: ADVANCED, advanced: true }, fetchFn)
     const calls = (fetchFn as any).mock.calls
-    expect(calls[0][0]).toBe('http://192.0.2.10/api/manager/flow/flow/flow-morning/trigger')
+    expect(calls[0][0]).toBe(`http://192.0.2.10/api/manager/flow/flow/${FLOW}/trigger`)
     expect(calls[0][1].method).toBe('POST')
-    expect(calls[1][0]).toBe('http://192.0.2.10/api/manager/flow/advancedflow/adv-movie/trigger')
+    expect(calls[1][0]).toBe(`http://192.0.2.10/api/manager/flow/advancedflow/${ADVANCED}/trigger`)
   })
 
   it('triggerFlow refuses a bad payload', async () => {
@@ -347,5 +354,74 @@ describe('homey connection options', () => {
     const fetchFn = vi.fn() as unknown as typeof fetch
     await expect(options('devices', fetchFn, 'http://192.0.2.10/api')).rejects.toThrow()
     expect(fetchFn).not.toHaveBeenCalled()
+  })
+})
+
+describe('homey command bounds', () => {
+  const LAMP = 'c5a00914-6cfe-4c0e-b2df-47f11f1f2ab5'
+  const run = async (name: string, payload: unknown, fetchFn: typeof fetch) =>
+    createHomeyProvider(ctx, { fetchFn }).commands![name](payload)
+
+  it('refuses an id that is not a UUID, so nothing can walk the API path', async () => {
+    const fetchFn = vi.fn() as unknown as typeof fetch
+    // encodeURIComponent escapes a slash but not a dot: `..` used to survive as a path segment
+    // and `/device/../capability/onoff` resolves to a different endpoint on the Homey.
+    for (const deviceId of ['..', '../..', 'dev-lamp-1', 'not-a-uuid', `${LAMP}/..`, '']) {
+      await expect(run('setCapability', { deviceId, capability: 'onoff', value: true }, fetchFn), deviceId).rejects.toThrow()
+    }
+    for (const flowId of ['..', 'flow-morning', 'x']) {
+      await expect(run('triggerFlow', { flowId }, fetchFn), flowId).rejects.toThrow()
+    }
+    expect(fetchFn).not.toHaveBeenCalled()
+  })
+
+  it('refuses a capability the device did not mark settable', async () => {
+    const fetchFn = vi.fn(async () => new Response('', { status: 200 })) as unknown as typeof fetch
+    // measure_temperature is a reading, not a control.
+    await expect(run('setCapability', { deviceId: LAMP, capability: 'measure_temperature', value: 21 }, fetchFn))
+      .rejects.toThrow(/modifiable|written/)
+    expect(fetchFn).not.toHaveBeenCalled()
+  })
+
+  it('allows the three the widgets drive before the first snapshot lands', async () => {
+    for (const capability of ['onoff', 'dim', 'target_temperature']) {
+      const fetchFn = vi.fn(async () => new Response('', { status: 200 })) as unknown as typeof fetch
+      await run('setCapability', { deviceId: LAMP, capability, value: 1 }, fetchFn)
+      expect(fetchFn, capability).toHaveBeenCalledTimes(1)
+    }
+  })
+
+  it('lets the snapshot decide once it knows the device', () => {
+    const snapshot = {
+      devices: [{ id: LAMP, name: 'Lamp', capabilities: [
+        { id: 'onoff', settable: true },
+        { id: 'measure_power', settable: false },
+        { id: 'volume_set', settable: true },
+      ] }],
+      flows: [],
+    } as unknown as Parameters<typeof isWritableCapability>[0]
+    expect(isWritableCapability(snapshot, LAMP, 'onoff')).toBe(true)
+    // Settable by the device's own account, even though it is not on the short list.
+    expect(isWritableCapability(snapshot, LAMP, 'volume_set')).toBe(true)
+    expect(isWritableCapability(snapshot, LAMP, 'measure_power')).toBe(false)
+    // A capability the device does not have at all.
+    expect(isWritableCapability(snapshot, LAMP, 'onoff.2')).toBe(false)
+    // An unknown device falls back to the short list.
+    expect(isWritableCapability(snapshot, '00000000-0000-4000-8000-000000000000', 'onoff')).toBe(true)
+    expect(isWritableCapability(snapshot, '00000000-0000-4000-8000-000000000000', 'volume_set')).toBe(false)
+  })
+
+  it('accepts no command at all when the address is not one it can dial', async () => {
+    const fetchFn = vi.fn() as unknown as typeof fetch
+    const bad = createHomeyProvider({ ...ctx, fields: { host: 'http://nope/' } }, { fetchFn })
+    await expect(bad.commands!.setCapability({ deviceId: LAMP, capability: 'onoff', value: true })).rejects.toThrow()
+    await expect(bad.commands!.triggerFlow({ flowId: LAMP })).rejects.toThrow()
+    expect(fetchFn).not.toHaveBeenCalled()
+  })
+
+  it('never echoes the payload back in a refusal', async () => {
+    const fetchFn = vi.fn() as unknown as typeof fetch
+    await expect(run('setCapability', { deviceId: 'secret-looking-value', capability: 'onoff', value: true }, fetchFn))
+      .rejects.toThrow(/^(?:(?!secret-looking-value).)*$/)
   })
 })

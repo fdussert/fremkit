@@ -121,6 +121,8 @@ const fr = {
   'provider.urlRefused': 'URL refusée',
 
   // proxy/routes.ts
+  'homey.invalidCommand': 'commande invalide',
+  'homey.notWritable': 'cette capacité n’est pas modifiable',
   'serviceStatus.unknownInstance': 'widget d’état de service inconnu',
   'serviceStatus.noServices': 'aucun service enregistré',
   'shortcuts.unknownInstance': 'widget de raccourcis inconnu',
@@ -247,6 +249,8 @@ const en: Record<MessageKey, string> = {
   'provider.localOnly': 'command restricted to this machine',
   'provider.urlRefused': 'URL refused',
 
+  'homey.invalidCommand': 'invalid command',
+  'homey.notWritable': 'that capability cannot be written',
   'serviceStatus.unknownInstance': 'unknown service-status widget',
   'serviceStatus.noServices': 'no services saved',
   'shortcuts.unknownInstance': 'unknown shortcuts widget',
