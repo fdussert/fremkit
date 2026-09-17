@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process'
 import { connect as netConnect, type Socket } from 'node:net'
 import { z } from 'zod'
 import type { CommandContext, Provider } from './types.js'
+import { noInstances, type InstanceLookup } from '../config/instances.js'
 import { USER_AGENT } from '../version.js'
 import { tr } from '../i18n.js'
 
@@ -62,10 +63,42 @@ export const ServiceSchema = z.discriminatedUnion('kind', [
 ])
 export type Service = z.infer<typeof ServiceSchema>
 
+/** The services list as the user saved it on one widget instance. */
 export const ProbePayloadSchema = z.object({
   services: z.array(ServiceSchema).min(1).max(MAX_SERVICES),
 })
 export type ProbePayload = z.infer<typeof ProbePayloadSchema>
+
+/**
+ * What a widget may ask for: a probe of *its own* configured services.
+ *
+ * It names its instance and nothing else. A probe reaches out from this Mac onto whatever
+ * network it sits on, so the list of targets has to be one the user typed into the admin — not
+ * one a widget composed. Before this, any widget declaring the `service-status` channel could
+ * have this server knock on twenty arbitrary hosts and report which answered.
+ */
+export const ProbeRequestSchema = z.object({
+  instanceId: z.string().min(1).max(200),
+})
+
+/** The widget whose saved services this channel probes. */
+const SERVICE_STATUS_WIDGET = 'service-status'
+
+/** The services saved on one instance, or a reason there are none to probe. */
+export function resolveServices(
+  lookup: InstanceLookup,
+  instanceId: string,
+): { ok: true; services: Service[] } | { ok: false; error: string } {
+  const instance = lookup(instanceId)
+  if (!instance || instance.widgetId !== SERVICE_STATUS_WIDGET) {
+    return { ok: false, error: tr(undefined, 'serviceStatus.unknownInstance') }
+  }
+  const parsed = ProbePayloadSchema.safeParse({ services: instance.settings.services })
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? tr(undefined, 'serviceStatus.noServices') }
+  }
+  return { ok: true, services: parsed.data.services }
+}
 
 export type State = 'up' | 'warn' | 'down'
 export interface ServiceResult { name: string; state: State; latencyMs?: number; detail?: string }
@@ -148,14 +181,22 @@ export async function probeOne(service: Service, probes: Probes): Promise<Servic
   try {
     switch (service.kind) {
       case 'http': {
+        // HEAD first: nothing here reads the body, and a status is all a probe wants. A server
+        // that refuses the method (405, 501) is asked again with GET, so the check still works.
+        //
         // `redirect: 'manual'` means no hop is ever followed, so no redirect can lead anywhere
         // else — least of all to a scheme that is not http(s). A 3xx is simply an answer.
-        const res = await probes.fetchFn(service.url, {
-          method: 'GET',
+        const request = (method: 'HEAD' | 'GET') => probes.fetchFn(service.url, {
+          method,
           redirect: 'manual',
           headers: { Accept: '*/*', 'User-Agent': USER_AGENT },
           signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
         })
+        let res = await request('HEAD')
+        if (res.status === 405 || res.status === 501) {
+          try { await res.body?.cancel() } catch { /* already closed */ }
+          res = await request('GET')
+        }
         // Nothing reads the body; drop it rather than leave the socket half-consumed.
         try { await res.body?.cancel() } catch { /* already closed */ }
         return { name: service.name, state: stateForStatus(res.status), latencyMs: latency(), detail: `HTTP ${res.status}` }
@@ -179,11 +220,14 @@ export async function probeOne(service: Service, probes: Probes): Promise<Servic
 /**
  * The `service-status` channel: one command, `probe`.
  *
- * The list of services lives in each widget instance's settings, not here — one dashboard may
- * watch a home lab and another a public site — so the widget owns the clock and hands the list
- * over on every tick. There is nothing to publish, so `poll` answers a constant.
+ * The list of services lives in each widget instance's settings — one dashboard may watch a home
+ * lab and another a public site — so the widget owns the clock and names its own instance; the
+ * host reads the list. There is nothing to publish, so `poll` answers a constant.
  */
-export function createServiceStatusProvider(probes: Partial<Probes> = {}): Provider {
+export function createServiceStatusProvider(
+  probes: Partial<Probes> = {},
+  instances: InstanceLookup = noInstances,
+): Provider {
   const deps: Probes = { ...defaultProbes, ...probes }
   return {
     channel: 'service-status',
@@ -195,12 +239,15 @@ export function createServiceStatusProvider(probes: Partial<Probes> = {}): Provi
         // A probe reaches out from this Mac, onto whatever network it sits on — a home lab a
         // remote caller cannot see. Fail closed: no context means remote.
         if (!ctx?.loopback) return { ok: false, error: tr(undefined, 'provider.localOnly') }
-        const parsed = ProbePayloadSchema.safeParse(payload)
-        if (!parsed.success) {
-          return { ok: false, error: parsed.error.issues[0]?.message ?? 'charge utile invalide' }
+        const request = ProbeRequestSchema.safeParse(payload)
+        if (!request.success) {
+          return { ok: false, error: request.error.issues[0]?.message ?? 'charge utile invalide' }
         }
+        // The targets come from the user's saved settings, never from the message.
+        const resolved = resolveServices(instances, request.data.instanceId)
+        if (!resolved.ok) return { ok: false, error: resolved.error }
         // All at once: twenty services one after the other would take longer than the interval.
-        const results = await Promise.all(parsed.data.services.map((s) => probeOne(s, deps)))
+        const results = await Promise.all(resolved.services.map((s) => probeOne(s, deps)))
         return { ok: true, results }
       },
     },

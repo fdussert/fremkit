@@ -121,6 +121,10 @@ const fr = {
   'provider.urlRefused': 'URL refusée',
 
   // proxy/routes.ts
+  'serviceStatus.unknownInstance': 'widget d’état de service inconnu',
+  'serviceStatus.noServices': 'aucun service enregistré',
+  'shortcuts.unknownInstance': 'widget de raccourcis inconnu',
+  'shortcuts.unknownButton': 'bouton inconnu',
   'proxy.badScheme': 'schéma non autorisé',
   'proxy.badUrl': 'url invalide',
   'proxy.privateHost': 'hôte privé ou local: {host}',
@@ -243,6 +247,10 @@ const en: Record<MessageKey, string> = {
   'provider.localOnly': 'command restricted to this machine',
   'provider.urlRefused': 'URL refused',
 
+  'serviceStatus.unknownInstance': 'unknown service-status widget',
+  'serviceStatus.noServices': 'no services saved',
+  'shortcuts.unknownInstance': 'unknown shortcuts widget',
+  'shortcuts.unknownButton': 'unknown button',
   'proxy.badScheme': 'scheme not allowed',
   'proxy.badUrl': 'invalid url',
   'proxy.privateHost': 'private or local host: {host}',

@@ -35,6 +35,9 @@ import { helperRoutes } from './helper/routes.js'
 import { createDockProvider } from './dock/provider.js'
 import { bambuCameras } from './bambu/cameras.js'
 import { bambuRoutes } from './bambu/routes.js'
+import { createShortcutsProvider } from './providers/shortcuts.js'
+import { createServiceStatusProvider } from './providers/service-status.js'
+import { findInstance } from './config/instances.js'
 import { BYTES_CSP, isByteRoute } from './http/headers.js'
 import { isAllowedHost, isReadMethod } from './http/guard.js'
 import { isOriginAllowed } from './ws/routes.js'
@@ -89,6 +92,12 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     enabled: () => store.get().privacy.claudeAccountUsage,
   }))
   registry.register(createDockProvider(dock))
+  // These two act on the user's behalf — opening an application, knocking on a host — so they
+  // resolve what to act on from the saved dashboard rather than from the widget's message.
+  // Registered here, not in providers/index.ts, because that is where the config store lives.
+  const instances = (instanceId: string) => findInstance(store.get(), instanceId)
+  registry.register(createShortcutsProvider(undefined, instances))
+  registry.register(createServiceStatusProvider({}, instances))
   const secrets = createSecretStore(store.get().secrets.backend, opts.dataDir)
   const connectionTypes = new ConnectionTypeRegistry(opts.connectionTypes ?? defaultConnectionTypes())
   const connections = new ConnectionManager({ registry, types: connectionTypes, secrets })

@@ -178,7 +178,9 @@
 
   function press(index, spec) {
     mark(index, 'pressed')
-    Fremkit.sendCommand('shortcuts', 'open', { kind: spec.kind, target: spec.target })
+    // Only the index: the host reads what this button points at from the saved settings, so a
+    // widget cannot ask it to open something the user never configured.
+    Fremkit.sendCommand('shortcuts', 'open', { instanceId: Fremkit.instanceId, index: index })
       .then(function (result) { mark(index, result && result.ok ? 'ok' : 'failed') })
       .catch(function () { mark(index, 'failed') })
   }

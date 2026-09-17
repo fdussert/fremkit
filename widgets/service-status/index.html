@@ -190,8 +190,9 @@
     var list = services()
     if (!list.length || inFlight) return
     inFlight = true
-    var payload = list.map(function (s) { return { kind: s.kind, name: s.name, url: s.url } })
-    Fremkit.sendCommand('service-status', 'probe', { services: payload })
+    // Only our own id: the host reads the services from the saved settings, so a widget cannot
+    // have this Mac knock on hosts the user never listed.
+    Fremkit.sendCommand('service-status', 'probe', { instanceId: Fremkit.instanceId })
       .then(function (result) {
         inFlight = false
         if (!result || !result.ok || !Array.isArray(result.results)) {

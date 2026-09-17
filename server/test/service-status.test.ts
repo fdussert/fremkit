@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import {
   createServiceStatusProvider,
+  resolveServices,
   ProbePayloadSchema,
   PROBE_TIMEOUT_MS,
   probeOne,
@@ -10,6 +11,7 @@ import {
   type ProbeResult,
   type ServiceResult,
 } from '../src/providers/service-status.js'
+import type { InstanceLookup } from '../src/config/instances.js'
 import { USER_AGENT } from '../src/version.js'
 
 const LOCAL = { loopback: true }
@@ -24,11 +26,20 @@ function probes(over: Partial<Probes> = {}): Probes {
   }
 }
 
-/** Runs the command with every probe faked unless the test replaced one on purpose. */
-async function probe(payload: unknown, deps: Partial<Probes> = {}, ...ctx: [{ loopback: boolean } | undefined] | []) {
-  const p = createServiceStatusProvider(probes(deps))
-  return (await p.commands!.probe(payload, ctx.length ? ctx[0] : LOCAL)) as ProbeResult
+/**
+ * Runs the command with every probe faked unless the test replaced one on purpose.
+ *
+ * `saved` is what the user configured on the widget instance — which is the only place the
+ * targets can come from — so the command itself is sent nothing but the instance's id.
+ */
+async function probe(saved: unknown, deps: Partial<Probes> = {}, ...ctx: [{ loopback: boolean } | undefined] | []) {
+  const instances: InstanceLookup = (id) =>
+    (id === INSTANCE ? { widgetId: 'service-status', settings: saved as Record<string, unknown> } : null)
+  const p = createServiceStatusProvider(probes(deps), instances)
+  return (await p.commands!.probe({ instanceId: INSTANCE }, ctx.length ? ctx[0] : LOCAL)) as ProbeResult
 }
+
+const INSTANCE = 'svc-1'
 
 function results(r: ProbeResult): ServiceResult[] {
   if (!r.ok) throw new Error(`refused: ${r.error}`)
@@ -99,17 +110,76 @@ describe('service-status http probes', () => {
       expect(typeof r[0].detail).toBe('string')
     }
   })
-  it('sends a GET with the Fremkit user agent, follows no redirect and carries no credentials', async () => {
+  it('sends a HEAD with the Fremkit user agent, follows no redirect and carries no credentials', async () => {
     const fetchFn = vi.fn(async () => new Response('', { status: 200 })) as unknown as typeof fetch
     await probe({ services: [{ kind: 'http', name: 'Site', url: 'https://example.com' }] }, { fetchFn })
-    const [url, init] = (fetchFn as unknown as ReturnType<typeof vi.fn>).mock.calls[0] as [string, RequestInit]
+    const calls = (fetchFn as unknown as ReturnType<typeof vi.fn>).mock.calls
+    // Nothing here reads the body, and a status is all a probe wants.
+    expect(calls).toHaveLength(1)
+    const [url, init] = calls[0] as [string, RequestInit]
     expect(url).toBe('https://example.com')
-    expect(init.method).toBe('GET')
+    expect(init.method).toBe('HEAD')
     expect(init.redirect).toBe('manual')
     expect((init.headers as Record<string, string>)['User-Agent']).toBe(USER_AGENT)
     expect(init).not.toHaveProperty('credentials')
     expect(init).not.toHaveProperty('body')
     expect(init.signal).toBeInstanceOf(AbortSignal)
+  })
+
+  it('falls back to GET for a server that refuses HEAD', async () => {
+    for (const refusal of [405, 501]) {
+      const fetchFn = vi.fn(async (_u: unknown, init?: RequestInit) =>
+        new Response('', { status: init?.method === 'HEAD' ? refusal : 200 })) as unknown as typeof fetch
+      const r = results(await probe({ services: [{ kind: 'http', name: 'Site', url: 'https://example.com' }] }, { fetchFn }))
+      const calls = (fetchFn as unknown as ReturnType<typeof vi.fn>).mock.calls
+      expect(calls.map((c) => (c[1] as RequestInit).method), String(refusal)).toEqual(['HEAD', 'GET'])
+      // The service is up: refusing HEAD is not being down.
+      expect(r[0], String(refusal)).toMatchObject({ name: 'Site', state: 'up', detail: 'HTTP 200' })
+    }
+  })
+
+  it('does not retry any other status', async () => {
+    for (const status of [200, 404, 500, 302]) {
+      const fetchFn = vi.fn(async () => new Response('', { status })) as unknown as typeof fetch
+      await probe({ services: [{ kind: 'http', name: 'Site', url: 'https://example.com' }] }, { fetchFn })
+      expect((fetchFn as unknown as ReturnType<typeof vi.fn>).mock.calls, String(status)).toHaveLength(1)
+    }
+  })
+})
+
+describe('service-status resolves its targets from the saved dashboard', () => {
+  const saved = [{ kind: 'http', name: 'Site', url: 'https://example.com' }]
+  const lookup = (settings: unknown, widgetId = 'service-status'): InstanceLookup =>
+    (id) => (id === 'svc-1' ? { widgetId, settings: settings as Record<string, unknown> } : null)
+
+  it('reads the services the user configured on that instance', () => {
+    const r = resolveServices(lookup({ services: saved }), 'svc-1')
+    expect(r.ok).toBe(true)
+    if (r.ok) expect(r.services).toEqual(saved)
+  })
+
+  it('refuses an instance it cannot find', () => {
+    expect(resolveServices(lookup({ services: saved }), 'someone-else').ok).toBe(false)
+  })
+
+  it('refuses an instance of another widget', () => {
+    // Otherwise any widget could borrow a service-status instance's id and probe its hosts.
+    expect(resolveServices(lookup({ services: saved }, 'clock'), 'svc-1').ok).toBe(false)
+  })
+
+  it('refuses an instance with no services saved', () => {
+    for (const settings of [{}, { services: [] }, { services: 'nope' }, { services: [{ kind: 'http' }] }]) {
+      expect(resolveServices(lookup(settings), 'svc-1').ok, JSON.stringify(settings)).toBe(false)
+    }
+  })
+
+  it('never probes a host the caller named rather than saved', async () => {
+    const deps = probes()
+    const p = createServiceStatusProvider(deps, lookup({ services: saved }))
+    // The old payload shape: a list of targets straight from the widget.
+    const r = await p.commands!.probe({ services: [{ kind: 'http', name: 'Evil', url: 'https://evil.example' }] }, LOCAL)
+    expect(r).toMatchObject({ ok: false })
+    expect(deps.fetchFn).not.toHaveBeenCalled()
   })
 })
 
@@ -151,7 +221,7 @@ describe('service-status probe command', () => {
     expect(await probe({ services }, deps, undefined)).toMatchObject({ ok: false })
     expect(deps.fetchFn).not.toHaveBeenCalled()
   })
-  it('probes nothing at all when one entry of the payload is refused', async () => {
+  it('probes nothing at all when one saved entry is refused', async () => {
     const deps = probes()
     const r = await probe({ services: [
       { kind: 'http', name: 'Good', url: 'https://example.com' },
