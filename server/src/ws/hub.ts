@@ -32,6 +32,18 @@ export class Hub {
     })
   }
 
+  /**
+   * Drops a channel's cached last value.
+   *
+   * Called by the registry when a provider is torn down, replaced or unregistered: whatever that
+   * channel last said belonged to a connection or a provider that is gone, and replaying it to
+   * the next subscriber would show data from credentials that no longer exist. A widget that
+   * subscribes after this waits for the first fresh poll instead, which the registry runs at once.
+   */
+  forget(channel: string): void {
+    this.lastValues.delete(channel)
+  }
+
   broadcast(channel: string, data: unknown): void {
     this.lastValues.set(channel, data)
     const msg = JSON.stringify({ type: 'data', channel, data })

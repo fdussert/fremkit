@@ -16,7 +16,16 @@ interface State {
 export class ProviderRegistry {
   private states = new Map<string, State>()
 
-  constructor(private readonly publish: Publish) {}
+  /**
+   * `forget` is told when a channel stops having anything to say: its provider was torn down,
+   * replaced or unregistered. The hub keeps the last value of every channel so a new subscriber
+   * sees something at once, and without this that cache held the snapshot of a connection the
+   * user had deleted — replayed to every widget that subscribed afterwards.
+   */
+  constructor(
+    private readonly publish: Publish,
+    private readonly forget: (channel: string) => void = () => {},
+  ) {}
 
   register(provider: Provider): void {
     const previous = this.states.get(provider.channel)
@@ -105,6 +114,8 @@ export class ProviderRegistry {
     // before `isCurrent` gets a say, and keeps a torn-down state from being woken by a later
     // subscriber count.
     s.subscribers = 0
+    s.lastJson = undefined
+    this.forget(s.provider.channel)
     if (!s.started) return
     s.started = false
     s.provider.stop?.()

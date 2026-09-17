@@ -71,3 +71,59 @@ describe('Hub', () => {
     expect(a.sent).toHaveLength(2)
   })
 })
+
+describe('the cached last value of a channel', () => {
+  const subscribe = (hub: Hub, channel: string) => {
+    const socket = new FakeSocket()
+    hub.attach(socket, { loopback: true })
+    socket.receive({ type: 'subscribe', channel })
+    return socket
+  }
+
+  it('is replayed to a new subscriber', () => {
+    let hub!: Hub
+    const registry = new ProviderRegistry((c, d) => hub.broadcast(c, d), (c) => hub.forget(c))
+    hub = new Hub(registry)
+    registry.register({ channel: 'volume', intervalMs: 1000 })
+    hub.broadcast('volume', { level: 7 })
+    expect(subscribe(hub, 'volume').sent).toEqual([{ type: 'data', channel: 'volume', data: { level: 7 } }])
+  })
+
+  it('is dropped once the provider behind it is gone', () => {
+    let hub!: Hub
+    const registry = new ProviderRegistry((c, d) => hub.broadcast(c, d), (c) => hub.forget(c))
+    hub = new Hub(registry)
+    registry.register({ channel: 'homey:old', intervalMs: 1000 })
+    hub.broadcast('homey:old', { devices: ['from the deleted connection'] })
+
+    // The connection was deleted from the config.
+    registry.unregister('homey:old')
+
+    // Nothing replayed: that snapshot belonged to credentials that no longer exist.
+    expect(subscribe(hub, 'homey:old').sent).toEqual([])
+  })
+
+  it('is dropped when the provider is replaced, so the old host is not shown', () => {
+    let hub!: Hub
+    const registry = new ProviderRegistry((c, d) => hub.broadcast(c, d), (c) => hub.forget(c))
+    hub = new Hub(registry)
+    registry.register({ channel: 'homey:x', intervalMs: 1000 })
+    hub.broadcast('homey:x', { devices: ['old host'] })
+    registry.register({ channel: 'homey:x', intervalMs: 1000 })
+    expect(subscribe(hub, 'homey:x').sent).toEqual([])
+  })
+
+  it('is dropped when the last subscriber leaves, so the next one polls afresh', () => {
+    let hub!: Hub
+    const registry = new ProviderRegistry((c, d) => hub.broadcast(c, d), (c) => hub.forget(c))
+    hub = new Hub(registry)
+    registry.register({ channel: 'clipboard', intervalMs: 1000 })
+    const first = subscribe(hub, 'clipboard')
+    hub.broadcast('clipboard', { entries: [{ preview: 'something private' }] })
+    expect(first.sent).toHaveLength(1)
+    // The widget was removed from the dashboard: the clipboard provider clears its history on
+    // stop(), and the hub must not keep handing the last snapshot out after that.
+    first.emit('close')
+    expect(subscribe(hub, 'clipboard').sent).toEqual([])
+  })
+})

@@ -82,7 +82,10 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   await usage.load()
 
   let hub!: Hub
-  const registry = new ProviderRegistry((channel, data) => hub.broadcast(channel, data))
+  const registry = new ProviderRegistry(
+    (channel, data) => hub.broadcast(channel, data),
+    (channel) => hub.forget(channel),
+  )
   hub = new Hub(registry)
   for (const p of opts.providers ?? []) registry.register(p)
   registry.register(createClaudeSessionsProvider(tracker))
