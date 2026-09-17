@@ -3,6 +3,7 @@ import type { ConnectionProviderContext } from '../connections/types.js'
 import type { Provider } from './types.js'
 import { USER_AGENT } from '../version.js'
 import { readJsonCapped } from '../net/json.js'
+import { tr } from '../i18n.js'
 
 /**
  * GitHub, through the REST API of github.com or of a GitHub Enterprise Server.
@@ -594,7 +595,9 @@ export function createGithubProvider(ctx: ConnectionProviderContext, deps: Githu
     commands: {
       /** Marks one notification thread read — what a tap on an inbox row asks for. */
       markRead: async (payload) => {
-        const { id } = MarkReadPayload.parse(payload)
+        const parsed = MarkReadPayload.safeParse(payload)
+        if (!parsed.success) throw new Error(tr(undefined, 'github.invalidCommand'))
+        const { id } = parsed.data
         await send(`${base}/notifications/threads/${id}`, 'PATCH')
         return { ok: true }
       },
@@ -604,10 +607,16 @@ export function createGithubProvider(ctx: ConnectionProviderContext, deps: Githu
        * that arrives between the tap and the request survives instead of being silently swallowed.
        */
       markAllRead: async (payload) => {
-        const { lastReadAt } = MarkAllReadPayload.parse(payload ?? {})
+        const parsed = MarkAllReadPayload.safeParse(payload ?? {})
+        if (!parsed.success) throw new Error(tr(undefined, 'github.invalidCommand'))
+        const { lastReadAt } = parsed.data
+        // `read` is left out on purpose. GitHub documents it only as "Whether the notification
+        // has been read", with no default and no word on what it does on a mark-as-read call —
+        // and we were sending `false`, which at best means nothing and at worst asks for the
+        // opposite of the request. Omitted, the endpoint does its documented job: everything up
+        // to `last_read_at` is marked read.
         await send(`${base}/notifications`, 'PUT', {
           last_read_at: lastReadAt ?? new Date(now()).toISOString(),
-          read: false,
         })
         return { ok: true }
       },

@@ -145,7 +145,7 @@ async function onSave(): Promise<void> {
           <BaseButton @click="reveal(f.key)">{{ t('admin.connections.form.replace') }}</BaseButton>
         </div>
         <div v-else class="masked">
-          <BaseInput lazy :model-value="secrets[f.key] ?? ''" :placeholder="f.placeholder"
+          <BaseInput lazy type="password" :model-value="secrets[f.key] ?? ''" :placeholder="f.placeholder"
             @update:model-value="setSecret(f.key, String($event))" />
           <BaseButton v-if="replaceable(f.key)" :title="t('admin.connections.form.keepSecret')"
             @click="cancelReveal(f.key)">{{ t('common.cancel') }}</BaseButton>

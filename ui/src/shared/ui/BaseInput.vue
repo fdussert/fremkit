@@ -3,7 +3,7 @@
  * `lazy` commits on change/blur instead of on every keystroke, so a typed word is one edit —
  * one undo step, one save — rather than one per character.
  */
-const props = withDefaults(defineProps<{ modelValue: string | number; type?: 'text' | 'number'; placeholder?: string; invalid?: boolean; min?: number; max?: number; disabled?: boolean; lazy?: boolean }>(), { type: 'text' })
+const props = withDefaults(defineProps<{ modelValue: string | number; type?: 'text' | 'number' | 'password'; placeholder?: string; invalid?: boolean; min?: number; max?: number; disabled?: boolean; lazy?: boolean }>(), { type: 'text' })
 const emit = defineEmits<{ 'update:modelValue': [value: string | number] }>()
 function commit(e: Event) {
   const raw = (e.target as HTMLInputElement).value
@@ -17,7 +17,12 @@ function onEnter(e: KeyboardEvent) { if (props.lazy) (e.target as HTMLInputEleme
 </script>
 
 <template>
+  <!-- A password field is never offered to the browser's autofill or its password manager: these
+       values belong in the macOS keychain, which is where the server puts them. -->
   <input :type="type" :value="modelValue" :placeholder="placeholder" :min="min" :max="max" :disabled="disabled"
+    :autocomplete="type === 'password' ? 'new-password' : undefined"
+    :autocapitalize="type === 'password' ? 'off' : undefined"
+    :spellcheck="type === 'password' ? false : undefined"
     :class="{ invalid }" @input="onInput" @change="onChange" @keydown.enter="onEnter" />
 </template>
 

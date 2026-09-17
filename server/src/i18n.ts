@@ -121,7 +121,11 @@ const fr = {
   'provider.urlRefused': 'URL refusée',
 
   // proxy/routes.ts
+  'claude.invalidDismiss': 'identifiant de session invalide',
+  'github.invalidCommand': 'commande invalide',
   'homey.invalidCommand': 'commande invalide',
+  'volume.invalidLevel': 'niveau de volume invalide',
+  'volume.invalidMute': 'valeur de sourdine invalide',
   'homey.notWritable': 'cette capacité n’est pas modifiable',
   'serviceStatus.unknownInstance': 'widget d’état de service inconnu',
   'serviceStatus.noServices': 'aucun service enregistré',
@@ -249,7 +253,11 @@ const en: Record<MessageKey, string> = {
   'provider.localOnly': 'command restricted to this machine',
   'provider.urlRefused': 'URL refused',
 
+  'claude.invalidDismiss': 'invalid session id',
+  'github.invalidCommand': 'invalid command',
   'homey.invalidCommand': 'invalid command',
+  'volume.invalidLevel': 'invalid volume level',
+  'volume.invalidMute': 'invalid mute value',
   'homey.notWritable': 'that capability cannot be written',
   'serviceStatus.unknownInstance': 'unknown service-status widget',
   'serviceStatus.noServices': 'no services saved',

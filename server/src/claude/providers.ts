@@ -2,6 +2,8 @@ import type { Provider } from '../providers/types.js'
 import type { ClaudeTracker } from './tracker.js'
 import type { ClaudeUsage } from './usage.js'
 import { listClaudeProcesses, type ClaudeProcess } from './processes.js'
+import { z } from 'zod'
+import { tr } from '../i18n.js'
 
 export { createClaudeAccountProvider } from './account.js'
 
@@ -11,6 +13,9 @@ export interface ClaudeSessionsProviderOptions {
   discoveryMs?: number
   now?: () => number
 }
+
+/** A session id is a non-empty string; nothing else can be dismissed. */
+export const DismissPayloadSchema = z.object({ sessionId: z.string().min(1).max(200) })
 
 export function createClaudeSessionsProvider(tracker: ClaudeTracker, opts: ClaudeSessionsProviderOptions = {}): Provider {
   const list = opts.listProcesses ?? listClaudeProcesses
@@ -32,9 +37,10 @@ export function createClaudeSessionsProvider(tracker: ClaudeTracker, opts: Claud
     },
     commands: {
       dismiss: async (payload) => {
-        const id = (payload as { sessionId?: unknown })?.sessionId
-        if (typeof id !== 'string' || !id) throw new Error('sessionId manquant')
-        return { dismissed: tracker.dismiss(id) }
+        const parsed = DismissPayloadSchema.safeParse(payload)
+        // Never the raw ZodError: it echoes the payload back to the caller.
+        if (!parsed.success) throw new Error(tr(undefined, 'claude.invalidDismiss'))
+        return { dismissed: tracker.dismiss(parsed.data.sessionId) }
       },
     },
   }

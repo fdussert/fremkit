@@ -55,3 +55,28 @@ describe('mutedeck', () => {
     expect(f).toHaveBeenLastCalledWith('http://x/v1/record', expect.objectContaining({ method: 'POST' }))
   })
 })
+
+describe('volume payloads', () => {
+  it('refuses a level that is not a number instead of sending NaN to osascript', async () => {
+    const run = vi.fn(async () => '')
+    const p = createVolumeProvider(run)
+    for (const bad of [{ level: 'loud' }, { level: null }, {}, null, { level: NaN }, { level: Infinity }]) {
+      await expect(p.commands!.set(bad), JSON.stringify(bad)).rejects.toThrow()
+    }
+    expect(run).not.toHaveBeenCalled()
+  })
+  it('refuses a mute value that is not a boolean', async () => {
+    const run = vi.fn(async () => '')
+    const p = createVolumeProvider(run)
+    for (const bad of [{ muted: 'yes' }, {}, null, { muted: 1 }]) {
+      await expect(p.commands!.mute(bad), JSON.stringify(bad)).rejects.toThrow()
+    }
+    expect(run).not.toHaveBeenCalled()
+  })
+  it('still takes the real payloads', async () => {
+    const run = vi.fn(async () => '')
+    const p = createVolumeProvider(run)
+    expect(await p.commands!.set({ level: 42 })).toEqual({ level: 42 })
+    expect(await p.commands!.mute({ muted: false })).toEqual({ muted: false })
+  })
+})

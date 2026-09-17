@@ -55,7 +55,12 @@ describe('providers', () => {
     expect(((await p.poll!()) as { sessions: unknown[] }).sessions).toHaveLength(1)
     expect((await p.poll!()) as any).toHaveProperty('today.sessions')
     await expect(p.commands!.dismiss({ sessionId: 'z' })).resolves.toEqual({ dismissed: true })
-    await expect(p.commands!.dismiss({})).rejects.toThrow(/sessionId/)
+    // Refused through zod now, with a translated message rather than a raw ZodError echoing the
+    // payload back.
+    await expect(p.commands!.dismiss({})).rejects.toThrow(/session/)
+    for (const bad of [{ sessionId: '' }, { sessionId: 42 }, null, 'nope']) {
+      await expect(p.commands!.dismiss(bad), JSON.stringify(bad)).rejects.toThrow()
+    }
   })
   it('usage provider refreshes today then snapshots', async () => {
     const p = createClaudeUsageProvider(usage)
