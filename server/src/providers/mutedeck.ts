@@ -1,4 +1,5 @@
 import type { Provider } from './types.js'
+import { readJsonCapped } from '../net/json.js'
 
 type FetchFn = typeof fetch
 
@@ -15,7 +16,7 @@ export function createMutedeckProvider(baseUrl = 'http://localhost:3491', fetchF
       try {
         const r = await fetchFn(`${baseUrl}/v1/status`, { signal: AbortSignal.timeout(2000) })
         if (!r.ok) return { available: false }
-        return { ...(await r.json() as Record<string, unknown>), available: true }
+        return { ...(await readJsonCapped(r) as Record<string, unknown>), available: true }
       } catch {
         return { available: false }
       }

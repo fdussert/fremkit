@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import ICAL from 'ical.js'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import {
@@ -9,6 +10,8 @@ import {
   fetchIcs,
   IcsFetchError,
   MAX_ICS_BYTES,
+  MAX_MASTERS,
+  MAX_TIMEZONES,
   normalizeColor,
   NotACalendarError,
   parseCalendar,
@@ -291,5 +294,35 @@ describe('createCalendarProvider', () => {
     const provider = createCalendarProvider({ ...ctx, secrets: {} }, { fetchFn: fetchFn as unknown as typeof fetch })
     expect(await provider.poll!()).toEqual({ events: [], error: 'unconfigured' })
     expect(fetchFn).not.toHaveBeenCalled()
+  })
+})
+
+describe('the bounds on one calendar file', () => {
+  const ics = (body: string) => `BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//test//\r\n${body}END:VCALENDAR\r\n`
+  const event = (i: number) =>
+    `BEGIN:VEVENT\r\nUID:e-${i}\r\nDTSTART:20260101T090000Z\r\nDTEND:20260101T100000Z\r\nSUMMARY:E${i}\r\nEND:VEVENT\r\n`
+
+  it('reads at most MAX_MASTERS series out of a file', () => {
+    // Each master can expand to MAX_OCCURRENCES, so the two would otherwise multiply.
+    let body = ''
+    for (let i = 0; i < MAX_MASTERS + 25; i++) body += event(i)
+    const from = Date.UTC(2025, 11, 1)
+    const to = Date.UTC(2026, 11, 1)
+    const events = parseCalendar(ics(body), { calendar: 'c1', color: DEFAULT_CALENDAR_COLOR, from, to })
+    // MAX_EVENTS still applies on top, so this only asserts it did not choke and stayed bounded.
+    expect(events.length).toBeLessThanOrEqual(MAX_MASTERS)
+  })
+
+  it('registers at most MAX_TIMEZONES zones from a remote file', () => {
+    // TimezoneService is process-wide, so a remote file writes into global state.
+    let body = ''
+    for (let i = 0; i < MAX_TIMEZONES + 10; i++) {
+      body += `BEGIN:VTIMEZONE\r\nTZID:Fremkit/Zone-${i}\r\nBEGIN:STANDARD\r\nDTSTART:19700101T000000\r\nTZOFFSETFROM:+0000\r\nTZOFFSETTO:+0000\r\nTZNAME:Z\r\nEND:STANDARD\r\nEND:VTIMEZONE\r\n`
+    }
+    body += event(1)
+    parseCalendar(ics(body), { calendar: 'c1', color: DEFAULT_CALENDAR_COLOR, from: Date.UTC(2025, 11, 1), to: Date.UTC(2026, 11, 1) })
+    const registered = Array.from({ length: MAX_TIMEZONES + 10 }, (_, i) => `Fremkit/Zone-${i}`)
+      .filter((tzid) => ICAL.TimezoneService.has(tzid))
+    expect(registered.length).toBeLessThanOrEqual(MAX_TIMEZONES)
   })
 })

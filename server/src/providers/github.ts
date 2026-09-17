@@ -2,6 +2,7 @@ import { z } from 'zod'
 import type { ConnectionProviderContext } from '../connections/types.js'
 import type { Provider } from './types.js'
 import { USER_AGENT } from '../version.js'
+import { readJsonCapped } from '../net/json.js'
 
 /**
  * GitHub, through the REST API of github.com or of a GitHub Enterprise Server.
@@ -451,7 +452,7 @@ export function createGithubProvider(ctx: ConnectionProviderContext, deps: Githu
     }
 
     const etag = res.headers.get('etag')
-    const body = await res.json().catch(() => undefined)
+    const body = await readJsonCapped(res).catch(() => undefined)
     if (etag) cache.set(url, { etag, body })
     else cache.delete(url)
     return body

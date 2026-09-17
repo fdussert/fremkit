@@ -3,6 +3,7 @@ import type { ConnectionProviderContext } from '../connections/types.js'
 import type { Provider } from './types.js'
 import { USER_AGENT } from '../version.js'
 import { tr } from '../i18n.js'
+import { readJsonCapped } from '../net/json.js'
 
 /**
  * Homey Pro (2023) over its **local** Web API.
@@ -295,7 +296,7 @@ export function createHomeyProvider(ctx: ConnectionProviderContext, deps: HomeyP
       await res.body?.cancel().catch(() => { /* already closed */ })
       throw new Error(`HTTP ${res.status}`)
     }
-    return res.json()
+    return readJsonCapped(res)
   }
 
   /** A call whose failure must not cost the whole poll: a missing label is not an outage. */

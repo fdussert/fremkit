@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { ClaudeTracker } from '../src/claude/tracker.js'
+import { ClaudeTracker, MAX_SESSIONS } from '../src/claude/tracker.js'
 import { summarizeTool } from '../src/claude/tool-summary.js'
 
 function make(start = 1_000_000) {
@@ -295,5 +295,23 @@ describe('ClaudeTracker', () => {
       expect(tracker.dismiss('proc:1')).toBe(false)
       expect(tracker.snapshot().sessions).toHaveLength(1)
     })
+  })
+})
+
+describe('the number of sessions held', () => {
+  it('keeps at most MAX_SESSIONS, dropping the least recently heard from', () => {
+    let t = 1_000_000
+    const tracker = new ClaudeTracker({ now: () => t })
+    // The endpoint takes any session id, so a caller could otherwise fill the map inside one
+    // TTL window — and every session is held in memory and written to disk.
+    for (let i = 0; i < MAX_SESSIONS + 50; i++) {
+      t += 1000
+      tracker.handle({ hook_event_name: 'UserPromptSubmit', session_id: `s-${i}`, cwd: '/p' })
+    }
+    const ids = tracker.snapshot().sessions.map((s) => s.sessionId)
+    expect(tracker.snapshot().sessions.length).toBeLessThanOrEqual(MAX_SESSIONS)
+    // The newest survived and the oldest went.
+    expect(ids).toContain(`s-${MAX_SESSIONS + 49}`)
+    expect(ids).not.toContain('s-0')
   })
 })

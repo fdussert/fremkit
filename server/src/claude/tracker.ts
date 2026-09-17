@@ -38,6 +38,14 @@ export interface ClaudeSession {
   discovered?: boolean
 }
 
+/**
+ * Most sessions held at once.
+ *
+ * A Mac runs a handful of Claude Code sessions; the widget shows the most recent few. The cap is
+ * what stops a hook caller — the endpoint takes any session id — from filling the map.
+ */
+export const MAX_SESSIONS = 200
+
 export interface HookEvent {
   hook_event_name?: string
   session_id?: string
@@ -59,6 +67,7 @@ export interface HookEvent {
   cost?: { total_cost_usd?: number }
   context_window?: { context_window_size?: number; used_percentage?: number; current_usage?: { input_tokens?: number; output_tokens?: number; cache_creation_input_tokens?: number; cache_read_input_tokens?: number } }
   permission_mode?: string
+  /** Rate-limit windows, forwarded by the statusline script and read by ClaudeUsage. */
   rate_limits?: unknown
 }
 
@@ -288,8 +297,19 @@ export class ClaudeTracker {
   }
 
   /** Drops sessions whose last event is older than the TTL. */
+  /**
+   * Drops sessions nothing has been heard from for `ttlMs`, then enforces the ceiling.
+   *
+   * The TTL alone is not a bound: a script looping over fresh session ids fills the map inside
+   * one window, and every session is held in memory and written to `data/claude-sessions.json`.
+   * Past the cap the least recently heard from go, which is the same order the TTL would have
+   * taken them in.
+   */
   private sweep(t: number): void {
     for (const [id, s] of this.sessions) if (t - s.lastEventAt > this.ttlMs) this.sessions.delete(id)
+    if (this.sessions.size <= MAX_SESSIONS) return
+    const byAge = [...this.sessions.entries()].sort((a, b) => a[1].lastEventAt - b[1].lastEventAt)
+    for (const [id] of byAge.slice(0, byAge.length - MAX_SESSIONS)) this.sessions.delete(id)
   }
 
   /** Counters for the local day: sessions seen, sessions that reached "done", git commits observed. */

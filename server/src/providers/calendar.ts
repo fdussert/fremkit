@@ -27,6 +27,22 @@ export const MAX_EVENTS = 200
  * few thousand steps, and a rule that never does must not spin forever.
  */
 const MAX_OCCURRENCES = 5_000
+/**
+ * Most series and most standalone events read out of one file.
+ *
+ * Each master can expand to `MAX_OCCURRENCES`, so the two multiply: a file with a hundred
+ * thousand VEVENTs was minutes of CPU and a great deal of memory, for a widget that shows the
+ * next few. The file itself is already capped at 5 MB, which is not much of a bound in ICS.
+ */
+export const MAX_MASTERS = 2_000
+/**
+ * Most VTIMEZONE definitions taken from one file.
+ *
+ * Registering them is necessary — without it a `TZID=Europe/Paris` reads as floating local time
+ * — but `ICAL.TimezoneService` is a process-wide registry, so a remote file writes into global
+ * state that outlives the poll. Bounded, and only zones the service does not already know.
+ */
+export const MAX_TIMEZONES = 64
 
 /** The colour an event falls back to when the connection stores none, or stores a broken one. */
 export const DEFAULT_CALENDAR_COLOR = '#5b8def'
@@ -159,10 +175,12 @@ function readCalendar(ics: string): IcalComponent {
   if (root.name !== 'vcalendar') throw new NotACalendarError()
   // An Outlook export carries the definition of every zone it uses; without registering them a
   // TZID=Europe/Paris would silently be read as floating local time.
+  let registered = 0
   for (const vtimezone of root.getAllSubcomponents('vtimezone')) {
+    if (registered >= MAX_TIMEZONES) break
     const tzid = String(vtimezone.getFirstPropertyValue('tzid') ?? '')
     if (!tzid || ICAL.TimezoneService.has(tzid)) continue
-    try { ICAL.TimezoneService.register(new ICAL.Timezone(vtimezone)) } catch { /* keep the others */ }
+    try { ICAL.TimezoneService.register(new ICAL.Timezone(vtimezone)); registered++ } catch { /* keep the others */ }
   }
   return root
 }
@@ -210,6 +228,8 @@ export function parseCalendar(ics: string, opts: ParseOptions): CalEvent[] {
       if (list) list.push(vevent)
       else overrides.set(uid, [vevent])
     } else {
+      // Each master can expand to MAX_OCCURRENCES, so this is the bound that matters.
+      if (masters.length >= MAX_MASTERS) continue
       masters.push(vevent)
     }
   }

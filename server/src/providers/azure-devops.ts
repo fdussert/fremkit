@@ -3,6 +3,7 @@ import type { ConnectionProviderContext } from '../connections/types.js'
 import type { CommandContext, Provider } from './types.js'
 import { USER_AGENT } from '../version.js'
 import { tr } from '../i18n.js'
+import { readJsonCapped } from '../net/json.js'
 
 export const ADO_API_VERSION = '7.1'
 /** Timeouts and cadences, from the spec: builds every 30 s, timelines every 10 s. */
@@ -188,7 +189,7 @@ export function createAzureDevOpsProvider(ctx: ConnectionProviderContext, deps: 
       await res.body?.cancel().catch(() => { /* already closed */ })
       throw new Error(`HTTP ${res.status}`)
     }
-    return res.json()
+    return readJsonCapped(res)
   }
 
   return {

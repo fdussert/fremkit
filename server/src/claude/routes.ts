@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify'
-import type { ClaudeTracker, HookEvent } from './tracker.js'
+import type { ClaudeTracker } from './tracker.js'
+import { parseHookEvent } from './hook-schema.js'
 import type { ClaudeUsage } from './usage.js'
 
 const BODY_LIMIT = 1_000_000
@@ -19,9 +20,9 @@ export async function claudeRoutes(app: FastifyInstance, opts: { tracker: Claude
   })
 
   app.post('/api/hooks/claude', { bodyLimit: BODY_LIMIT }, async (req, reply) => {
-    const body = req.body
-    if (body && typeof body === 'object' && !Array.isArray(body)) {
-      const event = body as HookEvent
+    // Bounded and narrowed rather than cast: see hook-schema.ts. Still always a 204.
+    const event = parseHookEvent(req.body)
+    if (event) {
       try {
         opts.tracker.handle(event)
         if (event.hook_event_name === 'StatusLine') await opts.usage.applyStatusLine(event)
