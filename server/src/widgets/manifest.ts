@@ -118,6 +118,22 @@ const DEFAULT_MIN_SIZE: [number, number] = [4, 2]
 export const CompactSchema = z.object({ width: z.number().int().min(2).max(16) })
 export type Compact = z.infer<typeof CompactSchema>
 
+/**
+ * Channels the host broadcasts that are not a widget's business.
+ *
+ * `config` carries the whole dashboard — every page, every widget's settings, the id and the
+ * fields of every connection. A widget that asked for it would be handed all of it, and no
+ * widget here has ever needed it. Refused when the manifest is read, so a folder dropped into
+ * `widgets/` cannot quietly ask for the lot.
+ */
+const RESERVED_CHANNELS = new Set(['config'])
+
+const ChannelSchema = z.string().min(1).refine((channel) => {
+  // `azure-devops:*` covers every connection of a type, so the family is what matters here.
+  const family = channel.split(':')[0]
+  return !RESERVED_CHANNELS.has(family) && !RESERVED_CHANNELS.has(channel)
+}, { message: 'canal réservé à l’hôte' })
+
 const RawManifestSchema = z.object({
   id: z.string().regex(WIDGET_ID_RE),
   name: LocalizedTextSchema,
@@ -128,8 +144,8 @@ const RawManifestSchema = z.object({
   minSize: SizeSchema.optional(),
   defaultSize: SizeSchema.optional(),
   compact: CompactSchema.optional(),
-  subscriptions: z.array(z.string()).default([]),
-  commands: z.array(z.string()).default([]),
+  subscriptions: z.array(ChannelSchema).default([]),
+  commands: z.array(ChannelSchema).default([]),
   settingsSchema: z.record(z.string(), SettingFieldSchema).default({}),
   permissions: z.object({
     /**

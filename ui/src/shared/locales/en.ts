@@ -28,6 +28,15 @@ export const en: Record<string, string> = {
 
   'admin.library.title': 'Widgets',
   'admin.library.rescan': 'Rescan the widgets folder',
+  'admin.permissions.title': 'What this widget asks for',
+  'admin.permissions.reads': 'Reads',
+  'admin.permissions.controls': 'Controls',
+  'admin.permissions.network': 'Network',
+  'admin.permissions.reads.short': 'reads {n}',
+  'admin.permissions.controls.short': 'controls {n}',
+  'admin.permissions.network.short': 'network {n}',
+  'admin.permissions.none': 'asks for nothing',
+  'admin.permissions.note': 'Declared by the widget’s author in its manifest, and enforced by the server. A widget cannot read a channel that is not listed here, nor reach another host.',
 
   'admin.tabs.screen': 'Screen',
   'admin.tabs.connections': 'Connections',

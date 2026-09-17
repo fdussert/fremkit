@@ -127,3 +127,30 @@ describe('ManifestSchema', () => {
     })
   })
 })
+
+describe('channels a manifest may not ask for', () => {
+  const base = { id: 'w', name: 'W', version: '1', minSize: [4, 2], defaultSize: [4, 2] }
+
+  it('refuses the config channel, which carries the whole dashboard', () => {
+    // Every page, every widget's settings, and the id and fields of every connection.
+    expect(ManifestSchema.safeParse({ ...base, subscriptions: ['config'] }).success).toBe(false)
+    expect(ManifestSchema.safeParse({ ...base, commands: ['config'] }).success).toBe(false)
+    expect(ManifestSchema.safeParse({ ...base, subscriptions: ['config:*'] }).success).toBe(false)
+    expect(ManifestSchema.safeParse({ ...base, subscriptions: ['config:anything'] }).success).toBe(false)
+  })
+
+  it('names the reason', () => {
+    const parsed = ManifestSchema.safeParse({ ...base, subscriptions: ['config'] })
+    expect(parsed.success).toBe(false)
+    if (!parsed.success) expect(parsed.error.issues[0].message).toMatch(/réservé/)
+  })
+
+  it('still accepts every channel the widgets here declare', () => {
+    const ok = ['volume', 'system', 'claude-account', 'homey:*', 'github:gh-x1z9', 'calendar:*']
+    expect(ManifestSchema.safeParse({ ...base, subscriptions: ok, commands: ok }).success).toBe(true)
+  })
+
+  it('refuses an empty channel name', () => {
+    expect(ManifestSchema.safeParse({ ...base, subscriptions: [''] }).success).toBe(false)
+  })
+})

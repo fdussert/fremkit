@@ -36,12 +36,22 @@ export const ICONS: Record<string, string> = {
   activity: '<path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"/>',
   'cloud-sun': '<path d="M12 2v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="M20 12h2"/><path d="m19.07 4.93-1.41 1.41"/><path d="M15.95 12.65a4 4 0 0 0-5.93-4.13"/><path d="M13 22H7a5 5 0 1 1 4.9-6H13a3 3 0 0 1 0 6Z"/>',
   timer: '<path d="M10 2h4"/><path d="m15 11-3 3"/><circle cx="12" cy="14" r="8"/>',
+  eye: '<path d="M2.06 12.35a1 1 0 0 1 0-.7 10.75 10.75 0 0 1 19.88 0 1 1 0 0 1 0 .7 10.75 10.75 0 0 1-19.88 0"/><circle cx="12" cy="12" r="3"/>',
+  zap: '<path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/>',
+  globe: '<circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/>',
 }
 
 export const DEFAULT_ICON = 'layout-grid'
 
-/** Inline SVG markup for one icon; unknown names fall back to layout-grid. */
+/**
+ * Inline SVG markup for one icon; unknown names fall back to layout-grid.
+ *
+ * The lookup goes through `Object.hasOwn`: an icon name comes from a manifest, and a plain
+ * property read would answer `constructor` or `__proto__` with something off `Object.prototype`,
+ * which would then be interpolated into this markup.
+ */
 export function iconSvg(name: string | undefined, size = 20): string {
-  const body = ICONS[name ?? ''] ?? ICONS[DEFAULT_ICON]
+  const key = name ?? ''
+  const body = (Object.hasOwn(ICONS, key) ? ICONS[key] : undefined) ?? ICONS[DEFAULT_ICON]
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`
 }

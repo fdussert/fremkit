@@ -11,6 +11,7 @@ import BaseSegmented from '../shared/ui/BaseSegmented.vue'
 import BackgroundPicker from './BackgroundPicker.vue'
 import CopySettingsFrom from './CopySettingsFrom.vue'
 import SettingsForm from './SettingsForm.vue'
+import WidgetPermissions from './WidgetPermissions.vue'
 import { pick, useI18n } from '../shared/i18n'
 import { surfaceOpacity } from '../shared/background'
 import { useAdminStore } from './store'
@@ -147,6 +148,8 @@ function moveToPage(): void {
     <CopySettingsFrom v-if="manifest" :widget-id="inst.widgetId" :instance-id="inst.instanceId"
       @copy="s.updateInstance(inst!.instanceId, { settings: $event })" />
     <SettingsForm v-if="manifest" :schema="manifest.settingsSchema" scope="tile" :values="inst.settings" @change="onSetting" />
+
+    <WidgetPermissions :manifest="manifest" />
 
     <h3>{{ t('admin.inspector.widget.geometry') }}</h3>
     <div class="grid4">

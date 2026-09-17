@@ -28,6 +28,15 @@ export const fr: Record<string, string> = {
 
   'admin.library.title': 'Widgets',
   'admin.library.rescan': 'Relire le dossier widgets',
+  'admin.permissions.title': 'Ce que ce widget demande',
+  'admin.permissions.reads': 'Lit',
+  'admin.permissions.controls': 'Commande',
+  'admin.permissions.network': 'Réseau',
+  'admin.permissions.reads.short': 'lit {n}',
+  'admin.permissions.controls.short': 'commande {n}',
+  'admin.permissions.network.short': 'réseau {n}',
+  'admin.permissions.none': 'ne demande rien',
+  'admin.permissions.note': 'Déclaré par l’auteur du widget dans son manifeste, et imposé par le serveur. Un widget ne peut pas lire un canal qui n’est pas listé ici, ni joindre un autre hôte.',
 
   'admin.tabs.screen': 'Écran',
   'admin.tabs.connections': 'Connexions',

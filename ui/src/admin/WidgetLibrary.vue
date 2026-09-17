@@ -29,6 +29,7 @@ import { onMounted, onBeforeUnmount } from 'vue'
 import BaseButton from '../shared/ui/BaseButton.vue'
 import BaseCard from '../shared/ui/BaseCard.vue'
 import BaseIcon from '../shared/ui/BaseIcon.vue'
+import WidgetPermissions from './WidgetPermissions.vue'
 import { pick, useI18n } from '../shared/i18n'
 import { DND_TYPE, useAdminStore } from './store'
 
@@ -55,6 +56,7 @@ onBeforeUnmount(unbindDragFallback)
         <div class="txt">
           <strong>{{ pick(m.name) }}</strong>
           <small>{{ m.defaultSize[0] }}×{{ m.defaultSize[1] }} · {{ pick(m.description) }}</small>
+          <WidgetPermissions :manifest="m" compact />
         </div>
       </BaseCard>
       <BaseCard v-for="e in s.state.catalogErrors" :key="'err-' + e.id" class="err">
