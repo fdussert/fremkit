@@ -6,6 +6,18 @@ import { normalizeInstances } from './normalize.js'
 
 type Listener = (config: Config) => void
 
+/**
+ * Thrown by every write while the config on disk could not be read.
+ *
+ * A named class rather than a message, so a route can map it to a 409 without matching text.
+ */
+export class DegradedStoreError extends Error {
+  constructor() {
+    super('config store is degraded')
+    this.name = 'DegradedStoreError'
+  }
+}
+
 export class ConfigStore {
   private config: Config = structuredClone(DEFAULT_CONFIG)
   private listeners = new Set<Listener>()
@@ -129,6 +141,11 @@ export class ConfigStore {
   }
 
   private async commit(input: unknown): Promise<Config> {
+    // The one gate every write passes. While the store is degraded the config held in memory is
+    // the default one, not the user's: writing it would overwrite a dashboard we merely failed to
+    // read. `PUT /api/config` refuses before it gets here, but the connections API went straight
+    // to `update()` and would have flattened the file.
+    if (this.degradedFlag) throw new DegradedStoreError()
     const parsed = normalizeInstances(ConfigSchema.parse(input))
     this.config = parsed
     await this.write()

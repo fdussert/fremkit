@@ -1,5 +1,5 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { mkdtemp, writeFile } from 'node:fs/promises'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { FastifyInstance } from 'fastify'
@@ -536,5 +536,47 @@ describe('connection errors in English', () => {
     } finally {
       await en.close()
     }
+  })
+})
+
+describe('the connections API while the config on disk is unreadable', () => {
+  const body = { type: 'azure-devops', name: 'Travail', fields: { organization: 'example-org', project: 'example-project' }, secrets: { pat: 'token-1' } }
+
+  /** An app whose config file holds a version it cannot migrate: the store loads degraded. */
+  async function degraded(): Promise<{ app: FastifyInstance; dir: string; onDisk: string }> {
+    const dir = await mkdtemp(join(tmpdir(), 'fremkit-degraded-'))
+    const onDisk = JSON.stringify({ version: 99, pages: [{ id: 'mine', name: 'Mienne' }] })
+    await writeFile(join(dir, 'fremkit.json'), onDisk, 'utf8')
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const built = await buildApp({ dataDir: dir, widgetsDir: join(process.cwd(), '..', 'widgets'), providers: [], connectionTypes: [fakeType, otherType] })
+    err.mockRestore()
+    return { app: built, dir, onDisk }
+  }
+
+  it('refuses to write a connection, and never touches the file', async () => {
+    const { app: bad, dir, onDisk } = await degraded()
+    expect((await bad.inject({ url: '/api/config/status' })).json()).toEqual({ degraded: true })
+    const res = await bad.inject({ method: 'PUT', url: '/api/connections/ado-x1z9', payload: body })
+    expect(res.statusCode).toBe(409)
+    expect(res.json().errors[0]).toMatch(/illisible|unreadable/)
+    // The rule that matters: the user's own file is still exactly as it was.
+    expect(await readFile(join(dir, 'fremkit.json'), 'utf8')).toBe(onDisk)
+    await bad.close()
+  })
+
+  it('refuses to delete one too', async () => {
+    const { app: bad, dir, onDisk } = await degraded()
+    const res = await bad.inject({ method: 'DELETE', url: '/api/connections/ado-x1z9' })
+    // Nothing to delete in the default config, so a 404 is right — what must not happen is a write.
+    expect([404, 409]).toContain(res.statusCode)
+    expect(await readFile(join(dir, 'fremkit.json'), 'utf8')).toBe(onDisk)
+    await bad.close()
+  })
+
+  it('still answers the reads, so the admin can say what is wrong', async () => {
+    const { app: bad } = await degraded()
+    expect((await bad.inject({ url: '/api/connections' })).statusCode).toBe(200)
+    expect((await bad.inject({ url: '/api/connections/types' })).statusCode).toBe(200)
+    await bad.close()
   })
 })

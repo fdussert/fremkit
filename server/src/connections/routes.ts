@@ -1,7 +1,8 @@
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { CONNECTION_ID_RE, type Config, type Connection, type Locale } from '../config/schema.js'
-import type { ConfigStore } from '../config/store.js'
+import { DegradedStoreError, type ConfigStore } from '../config/store.js'
+import { degradedMessage } from '../config/routes.js'
 import type { WidgetCatalog } from '../widgets/catalog.js'
 import type { SecretStore } from '../secrets/index.js'
 import type { ConnectionManager } from './manager.js'
@@ -81,6 +82,20 @@ export async function connectionRoutes(
   app.addHook('onRequest', async (req, reply) => {
     if (req.method === 'GET' || isOriginAllowed(req.headers.origin)) return
     return reply.code(403).send({ error: tr(store.get().locale, 'connections.originNotAllowed') })
+  })
+
+  /**
+   * A write while the config on disk cannot be read.
+   *
+   * The store refuses to commit, which is the rule that matters — never rewrite a file we could
+   * not migrate. This turns that refusal into the same 409 and the same message `PUT /api/config`
+   * gives, instead of a 500 with a stack.
+   */
+  app.setErrorHandler((err, _req, reply) => {
+    if (err instanceof DegradedStoreError) {
+      return reply.code(409).send({ errors: [degradedMessage(store.get().locale)] })
+    }
+    reply.send(err)
   })
 
   /** Which secret field keys currently have a value for this connection. */
