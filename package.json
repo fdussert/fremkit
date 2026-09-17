@@ -4,6 +4,10 @@
   "version": "0.1.0",
   "license": "MIT",
   "type": "module",
+  "packageManager": "pnpm@9.4.0",
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "setup": "bash scripts/setup.sh",
     "dev": "bash scripts/dev.sh",
