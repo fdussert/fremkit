@@ -1,5 +1,6 @@
 import AppKit
 import CoreGraphics
+import FremkitCore
 import Foundation
 import WebKit
 
@@ -130,6 +131,32 @@ final class KioskWindow: NSObject, WKNavigationDelegate {
     }
 
     // MARK: - WKNavigationDelegate
+
+    /**
+     Keeps the kiosk on the dashboard.
+
+     The window has no chrome and no way back: a main-frame navigation somewhere else — a widget
+     setting `top.location`, a link a page opens, a redirect from a proxied answer — would leave
+     the Edge showing that page with no way for the user to return but quitting the helper. Only
+     the configured origin loads; anything else is cancelled and the current page stays.
+
+     Sub-frames are not touched: the widgets are iframes, and they have their own CSP.
+     */
+    func webView(_ webView: WKWebView,
+                 decidePolicyFor navigationAction: WKNavigationAction,
+                 decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+        guard navigationAction.targetFrame?.isMainFrame != false else {
+            decisionHandler(.allow)
+            return
+        }
+        let target = navigationAction.request.url
+        if KioskOrigin.sameOrigin(target, as: url) {
+            decisionHandler(.allow)
+        } else {
+            NSLog("fremkit: kiosk refused a navigation away from the dashboard")
+            decisionHandler(.cancel)
+        }
+    }
 
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
         scheduleRetry()

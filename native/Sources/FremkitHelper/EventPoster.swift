@@ -40,12 +40,23 @@ final class EventPoster: PointerPoster {
     var scrollInvert = false
 
     private let source: CGEventSource?
+    /**
+     Guards the three fields below.
+
+     `perform` runs on TouchDriver's own queue, once per HID report, while the restore work item
+     runs on the main queue — so both touch this state. Unsynchronised, a gesture starting as a
+     restore fires could read a half-written `savedCursor`, or hide the cursor twice and show it
+     once (`CGDisplayHideCursor` counts nested hides per process, so it would stay hidden).
+
+     A lock rather than a queue hop: `perform` posts events on the driver's thread on purpose,
+     and these three mutations are a handful of instructions each.
+     */
+    private let lock = NSLock()
     /// Cursor position before the gesture moved it; captured at the first warp of a gesture.
     private var savedCursor: CGPoint?
     /// Pending restore; cancelled when a new gesture starts before it fires.
     private var pendingRestore: DispatchWorkItem?
-    /// Whether the cursor is hidden for the gesture in progress (`CGDisplayHideCursor` counts
-    /// nested hides per process, so every hide must be paired with exactly one show).
+    /// Whether the cursor is hidden for the gesture in progress; see `lock`.
     private var cursorHidden = false
 
     init() {
@@ -65,14 +76,20 @@ final class EventPoster: PointerPoster {
     /// Hides the cursor for the duration of a gesture: the page hides it in CSS, but WebKit only
     /// applies the CSS cursor on a real mouse move, so a warped-in pointer shows the arrow.
     private func hideCursor() {
-        guard !cursorHidden else { return }
+        lock.lock()
+        let alreadyHidden = cursorHidden
         cursorHidden = true
+        lock.unlock()
+        guard !alreadyHidden else { return }
         CGDisplayHideCursor(CGMainDisplayID())
     }
 
     private func showCursorIfHidden() {
-        guard cursorHidden else { return }
+        lock.lock()
+        let wasHidden = cursorHidden
         cursorHidden = false
+        lock.unlock()
+        guard wasHidden else { return }
         CGDisplayShowCursor(CGMainDisplayID())
     }
 
@@ -118,10 +135,13 @@ final class EventPoster: PointerPoster {
     private func warp(to point: CGPoint) {
         // A tap within `restoreDelay` of the previous gesture would otherwise be teleported
         // away mid-gesture by the restore still queued from that previous gesture.
+        let current = Self.currentCursor()
+        lock.lock()
         pendingRestore?.cancel()
         pendingRestore = nil
+        if savedCursor == nil { savedCursor = current }
+        lock.unlock()
 
-        if savedCursor == nil { savedCursor = Self.currentCursor() }
         hideCursor()
         warpCursor(to: point)
     }
@@ -132,17 +152,22 @@ final class EventPoster: PointerPoster {
     /// inside `restoreDelay` cancels this work item, and clearing it early would make that gesture
     /// capture its own on-Edge position as the "original" one, so the pointer would stay there.
     private func restoreCursor() {
-        guard savedCursor != nil else { return }
-
+        lock.lock()
+        guard savedCursor != nil else { lock.unlock(); return }
         pendingRestore?.cancel()
         let work = DispatchWorkItem { [weak self] in
-            guard let self, let saved = self.savedCursor else { return }
+            guard let self else { return }
+            self.lock.lock()
+            let saved = self.savedCursor
             self.savedCursor = nil
             self.pendingRestore = nil
+            self.lock.unlock()
+            guard let saved else { return }
             warpCursor(to: saved)
             self.showCursorIfHidden()
         }
         pendingRestore = work
+        lock.unlock()
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.restoreDelay, execute: work)
     }
 

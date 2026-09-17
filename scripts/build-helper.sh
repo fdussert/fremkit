@@ -44,12 +44,17 @@ cp brand/menubar/fremkitTemplate.png brand/menubar/fremkitTemplate@2x.png "$APP/
 # A stable identity avoids that: any code-signing certificate in the login keychain named
 # FREMKIT_SIGN_IDENTITY (default "Fremkit Helper Dev", self-signed is fine) is used when present.
 IDENTITY="${FREMKIT_SIGN_IDENTITY:-Fremkit Helper Dev}"
+#
+# `--options runtime` turns on the hardened runtime, which is what makes the bundle's TCC grants
+# (Input Monitoring, Accessibility) belong to *this* signed code rather than to whatever happens
+# to sit at the path. `--deep` is deprecated and signs nested code with the outer identity
+# instead of its own; this bundle nests nothing, so it buys nothing and hides mistakes.
 if security find-identity -v -p codesigning 2>/dev/null | grep -q "\"$IDENTITY\""; then
     echo "signing with: $IDENTITY"
-    codesign --force --deep --sign "$IDENTITY" "$APP"
+    codesign --force --options runtime --sign "$IDENTITY" "$APP"
 else
     echo "signing ad hoc (no \"$IDENTITY\" identity in the keychain; run scripts/create-signing-identity.sh)"
-    codesign --force --deep --sign - "$APP"
+    codesign --force --options runtime --sign - "$APP"
 fi
 
 # The bundle declares the `fremkit://` URL scheme, and LaunchServices registers every copy it

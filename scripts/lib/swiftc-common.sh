@@ -40,7 +40,11 @@ SWIFTC="${FREMKIT_SWIFTC:-swiftc}"
 # Deployment target. Without an explicit -target, swiftc assumes the host OS version and every
 # availability check passes silently, so newer-than-supported API slips in unnoticed. Pinning it
 # makes the compiler enforce @available at build time.
-TARGET="${FREMKIT_TARGET:-arm64-apple-macos13.0}"
+# The architecture is the machine's own: this builds a helper for the Mac it runs on, not a
+# universal binary. Hardcoding arm64 meant an Intel Mac silently produced an arm64 helper that
+# would not launch.
+ARCH="$(uname -m)"
+TARGET="${FREMKIT_TARGET:-${ARCH}-apple-macos13.0}"
 
 # Swift language mode. Pinned explicitly so a newer toolchain defaulting to Swift 6 does not
 # quietly change the concurrency rules this code is written against.

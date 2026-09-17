@@ -82,6 +82,16 @@ let suites: [(String, () -> XCTestCase, [TestMethod])] = [
         ("testAMacWhoseOnlyScreenIsTheEdgeIsLeftAlone", { ($0 as! AdminPlacementTests).testAMacWhoseOnlyScreenIsTheEdgeIsLeftAlone() }),
         ("testCentringShrinksToFitAndRoundsToWholePoints", { ($0 as! AdminPlacementTests).testCentringShrinksToFitAndRoundsToWholePoints() }),
     ]),
+    ("ServerProbeTests", { ServerProbeTests() }, [
+        ("testRecognisesAFremkitConfig", { ($0 as! ServerProbeTests).testRecognisesAFremkitConfig() }),
+        ("testRefusesAnythingElseAnsweringOnThePort", { ($0 as! ServerProbeTests).testRefusesAnythingElseAnsweringOnThePort() }),
+        ("testRefusesNothingAtAll", { ($0 as! ServerProbeTests).testRefusesNothingAtAll() }),
+    ]),
+    ("KioskOriginTests", { KioskOriginTests() }, [
+        ("testAllowsTheDashboardsOwnOrigin", { ($0 as! KioskOriginTests).testAllowsTheDashboardsOwnOrigin() }),
+        ("testRefusesAnywhereElse", { ($0 as! KioskOriginTests).testRefusesAnywhereElse() }),
+        ("testRefusesNothingAtAll", { ($0 as! KioskOriginTests).testRefusesNothingAtAll() }),
+    ]),
     ("HelperURLTests", { HelperURLTests() }, [
         ("testAdminHostOpensTheAdmin", { ($0 as! HelperURLTests).testAdminHostOpensTheAdmin() }),
         ("testTargetIsCaseInsensitiveAndIgnoresPathAndQuery", { ($0 as! HelperURLTests).testTargetIsCaseInsensitiveAndIgnoresPathAndQuery() }),

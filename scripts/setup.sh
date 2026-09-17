@@ -132,12 +132,10 @@ else
 fi
 
 # --- Helper ------------------------------------------------------------------------------
-echo
-echo "==> building and installing the helper"
-bash scripts/install-helper.sh
-
-# The helper supervises `pnpm --filter server start` from the checkout, and an installed
-# bundle cannot guess where that checkout is. Write the path we do know into its config.
+# The config is written *before* the helper is installed, because installing it launches it: a
+# helper that starts without a repoPath supervises nothing, and the user has to quit and relaunch
+# it by hand to pick the path up. The helper supervises the server from the checkout, and an
+# installed bundle cannot guess where that checkout is.
 echo
 echo "==> pointing the helper at this checkout"
 HELPER_CONFIG="$HOME/Library/Application Support/Fremkit/helper.json"
@@ -151,6 +149,10 @@ config.repoPath = process.env.REPO
 writeFileSync(path, JSON.stringify(config, null, 2) + "\n")
 '
 echo "repoPath: $REPO ($HELPER_CONFIG)"
+
+echo
+echo "==> building and installing the helper"
+bash scripts/install-helper.sh
 
 # --- First-run checklist -----------------------------------------------------------------
 cat <<'CHECKLIST'

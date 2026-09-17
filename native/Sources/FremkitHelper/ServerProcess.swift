@@ -340,8 +340,13 @@ final class ServerProcess {
         request.httpMethod = "GET"
         request.timeoutInterval = Self.probeTimeout
 
-        session.dataTask(with: request) { _, response, _ in
-            let ok = (response as? HTTPURLResponse).map { (200..<500).contains($0.statusCode) } ?? false
+        session.dataTask(with: request) { data, response, _ in
+            // Any 2xx-4xx from anything at all used to count as "a server is here", so a
+            // completely unrelated program on 4242 made the helper stand down and stop
+            // supervising — with no way back but a relaunch. The answer has to look like ours:
+            // a 200 whose body is a Fremkit config.
+            let http = response as? HTTPURLResponse
+            let ok = http?.statusCode == 200 && ServerProbe.looksLikeFremkitConfig(data)
             session.finishTasksAndInvalidate()
             DispatchQueue.main.async { alive(ok) }
         }.resume()
@@ -350,12 +355,36 @@ final class ServerProcess {
     // MARK: - Spawning
 
     private func spawn() {
+        let server = URL(fileURLWithPath: config.repoPath).appendingPathComponent("server")
+        let entry = server.appendingPathComponent("src/index.ts")
+        // A repoPath that is not a checkout — never configured, renamed, on an unmounted volume —
+        // used to be spawned anyway, failing once a second for ever behind the backoff. Say so
+        // once and stop instead.
+        guard FileManager.default.fileExists(atPath: entry.path) else {
+            NSLog("fremkit: no server/src/index.ts under repoPath; not starting a server")
+            state = .stopped
+            return
+        }
+        let tsx = server.appendingPathComponent("node_modules/tsx/dist/cli.mjs")
+        guard FileManager.default.fileExists(atPath: tsx.path) else {
+            NSLog("fremkit: tsx is not installed in the checkout; run pnpm install")
+            state = .stopped
+            return
+        }
+        guard let node = Self.resolveNode() else {
+            NSLog("fremkit: no node executable found; install Node 22 or later")
+            state = .stopped
+            return
+        }
+
         let process = Process()
         // Run the server itself, not a pnpm wrapper around it: the supervised process must be
-        // the one that binds the port, so its death (or a stray kill) is what we observe.
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-        process.arguments = ["tsx", "src/index.ts"]
-        process.currentDirectoryURL = URL(fileURLWithPath: config.repoPath).appendingPathComponent("server")
+        // the one that binds the port, so its death (or a stray kill) is what we observe. node and
+        // tsx are named by absolute path rather than looked up through `env` and PATH, so a login
+        // item's environment cannot decide which interpreter runs the dashboard.
+        process.executableURL = node
+        process.arguments = [tsx.path, "src/index.ts"]
+        process.currentDirectoryURL = server
 
         var environment = ProcessInfo.processInfo.environment
         // A login item inherits a bare PATH; node lives in the usual Homebrew spots and tsx in the
@@ -518,17 +547,20 @@ final class ServerProcess {
             return
         }
 
+        // Both, not either: "contains server and (repoPath or pnpm or node)" matched almost any
+        // Node process on the machine — the pid file is stale often enough that this was a real
+        // way to kill something else entirely. Our own child is `node …/tsx/… src/index.ts` run
+        // from this checkout, so it carries both the repo path and the entry point.
         let command = Self.commandLine(of: pid)
-        guard command.contains("server"),
-              command.contains(config.repoPath) || command.contains("pnpm") || command.contains("node")
-        else {
-            NSLog("fremkit: pid %d from server.pid is an unrelated process (%@), leaving it alone",
-                  pid, command)
+        guard command.contains(config.repoPath), command.contains("src/index.ts") else {
+            // The command line is not logged: it is another process's, and the log is a file the
+            // user may hand to someone else.
+            NSLog("fremkit: pid %d from server.pid is not our server, leaving it alone", pid)
             Self.removePidFile()
             return
         }
 
-        NSLog("fremkit: killing orphaned server process tree %d (%@)", pid, command)
+        NSLog("fremkit: killing orphaned server process tree %d", pid)
         Self.killTree(pid, signal: SIGTERM)
         let deadline = Date().addingTimeInterval(Self.killAfter)
         while kill(pid, 0) == 0, Date() < deadline {
@@ -559,6 +591,24 @@ final class ServerProcess {
         let data = pipe.fileHandleForReading.readDataToEndOfFile()
         ps.waitUntilExit()
         return String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// The first `node` that exists among the usual places, by absolute path.
+    private static func resolveNode() -> URL? {
+        var candidates = [
+            "/opt/homebrew/bin/node",
+            "/usr/local/bin/node",
+            "/usr/bin/node",
+        ]
+        // A Node installed by a version manager lives under the user's home; the login item's
+        // PATH does not carry it, so the well-known locations are tried explicitly.
+        let home = NSHomeDirectory()
+        candidates.append("\(home)/.local/bin/node")
+        candidates.append("\(home)/Library/pnpm/node")
+        for path in candidates where FileManager.default.isExecutableFile(atPath: path) {
+            return URL(fileURLWithPath: path)
+        }
+        return nil
     }
 
     // MARK: - Log

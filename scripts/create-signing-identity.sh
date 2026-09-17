@@ -74,16 +74,20 @@ openssl pkcs12 -export -legacy \
     -name "$IDENTITY" -passout pass: -out "$WORK/identity.p12" >/dev/null 2>&1
 
 echo "==> importing into the login keychain"
-security import "$WORK/identity.p12" -k "$KEYCHAIN" -P "" \
-    -T /usr/bin/codesign -T /usr/bin/security >/dev/null
+# `-x` marks the private key non-extractable: it can sign, but it cannot be exported back out of
+# the keychain. Only codesign is allowed to use it — `security` itself was on that list, which
+# let any script dump the key with `security export`.
+security import "$WORK/identity.p12" -k "$KEYCHAIN" -P "" -x \
+    -T /usr/bin/codesign >/dev/null
 
 echo "==> trusting it for code signing"
 # User-level trust only (no -d): nothing is added to the system trust store.
 security add-trusted-cert -p codeSign -k "$KEYCHAIN" "$WORK/cert.pem"
 
-# Without this, codesign asks for the login password on every single build. It needs the
-# keychain password, so it may prompt; a refusal is not fatal, only tedious.
-security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "" "$KEYCHAIN" >/dev/null 2>&1 \
+# Without this, codesign asks for the login password on every single build. It needs the keychain
+# password, which is prompted for interactively rather than passed as an empty `-k ""` — that only
+# ever worked on a keychain with no password, and silently failed on every other Mac.
+security set-key-partition-list -S apple-tool:,apple:,codesign: -s "$KEYCHAIN" >/dev/null 2>&1 \
   || echo "note: could not pre-authorise codesign; macOS may ask for your password on each build."
 
 if security find-identity -v -p codesigning 2>/dev/null | grep -q "\"$IDENTITY\""; then
