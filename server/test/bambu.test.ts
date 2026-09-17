@@ -328,3 +328,61 @@ describe('bambuType', () => {
     expect(JSON.stringify(result)).not.toContain('12345678')
   })
 })
+
+describe('mergePrint and a hostile delta', () => {
+  it('never writes a key that would reshape every object', () => {
+    // The delta comes off the printer's MQTT topic, which is whatever is on the LAN.
+    const merged = mergePrint({ gcode_state: 'RUNNING' }, JSON.parse('{"__proto__":{"polluted":1},"constructor":{"x":1},"prototype":{"y":1}}'))
+    expect(merged.gcode_state).toBe('RUNNING')
+    expect(({} as Record<string, unknown>).polluted).toBeUndefined()
+    expect(Object.hasOwn(merged, 'constructor')).toBe(false)
+    expect(Object.hasOwn(merged, 'prototype')).toBe(false)
+  })
+
+  it('stops merging past a sane depth instead of exhausting the stack', () => {
+    let deep: Record<string, unknown> = { leaf: true }
+    for (let i = 0; i < 400; i++) deep = { n: deep }
+    let state: Record<string, unknown> = { leaf: true }
+    for (let i = 0; i < 400; i++) state = { n: state }
+    expect(() => mergePrint(state, deep)).not.toThrow()
+  })
+
+  it('still merges the real thing, key by key', () => {
+    const merged = mergePrint(
+      { gcode_state: 'RUNNING', mc_percent: 10, ams: { ams: [{ id: '0' }] } },
+      { mc_percent: 42, ams: { tray_now: '1' } },
+    )
+    expect(merged).toMatchObject({ gcode_state: 'RUNNING', mc_percent: 42 })
+    expect((merged.ams as Record<string, unknown>).tray_now).toBe('1')
+    expect((merged.ams as Record<string, unknown>).ams).toEqual([{ id: '0' }])
+  })
+})
+
+describe('a printer whose address the provider cannot dial', () => {
+  const build = (host: string) => {
+    const connect = vi.fn()
+    const configure = vi.fn()
+    const cameras = { configure, drop: vi.fn(), fresh: () => false, errorCode: () => undefined, retain: vi.fn(), stopAll: vi.fn(), has: () => false, state: () => ({}) }
+    const provider = createBambuProvider(
+      { id: 'b1', channel: 'bambu:b1', fields: { host, serial: 'PRINTER-1' }, secrets: { accessCode: 'code' } },
+      { connect: connect as never, cameras: cameras as never },
+    )
+    return { provider, connect, configure }
+  }
+
+  it('declares no camera and opens no socket', async () => {
+    for (const host of ['http://192.0.2.10/', 'user:pass@192.0.2.10', '192.0.2.10:8883', '-flag', '']) {
+      const { provider, connect, configure } = build(host)
+      provider.start?.()
+      expect(configure, host).not.toHaveBeenCalled()
+      expect(connect, host).not.toHaveBeenCalled()
+      expect(await provider.poll!(), host).toMatchObject({ connected: false, error: 'unconfigured' })
+    }
+  })
+
+  it('works as before for an address it can dial', async () => {
+    const { provider, configure } = build('192.0.2.10')
+    expect(configure).toHaveBeenCalledWith('b1', expect.objectContaining({ host: '192.0.2.10' }))
+    expect(await provider.poll!()).not.toMatchObject({ error: 'unconfigured' })
+  })
+})

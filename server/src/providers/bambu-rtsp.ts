@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process'
-import { accessSync, constants, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { accessSync, constants, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { BambuCamera, BambuCameraState, BambuFrame } from './bambu-camera.js'
@@ -147,9 +147,37 @@ export function ffmpegArgs(mode: BambuRtspInputMode, input: string): string[] {
   ]
 }
 
-/** The one line the concat demuxer needs. Single quotes are the only character it escapes. */
+/**
+ * The one line the concat demuxer needs. Single quotes are the only character it escapes.
+ *
+ * A newline would end the line and let the rest be read as a second directive of the concat
+ * format, so a `\r` or `\n` anywhere in the URL is refused rather than escaped: there is no
+ * escape for it, and no legitimate URL carries one.
+ */
 export function concatListLine(url: string): string {
+  if (/[\r\n]/.test(url)) throw new Error('url invalide')
   return `file '${url.replace(/'/g, "'\\''")}'\n`
+}
+
+/**
+ * Removes the temporary directories an earlier run left behind.
+ *
+ * Each stream writes a one-line concat list into its own `mkdtemp` directory and removes it on
+ * stop — but a server that was killed (or a Mac that lost power) never got there, and the
+ * directories accumulated in `$TMPDIR` for the life of the machine. Called once at boot.
+ */
+export function sweepStaleCameraDirs(deps: { tmp?: string; readdir?: typeof readdirSync; rm?: typeof rmSync } = {}): number {
+  const base = deps.tmp ?? tmpdir()
+  const list = deps.readdir ?? readdirSync
+  const remove = deps.rm ?? rmSync
+  let swept = 0
+  let names: string[]
+  try { names = list(base) as unknown as string[] } catch { return 0 }
+  for (const name of names) {
+    if (!name.startsWith('fremkit-cam-')) continue
+    try { remove(join(base, name), { recursive: true, force: true }); swept++ } catch { /* in use, or gone */ }
+  }
+  return swept
 }
 
 export interface BambuRtspCameraOptions {

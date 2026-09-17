@@ -1,6 +1,9 @@
 import { createBambuProvider, mapState, type BambuSnapshot } from '../../providers/bambu.js'
 import { BAMBU_PORT, bambuClientId, connectMqtt, type MqttConnect } from '../../providers/mqtt.js'
 import { tr } from '../../i18n.js'
+// Re-exported: the type's own tests and docs refer to it from here.
+export { isValidBambuHost } from '../../providers/bambu-host.js'
+import { isValidBambuHost } from '../../providers/bambu-host.js'
 import type { ConnectionType, TestResult } from '../types.js'
 
 export interface BambuTestDeps { connect?: MqttConnect }
@@ -10,19 +13,6 @@ const TEST_TIMEOUT_MS = 10_000
 
 export const BAMBU_MODELS = ['H2C', 'H2D', 'H2S', 'X1C', 'X1E', 'P1S', 'P1P', 'A1', 'A1 mini', 'autre']
 
-/**
- * A hostname or an IPv4 literal: letters, digits, dots and dashes, nothing else. An IPv6 literal
- * is accepted bracketed, the way a URL writes it.
- *
- * The value ends up as the host of an MQTT connection, so a `user:pass@host`, a port, a path or a
- * whole URL is rejected here rather than being quietly reinterpreted further down.
- */
-const HOST_RE = /^(?:[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?|\[[0-9A-Fa-f:.]+\])$/
-
-/** True for a host the provider can dial. Exported for the type's own tests. */
-export function isValidBambuHost(host: string): boolean {
-  return host.length <= 253 && HOST_RE.test(host)
-}
 
 /**
  * A Bambu Lab printer in LAN mode.

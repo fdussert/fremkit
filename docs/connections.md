@@ -102,6 +102,19 @@ command line, so the access code does not show up in the process list. On an ffm
 for that it falls back to the command line, and the code is then visible to anyone who can list
 processes on the machine.
 
+### What the TLS does and does not prove
+
+The printer serves a self-signed certificate on both the MQTT port and the camera port, so
+Fremkit connects with `rejectUnauthorized: false`: the traffic is encrypted, but nothing checks
+*who* is on the other end. Anything on the same network that can answer for the printer's address
+— by ARP spoofing it, or by being handed it through DHCP — can present its own certificate,
+receive the LAN access code, and serve whatever chamber image it likes.
+
+This is a property of LAN mode, not of Fremkit: the printer has no certificate authority to
+verify against. It is worth knowing if the Fremkit machine shares a network with devices you do
+not control, in which case a printer on its own VLAN is the answer. Pinning the certificate the
+printer first presented would narrow the window to the first connection; it is not implemented.
+
 Used by [`bambu-job`](widgets.md#bambu-job).
 
 ## GitHub

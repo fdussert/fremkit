@@ -34,6 +34,7 @@ import { appsRoutes } from './apps/routes.js'
 import { helperRoutes } from './helper/routes.js'
 import { createDockProvider } from './dock/provider.js'
 import { bambuCameras } from './bambu/cameras.js'
+import { sweepStaleCameraDirs } from './providers/bambu-rtsp.js'
 import { bambuRoutes } from './bambu/routes.js'
 import { createShortcutsProvider } from './providers/shortcuts.js'
 import { createServiceStatusProvider } from './providers/service-status.js'
@@ -74,6 +75,10 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   setServerLocale(store.get().locale)
   const catalog = new WidgetCatalog(opts.widgetsDir)
   await catalog.scan()
+
+  // A camera stream writes a one-line concat list into its own temp directory and removes it on
+  // stop; a server that was killed never got there. Cleared once, at boot.
+  sweepStaleCameraDirs()
 
   const dock = new DockState({ iconsDir: join(opts.dataDir, 'icons') })
   await dock.loadIcons()

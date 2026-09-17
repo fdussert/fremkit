@@ -3,6 +3,7 @@ import type { Provider } from './types.js'
 import { tr, type MessageKey } from '../i18n.js'
 import { BAMBU_PORT, bambuClientId, connectMqtt, type MqttClientLike, type MqttConnect } from './mqtt.js'
 import { bambuCameras, type BambuCameras } from '../bambu/cameras.js'
+import { isValidBambuHost } from './bambu-host.js'
 
 export interface BambuTray {
   slot: number
@@ -82,14 +83,27 @@ const isPlainObject = (v: unknown): v is Record<string, unknown> =>
  * so a plain replace would blank the job every second. Objects merge key by key; arrays are
  * replaced wholesale, because the AMS sends its tray list complete each time it changes.
  */
-export function mergePrint(state: Record<string, unknown>, delta: Record<string, unknown>): Record<string, unknown> {
+export function mergePrint(state: Record<string, unknown>, delta: Record<string, unknown>, depth = 0): Record<string, unknown> {
   const out: Record<string, unknown> = { ...state }
+  // The delta comes off the printer's MQTT topic, which is whatever is on the LAN. Depth keeps a
+  // nested payload from recursing until the stack gives out; the key check keeps `__proto__` and
+  // `constructor` from being written, which on a plain object literal would reshape every object
+  // in the process.
+  if (depth > MAX_MERGE_DEPTH) return out
   for (const [key, value] of Object.entries(delta)) {
+    if (FORBIDDEN_MERGE_KEYS.has(key)) continue
     const previous = out[key]
-    out[key] = isPlainObject(value) && isPlainObject(previous) ? mergePrint(previous, value) : value
+    out[key] = isPlainObject(value) && isPlainObject(previous)
+      ? mergePrint(previous, value, depth + 1)
+      : value
   }
   return out
 }
+
+/** Keys a merge never writes: assigning either reshapes objects far beyond this snapshot. */
+const FORBIDDEN_MERGE_KEYS = new Set(['__proto__', 'constructor', 'prototype'])
+/** How deep a printer's delta may nest. The real payload is four or five levels. */
+const MAX_MERGE_DEPTH = 16
 
 const num = (v: unknown): number | undefined => {
   const n = typeof v === 'string' ? Number(v) : v
@@ -209,15 +223,22 @@ export interface BambuProviderDeps { connect?: MqttConnect; cameras?: BambuCamer
 export function createBambuProvider(ctx: ConnectionProviderContext, deps: BambuProviderDeps = {}): Provider {
   const connect = deps.connect ?? connectMqtt
   const cameras = deps.cameras ?? bambuCameras
+  const host = ctx.fields.host ?? ''
+  // Judged here, not only in the connection type's `test()`: a config edited by hand, or written
+  // before the check existed, would otherwise have this host dialled by MQTT and handed to
+  // ffmpeg. An unusable address means no camera and no socket at all.
+  const hostOk = isValidBambuHost(host)
 
   // Declaring the camera here, not in `start`, is what lets the snapshot route answer 404 for an
   // id that is not a configured printer while a widget is still only being placed on a page.
-  cameras.configure(ctx.id, {
-    host: ctx.fields.host ?? '',
-    accessCode: ctx.secrets.accessCode ?? '',
-    // The model is what picks the camera protocol: X1/H2 stream RTSPS, the rest JPEG on port 6000.
-    model: ctx.fields.model,
-  })
+  if (hostOk) {
+    cameras.configure(ctx.id, {
+      host,
+      accessCode: ctx.secrets.accessCode ?? '',
+      // The model picks the camera protocol: X1/H2 stream RTSPS, the rest JPEG on port 6000.
+      model: ctx.fields.model,
+    })
+  }
 
   const serial = ctx.fields.serial ?? ''
   const reportTopic = `device/${serial}/report`
@@ -234,7 +255,7 @@ export function createBambuProvider(ctx: ConnectionProviderContext, deps: BambuP
     if (!running) return
     connected = false
     const current = connect({
-      host: ctx.fields.host ?? '',
+      host,
       port: BAMBU_PORT,
       username: 'bblp',
       password: ctx.secrets.accessCode ?? '',
@@ -276,7 +297,8 @@ export function createBambuProvider(ctx: ConnectionProviderContext, deps: BambuP
     intervalMs: PUBLISH_EVERY_MS,
 
     start(): void {
-      if (running) return
+      // No socket for an address the provider cannot dial: `poll` reports it instead.
+      if (running || !hostOk) return
       running = true
       backoff = BACKOFF_START_MS
       open()
@@ -291,6 +313,9 @@ export function createBambuProvider(ctx: ConnectionProviderContext, deps: BambuP
     },
 
     async poll(): Promise<BambuSnapshot> {
+      // An address the provider cannot dial: the same shape as any other failure, so the widget
+      // shows its offline state and says why rather than sitting on "Loading…".
+      if (!hostOk) return { ...toSnapshot({}, { connected: false, model: ctx.fields.model }), error: 'unconfigured' }
       // A read of the last frame's timestamp, nothing more: polling must not dial the camera.
       return toSnapshot(print, {
         connected,

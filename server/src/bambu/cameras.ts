@@ -5,6 +5,7 @@ import {
   type BambuFrame,
   type BambuTlsConnect,
 } from '../providers/bambu-camera.js'
+import { isValidBambuHost } from '../providers/bambu-host.js'
 import { createBambuRtspCamera, type FfmpegSpawn } from '../providers/bambu-rtsp.js'
 
 /** No request for this long and the socket is dropped; the next request opens it again. */
@@ -55,6 +56,10 @@ export class BambuCameras {
    * or access code that changed replaces the running camera rather than streaming from the old one.
    */
   configure(id: string, opts: { host: string; accessCode: string; model?: string }): void {
+    // The host goes into an MQTT connection and into an RTSPS URL handed to ffmpeg. A config
+    // edited by hand can hold anything, so an address this registry cannot dial declares no
+    // camera at all — and drops one it had declared before.
+    if (!isValidBambuHost(opts.host)) { this.drop(id); this.entries.delete(id); return }
     const existing = this.entries.get(id)
     if (existing && existing.host === opts.host && existing.accessCode === opts.accessCode
       && cameraTransport(existing.model) === cameraTransport(opts.model)) return

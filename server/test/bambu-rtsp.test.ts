@@ -7,6 +7,7 @@ import {
   resolveFfmpeg,
   rtspUrl,
   splitJpegFrames,
+  sweepStaleCameraDirs,
   type FfmpegProcessLike,
   type FfmpegSpawnOptions,
 } from '../src/providers/bambu-rtsp.js'
@@ -238,5 +239,43 @@ describe('BambuCameras transport choice', () => {
     cameras.snapshot('bambu-x')
     expect(fake.runs).toHaveLength(1)
     cameras.stopAll()
+  })
+})
+
+describe('concatListLine and a URL that is not one', () => {
+  it('escapes a single quote, which is all the concat format escapes', () => {
+    expect(concatListLine("rtsps://a'b/stream")).toBe("file 'rtsps://a'\\''b/stream'\n")
+  })
+  it('refuses a newline rather than escaping it', () => {
+    // A newline ends the line and the rest would be read as a second concat directive. There is
+    // no escape for it in that format, and no real URL carries one.
+    for (const url of ['rtsps://host/s\nfile /etc/passwd', 'rtsps://host/s\r\nfile /etc/passwd', 'a\rb']) {
+      expect(() => concatListLine(url), JSON.stringify(url)).toThrow(/invalide/)
+    }
+  })
+})
+
+describe('sweepStaleCameraDirs', () => {
+  it('removes only the directories this server makes', () => {
+    const removed: string[] = []
+    const swept = sweepStaleCameraDirs({
+      tmp: '/tmp-x',
+      readdir: (() => ['fremkit-cam-abc', 'fremkit-cam-def', 'com.apple.something', 'unrelated']) as never,
+      rm: ((p: string) => { removed.push(String(p)) }) as never,
+    })
+    expect(swept).toBe(2)
+    expect(removed).toEqual(['/tmp-x/fremkit-cam-abc', '/tmp-x/fremkit-cam-def'])
+  })
+  it('says nothing when the temp directory cannot be read', () => {
+    expect(sweepStaleCameraDirs({ readdir: (() => { throw new Error('EACCES') }) as never })).toBe(0)
+  })
+  it('keeps going when one directory refuses to go', () => {
+    let calls = 0
+    const swept = sweepStaleCameraDirs({
+      tmp: '/tmp-x',
+      readdir: (() => ['fremkit-cam-a', 'fremkit-cam-b']) as never,
+      rm: (() => { if (calls++ === 0) throw new Error('EBUSY') }) as never,
+    })
+    expect(swept).toBe(1)
   })
 })
