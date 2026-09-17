@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Volume</title>
+<style>
+  html,body{margin:0;height:100%;background:transparent;color:#e6e8eb;font-family:-apple-system,system-ui,sans-serif;overflow:hidden}
+  .wrap{box-sizing:border-box;height:100%;padding:14px 18px;position:relative;display:flex;flex-direction:column;justify-content:center;gap:6px}
+  .big{font-size:44px;font-weight:600;line-height:1}
+  .bar{height:8px;border-radius:4px;background:#252a32;overflow:hidden}
+  .bar>i{display:block;height:100%;background:var(--accent, #d9b36a);width:0;transition:width .4s}
+  .row{display:flex;justify-content:space-between;font-size:15px}
+  .muted{color:#8b93a0}
+  button{font:inherit;border:0;border-radius:10px;background:#252a32;color:#e6e8eb;padding:10px 14px;font-size:18px}
+  button:active{background:var(--accent, #d9b36a)}
+  .note{font-size:13px;color:#8b93a0;letter-spacing:.06em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  /* The host says which way round the tile is: on-light means dark text on a light body. */
+  html.on-light body{color:var(--on-surface,#0b0d10)}
+  html.on-light .muted,html.on-light .note{color:var(--on-surface,#0b0d10);opacity:.75}
+  /* A bar painted in the accent vanishes when the body *is* the accent, so it flips to the text colour. */
+  html.on-light .bar,html.accent-fill .bar{background:rgba(128,128,128,.35)}
+  html.accent-fill .bar>i{background:var(--on-surface,#0b0d10)}
+</style>
+<style>
+  /* The iframe's own viewport is exactly the tile, so vmin/vw/vh track the tile size directly.
+     Orientation follows the CSS "portrait" media feature, i.e. height > width, same test the
+     script uses via matchMedia so the track direction and the drag math always agree. */
+  .wrap{padding:clamp(10px,3vh,18px) clamp(12px,3vw,20px)}
+  .ctrl{display:flex;flex-direction:row;align-items:center;justify-content:center;gap:clamp(10px,3vmin,20px);width:100%;height:100%}
+  #mute{flex:0 0 auto;width:clamp(32px,12vmin,60px);height:clamp(32px,12vmin,60px);border-radius:50%;font-size:clamp(14px,6vmin,26px);padding:0}
+  .slider{--thick:clamp(18px,10vmin,48px);position:relative;flex:1;height:var(--thick);border-radius:999px;background:#252a32;overflow:hidden;touch-action:none;cursor:pointer}
+  .slider>i{position:absolute;left:0;top:0;bottom:0;width:0;background:var(--accent, #d9b36a)}
+  #lvl{flex:0 0 auto;font-size:clamp(16px,8vmin,32px);min-width:clamp(40px,10vmin,70px);text-align:right}
+  @media (orientation:portrait){
+    .ctrl{flex-direction:column}
+    .slider{flex:1;height:auto;width:var(--thick);align-self:center}
+    .slider>i{left:0;right:0;top:auto;bottom:0;width:auto;height:0}
+    #lvl{text-align:center;min-width:0}
+  }
+</style></head><body><div class="wrap"><div class="ctrl">
+<button id="mute">🔊</button><div class="slider" id="slider"><i id="fill"></i></div><span class="big" id="lvl">--</span>
+</div></div>
+<script>
+  Fremkit.whenReady(function () {
+    var slider = document.getElementById('slider'), fill = document.getElementById('fill'), lvl = document.getElementById('lvl'), muteBtn = document.getElementById('mute')
+    var level = 0, muted = false, dragging = false, lastSent = 0, pending = null, timer = null
+    // Same test as the "@media (orientation: portrait)" rule above: height > width means a vertical track.
+    function isVertical() { return window.matchMedia('(orientation: portrait)').matches }
+    function show(v) {
+      lvl.textContent = Math.round(v)
+      if (isVertical()) { fill.style.height = v + '%'; fill.style.width = '' }
+      else { fill.style.width = v + '%'; fill.style.height = '' }
+    }
+    function levelAt(e) {
+      var r = slider.getBoundingClientRect()
+      if (isVertical()) return Math.max(0, Math.min(100, Math.round((r.bottom - e.clientY) / r.height * 100)))
+      return Math.max(0, Math.min(100, Math.round((e.clientX - r.left) / r.width * 100)))
+    }
+    function send(v, force) {
+      var now = Date.now()
+      if (!force && now - lastSent < 100) { pending = v; if (!timer) timer = setTimeout(function () { timer = null; if (pending !== null) { var p = pending; pending = null; send(p, true) } }, 100 - (now - lastSent)); return }
+      lastSent = now; pending = null
+      Fremkit.sendCommand('volume', 'set', { level: v })
+    }
+    slider.addEventListener('pointerdown', function (e) { dragging = true; slider.setPointerCapture(e.pointerId); var v = levelAt(e); show(v); send(v) })
+    slider.addEventListener('pointermove', function (e) { if (!dragging) return; var v = levelAt(e); show(v); send(v) })
+    function stop(e) { if (!dragging) return; dragging = false; var v = levelAt(e); show(v); send(v, true) }
+    slider.addEventListener('pointerup', stop); slider.addEventListener('pointercancel', stop)
+    muteBtn.onclick = function () { Fremkit.sendCommand('volume', 'mute', { muted: !muted }) }
+    Fremkit.subscribe('volume', function (d) {
+      if (d.error) return
+      level = d.level; muted = d.muted
+      if (!dragging) show(level)
+      muteBtn.textContent = muted ? '🔇' : '🔊'
+      fill.style.opacity = muted ? '.35' : '1'
+    })
+    // Orientation can flip without a drag (e.g. the admin resizes the tile): re-render the fill
+    // on the correct axis so it does not stay stuck on a stale width/height from before the flip.
+    Fremkit.onResize(function () { if (!dragging) show(level) })
+  })
+</script></body></html>

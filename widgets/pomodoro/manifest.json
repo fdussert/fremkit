@@ -1,0 +1,14 @@
+{ "id": "pomodoro",
+  "name": { "fr": "Pomodoro", "en": "Pomodoro" },
+  "version": "1.0.0",
+  "description": { "fr": "Minuteur de travail et de pauses, au doigt", "en": "A touch timer for work and breaks" },
+  "icon": "timer", "minSize": [8, 4], "defaultSize": [8, 6],
+  "compact": { "width": 5 },
+  "settingsSchema": {
+    "work": { "type": "number", "scope": "tile", "default": 25, "label": { "fr": "Travail (min)", "en": "Work (min)" } },
+    "shortBreak": { "type": "number", "scope": "tile", "default": 5, "label": { "fr": "Pause courte (min)", "en": "Short break (min)" } },
+    "longBreak": { "type": "number", "scope": "tile", "default": 15, "label": { "fr": "Pause longue (min)", "en": "Long break (min)" } },
+    "cycles": { "type": "number", "scope": "tile", "default": 4, "label": { "fr": "Cycles avant la pause longue", "en": "Cycles before the long break" } },
+    "sound": { "type": "boolean", "scope": "tile", "default": true, "label": { "fr": "Bip en fin de phase", "en": "Beep at the end of a phase" } },
+    "autoStart": { "type": "boolean", "scope": "tile", "default": false, "label": { "fr": "Enchaîner la phase suivante", "en": "Start the next phase on its own" } }
+  } }

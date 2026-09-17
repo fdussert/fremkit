@@ -1,0 +1,22 @@
+{ "id": "clock",
+  "name": { "fr": "Horloge", "en": "Clock" },
+  "version": "1.2.0",
+  "description": { "fr": "Heure et date", "en": "Time and date" },
+  "icon": "clock", "minSize": [8, 4], "defaultSize": [16, 4],
+  "compact": { "width": 5 },
+  "settingsSchema": {
+    "hour12": { "type": "boolean", "default": false, "label": { "fr": "Format 12 h", "en": "12-hour clock" } },
+    "seconds": { "type": "boolean", "default": false, "label": { "fr": "Afficher les secondes", "en": "Show seconds" } },
+    "showDate": { "type": "boolean", "scope": "tile", "default": true, "label": { "fr": "Afficher la date", "en": "Show the date" } },
+    "compactDate": { "type": "boolean", "scope": "compact", "default": false, "label": { "fr": "Barre : ajouter la date", "en": "Bar: add the date" } },
+    "compactCities": { "type": "boolean", "scope": "compact", "default": false, "label": { "fr": "Barre : ajouter les villes", "en": "Bar: add the cities" } },
+    "locale": { "type": "string", "default": "", "label": { "fr": "Format (vide = langue de l’app)", "en": "Format (empty = app language)" } },
+    "cities": { "type": "list", "default": [], "max": 6,
+      "label": { "fr": "Villes", "en": "Cities" },
+      "itemSchema": {
+        "label": { "type": "string", "default": "", "label": { "fr": "Libellé", "en": "Label" } },
+        "timezone": { "type": "timezone", "default": "", "label": { "fr": "Fuseau", "en": "Time zone" } },
+        "hour12": { "type": "boolean", "default": false, "label": { "fr": "12 h", "en": "12 h" } },
+        "seconds": { "type": "boolean", "default": false, "label": { "fr": "Sec.", "en": "Sec." } }
+      } }
+  } }

@@ -1,0 +1,5 @@
+{
+  "zone-living": { "id": "zone-living", "name": "Living room", "parent": null },
+  "zone-hall": { "id": "zone-hall", "name": "Hallway", "parent": "zone-living" },
+  "zone-office": { "id": "zone-office", "name": "Office", "parent": null }
+}

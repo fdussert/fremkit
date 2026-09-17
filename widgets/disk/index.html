@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Disks</title>
+<style>
+  html,body{margin:0;height:100%;background:transparent;color:#e6e8eb;font-family:-apple-system,system-ui,sans-serif;overflow:hidden}
+  .wrap{box-sizing:border-box;height:100%;padding:14px 18px;position:relative;display:flex;flex-direction:column;justify-content:center;gap:6px}
+  .big{font-size:44px;font-weight:600;line-height:1}
+  .bar{height:8px;border-radius:4px;background:#252a32;overflow:hidden}
+  .bar>i{display:block;height:100%;background:var(--accent, #d9b36a);width:0;transition:width .4s}
+  .row{display:flex;justify-content:space-between;font-size:15px}
+  .muted{color:#8b93a0}
+  button{font:inherit;border:0;border-radius:10px;background:#252a32;color:#e6e8eb;padding:10px 14px;font-size:18px}
+  button:active{background:var(--accent, #d9b36a)}
+  .note{font-size:13px;color:#8b93a0;letter-spacing:.06em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  /* The host says which way round the tile is: on-light means dark text on a light body. */
+  html.on-light body{color:var(--on-surface,#0b0d10)}
+  html.on-light .muted,html.on-light .note{color:var(--on-surface,#0b0d10);opacity:.75}
+  /* A bar painted in the accent vanishes when the body *is* the accent, so it flips to the text colour. */
+  html.on-light .bar,html.accent-fill .bar{background:rgba(128,128,128,.35)}
+  html.accent-fill .bar>i{background:var(--on-surface,#0b0d10)}
+</style></head><body><div class="wrap" id="list"></div>
+<script>
+  var L = { gigabytes: { fr: '{n} Go', en: '{n} GB' } }
+  function gb(b) { return Fremkit.t(L.gigabytes, { n: Math.round(b / 1073741824) }) }
+  Fremkit.whenReady(function () {
+    var last = null
+    document.documentElement.lang = Fremkit.locale
+    Fremkit.subscribe('system', function (d) {
+      if (d.error) return
+      last = d
+      render(d)
+    })
+    Fremkit.onLocale(function (locale) { document.documentElement.lang = locale; if (last) render(last) })
+    function render(d) {
+      var el = document.getElementById('list')
+      // A volume can be called anything at all — including `<img src=x onerror=…>` — so its
+      // name is escaped, and the width is a number before it reaches the style attribute.
+      el.innerHTML = d.disks.map(function (k) {
+        var use = Math.max(0, Math.min(100, Number(k.use) || 0))
+        return '<div class="row"><span>' + Fremkit.esc(k.mount) + '</span><span class="muted">'
+          + Fremkit.esc(gb(k.used)) + ' / ' + Fremkit.esc(gb(k.size)) + '</span></div>'
+          + '<div class="bar"><i style="width:' + use + '%"></i></div>'
+      }).join('')
+    }
+  })
+</script></body></html>

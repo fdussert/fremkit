@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Homey flows</title>
+<style>
+  html,body{margin:0;height:100%;background:transparent;color:#e6e8eb;font-family:-apple-system,system-ui,sans-serif;overflow:hidden}
+  .wrap{box-sizing:border-box;height:100%;padding:14px 18px;display:flex;flex-direction:column;gap:8px}
+  .note{font-size:13px;color:#8b93a0;letter-spacing:.06em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  [hidden]{display:none!important}
+  html.on-light body{color:var(--on-surface,#0b0d10)}
+  html.on-light .note{color:var(--on-surface,#0b0d10);opacity:.75}
+</style>
+<style>
+  .banner{flex:0 0 auto;font-size:12px;letter-spacing:.06em;color:#f0a020;background:rgba(240,160,32,.12);border-radius:8px;padding:4px 8px}
+  .grid{flex:1;min-height:0;overflow-y:auto;touch-action:pan-y;-webkit-overflow-scrolling:touch;
+    display:grid;grid-template-columns:repeat(auto-fill,minmax(var(--col,170px),1fr));gap:10px;align-content:start}
+  .stale{opacity:.55}
+  /* One finger-sized button per flow: the glyph on the left, the name filling the rest. */
+  .flow{box-sizing:border-box;font:inherit;border:0;border-radius:12px;min-height:56px;padding:10px 12px;
+    background:rgba(128,128,128,.18);color:inherit;display:flex;align-items:center;gap:10px;text-align:left;cursor:pointer}
+  .flow .glyph{flex:0 0 auto;width:28px;height:28px;border-radius:50%;background:var(--accent, #d9b36a);
+    color:var(--on-accent,#0b0d10);display:flex;align-items:center;justify-content:center;font-size:13px;line-height:1}
+  html.accent-fill .flow .glyph{background:var(--on-surface,#0b0d10);color:var(--accent, #d9b36a)}
+  .flow .label{min-width:0;display:flex;flex-direction:column;gap:1px}
+  .flow .name{font-size:var(--body,16px);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .flow .folder{font-size:calc(var(--body,16px) * .75);color:#8b93a0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  html.on-light .flow .folder{color:var(--on-surface,#0b0d10);opacity:.65}
+  /* A flow switched off in the Homey app stays listed, out of the way, and refuses the tap. */
+  .flow.disabled{opacity:.4;cursor:default}
+  .flow.pressed{background:var(--accent, #d9b36a);color:var(--on-accent,#0b0d10)}
+  .flow.pressed .glyph{background:currentColor;color:var(--accent, #d9b36a)}
+  .flow.failed{background:rgba(179,38,30,.35)}
+  html.tight .flow{min-height:48px;padding:8px 10px}
+</style></head>
+<body><div class="wrap">
+  <div class="banner" id="banner" hidden></div>
+  <div class="grid" id="grid"></div>
+  <div class="note" id="empty" hidden></div>
+</div>
+<script>
+  var L = {
+    noConnection: { fr: 'Aucun Homey sélectionné', en: 'No Homey selected' },
+    loading: { fr: 'Chargement…', en: 'Loading…' },
+    empty: { fr: 'Aucun flow correspondant', en: 'No matching flow' },
+    pickSome: { fr: 'Cochez des flows dans les réglages', en: 'Pick flows in the widget settings' },
+    offline: { fr: 'Homey hors ligne', en: 'Homey offline' },
+    unconfigured: { fr: 'Homey non configuré', en: 'Homey not configured' },
+    disabled: { fr: 'désactivé', en: 'disabled' },
+    running: { fr: 'Lancé', en: 'Started' },
+    failed: { fr: 'Échec', en: 'Failed' }
+  }
+  /** How long a button stays in its pressed or failed state after a tap. */
+  var FEEDBACK_MS = 1200
+
+  var settings = {}, snapshot = null, unsub = null, channel = null
+  /** flow key -> 'pressed' | 'failed', cleared by a timer. */
+  var feedback = {}
+
+  function lower(v) { return String(v == null ? '' : v).toLowerCase() }
+  function connectionId() { return typeof settings.connection === 'string' ? settings.connection : '' }
+
+  /**
+   * How a flow is keyed in the settings and in the picker: an Advanced Flow carries a prefix,
+   * because it is a second collection behind a second trigger path. Mirrors `flowKey` on the
+   * server (`server/src/providers/homey.ts`).
+   */
+  function keyOf(flow) { return (flow.advanced === true ? 'advanced:' : '') + flow.id }
+
+  /**
+   * The flow keys ticked in the settings. Anything that is not a string is dropped: an instance
+   * configured before `flows` became a picker still holds rows of typed names.
+   */
+  function wanted() {
+    var list = Array.isArray(settings.flows) ? settings.flows : []
+    return list.filter(function (v) { return typeof v === 'string' && v !== '' })
+  }
+
+  /**
+   * The flows drawn: those ticked, in the order they were ticked, or every flow when `all` is on.
+   * An empty selection with `all` off draws nothing — the widget says so rather than offering the
+   * whole house as buttons.
+   */
+  function flows() {
+    var snap = snapshot && Array.isArray(snapshot.flows) ? snapshot.flows : []
+    var folder = lower(settings.folder).trim()
+    var max = Math.max(1, Number(settings.max) || 8)
+    var inFolder = snap.filter(function (f) { return !folder || lower(f.folder).indexOf(folder) !== -1 })
+    if (settings.all === true) return inFolder.slice(0, max)
+    var byKey = {}
+    inFolder.forEach(function (f) { byKey[keyOf(f)] = f })
+    return wanted().map(function (key) { return byKey[key] }).filter(Boolean).slice(0, max)
+  }
+
+  function mark(id, state) {
+    feedback[id] = state
+    render()
+    setTimeout(function () { if (feedback[id] === state) { delete feedback[id]; render() } }, FEEDBACK_MS)
+  }
+
+  function trigger(flow) {
+    if (!channel || flow.enabled === false) return
+    mark(keyOf(flow), 'pressed')
+    Fremkit.sendCommand(channel, 'triggerFlow', { flowId: flow.id, advanced: flow.advanced === true })
+      .catch(function () { mark(keyOf(flow), 'failed') })
+  }
+
+  function buttonFor(flow) {
+    var state = feedback[keyOf(flow)]
+    var off = flow.enabled === false
+    var button = Fremkit.el('button', 'flow' + (off ? ' disabled' : '') + (state ? ' ' + state : ''))
+    button.appendChild(Fremkit.el('span', 'glyph', '▶'))
+    var label = Fremkit.el('div', 'label')
+    label.appendChild(Fremkit.el('div', 'name', flow.name))
+    var sub = state === 'failed' ? Fremkit.t(L.failed)
+      : state === 'pressed' ? Fremkit.t(L.running)
+      : off ? Fremkit.t(L.disabled)
+      : flow.folder || ''
+    if (sub) label.appendChild(Fremkit.el('div', 'folder', sub))
+    button.appendChild(label)
+    button.disabled = off
+    button.onclick = function () { trigger(flow) }
+    return button
+  }
+
+  function render() {
+    document.documentElement.lang = Fremkit.locale
+    var banner = document.getElementById('banner'), grid = document.getElementById('grid'), empty = document.getElementById('empty')
+    if (!connectionId()) {
+      banner.hidden = true; grid.hidden = true
+      empty.hidden = false; empty.textContent = Fremkit.t(L.noConnection)
+      return
+    }
+    var err = snapshot && snapshot.error
+    banner.hidden = !err
+    if (err) banner.textContent = Fremkit.t(L[err] || L.offline)
+    if (settings.all !== true && !wanted().length) {
+      grid.hidden = true
+      empty.hidden = false; empty.textContent = Fremkit.t(L.pickSome)
+      return
+    }
+    if (!snapshot) {
+      grid.hidden = true
+      empty.hidden = false; empty.textContent = Fremkit.t(L.loading)
+      return
+    }
+    var list = flows()
+    grid.hidden = false
+    grid.innerHTML = ''
+    grid.classList.toggle('stale', !!err)
+    list.forEach(function (f) { grid.appendChild(buttonFor(f)) })
+    empty.hidden = list.length > 0
+    empty.textContent = Fremkit.t(L.empty)
+  }
+
+  function applySize(next) {
+    if (!next) return
+    var root = document.documentElement
+    root.classList.toggle('tight', next.h < 6)
+    root.style.setProperty('--body', (next.h < 6 ? 14 : next.h < 10 ? 16 : 18) + 'px')
+    root.style.setProperty('--col', (next.w < 12 ? 140 : 170) + 'px')
+    render()
+  }
+
+  /** Only the connection touches the subscription; the filters are applied at render time. */
+  function applySettings(next) {
+    settings = next || {}
+    var id = connectionId()
+    var target = id ? 'homey:' + id : null
+    if (target !== channel) {
+      if (unsub) { unsub(); unsub = null }
+      snapshot = null; feedback = {}
+      channel = target
+      if (channel) unsub = Fremkit.subscribe(channel, function (data) { snapshot = data; render() })
+    }
+    render()
+  }
+
+  Fremkit.whenReady(function () {
+    document.documentElement.lang = Fremkit.locale
+    Fremkit.onLocale(render)
+    applySize(Fremkit.size)
+    Fremkit.onResize(applySize)
+    applySettings(Fremkit.settings)
+    Fremkit.onSettings(applySettings)
+  })
+</script></body></html>

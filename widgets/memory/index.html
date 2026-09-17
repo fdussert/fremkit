@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Memory</title>
+<style>
+  html,body{margin:0;height:100%;background:transparent;color:#e6e8eb;font-family:-apple-system,system-ui,sans-serif;overflow:hidden}
+  .wrap{box-sizing:border-box;height:100%;padding:14px 18px;position:relative;display:flex;flex-direction:column;justify-content:center;gap:6px}
+  .big{font-size:44px;font-weight:600;line-height:1}
+  .bar{height:8px;border-radius:4px;background:#252a32;overflow:hidden}
+  .bar>i{display:block;height:100%;background:var(--accent, #d9b36a);width:0;transition:width .4s}
+  .row{display:flex;justify-content:space-between;font-size:15px}
+  .muted{color:#8b93a0}
+  button{font:inherit;border:0;border-radius:10px;background:#252a32;color:#e6e8eb;padding:10px 14px;font-size:18px}
+  button:active{background:var(--accent, #d9b36a)}
+  .note{font-size:13px;color:#8b93a0;letter-spacing:.06em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  /* The host says which way round the tile is: on-light means dark text on a light body. */
+  html.on-light body{color:var(--on-surface,#0b0d10)}
+  html.on-light .muted,html.on-light .note{color:var(--on-surface,#0b0d10);opacity:.75}
+  /* A bar painted in the accent vanishes when the body *is* the accent, so it flips to the text colour. */
+  html.on-light .bar,html.accent-fill .bar{background:rgba(128,128,128,.35)}
+  html.accent-fill .bar>i{background:var(--on-surface,#0b0d10)}
+
+  /* Compact: the navigation bar draws the widget as one line, no title and no surface of its
+     own. --h is the bar's height in pixels, pushed by the script, so everything scales with it. */
+  html.compact,html.compact body{overflow:hidden}
+  html.compact .wrap{display:none}
+  .cwrap{display:none}
+  html.compact .cwrap{display:flex;box-sizing:border-box;height:100%;width:100%;
+    flex-direction:column;justify-content:center;gap:calc(var(--h,80px) * .06);padding:0 calc(var(--h,80px) * .10)}
+  html.compact .cline{display:flex;align-items:baseline;gap:calc(var(--h,80px) * .10);
+    font-size:clamp(13px, calc(var(--h,80px) * .30), 26px);font-weight:600;line-height:1.1;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  html.compact .cbar{height:max(2px, calc(var(--h,80px) * .045));border-radius:999px;background:#252a32;overflow:hidden}
+  html.compact .cbar>i{display:block;height:100%;width:0;background:var(--accent, #d9b36a);transition:width .4s}
+  /* Right cluster: the bar pushes the iframe against the dots, so its content hugs that edge too. */
+  html.compact.slot-right .cwrap{align-items:flex-end;text-align:right}
+  html.compact.slot-right .cbar{align-self:stretch}
+</style></head><body><div class="wrap"><div class="big"><span id="pct">--</span>%</div><div class="bar"><i id="bar"></i></div><div class="row muted"><span id="used"></span><span id="total"></span></div></div>
+<div class="cwrap"><div class="cline" id="cline">MEM --</div><div class="cbar"><i id="cbar"></i></div></div>
+<script>
+  var L = {
+    gigabytes: { fr: '{n} Go', en: '{n} GB' },
+    used: { fr: '{size} utilisés', en: '{size} used' },
+    compact: { fr: 'MÉM {n} %', en: 'MEM {n}%' }
+  }
+  function gb(b) { return Fremkit.t(L.gigabytes, { n: (b / 1073741824).toFixed(1) }) }
+  Fremkit.whenReady(function () {
+    var last = null
+    document.documentElement.lang = Fremkit.locale
+    /** The bar's height drives every compact size; the full layout ignores it. */
+    function applySize(size) {
+      if (size && size.px) document.documentElement.style.setProperty('--h', size.px.height + 'px')
+    }
+    applySize(Fremkit.size)
+    Fremkit.onResize(applySize)
+    function render(d) {
+      var pct = Math.round(d.memory.used / d.memory.total * 100)
+      document.getElementById('pct').textContent = pct
+      document.getElementById('bar').style.width = pct + '%'
+      document.getElementById('used').textContent = Fremkit.t(L.used, { size: gb(d.memory.used) })
+      document.getElementById('total').textContent = gb(d.memory.total)
+      document.getElementById('cline').textContent = Fremkit.t(L.compact, { n: pct })
+      document.getElementById('cbar').style.width = pct + '%'
+    }
+    Fremkit.subscribe('system', function (d) { if (d.error) return; last = d; render(d) })
+    Fremkit.onLocale(function (locale) { document.documentElement.lang = locale; if (last) render(last) })
+  })
+</script></body></html>

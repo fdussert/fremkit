@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Shortcuts</title>
+<style>
+  html,body{margin:0;height:100%;background:transparent;color:#e6e8eb;font-family:-apple-system,system-ui,sans-serif;overflow:hidden}
+  .wrap{box-sizing:border-box;height:100%;padding:14px 18px;display:flex;flex-direction:column;gap:8px}
+  .note{font-size:13px;color:#8b93a0;letter-spacing:.06em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  [hidden]{display:none!important}
+  html.on-light body{color:var(--on-surface,#0b0d10)}
+  html.on-light .note{color:var(--on-surface,#0b0d10);opacity:.75}
+</style>
+<style>
+  .grid{flex:1;min-height:0;overflow-y:auto;touch-action:pan-y;-webkit-overflow-scrolling:touch;
+    display:grid;grid-template-columns:repeat(var(--cols,4),1fr);gap:10px;align-content:start}
+  /* One finger-sized button per entry: the icon or glyph on top, the label under it. */
+  .btn{box-sizing:border-box;font:inherit;border:0;border-radius:14px;min-height:var(--btn,72px);padding:10px 8px;
+    background:rgba(128,128,128,.18);color:inherit;display:flex;flex-direction:column;align-items:center;
+    justify-content:center;gap:6px;text-align:center;cursor:pointer;overflow:hidden}
+  .btn .art{flex:0 0 auto;width:var(--art,34px);height:var(--art,34px);display:flex;align-items:center;justify-content:center}
+  .btn img.art{border-radius:8px;object-fit:contain}
+  .btn .glyph{width:var(--art,34px);height:var(--art,34px);border-radius:50%;background:var(--accent,#d9b36a);
+    color:var(--on-accent,#0b0d10);display:flex;align-items:center;justify-content:center;
+    font-size:calc(var(--art,34px) * .5);line-height:1}
+  html.accent-fill .btn .glyph{background:var(--on-surface,#0b0d10);color:var(--accent,#d9b36a)}
+  .btn .name{max-width:100%;font-size:var(--body,15px);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .btn.pressed{background:var(--accent,#d9b36a);color:var(--on-accent,#0b0d10)}
+  .btn.pressed .glyph{background:currentColor;color:var(--accent,#d9b36a)}
+  .btn.ok{background:rgba(52,152,86,.38)}
+  .btn.failed{background:rgba(179,38,30,.38)}
+  html.tight .btn{min-height:56px;padding:8px 6px;gap:4px}
+</style></head>
+<body><div class="wrap">
+  <div class="grid" id="grid"></div>
+  <div class="note" id="empty" hidden></div>
+</div>
+<script>
+  var L = {
+    empty: { fr: 'Ajoutez des boutons dans les réglages', en: 'Add buttons in the widget settings' }
+  }
+  /** How long a button keeps its ✓ or ✗ after a tap. */
+  var FEEDBACK_MS = 1400
+  /** The helper uploads Dock icons as it discovers them; a missing one is retried, not final. */
+  var ICON_RETRY_MS = 30000
+  /** Applications are installed rarely, and the server caches the scan: once an hour is plenty. */
+  var INSTALLED_REFRESH_MS = 3600000
+  var KINDS = { app: '□', url: '↗', shortcut: '⚡' }
+
+  var settings = {}, dock = null
+  /** Every installed application, from `/api/apps/installed`; empty until the first answer. */
+  var installed = []
+  /** button index -> 'pressed' | 'ok' | 'failed', cleared by a timer. */
+  var feedback = {}
+
+
+  /**
+   * The buttons actually drawn. A row with no target is a half-typed one in the admin, not a
+   * button: it is skipped rather than drawn as something that cannot work.
+   */
+  function buttons() {
+    var list = Array.isArray(settings.buttons) ? settings.buttons : []
+    return list
+      .map(function (b) {
+        return {
+          label: typeof b.label === 'string' ? b.label.trim() : '',
+          kind: KINDS[b.kind] ? b.kind : 'app',
+          target: typeof b.target === 'string' ? b.target.trim() : ''
+        }
+      })
+      .filter(function (b) { return b.target !== '' })
+  }
+
+  /** True when a candidate name is the one the button targets. `open -a` ignores `.app` and case. */
+  function sameApp(candidate, wanted) {
+    var name = String(candidate || '').toLowerCase()
+    return name !== '' && (name === wanted || name === wanted + '.app' || name + '.app' === wanted)
+  }
+
+  /**
+   * The bundle id for an application name, so the server's icon route can be asked.
+   *
+   * Every installed application first — that list covers anything the user can type — then the
+   * Dock, which is all there was before and still answers while the scan is in flight.
+   */
+  function bundleIdFor(name) {
+    var wanted = name.toLowerCase()
+    for (var i = 0; i < installed.length; i++) {
+      // Some bundles are named one thing and filed under another ("Code.app" for "Visual Studio Code").
+      if (sameApp(installed[i].name, wanted) || sameApp(installed[i].file, wanted)) return installed[i].bundleId
+    }
+    var apps = dock && Array.isArray(dock.apps) ? dock.apps : []
+    for (var j = 0; j < apps.length; j++) {
+      if (sameApp(apps[j].name, wanted)) return apps[j].bundleId
+    }
+    return null
+  }
+
+  /** The bundle ids the buttons currently resolve to, as one string: the render trigger. */
+  function resolution() {
+    return buttons().map(function (b) { return b.kind === 'app' ? bundleIdFor(b.target) : '' }).join('|')
+  }
+
+  function glyph(kind) { return Fremkit.el('span', 'art glyph', KINDS[kind] || KINDS.app) }
+
+  /**
+   * The site's own icon for a link button, served (and cached for a week) by the server.
+   *
+   * Only http(s) links have one — a `mailto:` keeps the glyph — and a site with no icon, or one
+   * the server could not fetch, falls back to the glyph as soon as the image fails to load.
+   */
+  function favicon(spec) {
+    if (!/^https?:\/\//i.test(spec.target)) return glyph(spec.kind)
+    var img = document.createElement('img')
+    img.className = 'art'
+    img.alt = ''
+    img.src = '/api/favicon?url=' + encodeURIComponent(spec.target)
+    img.addEventListener('error', function () {
+      if (!img.parentNode) return
+      img.parentNode.replaceChild(glyph(spec.kind), img)
+    })
+    return img
+  }
+
+  /**
+   * The artwork of one button: the application's Dock icon when the server has one, and the
+   * kind's glyph otherwise — rebuilt as an `<img>` every thirty seconds until an icon lands.
+   */
+  function artwork(button, spec) {
+    if (settings.showIcons === false) return glyph(spec.kind)
+    if (spec.kind === 'url') return favicon(spec)
+    if (spec.kind !== 'app') return glyph(spec.kind)
+    var bundleId = bundleIdFor(spec.target)
+    if (!bundleId) return glyph(spec.kind)
+    var attempt = 0
+    function attach() {
+      var img = document.createElement('img')
+      img.className = 'art'
+      img.alt = ''
+      // The attempt number defeats any caching of the 404 by the previous try.
+      img.src = '/api/apps/icon/' + encodeURIComponent(bundleId) + (attempt ? '?retry=' + attempt : '')
+      img.addEventListener('error', function () {
+        if (!img.parentNode) return
+        var fallback = glyph(spec.kind)
+        img.parentNode.replaceChild(fallback, img)
+        button.retryTimer = setTimeout(function () {
+          if (!fallback.parentNode) return
+          attempt += 1
+          fallback.parentNode.replaceChild(attach(), fallback)
+        }, ICON_RETRY_MS)
+      })
+      return img
+    }
+    return attach()
+  }
+
+  /**
+   * Shows the outcome of a tap on one button.
+   *
+   * Only that button is rebuilt: a full render would re-request every application icon, and the
+   * grid would blink each time a finger lands on it.
+   */
+  function mark(index, state) {
+    feedback[index] = state
+    replace(index)
+    setTimeout(function () {
+      if (feedback[index] !== state) return
+      delete feedback[index]
+      replace(index)
+    }, FEEDBACK_MS)
+  }
+
+  function replace(index) {
+    var grid = document.getElementById('grid')
+    var old = grid.children[index]
+    var spec = buttons()[index]
+    if (!old || !spec) return
+    clearTimeout(old.retryTimer)
+    grid.replaceChild(buttonFor(spec, index), old)
+  }
+
+  function press(index, spec) {
+    mark(index, 'pressed')
+    Fremkit.sendCommand('shortcuts', 'open', { kind: spec.kind, target: spec.target })
+      .then(function (result) { mark(index, result && result.ok ? 'ok' : 'failed') })
+      .catch(function () { mark(index, 'failed') })
+  }
+
+  function buttonFor(spec, index) {
+    var state = feedback[index]
+    var button = Fremkit.el('button', 'btn' + (state ? ' ' + state : ''))
+    button.appendChild(state === 'ok' ? Fremkit.el('span', 'art glyph', '✓')
+      : state === 'failed' ? Fremkit.el('span', 'art glyph', '✗')
+      : artwork(button, spec))
+    button.appendChild(Fremkit.el('div', 'name', spec.label || spec.target))
+    button.onclick = function () { press(index, spec) }
+    return button
+  }
+
+  function render() {
+    document.documentElement.lang = Fremkit.locale
+    var grid = document.getElementById('grid'), empty = document.getElementById('empty')
+    var list = buttons()
+    // Rebuilding drops any pending icon retry with the node that owned it.
+    for (var i = 0; i < grid.children.length; i++) clearTimeout(grid.children[i].retryTimer)
+    grid.innerHTML = ''
+    var cols = Math.max(1, Math.min(12, Math.round(Number(settings.columns)) || 4))
+    grid.style.setProperty('--cols', cols)
+    list.forEach(function (spec, index) { grid.appendChild(buttonFor(spec, index)) })
+    grid.hidden = list.length === 0
+    empty.hidden = list.length > 0
+    empty.textContent = Fremkit.t(L.empty)
+  }
+
+  function applySize(next) {
+    if (!next) return
+    var root = document.documentElement
+    root.classList.toggle('tight', next.h < 6)
+    root.style.setProperty('--body', (next.h < 6 ? 13 : next.h < 10 ? 15 : 17) + 'px')
+    root.style.setProperty('--art', (next.h < 6 ? 26 : 34) + 'px')
+    render()
+  }
+
+  Fremkit.whenReady(function () {
+    document.documentElement.lang = Fremkit.locale
+    Fremkit.onLocale(render)
+    settings = Fremkit.settings || {}
+    applySize(Fremkit.size)
+    Fremkit.onResize(applySize)
+    Fremkit.onSettings(function (next) { settings = next || {}; feedback = {}; render() })
+    // Only used to turn an application name into the bundle id its icon is served under. The
+    // Dock republishes whenever a badge moves, so the grid is rebuilt only when the bundle ids
+    // the buttons resolve to actually changed — otherwise every icon would reload every second.
+    var resolved = ''
+    function rerenderIfResolutionChanged() {
+      var next = resolution()
+      if (next === resolved) return
+      resolved = next
+      render()
+    }
+    Fremkit.subscribe('dock', function (data) {
+      dock = data
+      rerenderIfResolutionChanged()
+    })
+    // Every installed application, not only the ones in the Dock: a button pointing at something
+    // the user never docked still gets its real icon.
+    function loadInstalled() {
+      fetch('/api/apps/installed')
+        .then(function (r) { return r.ok ? r.json() : [] })
+        .then(function (list) {
+          installed = Array.isArray(list) ? list : []
+          rerenderIfResolutionChanged()
+        })
+        .catch(function () { /* the Dock match and the glyph still stand */ })
+    }
+    loadInstalled()
+    setInterval(loadInstalled, INSTALLED_REFRESH_MS)
+    render()
+  })
+</script></body></html>

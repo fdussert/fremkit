@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Clock</title>
+<style>
+  html,body{margin:0;height:100%;background:transparent;color:#e6e8eb;font-family:-apple-system,system-ui,sans-serif;overflow:hidden}
+  .wrap{box-sizing:border-box;height:100%;padding:14px 18px;position:relative;display:flex;flex-direction:column;justify-content:center;gap:6px}
+  .big{font-size:44px;font-weight:600;line-height:1}
+  .bar{height:8px;border-radius:4px;background:#252a32;overflow:hidden}
+  .bar>i{display:block;height:100%;background:var(--accent, #d9b36a);width:0;transition:width .4s}
+  .row{display:flex;justify-content:space-between;font-size:15px}
+  .muted{color:#8b93a0}
+  button{font:inherit;border:0;border-radius:10px;background:#252a32;color:#e6e8eb;padding:10px 14px;font-size:18px}
+  button:active{background:var(--accent, #d9b36a)}
+  .note{font-size:13px;color:#8b93a0;letter-spacing:.06em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  /* The host says which way round the tile is: on-light means dark text on a light body. */
+  html.on-light body{color:var(--on-surface,#0b0d10)}
+  html.on-light .muted,html.on-light .note{color:var(--on-surface,#0b0d10);opacity:.75}
+  /* A bar painted in the accent vanishes when the body *is* the accent, so it flips to the text colour. */
+  html.on-light .bar,html.accent-fill .bar{background:rgba(128,128,128,.35)}
+  html.accent-fill .bar>i{background:var(--on-surface,#0b0d10)}
+</style>
+<style>
+  .wrap{flex-direction:row;align-items:center;gap:24px}
+  .main{display:flex;flex-direction:column;gap:6px;flex:0 0 auto}
+  .cities{display:flex;gap:18px;flex:1;justify-content:flex-end;overflow:hidden}
+  .city{display:flex;flex-direction:column;align-items:center;gap:2px;min-width:90px}
+  .city .t{font-size:28px;font-weight:600;line-height:1}
+  .city .n{font-size:12px;color:#8b93a0;text-transform:uppercase;letter-spacing:.06em}
+  .city .d{font-size:11px;color:#5f6771}
+</style>
+<style>
+  /* Compact: the navigation bar draws the clock as one line, no title and no surface of its
+     own. --h is the bar's height in pixels, pushed by the script, so everything scales with it. */
+  html.compact,html.compact body{overflow:hidden}
+  html.compact .wrap{display:none}
+  .cwrap{display:none}
+  html.compact .cwrap{display:flex;box-sizing:border-box;height:100%;width:100%;align-items:center;
+    padding:0 calc(var(--h,80px) * .10)}
+  /* One run of inline text rather than a flex row: only that way does the ellipsis land on the
+     line as a whole when the bar runs out of room, instead of on each span separately. */
+  html.compact .cline{min-width:0;font-size:clamp(13px, calc(var(--h,80px) * .30), 26px);
+    font-weight:600;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  /* The date and the cities read at the time's own size, set apart by their weight and colour. */
+  html.compact .cmuted{font-weight:400;color:#8b93a0}
+  html.compact .cmuted:not(:empty)::before{content:'·';margin:0 calc(var(--h,80px) * .10)}
+  /* Right cluster: the bar pushes the iframe against the dots, so its content hugs that edge too. */
+  html.compact.slot-right .cwrap{justify-content:flex-end;text-align:right}
+</style></head><body><div class="wrap"><div class="main"><div class="big" id="t">--:--</div><div class="muted" id="d"></div></div><div class="cities" id="cities"></div></div>
+<div class="cwrap"><div class="cline"><span id="ct">--:--</span><span class="cmuted" id="cdate"></span><span class="cmuted" id="ccities"></span></div></div>
+<script>
+  var L = {
+    dayAhead: { fr: '+1 j', en: '+1 d' },
+    dayBehind: { fr: '−1 j', en: '−1 d' }
+  }
+  /** The compact line joins its city times with this, so they read as one run of text. */
+  var CITY_SEPARATOR = ' · '
+  /**
+   * The BCP 47 tag the clock formats with: the `locale` setting when the user set one, otherwise
+   * the app's own language. `en-GB` rather than `en`, so English keeps the 24-hour clock and the
+   * day-before-month order this widget has always shown.
+   */
+  var APP_FORMAT = { fr: 'fr-FR', en: 'en-GB' }
+
+  Fremkit.whenReady(function () {
+    var s = Fremkit.settings
+    var cities = []
+    var mainTime = null, mainDate = null
+    var el = document.getElementById('cities')
+    var timeEl = document.getElementById('t')
+    var dateEl = document.getElementById('d')
+    var cTimeEl = document.getElementById('ct')
+    var cDateEl = document.getElementById('cdate')
+    var cCitiesEl = document.getElementById('ccities')
+    var cDate = null
+    function format() { return (s.locale && String(s.locale).trim()) || APP_FORMAT[Fremkit.locale] || 'en-GB' }
+    /**
+     * `hour12: false` reads midnight as 24:00 in several locales, so the 24-hour clock asks for
+     * the h23 cycle by name instead.
+     */
+    function timeOptions(hour12, seconds, tz) {
+      var o = hour12 ? { hour: 'numeric', hour12: true } : { hour: '2-digit', hourCycle: 'h23' }
+      o.minute = '2-digit'
+      if (seconds) o.second = '2-digit'
+      if (tz) o.timeZone = tz
+      return o
+    }
+    function formatter(opts) { try { return new Intl.DateTimeFormat(format(), opts) } catch (e) { return null } }
+    function show(f, now) { return f ? f.format(now) : '--:--' }
+    /**
+     * The cities are a list of `{ label, timezone, hour12, seconds }`. The server converts the
+     * string this setting used to be, but an instance that never went through it is read here too.
+     */
+    function readCities() {
+      var raw = s.cities
+      if (typeof raw === 'string') {
+        raw = raw.split(',').map(function (x) {
+          var p = x.split('=')
+          return p.length === 2 && p[1].trim() ? { label: p[0].trim(), timezone: p[1].trim() } : null
+        })
+      }
+      if (!Array.isArray(raw)) return []
+      return raw.filter(function (c) { return c && c.timezone })
+    }
+    /** Rebuilds the markup and every formatter: settings and language both change all of them. */
+    function build() {
+      cities = readCities().map(function (c) {
+        return { label: c.label || c.timezone, timezone: c.timezone, fmt: formatter(timeOptions(c.hour12, c.seconds, c.timezone)) }
+      })
+      el.innerHTML = cities.map(function (c, i) {
+        return '<div class="city"><span class="t" id="c' + i + '">--:--</span><span class="n">' + Fremkit.esc(c.label) + '</span><span class="d" id="cd' + i + '"></span></div>'
+      }).join('')
+      mainTime = formatter(timeOptions(s.hour12, s.seconds))
+      mainDate = formatter({ weekday: 'long', day: 'numeric', month: 'long' })
+      // The bar has room for a short date only, and only when compactDate asks for one.
+      cDate = s.compactDate === true ? formatter({ day: 'numeric', month: 'short' }) : null
+      dateEl.style.display = s.showDate === false ? 'none' : ''
+    }
+    /**
+     * Below 8 cells wide there is no room for the city columns next to the clock. The bar's
+     * height drives every compact size; the full layout ignores it.
+     */
+    function applySize(size) {
+      el.style.display = (size && size.w < 8) ? 'none' : ''
+      if (size && size.px) document.documentElement.style.setProperty('--h', size.px.height + 'px')
+    }
+    applySize(Fremkit.size)
+    Fremkit.onResize(applySize)
+    function dayDiff(now, tz) { try { var local = now.toLocaleDateString('en-CA'), there = now.toLocaleDateString('en-CA', { timeZone: tz }); return there > local ? Fremkit.t(L.dayAhead) : there < local ? Fremkit.t(L.dayBehind) : '' } catch (e) { return '' } }
+    function tick() {
+      var now = new Date()
+      document.documentElement.lang = Fremkit.locale
+      timeEl.textContent = show(mainTime, now)
+      if (s.showDate !== false) dateEl.textContent = show(mainDate, now)
+      cities.forEach(function (c, i) {
+        document.getElementById('c' + i).textContent = show(c.fmt, now)
+        document.getElementById('cd' + i).textContent = dayDiff(now, c.timezone)
+      })
+      cTimeEl.textContent = show(mainTime, now)
+      cDateEl.textContent = cDate ? cDate.format(now) : ''
+      cCitiesEl.textContent = s.compactCities === true
+        ? cities.map(function (c) { return c.label + ' ' + show(c.fmt, now) }).join(CITY_SEPARATOR)
+        : ''
+    }
+    function render() { build(); tick() }
+    // Live preview: the admin pushes edited settings instead of reloading the widget.
+    Fremkit.onSettings(function (next) { s = next || {}; render() })
+    Fremkit.onLocale(render)
+    render(); setInterval(tick, 1000)
+  })
+</script></body></html>

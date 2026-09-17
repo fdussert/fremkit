@@ -1,0 +1,10 @@
+{ "id": "mutedeck", "name": "MuteDeck", "version": "1.1.0",
+  "description": { "fr": "Contrôle réunion", "en": "Meeting controls" },
+  "icon": "video", "minSize": [8, 4], "defaultSize": [8, 4], "subscriptions": ["mutedeck"], "commands": ["mutedeck"],
+  "settingsSchema": {
+    "showMute": { "type": "boolean", "label": { "fr": "Bouton micro", "en": "Mute button" }, "default": true },
+    "showVideo": { "type": "boolean", "label": { "fr": "Bouton caméra", "en": "Video button" }, "default": true },
+    "showShare": { "type": "boolean", "label": { "fr": "Bouton partage d’écran", "en": "Screen share button" }, "default": false },
+    "showRecord": { "type": "boolean", "label": { "fr": "Bouton enregistrement", "en": "Record button" }, "default": false },
+    "showLeave": { "type": "boolean", "label": { "fr": "Bouton quitter", "en": "Leave button" }, "default": true }
+  } }

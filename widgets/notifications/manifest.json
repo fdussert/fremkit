@@ -1,0 +1,11 @@
+{ "id": "notifications", "name": "Notifications", "version": "1.0.0",
+  "description": { "fr": "Pastilles de non-lus du Dock", "en": "Unread badges from the Dock" },
+  "icon": "message-square", "minSize": [8, 3], "defaultSize": [16, 4],
+  "subscriptions": ["dock"], "commands": ["dock"],
+  "settingsSchema": {
+    "apps": { "type": "apps", "label": { "fr": "Applications", "en": "Applications" }, "default": [] },
+    "size": { "type": "enum", "label": { "fr": "Taille", "en": "Size" },
+              "options": [{ "value": "petite", "label": { "fr": "petite", "en": "small" } },
+                          { "value": "normale", "label": { "fr": "normale", "en": "normal" } }],
+              "default": "normale" }
+  } }

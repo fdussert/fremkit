@@ -1,0 +1,11 @@
+{ "id": "bambu-job",
+  "name": { "fr": "Impression Bambu", "en": "Bambu print" },
+  "version": "1.0.0",
+  "description": { "fr": "Job en cours de l’imprimante", "en": "The printer’s current job" },
+  "icon": "hard-drive", "minSize": [12, 4], "defaultSize": [16, 6],
+  "subscriptions": ["bambu:*"], "commands": [],
+  "settingsSchema": {
+    "connection": { "type": "connection", "label": { "fr": "Imprimante", "en": "Printer" }, "connectionType": "bambu" },
+    "showAms": { "type": "boolean", "label": { "fr": "Afficher l’AMS", "en": "Show the AMS" }, "default": false },
+    "showCamera": { "type": "boolean", "label": { "fr": "Afficher la caméra", "en": "Show the camera" }, "default": false }
+  } }

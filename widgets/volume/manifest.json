@@ -1,0 +1,3 @@
+{ "id": "volume", "name": "Volume", "version": "1.0.0",
+  "description": { "fr": "Contrôle volume", "en": "Volume controls" },
+  "icon": "volume-2", "minSize": [8, 4], "defaultSize": [8, 4], "subscriptions": ["volume"], "commands": ["volume"] }

@@ -1,0 +1,39 @@
+/* Design tokens shared by the dashboard and the admin. Dark palette, system typography. */
+:root {
+  --bg: #0b0d10;
+  --surface: #14171c;
+  --surface-2: #1a1e24;
+  --surface-3: #252a32;
+  --border: #272c34;
+  --border-strong: #3a404a;
+  --text: #e6e8eb;
+  --text-muted: #8b93a0;
+  --text-dim: #5f6771;
+  --accent: #d9b36a;
+  --accent-hover: #e3c383;
+  /* Shaded sand, for a secondary emphasis that stays in the family without competing. */
+  --accent-2: #9a7540;
+  --on-accent: #0b0d10;
+  --danger: #d9463f;
+  --ok: #2fb36b;
+  /* Pushed towards orange: a yellow warning would read as the sand accent. */
+  --warn: #f08c3c;
+  --font: -apple-system, BlinkMacSystemFont, 'Inter', system-ui, sans-serif;
+  --fs-xs: 12px;
+  --fs-sm: 13px;
+  --fs-md: 14px;
+  --fs-lg: 16px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --shadow: 0 8px 24px rgba(0, 0, 0, .35);
+  --ring: 0 0 0 2px rgba(217, 179, 106, .55);
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+}
+
+body { font-family: var(--font); font-size: var(--fs-md); color: var(--text); background: var(--bg); }
+* { -webkit-tap-highlight-color: transparent; }
+:focus-visible { outline: none; box-shadow: var(--ring); border-radius: var(--radius-sm); }

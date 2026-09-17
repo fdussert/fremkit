@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Quotas Claude</title>
+<style>
+  html,body{margin:0;height:100%;background:transparent;color:#e6e8eb;font-family:-apple-system,system-ui,sans-serif;overflow:hidden}
+  .wrap{box-sizing:border-box;height:100%;padding:14px 18px;position:relative;display:flex;flex-direction:column;justify-content:center;gap:6px}
+  .big{font-size:44px;font-weight:600;line-height:1}
+  .bar{height:8px;border-radius:4px;background:#252a32;overflow:hidden}
+  .bar>i{display:block;height:100%;background:var(--accent, #d9b36a);width:0;transition:width .4s}
+  .row{display:flex;justify-content:space-between;font-size:15px}
+  .muted{color:#8b93a0}
+  button{font:inherit;border:0;border-radius:10px;background:#252a32;color:#e6e8eb;padding:10px 14px;font-size:18px}
+  button:active{background:var(--accent, #d9b36a)}
+  .note{font-size:13px;color:#8b93a0;letter-spacing:.06em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  /* The host says which way round the tile is: on-light means dark text on a light body. */
+  html.on-light body{color:var(--on-surface,#0b0d10)}
+  html.on-light .muted,html.on-light .note{color:var(--on-surface,#0b0d10);opacity:.75}
+  /* A bar painted in the accent vanishes when the body *is* the accent, so it flips to the text colour. */
+  html.on-light .bar,html.accent-fill .bar{background:rgba(128,128,128,.35)}
+  html.accent-fill .bar>i{background:var(--on-surface,#0b0d10)}
+</style>
+<style>
+  .gauges{display:flex;gap:18px;flex-wrap:wrap}
+  .g{flex:1 1 160px;display:flex;flex-direction:column;gap:4px}
+  .g .row{align-items:baseline}
+  .g .pct{font-size:32px;font-weight:600;line-height:1}
+  .g .bar{height:10px;border-radius:5px}
+  .ok>i{background:#2fb36b}.warn>i{background:#f0a020}.hot>i{background:#d9463f}
+  .stale .g{opacity:.45}
+  .foot{font-size:14px;color:#c3c8d0}
+  .hist{display:flex;align-items:flex-end;gap:2px;height:40px;margin-top:6px}.hist>i{flex:1;background:#3a404a;border-radius:2px 2px 0 0;min-height:1px}.hist>i.now{background:var(--accent, #d9b36a)}.histrow{display:flex;gap:12px;align-items:flex-end}.histlbl{font-size:12px;color:#8b93a0;white-space:nowrap}
+  [hidden]{display:none!important}
+  /* Compact: the navigation bar shows the three limits on one line, sized from the bar height (--h). */
+  html.compact,html.compact body{overflow:hidden}
+  html.compact .wrap{display:none}
+  .cwrap{display:none}
+  html.compact .cwrap{display:flex;box-sizing:border-box;height:100%;width:100%;align-items:center;
+    gap:calc(var(--h,80px) * .16);padding:0 calc(var(--h,80px) * .10)}
+  html.compact .clabel{flex:0 0 auto;font-size:clamp(11px, calc(var(--h,80px) * .20), 18px);font-weight:600;
+    letter-spacing:.08em;text-transform:uppercase;color:#8b93a0;align-self:center}
+  html.compact .cg{flex:1;min-width:0;display:flex;flex-direction:column;gap:calc(var(--h,80px) * .06)}
+  html.compact .cline{display:flex;justify-content:space-between;align-items:baseline;gap:6px;
+    font-size:clamp(12px, calc(var(--h,80px) * .26), 24px);font-weight:600;line-height:1.1;white-space:nowrap}
+  html.compact .cline .n{color:#8b93a0;font-weight:500;overflow:hidden;text-overflow:ellipsis}
+  html.compact .cbar{height:max(2px, calc(var(--h,80px) * .045));border-radius:999px;background:#252a32;overflow:hidden}
+  html.compact .cbar>i{display:block;height:100%;width:0;background:var(--accent, #d9b36a);transition:width .4s}
+  html.compact .cbar.ok>i{background:#2fb36b}html.compact .cbar.warn>i{background:#f0a020}html.compact .cbar.hot>i{background:#d9463f}
+  /* Right cluster: the bar pushes the iframe against the dots, so its content hugs that edge too. */
+  html.compact.slot-right .cwrap{justify-content:flex-end;text-align:right}
+</style>
+</head>
+<body><div class="wrap" id="wrap"><div class="note" id="note"></div>
+<div class="gauges" id="gauges"></div><div class="foot" id="foot"></div>
+<div class="histrow" id="histrow" hidden><div class="hist" id="hist"></div><div class="histlbl" id="histlbl"></div></div></div>
+<div class="cwrap" id="cwrap"></div>
+<script>
+  var L = {
+    resetImminent: { fr: 'reset imminent', en: 'reset imminent' },
+    resetIn: { fr: 'reset dans {delay}', en: 'reset in {delay}' },
+    delayDays: { fr: '{d} j {h} h', en: '{d} d {h} h' },
+    delayHours: { fr: '{h} h {m}', en: '{h} h {m}' },
+    delayMinutes: { fr: '{m} min', en: '{m} min' },
+    sevenDay: { fr: '7 jours', en: '7 days' },
+    stale: { fr: '· données anciennes', en: '· stale data' },
+    staleWithError: { fr: '· données anciennes ({error})', en: '· stale data ({error})' },
+    noSession: { fr: '· lance une session Claude Code', en: '· start a Claude Code session' },
+    accountOff: { fr: '· consommation du compte désactivée', en: '· account usage turned off' },
+    breakdown: { fr: '{name} {percent} %', en: '{name} {percent}%' },
+    today: { fr: 'aujourd’hui : {tokens} tokens · {sessions}', en: 'today: {tokens} tokens · {sessions}' },
+    sessionOne: { fr: '1 session', en: '1 session' },
+    sessionMany: { fr: '{n} sessions', en: '{n} sessions' },
+    cost: { fr: ' · ≈ {amount} $', en: ' · ≈ ${amount}' },
+    peak: { fr: 'pic {hour} h · {tokens}', en: 'peak {hour} h · {tokens}' },
+    millions: { fr: '{n} M', en: '{n}M' },
+    thousands: { fr: '{n} k', en: '{n}k' }
+  }
+  var data = null, account = null, accountOff = false
+  function cls(p) { return p < 60 ? 'ok' : p < 85 ? 'warn' : 'hot' }
+  /** A decimal separator follows the language: a comma in French, a point in English. */
+  function dec(n, digits) { var text = n.toFixed(digits); return Fremkit.locale === 'fr' ? text.replace('.', ',') : text }
+  function until(epochSec) {
+    if (!epochSec) return ''
+    var ms = epochSec * 1000 - Date.now()
+    if (ms <= 0) return Fremkit.t(L.resetImminent)
+    var m = Math.round(ms / 60000), h = Math.floor(m / 60), d = Math.floor(h / 24)
+    var delay = d > 0 ? Fremkit.t(L.delayDays, { d: d, h: h % 24 })
+      : h > 0 ? Fremkit.t(L.delayHours, { h: h, m: String(m % 60).padStart(2, '0') })
+      : Fremkit.t(L.delayMinutes, { m: m })
+    return Fremkit.t(L.resetIn, { delay: delay })
+  }
+  function tokens(n) {
+    if (n >= 1e6) return Fremkit.t(L.millions, { n: dec(n / 1e6, 1) })
+    if (n >= 1e3) return Fremkit.t(L.thousands, { n: Math.round(n / 1e3) })
+    return String(n)
+  }
+  function gaugeHtml(name, pct, resetsAt) {
+    var p = Math.round(pct)
+    return '<div class="g"><div class="row"><span>' + Fremkit.esc(name) + '</span><span class="pct">' + p + '%</span></div><div class="bar ' + cls(pct) + '"><i style="width:' + Math.min(100, pct) + '%"></i></div><div class="muted">' + until(resetsAt) + '</div></div>'
+  }
+  /** The three limits as `name pct%` gauges on one line; falls back to the local 5 h / 7 day windows. */
+  function renderCompact(useAccount) {
+    var items = useAccount ? account.limits.slice(0, 3).map(function (l) { return { name: l.name, pct: l.percent } })
+      : data ? [{ name: '5 h', pct: data.fiveHour ? data.fiveHour.pct : 0 }, { name: Fremkit.t(L.sevenDay), pct: data.sevenDay ? data.sevenDay.pct : 0 }] : []
+    // A label in front: three bare gauges read as noise next to the clock and the CPU line.
+    document.getElementById('cwrap').innerHTML = '<span class="clabel">Claude</span>' + items.map(function (g) {
+      var p = Math.round(g.pct)
+      return '<div class="cg"><div class="cline"><span class="n">' + Fremkit.esc(g.name) + '</span><span>' + p + '%</span></div>'
+        + '<div class="cbar ' + cls(g.pct) + '"><i style="width:' + Math.min(100, g.pct) + '%"></i></div></div>'
+    }).join('')
+  }
+  function render() {
+    var wrap = document.getElementById('wrap'), note = document.getElementById('note'), foot = document.getElementById('foot'), gauges = document.getElementById('gauges')
+    var useAccount = account && account.available && account.limits && account.limits.length
+    var stale = useAccount ? account.stale : !!(data && data.stale)
+    wrap.classList.toggle('stale', stale)
+    if (Fremkit.compact) { renderCompact(useAccount); return }
+    if (useAccount) {
+      gauges.innerHTML = account.limits.map(function (l) { return gaugeHtml(l.name, l.percent, l.resetsAt) }).join('')
+      note.textContent = stale ? (account.error ? Fremkit.t(L.staleWithError, { error: account.error }) : Fremkit.t(L.stale)) : ''
+    } else if (data) {
+      gauges.innerHTML = gaugeHtml('5 h', data.fiveHour ? data.fiveHour.pct : 0, data.fiveHour ? data.fiveHour.resetsAt : 0)
+        + gaugeHtml(Fremkit.t(L.sevenDay), data.sevenDay ? data.sevenDay.pct : 0, data.sevenDay ? data.sevenDay.resetsAt : 0)
+      note.textContent = accountOff ? Fremkit.t(L.accountOff)
+        : data.updatedAt === null ? Fremkit.t(L.noSession) : stale ? Fremkit.t(L.stale) : ''
+    } else { return }
+    var parts = []
+    if (useAccount && account.breakdown.length) parts.push(account.breakdown.filter(function (b) { return b.percent > 0 }).map(function (b) { return Fremkit.t(L.breakdown, { name: b.name, percent: Math.round(b.percent) }) }).join(' · '))
+    if (data && data.today && data.today.messages) {
+      var t = data.today, total = t.input + t.output + t.cacheRead + t.cacheWrite
+      var sessions = t.sessions === 1 ? Fremkit.t(L.sessionOne) : Fremkit.t(L.sessionMany, { n: t.sessions })
+      parts.push(Fremkit.t(L.today, { tokens: tokens(total), sessions: sessions })
+        + (t.costUsd ? Fremkit.t(L.cost, { amount: dec(t.costUsd, 2) }) : ''))
+    }
+    foot.innerHTML = parts.map(esc).join('<br>')
+    var histrow = document.getElementById('histrow'), hist = document.getElementById('hist'), histlbl = document.getElementById('histlbl')
+    if (data && data.today && data.today.hourly && Fremkit.size.h >= 4) {
+      histrow.hidden = false
+      var hh = data.today.hourly, raw = Math.max.apply(null, hh), max = raw || 1, cur = new Date().getHours()
+      hist.innerHTML = hh.map(function (v, i) { return '<i' + (i === cur ? ' class="now"' : '') + ' style="height:' + Math.max(2, Math.round(v / max * 100)) + '%"></i>' }).join('')
+      histlbl.textContent = raw > 0 ? Fremkit.t(L.peak, { hour: hh.indexOf(raw), tokens: tokens(raw) }) : ''
+    } else {
+      histrow.hidden = true
+    }
+  }
+  Fremkit.whenReady(function () {
+    Fremkit.subscribe('claude-usage', function (d) { if (d.error) return; data = d; render() })
+    // A rate-limited poll still carries the last good gauges (flagged stale): keep showing them.
+    Fremkit.subscribe('claude-account', function (d) {
+      // Reading the account is opt-in. While it is off the gauges below come from the local
+      // transcripts instead, and the note says why the per-model ones are missing.
+      if (d.error === 'disabled') { accountOff = true; render(); return }
+      accountOff = false
+      if (d.error && !d.available) return
+      account = d
+      render()
+    })
+    /** The bar's height drives every compact size; the full layout ignores it. */
+    function applySize(size) { if (size && size.px) document.documentElement.style.setProperty('--h', size.px.height + 'px') }
+    applySize(Fremkit.size)
+    Fremkit.onResize(function (size) { applySize(size); render() })
+    Fremkit.onLocale(function (locale) { document.documentElement.lang = locale; render() })
+    document.documentElement.lang = Fremkit.locale
+    setInterval(render, 1000)
+  })
+</script></body></html>

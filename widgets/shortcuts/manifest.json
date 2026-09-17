@@ -1,0 +1,26 @@
+{ "id": "shortcuts",
+  "name": { "fr": "Raccourcis", "en": "Shortcuts" },
+  "version": "1.2.0",
+  "description": { "fr": "Gros boutons tactiles qui ouvrent une application, un lien ou un raccourci",
+                   "en": "Big touch buttons that open an application, a link or a shortcut" },
+  "icon": "layout-grid", "minSize": [8, 4], "defaultSize": [16, 8],
+  "subscriptions": ["dock"], "commands": ["shortcuts"],
+  "settingsSchema": {
+    "buttons": { "type": "list", "default": [], "max": 24,
+      "label": { "fr": "Boutons", "en": "Buttons" },
+      "itemSchema": {
+        "label": { "type": "string", "default": "", "label": { "fr": "Libellé", "en": "Label" } },
+        "kind": { "type": "enum", "default": "app",
+          "label": { "fr": "Type", "en": "Kind" },
+          "options": [{ "value": "app", "label": { "fr": "Application", "en": "Application" } },
+                      { "value": "url", "label": { "fr": "Lien", "en": "Link" } },
+                      { "value": "shortcut", "label": { "fr": "Raccourci", "en": "Shortcut" } }] },
+        "target": { "type": "string", "default": "",
+          "suggest": "apps", "suggestWhen": { "kind": "app" },
+          "label": { "fr": "Cible (nom d’app, http(s)/mailto, ou nom de raccourci)",
+                     "en": "Target (app name, http(s)/mailto link, or shortcut name)" } }
+      } },
+    "columns": { "type": "number", "default": 4, "label": { "fr": "Colonnes", "en": "Columns" } },
+    "showIcons": { "type": "boolean", "default": true,
+      "label": { "fr": "Icônes des applications et des sites", "en": "Application and site icons" } }
+  } }

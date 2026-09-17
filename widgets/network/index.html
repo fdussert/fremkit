@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Network</title>
+<style>
+  html,body{margin:0;height:100%;background:transparent;color:#e6e8eb;font-family:-apple-system,system-ui,sans-serif;overflow:hidden}
+  .wrap{box-sizing:border-box;height:100%;padding:clamp(8px,3vh,16px) clamp(10px,3vw,18px);display:flex;flex-direction:column;justify-content:center;gap:clamp(4px,1.5vh,10px)}
+  .rates{display:flex;gap:clamp(12px,4vw,32px)}
+  .rate{flex:1;min-width:0;display:flex;align-items:baseline;gap:.35em}
+  .arrow{font-size:clamp(14px,4.5vh,24px);opacity:.65}
+  .n{font-size:clamp(20px,11vh,52px);font-weight:600;line-height:1;font-variant-numeric:tabular-nums}
+  .u{font-size:clamp(10px,3vh,16px);opacity:.65}
+  /* The graph takes whatever height is left once the numbers and the address line are placed. */
+  #graph{flex:1 1 auto;min-height:0;width:100%;display:block}
+  .note{font-size:clamp(10px,2.6vh,13px);color:#8b93a0;letter-spacing:.04em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  /* The host says which way round the tile is: on-light means dark text on a light body. */
+  html.on-light body{color:var(--on-surface,#0b0d10)}
+  html.on-light .note{color:var(--on-surface,#0b0d10);opacity:.75}
+  /* Compact: the bar draws no title and no surface, so only the two numbers are left. */
+  html.compact .wrap{padding:0 calc(var(--h) * .16);justify-content:center;gap:0}
+  html.compact .rates{gap:calc(var(--h) * .22)}
+  html.compact #graph,html.compact .note{display:none}
+  html.compact .n{font-size:calc(var(--h) * .34)}
+  html.compact .arrow{font-size:calc(var(--h) * .24)}
+  html.compact .u{font-size:calc(var(--h) * .17)}
+  html.compact.slot-right .wrap{align-items:flex-end}
+</style></head><body><div class="wrap">
+<div class="rates">
+  <div class="rate"><span class="arrow">↓</span><span class="n" id="down">0</span><span class="u" id="downUnit"></span></div>
+  <div class="rate"><span class="arrow">↑</span><span class="n" id="up">0</span><span class="u" id="upUnit"></span></div>
+</div>
+<canvas id="graph"></canvas>
+<div class="note" id="addr"></div>
+</div>
+<script>
+  var L = {
+    bytes: { fr: 'o/s', en: 'B/s' },
+    kilo: { fr: 'Ko/s', en: 'kB/s' },
+    mega: { fr: 'Mo/s', en: 'MB/s' },
+    giga: { fr: 'Go/s', en: 'GB/s' },
+    offline: { fr: 'Aucune connexion', en: 'No connection' }
+  }
+
+  /* One number and one unit, so the unit can stay small next to a big figure. */
+  function rate(b) {
+    if (b >= 1073741824) return [(b / 1073741824).toFixed(1), Fremkit.t(L.giga)]
+    if (b >= 1048576) return [(b / 1048576).toFixed(1), Fremkit.t(L.mega)]
+    if (b >= 1024) return [String(Math.round(b / 1024)), Fremkit.t(L.kilo)]
+    return [String(Math.round(b)), Fremkit.t(L.bytes)]
+  }
+
+  Fremkit.whenReady(function () {
+    var last = null
+    var canvas = document.getElementById('graph')
+    var ctx = canvas.getContext('2d')
+    document.documentElement.style.setProperty('--h', Fremkit.size.px.height + 'px')
+
+    function accent() {
+      var css = getComputedStyle(document.documentElement)
+      /* Under accent-fill the body *is* the accent, so a line drawn in it would be invisible. */
+      if (document.documentElement.classList.contains('accent-fill')) {
+        return css.getPropertyValue('--on-surface').trim() || '#0b0d10'
+      }
+      return css.getPropertyValue('--accent').trim() || '#d9b36a'
+    }
+
+    /* Both series share one scale, so the graph says which way the traffic actually went. */
+    function drawGraph(history) {
+      var ratio = window.devicePixelRatio || 1
+      var w = canvas.clientWidth, h = canvas.clientHeight
+      if (w <= 0 || h <= 0) return
+      canvas.width = Math.round(w * ratio); canvas.height = Math.round(h * ratio)
+      ctx.setTransform(ratio, 0, 0, ratio, 0, 0)
+      ctx.clearRect(0, 0, w, h)
+      if (!history || history.length < 2) return
+      var peak = 1
+      for (var i = 0; i < history.length; i++) peak = Math.max(peak, history[i][0], history[i][1])
+      var step = w / (history.length - 1)
+      var colour = accent()
+      function series(index, alpha) {
+        ctx.beginPath()
+        for (var i = 0; i < history.length; i++) {
+          var y = h - 1 - (history[i][index] / peak) * (h - 2)
+          if (i === 0) ctx.moveTo(0, y); else ctx.lineTo(i * step, y)
+        }
+        ctx.globalAlpha = alpha
+        ctx.strokeStyle = colour
+        ctx.lineWidth = 1.5
+        ctx.lineJoin = 'round'
+        ctx.stroke()
+        ctx.globalAlpha = 1
+      }
+      series(0, 1)
+      series(1, 0.45)
+    }
+
+    function render() {
+      document.documentElement.lang = Fremkit.locale
+      var showGraph = Fremkit.settings.showGraph !== false
+      var showAddress = Fremkit.settings.showAddress !== false
+      var d = last
+      canvas.style.display = showGraph && !Fremkit.compact ? 'block' : 'none'
+      var note = document.getElementById('addr')
+      note.style.display = showAddress && !Fremkit.compact ? 'block' : 'none'
+      if (!d || d.error) {
+        document.getElementById('down').textContent = '0'
+        document.getElementById('up').textContent = '0'
+        document.getElementById('downUnit').textContent = Fremkit.t(L.kilo)
+        document.getElementById('upUnit').textContent = Fremkit.t(L.kilo)
+        note.textContent = d && d.error ? '' : ''
+        return
+      }
+      var down = rate(d.downBps || 0), up = rate(d.upBps || 0)
+      document.getElementById('down').textContent = down[0]
+      document.getElementById('downUnit').textContent = down[1]
+      document.getElementById('up').textContent = up[0]
+      document.getElementById('upUnit').textContent = up[1]
+      if (!d.iface) note.textContent = Fremkit.t(L.offline)
+      else note.textContent = [d.iface, d.ssid, d.ip].filter(Boolean).join(' · ')
+      if (showGraph && !Fremkit.compact) drawGraph(d.history)
+    }
+
+    render()
+    Fremkit.subscribe('network', function (d) { last = d; render() })
+    Fremkit.onLocale(render)
+    Fremkit.onSettings(render)
+    Fremkit.onResize(function (size) {
+      document.documentElement.style.setProperty('--h', size.px.height + 'px')
+      render()
+    })
+  })
+</script></body></html>

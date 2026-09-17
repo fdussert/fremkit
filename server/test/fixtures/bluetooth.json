@@ -1,0 +1,55 @@
+{
+  "SPBluetoothDataType": [
+    {
+      "controller_properties": {
+        "controller_address": "AA:BB:CC:FF:FF:FF",
+        "controller_chipset": "Apple N1",
+        "controller_state": "attrib_on"
+      },
+      "device_connected": [
+        {
+          "Magic Keyboard": {
+            "device_address": "AA:BB:CC:00:00:01",
+            "device_firmwareVersion": "3.1.9",
+            "device_minorType": "Keyboard",
+            "device_productID": "0x0322",
+            "device_vendorID": "0x004C"
+          }
+        },
+        {
+          "Magic Trackpad": {
+            "device_address": "AA:BB:CC:00:00:02",
+            "device_minorType": "Magic Trackpad",
+            "device_productID": "0x0324",
+            "device_vendorID": "0x004C"
+          }
+        },
+        {
+          "Wireless Earbuds": {
+            "device_address": "AA:BB:CC:00:00:04",
+            "device_minorType": "Headphones",
+            "device_batteryLevelLeft": "72%",
+            "device_batteryLevelRight": "68%",
+            "device_batteryLevelCase": "100%"
+          }
+        },
+        {
+          "Game Controller": {
+            "device_address": "AA:BB:CC:00:00:05",
+            "device_minorType": "Gamepad",
+            "device_batteryLevelMain": 45
+          }
+        },
+        {
+          "Silent Speaker": {
+            "device_address": "AA:BB:CC:00:00:06",
+            "device_minorType": "Speaker"
+          }
+        }
+      ],
+      "device_not_connected": [
+        { "Some Phone": { "device_address": "AA:BB:CC:00:00:09", "device_rssi": "-45" } }
+      ]
+    }
+  ]
+}

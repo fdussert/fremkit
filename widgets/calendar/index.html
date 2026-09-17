@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Next events</title>
+<style>
+  html,body{margin:0;height:100%;background:transparent;color:#e6e8eb;font-family:-apple-system,system-ui,sans-serif;overflow:hidden}
+  .wrap{box-sizing:border-box;height:100%;padding:14px 18px;position:relative;display:flex;flex-direction:column;gap:6px}
+  .muted{color:#8b93a0}
+  .note{font-size:13px;color:#8b93a0;letter-spacing:.06em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  [hidden]{display:none!important}
+  /* The host says which way round the tile is: on-light means dark text on a light body. */
+  html.on-light body{color:var(--on-surface,#0b0d10)}
+  html.on-light .muted,html.on-light .note{color:var(--on-surface,#0b0d10);opacity:.75}
+</style>
+<style>
+  .banner{flex:0 0 auto;font-size:12px;letter-spacing:.06em;color:#f0a020;background:rgba(240,160,32,.12);border-radius:8px;padding:4px 8px}
+  .scroll{flex:1;min-height:0;overflow-y:auto;touch-action:pan-y;-webkit-overflow-scrolling:touch;
+    display:flex;flex-direction:column;gap:var(--gap,10px)}
+  .stale{opacity:.55}
+  .day{display:flex;flex-direction:column;gap:3px}
+  .day>h2{margin:0;font-size:var(--head,12px);font-weight:600;letter-spacing:.08em;text-transform:uppercase;
+    color:#8b93a0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  html.on-light .day>h2{color:var(--on-surface,#0b0d10);opacity:.7}
+  .ev{display:flex;align-items:baseline;gap:8px;min-width:0;padding:2px 0}
+  /* Today's events that are already over stay listed, out of the way. */
+  .ev.past{opacity:.45}
+  .dot{flex:0 0 auto;align-self:center;width:9px;height:9px;border-radius:5px;background:#5f6771}
+  .when{flex:0 0 auto;font-size:var(--body,15px);font-variant-numeric:tabular-nums;color:#8b93a0}
+  html.on-light .when{color:var(--on-surface,#0b0d10);opacity:.75}
+  .what{flex:1;min-width:0;font-size:var(--body,15px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .where{font-size:calc(var(--body,15px) * .8);color:#8b93a0}
+  html.on-light .where{color:var(--on-surface,#0b0d10);opacity:.6}
+  /* Narrow tiles drop the day headings' spacing and the location, handled in the script. */
+  html.tight .scroll{--gap:6px}
+</style>
+<style>
+  /* Compact: the navigation bar draws one line, no title and no surface of its own. --h is the
+     bar's height in pixels, pushed by the script, so everything scales with it. */
+  html.compact,html.compact body{overflow:hidden}
+  html.compact .wrap{display:none}
+  .cwrap{display:none}
+  html.compact .cwrap{display:flex;box-sizing:border-box;height:100%;width:100%;align-items:center;
+    padding:0 calc(var(--h,80px) * .10)}
+  html.compact .cline{min-width:0;display:flex;align-items:center;gap:calc(var(--h,80px) * .08);
+    font-size:clamp(13px, calc(var(--h,80px) * .30), 26px);font-weight:600;line-height:1.1;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  html.compact .cdot{flex:0 0 auto;width:calc(var(--h,80px) * .12);height:calc(var(--h,80px) * .12);
+    max-width:12px;max-height:12px;border-radius:50%}
+  html.compact .ctime{font-variant-numeric:tabular-nums;color:#8b93a0}
+  html.compact .ctitle{min-width:0;overflow:hidden;text-overflow:ellipsis}
+  /* Right cluster: the bar pushes the iframe against the dots, so its content hugs that edge too. */
+  html.compact.slot-right .cwrap{justify-content:flex-end;text-align:right}
+</style></head>
+<body><div class="wrap">
+  <div class="banner" id="banner" hidden></div>
+  <div class="scroll" id="scroll"></div>
+  <div class="note" id="empty" hidden></div>
+</div>
+<div class="cwrap"><div class="cline"><i class="cdot" id="cdot" hidden></i><span class="ctime" id="ctime"></span><span class="ctitle" id="ctitle"></span></div></div>
+<script>
+  var L = {
+    today: { fr: 'Aujourd’hui', en: 'Today' },
+    tomorrow: { fr: 'Demain', en: 'Tomorrow' },
+    allDay: { fr: 'Journée', en: 'All day' },
+    untitled: { fr: '(sans titre)', en: '(untitled)' },
+    noCalendar: { fr: 'Aucun calendrier sélectionné', en: 'No calendar selected' },
+    loading: { fr: 'Chargement…', en: 'Loading…' },
+    empty: { fr: 'Aucun rendez-vous à venir', en: 'No upcoming events' },
+    free: { fr: 'Libre', en: 'Free' },
+    offline: { fr: 'Hors ligne', en: 'Offline' },
+    invalid: { fr: 'Calendrier illisible', en: 'Calendar unreadable' },
+    unconfigured: { fr: 'Calendrier non configuré', en: 'Calendar not configured' }
+  }
+  /** `en-GB` rather than `en`, so English keeps the 24-hour clock this dashboard reads in. */
+  var APP_FORMAT = { fr: 'fr-FR', en: 'en-GB' }
+  /** The compact line looks no further than this for the next event before saying "free". */
+  var COMPACT_HORIZON_MS = 24 * 3600 * 1000
+  var DAY_MS = 24 * 3600 * 1000
+
+  /** channel -> its last snapshot, and channel -> its unsubscribe. */
+  var snapshots = {}, unsubs = {}
+  var settings = {}, size = null
+
+  function format() { return APP_FORMAT[Fremkit.locale] || 'en-GB' }
+  function formatter(opts) { try { return new Intl.DateTimeFormat(format(), opts) } catch (e) { return null } }
+  function selected() { var v = settings.calendars; return Array.isArray(v) ? v : [] }
+  /** Local midnight of the day a timestamp falls in: the key events are grouped by. */
+  function dayStart(ms) { var d = new Date(ms); d.setHours(0, 0, 0, 0); return d.getTime() }
+
+  /** Every selected calendar's events, merged and in time order. */
+  function allEvents() {
+    var out = []
+    selected().forEach(function (id) {
+      var snap = snapshots['calendar:' + id]
+      if (snap && snap.events) out = out.concat(snap.events)
+    })
+    out.sort(function (a, b) { return a.start - b.start || String(a.title).localeCompare(String(b.title)) })
+    return out
+  }
+
+  /** The worst thing any selected calendar is currently saying, or '' when all is well. */
+  function worstError() {
+    var order = ['offline', 'invalid', 'unconfigured'], found = ''
+    selected().forEach(function (id) {
+      var err = (snapshots['calendar:' + id] || {}).error
+      if (err && (!found || order.indexOf(err) < order.indexOf(found))) found = err
+    })
+    return found
+  }
+
+  var timeFmt = null, dayFmt = null
+  function buildFormatters() {
+    timeFmt = formatter({ hour: '2-digit', hourCycle: 'h23', minute: '2-digit' })
+    dayFmt = formatter({ weekday: 'long', day: 'numeric', month: 'long' })
+  }
+  function clock(ms) { return timeFmt ? timeFmt.format(new Date(ms)) : '--:--' }
+  function title(ev) { return ev.title || Fremkit.t(L.untitled) }
+
+  function dayLabel(day, today) {
+    if (day === today) return Fremkit.t(L.today)
+    if (day === today + DAY_MS) return Fremkit.t(L.tomorrow)
+    return dayFmt ? dayFmt.format(new Date(day)) : ''
+  }
+
+  /** The time column: a range for a timed event, one word for an all-day one. */
+  function when(ev) {
+    if (ev.allDay) return Fremkit.t(L.allDay)
+    var start = clock(ev.start)
+    return ev.end > ev.start ? start + '–' + clock(ev.end) : start
+  }
+
+  function renderTile(now) {
+    var banner = document.getElementById('banner'), scroll = document.getElementById('scroll'), empty = document.getElementById('empty')
+    if (!selected().length) {
+      banner.hidden = true; scroll.hidden = true
+      empty.hidden = false; empty.textContent = Fremkit.t(L.noCalendar)
+      return
+    }
+    var known = selected().some(function (id) { return snapshots['calendar:' + id] })
+    var err = worstError()
+    banner.hidden = !err
+    if (err) banner.textContent = Fremkit.t(L[err] || L.offline)
+    if (!known) {
+      scroll.hidden = true
+      empty.hidden = false; empty.textContent = Fremkit.t(L.loading)
+      return
+    }
+
+    var days = Math.max(1, Number(settings.days) || 7)
+    var max = Math.max(1, Number(settings.max) || 8)
+    var today = dayStart(now)
+    var horizon = today + days * DAY_MS
+    // An event that started earlier today is still today's business until it is over.
+    var events = allEvents().filter(function (ev) { return ev.end > now && ev.start < horizon }).slice(0, max)
+
+    var showWhere = settings.showLocation !== false && !(size && size.w < 12)
+    var html = '', currentDay = null
+    events.forEach(function (ev) {
+      var day = dayStart(ev.start)
+      if (day !== currentDay) {
+        if (currentDay !== null) html += '</div>'
+        currentDay = day
+        html += '<div class="day"><h2>' + Fremkit.esc(dayLabel(day, today)) + '</h2>'
+      }
+      var past = ev.end <= now
+      html += '<div class="ev' + (past ? ' past' : '') + '">' +
+        // The colour comes from a connection's settings; only a #rrggbb reaches the attribute.
+        '<i class="dot" style="background:' + Fremkit.color(ev.color, '#5f6771') + '"></i>' +
+        '<span class="when">' + Fremkit.esc(when(ev)) + '</span>' +
+        '<span class="what">' + Fremkit.esc(title(ev)) +
+        (showWhere && ev.location ? ' <span class="where">' + Fremkit.esc(ev.location) + '</span>' : '') +
+        '</span></div>'
+    })
+    if (currentDay !== null) html += '</div>'
+
+    scroll.hidden = false
+    scroll.innerHTML = html
+    scroll.classList.toggle('stale', !!err)
+    empty.hidden = events.length > 0
+    empty.textContent = Fremkit.t(L.empty)
+  }
+
+  function renderCompact(now) {
+    var dot = document.getElementById('cdot'), time = document.getElementById('ctime'), name = document.getElementById('ctitle')
+    var next = null
+    if (selected().length) {
+      var list = allEvents()
+      for (var i = 0; i < list.length; i++) {
+        if (list[i].end > now && list[i].start < now + COMPACT_HORIZON_MS) { next = list[i]; break }
+      }
+    }
+    if (!next) {
+      dot.hidden = true
+      time.textContent = ''
+      name.textContent = Fremkit.t(L.free)
+      return
+    }
+    dot.hidden = false
+    dot.style.background = Fremkit.color(next.color, '#5f6771')
+    time.textContent = next.allDay ? Fremkit.t(L.allDay) : clock(next.start)
+    name.textContent = title(next)
+  }
+
+  function render() {
+    var now = Date.now()
+    document.documentElement.lang = Fremkit.locale
+    if (Fremkit.compact) renderCompact(now)
+    else renderTile(now)
+  }
+
+  /**
+   * Type sizes follow the tile, the way the other widgets scale: a small tile shows the same
+   * list, tighter. The bar's height drives the compact line through `--h` instead.
+   */
+  function applySize(next) {
+    size = next
+    var root = document.documentElement
+    if (next && next.px && Fremkit.compact) root.style.setProperty('--h', next.px.height + 'px')
+    if (!next) return
+    root.classList.toggle('tight', next.h < 6)
+    var body = next.h < 6 ? 13 : next.h < 10 ? 15 : 17
+    root.style.setProperty('--body', body + 'px')
+    root.style.setProperty('--head', (body - 3) + 'px')
+    render()
+  }
+
+  /**
+   * Applies the settings, live. Only the chosen calendars touch the subscriptions: the window,
+   * the cap and the location flag are applied at render time, so they need no resubscribe.
+   */
+  function applySettings(next) {
+    settings = next || {}
+    var wanted = {}
+    selected().forEach(function (id) { wanted['calendar:' + id] = true })
+    Object.keys(unsubs).forEach(function (channel) {
+      if (wanted[channel]) return
+      unsubs[channel]()
+      delete unsubs[channel]
+      // The events of a calendar that was unchecked are not this widget's business any more.
+      delete snapshots[channel]
+    })
+    Object.keys(wanted).forEach(function (channel) {
+      if (unsubs[channel]) return
+      unsubs[channel] = Fremkit.subscribe(channel, function (data) { snapshots[channel] = data; render() })
+    })
+    render()
+  }
+
+  Fremkit.whenReady(function () {
+    buildFormatters()
+    document.documentElement.lang = Fremkit.locale
+    Fremkit.onLocale(function () { buildFormatters(); render() })
+    applySize(Fremkit.size)
+    Fremkit.onResize(applySize)
+    applySettings(Fremkit.settings)
+    // Live preview and a calendar picked after the widget was placed, without a reload.
+    Fremkit.onSettings(applySettings)
+    // Minute by minute: what moves is which events are over and which day is "today".
+    setInterval(render, 30000)
+  })
+</script></body></html>

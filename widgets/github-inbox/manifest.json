@@ -1,0 +1,19 @@
+{ "id": "github-inbox",
+  "name": { "fr": "Boîte GitHub", "en": "GitHub inbox" },
+  "version": "1.1.0",
+  "description": { "fr": "Notifications, revues demandées et pull requests", "en": "Notifications, review requests and pull requests" },
+  "icon": "github", "minSize": [12, 5], "defaultSize": [20, 10],
+  "compact": { "width": 5 },
+  "subscriptions": ["github:*"], "commands": ["github:*"],
+  "settingsSchema": {
+    "connection": { "type": "connection", "connectionType": "github",
+      "label": { "fr": "Connexion", "en": "Connection" } },
+    "showNotifications": { "type": "boolean", "default": true, "scope": "tile",
+      "label": { "fr": "Afficher les notifications", "en": "Show notifications" } },
+    "showReviews": { "type": "boolean", "default": true, "scope": "tile",
+      "label": { "fr": "Afficher les revues demandées", "en": "Show review requests" } },
+    "showMyPrs": { "type": "boolean", "default": false, "scope": "tile",
+      "label": { "fr": "Afficher mes pull requests", "en": "Show my pull requests" } },
+    "max": { "type": "number", "default": 12, "scope": "tile",
+      "label": { "fr": "Lignes affichées", "en": "Rows shown" } }
+  } }

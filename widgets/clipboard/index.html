@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Clipboard</title>
+<style>
+  html,body{margin:0;height:100%;background:transparent;color:#e6e8eb;font-family:-apple-system,system-ui,sans-serif;overflow:hidden}
+  .wrap{box-sizing:border-box;height:100%;padding:14px 18px;position:relative;display:flex;flex-direction:column;gap:8px}
+  .note{font-size:13px;color:#8b93a0;letter-spacing:.06em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  [hidden]{display:none!important}
+  html.on-light body{color:var(--on-surface,#0b0d10)}
+  html.on-light .note{color:var(--on-surface,#0b0d10);opacity:.75}
+</style>
+<style>
+  .list{flex:1;min-height:0;overflow-y:auto;touch-action:pan-y;-webkit-overflow-scrolling:touch;
+    display:flex;flex-direction:column;gap:6px}
+  .row{box-sizing:border-box;width:100%;font:inherit;border:0;border-radius:10px;min-height:44px;padding:8px 12px;
+    background:rgba(128,128,128,.18);color:inherit;display:flex;align-items:center;gap:10px;text-align:left;cursor:pointer}
+  .row:active{background:var(--accent,#d9b36a);color:var(--on-accent,#0b0d10)}
+  .row .text{flex:1;min-width:0;font-size:var(--body,15px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .row.masked .text{opacity:.7;font-style:italic}
+  .row .age{flex:0 0 auto;font-size:calc(var(--body,15px) * .78);color:#8b93a0;font-variant-numeric:tabular-nums}
+  html.on-light .row .age{color:var(--on-surface,#0b0d10);opacity:.6}
+  .row:active .age{color:inherit;opacity:.8}
+  .foot{flex:0 0 auto;display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .clear{font:inherit;font-size:calc(var(--body,15px) * .82);border:0;border-radius:8px;padding:6px 12px;
+    background:rgba(128,128,128,.18);color:inherit;cursor:pointer}
+  .clear:active{background:rgba(179,38,30,.4)}
+  .toast{position:absolute;left:0;right:0;bottom:8px;text-align:center;font-size:13px;
+    color:var(--accent,#d9b36a);pointer-events:none}
+  html.accent-fill .toast{color:var(--on-surface,#0b0d10)}
+  html.tight .row{min-height:36px;padding:6px 10px}
+</style></head>
+<body><div class="wrap">
+  <div class="list" id="list"></div>
+  <div class="note" id="empty" hidden></div>
+  <div class="foot"><span class="note" id="count"></span><button class="clear" id="clear"></button></div>
+  <div class="toast" id="toast" hidden></div>
+</div>
+<script>
+  var L = {
+    loading: { fr: 'Chargement…', en: 'Loading…' },
+    empty: { fr: 'Rien de copié pour l’instant', en: 'Nothing copied yet' },
+    secret: { fr: '••• secret', en: '••• secret' },
+    copied: { fr: 'Copié', en: 'Copied' },
+    failed: { fr: 'Copie impossible', en: 'Could not copy' },
+    clear: { fr: 'Effacer', en: 'Clear' },
+    now: { fr: 'à l’instant', en: 'just now' },
+    minutes: { fr: 'il y a {n} min', en: '{n} min ago' },
+    hours: { fr: 'il y a {n} h', en: '{n} h ago' },
+    days: { fr: 'il y a {n} j', en: '{n} d ago' },
+    kept: { fr: '{n} entrées en mémoire', en: '{n} entries in memory' }
+  }
+  var TOAST_MS = 1400
+
+  var settings = {}, snapshot = null, ticker = null
+
+
+  /** How long ago, in the coarse steps a glanceable row can carry. */
+  function age(at) {
+    var seconds = Math.max(0, Math.round((Date.now() - at) / 1000))
+    if (seconds < 60) return Fremkit.t(L.now)
+    if (seconds < 3600) return Fremkit.t(L.minutes, { n: Math.floor(seconds / 60) })
+    if (seconds < 86400) return Fremkit.t(L.hours, { n: Math.floor(seconds / 3600) })
+    return Fremkit.t(L.days, { n: Math.floor(seconds / 86400) })
+  }
+
+  function toast(text) {
+    var node = document.getElementById('toast')
+    node.textContent = text
+    node.hidden = false
+    clearTimeout(toast.timer)
+    toast.timer = setTimeout(function () { node.hidden = true }, TOAST_MS)
+  }
+
+  function copy(entry) {
+    Fremkit.sendCommand('clipboard', 'copy', { id: entry.id })
+      .then(function (result) { toast(Fremkit.t(result && result.ok ? L.copied : L.failed)) })
+      .catch(function () { toast(Fremkit.t(L.failed)) })
+  }
+
+  function rowFor(entry) {
+    var row = Fremkit.el('button', 'row' + (entry.masked ? ' masked' : ''))
+    // A masked entry's text never reaches this page: only the mark that there is one.
+    row.appendChild(Fremkit.el('div', 'text', entry.masked ? Fremkit.t(L.secret) : entry.preview))
+    if (settings.showTime !== false) row.appendChild(Fremkit.el('div', 'age', age(entry.at)))
+    row.onclick = function () { copy(entry) }
+    return row
+  }
+
+  function entries() {
+    var all = snapshot && Array.isArray(snapshot.entries) ? snapshot.entries : []
+    var max = Math.max(1, Math.min(20, Math.round(Number(settings.max)) || 8))
+    return all.slice(0, max)
+  }
+
+  function render() {
+    document.documentElement.lang = Fremkit.locale
+    var list = document.getElementById('list'), empty = document.getElementById('empty')
+    var count = document.getElementById('count')
+    document.getElementById('clear').textContent = Fremkit.t(L.clear)
+    if (!snapshot) {
+      list.hidden = true
+      empty.hidden = false
+      empty.textContent = Fremkit.t(L.loading)
+      count.textContent = ''
+      return
+    }
+    var shown = entries()
+    list.hidden = shown.length === 0
+    list.innerHTML = ''
+    shown.forEach(function (e) { list.appendChild(rowFor(e)) })
+    empty.hidden = shown.length > 0
+    empty.textContent = Fremkit.t(L.empty)
+    count.textContent = Fremkit.t(L.kept, { n: snapshot.entries.length })
+  }
+
+  function applySize(next) {
+    if (!next) return
+    var root = document.documentElement
+    root.classList.toggle('tight', next.h < 6)
+    root.style.setProperty('--body', (next.h < 6 ? 13 : next.h < 10 ? 15 : 17) + 'px')
+    render()
+  }
+
+  Fremkit.whenReady(function () {
+    document.documentElement.lang = Fremkit.locale
+    Fremkit.onLocale(render)
+    settings = Fremkit.settings || {}
+    applySize(Fremkit.size)
+    Fremkit.onResize(applySize)
+    Fremkit.onSettings(function (next) { settings = next || {}; render() })
+    Fremkit.subscribe('clipboard', function (data) { snapshot = data; render() })
+    document.getElementById('clear').onclick = function () {
+      Fremkit.sendCommand('clipboard', 'clear', {}).catch(function () { toast(Fremkit.t(L.failed)) })
+    }
+    // The ages are the only thing that moves between two snapshots.
+    ticker = setInterval(function () { if (snapshot) render() }, 30000)
+    window.addEventListener('pagehide', function () { clearInterval(ticker) })
+    render()
+  })
+</script></body></html>

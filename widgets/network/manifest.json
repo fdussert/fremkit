@@ -1,0 +1,15 @@
+{ "id": "network",
+  "name": { "fr": "Réseau", "en": "Network" },
+  "version": "2.0.0",
+  "description": { "fr": "Débit réseau en direct", "en": "Live network throughput" },
+  "icon": "network",
+  "minSize": [8, 4],
+  "defaultSize": [12, 4],
+  "compact": { "width": 6 },
+  "subscriptions": ["network"],
+  "settingsSchema": {
+    "showGraph": { "type": "boolean", "default": true, "scope": "tile",
+                   "label": { "fr": "Graphique de la dernière minute", "en": "Last-minute graph" } },
+    "showAddress": { "type": "boolean", "default": true, "scope": "tile",
+                     "label": { "fr": "Interface, IP et réseau Wi-Fi", "en": "Interface, IP and Wi-Fi network" } }
+  } }

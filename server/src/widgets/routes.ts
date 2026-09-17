@@ -1,0 +1,89 @@
+import type { FastifyInstance } from 'fastify'
+import '@fastify/static'
+import { readFile } from 'node:fs/promises'
+import { join, normalize } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { WIDGET_ID_RE } from '../config/schema.js'
+import type { WidgetCatalog } from './catalog.js'
+import { tr } from '../i18n.js'
+
+const BRIDGE_PATH = fileURLToPath(new URL('../bridge/fremkit.js', import.meta.url))
+const BRIDGE_TAG = '<script src="/fremkit.js"></script>'
+
+/**
+ * What a widget may do, said in a header rather than left to the iframe.
+ *
+ * A widget is third-party code. The dashboard runs it in a `sandbox="allow-scripts"` iframe, but
+ * that only binds the frame: a browser pointed straight at `/widgets/<id>/index.html` — a link,
+ * a redirect, a page opening a window — used to run the widget with the full rights of
+ * `http://127.0.0.1:4242`, the origin the WebSocket and the connections API trust. The header
+ * travels with the bytes, so it holds wherever the document ends up.
+ *
+ * `sandbox allow-scripts` without `allow-same-origin` puts the document in an opaque origin:
+ * scripts run, but nothing they do counts as coming from us. Everything else is an allow-list of
+ * what the widgets in this repository actually need — `'self'` for their own files and the
+ * bridge, `data:`/`blob:` for what they generate, `i.scdn.co` for the album art the local
+ * Spotify app hands us as an https URL. No `connect-src` at all: every network call goes through
+ * `Fremkit.fetch`, which asks the host, which asks the proxy, which checks the manifest.
+ */
+export const WIDGET_CSP = [
+  'sandbox allow-scripts',
+  "default-src 'none'",
+  "script-src 'self' 'unsafe-inline'",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: blob: https://i.scdn.co",
+  "media-src 'self' data:",
+  "font-src 'self'",
+  "connect-src 'none'",
+  "frame-src 'none'",
+  "form-action 'none'",
+  "base-uri 'none'",
+].join('; ')
+
+export function injectBridge(html: string): string {
+  const i = html.search(/<head[^>]*>/i)
+  if (i >= 0) {
+    const end = html.indexOf('>', i) + 1
+    return html.slice(0, end) + BRIDGE_TAG + html.slice(end)
+  }
+  return BRIDGE_TAG + html
+}
+
+export async function widgetRoutes(app: FastifyInstance, opts: { catalog: WidgetCatalog }): Promise<void> {
+  const bridge = await readFile(BRIDGE_PATH, 'utf8')
+
+  app.get('/fremkit.js', async (_req, reply) => reply.type('application/javascript; charset=utf-8').send(bridge))
+
+  app.get('/api/widgets', async () => ({ widgets: Object.fromEntries(opts.catalog.manifests), errors: opts.catalog.errors }))
+
+  app.post('/api/widgets/rescan', async () => {
+    await opts.catalog.scan()
+    return { widgets: Object.fromEntries(opts.catalog.manifests), errors: opts.catalog.errors }
+  })
+
+  app.get<{ Params: { id: string; '*': string } }>('/widgets/:id/*', async (req, reply) => {
+    const { id } = req.params
+    const rel = req.params['*'] || 'index.html'
+    // On every answer, not just the entry point: a widget's second HTML file is the same
+    // untrusted code, and on a case-insensitive filesystem so is `Index.html`.
+    reply.header('content-security-policy', WIDGET_CSP)
+    if (!WIDGET_ID_RE.test(id) || !opts.catalog.get(id)) return reply.code(404).send({ error: tr(undefined, 'widgets.unknown') })
+    const safeRel = normalize(rel)
+    if (safeRel.startsWith('..') || safeRel.includes('/../')) return reply.code(400).send({ error: 'chemin invalide' })
+    if (safeRel.toLowerCase() === 'index.html') {
+      let html: string
+      try {
+        html = await readFile(join(opts.catalog.dir, id, 'index.html'), 'utf8')
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code === 'ENOENT') return reply.code(404).send({ error: 'widget introuvable' })
+        throw err
+      }
+      return reply
+        .type('text/html; charset=utf-8')
+        .header('cache-control', 'no-store')
+        .send(injectBridge(html))
+    }
+    // A widget folder has no business serving its own dotfiles, whatever an author drops in it.
+    return reply.sendFile(join(id, safeRel), opts.catalog.dir, { dotfiles: 'deny' })
+  })
+}

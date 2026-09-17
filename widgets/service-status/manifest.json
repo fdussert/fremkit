@@ -1,0 +1,29 @@
+{ "id": "service-status",
+  "name": { "fr": "État des services", "en": "Service status" },
+  "version": "1.0.0",
+  "description": { "fr": "Pastille verte, orange ou rouge par service, avec la latence et l’historique",
+                   "en": "A green, amber or red dot per service, with latency and history" },
+  "icon": "activity", "minSize": [8, 4], "defaultSize": [8, 6],
+  "compact": { "width": 4 },
+  "commands": ["service-status"],
+  "settingsSchema": {
+    "services": { "type": "list", "default": [], "max": 20,
+      "label": { "fr": "Services", "en": "Services" },
+      "itemSchema": {
+        "name": { "type": "string", "default": "", "label": { "fr": "Nom", "en": "Name" } },
+        "kind": { "type": "enum", "default": "http",
+          "label": { "fr": "Type", "en": "Kind" },
+          "options": [{ "value": "http", "label": { "fr": "HTTP", "en": "HTTP" } },
+                      { "value": "tcp", "label": { "fr": "TCP", "en": "TCP" } },
+                      { "value": "ping", "label": { "fr": "Ping", "en": "Ping" } }] },
+        "url": { "type": "string", "default": "",
+          "label": { "fr": "Cible (lien http(s), hôte:port, ou hôte)",
+                     "en": "Target (http(s) link, host:port, or host)" } }
+      } },
+    "interval": { "type": "number", "default": 30,
+      "label": { "fr": "Intervalle (secondes, 10 minimum)", "en": "Interval (seconds, 10 minimum)" } },
+    "showLatency": { "type": "boolean", "default": true,
+      "label": { "fr": "Afficher la latence", "en": "Show latency" }, "scope": "tile" },
+    "columns": { "type": "number", "default": 2,
+      "label": { "fr": "Colonnes", "en": "Columns" }, "scope": "tile" }
+  } }

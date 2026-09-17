@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Sessions Claude</title>
+<style>
+  html,body{margin:0;height:100%;background:transparent;color:#e6e8eb;font-family:-apple-system,system-ui,sans-serif;overflow:hidden}
+  .wrap{box-sizing:border-box;height:100%;padding:14px 18px;position:relative;display:flex;flex-direction:column;justify-content:center;gap:6px}
+  .big{font-size:44px;font-weight:600;line-height:1}
+  .bar{height:8px;border-radius:4px;background:#252a32;overflow:hidden}
+  .bar>i{display:block;height:100%;background:var(--accent, #d9b36a);width:0;transition:width .4s}
+  .row{display:flex;justify-content:space-between;font-size:15px}
+  .muted{color:#8b93a0}
+  button{font:inherit;border:0;border-radius:10px;background:#252a32;color:#e6e8eb;padding:10px 14px;font-size:18px}
+  button:active{background:var(--accent, #d9b36a)}
+  .note{font-size:13px;color:#8b93a0;letter-spacing:.06em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  /* The host says which way round the tile is: on-light means dark text on a light body. */
+  html.on-light body{color:var(--on-surface,#0b0d10)}
+  html.on-light .muted,html.on-light .note{color:var(--on-surface,#0b0d10);opacity:.75}
+  /* A bar painted in the accent vanishes when the body *is* the accent, so it flips to the text colour. */
+  html.on-light .bar,html.accent-fill .bar{background:rgba(128,128,128,.35)}
+  html.accent-fill .bar>i{background:var(--on-surface,#0b0d10)}
+</style>
+<style>
+  .wrap{justify-content:flex-start;gap:8px}
+  .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:8px;flex:1;align-content:start;overflow-y:auto;touch-action:pan-y;-webkit-overflow-scrolling:touch;padding-right:4px}
+  .card{position:relative;border-radius:12px;padding:10px 12px;background:#1a1e24;border-left:6px solid #3a404a;display:flex;flex-direction:column;gap:4px;min-height:64px}
+  .card.working{border-color:var(--accent, #d9b36a)}
+  .card.permission{border-color:#f0a020;animation:pulse 1s infinite alternate}
+  .card.done{border-color:#2fb36b}
+  .card.error{border-color:#d9463f}
+  .card.idle{border-color:#3a404a;opacity:.7}
+  @keyframes pulse{from{background:#1a1e24}to{background:#3a2f14}}
+  .head{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+  .badge{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:#8b93a0;white-space:nowrap}
+  .line{font-size:14px;color:#c3c8d0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .meta{display:flex;gap:10px;font-size:12px;color:#8b93a0;align-items:center}
+  .sub{background:var(--accent, #d9b36a);color:var(--on-accent,#0b0d10);border-radius:8px;padding:0 6px;font-size:11px}
+  [hidden]{display:none!important}
+  .hdr{display:flex;justify-content:space-between;align-items:baseline;flex:0 0 auto}
+  .stats{font-size:12px;color:#8b93a0;letter-spacing:.04em}
+  .title{font-size:18px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .where{font-size:12px;color:#8b93a0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .foot{display:flex;align-items:center;gap:8px;margin-top:auto;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;color:#c3c8d0;background:#0f1216;border-radius:8px;padding:5px 8px}
+  .foot .model{color:#e6e8eb;font-weight:600}
+  .foot .sep{color:#8b93a0}
+  .foot .ctx{flex:1;height:6px;border-radius:3px;background:#252a32;overflow:hidden}.foot .ctx>i{display:block;height:100%}
+  .ok{background:#2fb36b}.warn{background:#f0a020}.hot{background:#d9463f}
+  .q{font-size:14px;color:#e6e8eb;white-space:normal}.q b{display:block;font-size:12px;color:#f0a020;text-transform:uppercase;letter-spacing:.06em}.q ul{margin:2px 0 0 16px;padding:0;color:#c3c8d0;font-size:13px}
+</style>
+</head>
+<body><div class="wrap"><div class="hdr"><span class="note" id="count"></span><span class="stats" id="stats"></span></div><div class="cards" id="cards"></div></div>
+<script>
+  var L = {
+    working: { fr: 'en travail', en: 'working' },
+    permission: { fr: 'attend ta permission', en: 'waiting for you' },
+    done: { fr: 'réponse prête', en: 'answer ready' },
+    error: { fr: 'erreur', en: 'error' },
+    idle: { fr: 'inactif', en: 'idle' },
+    seconds: { fr: '{n} s', en: '{n} s' },
+    minutes: { fr: '{n} min', en: '{n} min' },
+    hoursMinutes: { fr: '{h} h {m} min', en: '{h} h {m} min' },
+    millions: { fr: '{n} M', en: '{n}M' },
+    thousands: { fr: '{n} k', en: '{n}k' },
+    discovered: { fr: 'ouverte, pas d’activité vue', en: 'open, no activity seen' },
+    silentFor: { fr: 'silence depuis {delay}', en: 'silent for {delay}' },
+    agentOne: { fr: '1 agent', en: '1 agent' },
+    agentMany: { fr: '{n} agents', en: '{n} agents' },
+    contextUsed: { fr: 'ctx {tokens}', en: 'ctx {tokens}' },
+    percent: { fr: '{n} %', en: '{n}%' },
+    empty: { fr: 'Aucune session Claude', en: 'No Claude session' },
+    today: { fr: '{sessions} aujourd’hui · {done} · {commits}', en: '{sessions} today · {done} · {commits}' },
+    doneOne: { fr: '1 terminée', en: '1 finished' },
+    doneMany: { fr: '{n} terminées', en: '{n} finished' },
+    commitOne: { fr: '1 commit', en: '1 commit' },
+    commitMany: { fr: '{n} commits', en: '{n} commits' }
+  }
+  var LABELS = { working: L.working, permission: L.permission, done: L.done, error: L.error, idle: L.idle }
+  var sessions = [], today = null, nodes = {}
+  function ago(ms) {
+    var s = Math.max(0, Math.round(ms / 1000))
+    if (s < 60) return Fremkit.t(L.seconds, { n: s })
+    var m = Math.floor(s / 60)
+    if (m < 60) return Fremkit.t(L.minutes, { n: m })
+    return Fremkit.t(L.hoursMinutes, { h: Math.floor(m / 60), m: m % 60 })
+  }
+  /** A decimal separator follows the language: a comma in French, a point in English. */
+  function dec(n, digits) { var text = n.toFixed(digits); return Fremkit.locale === 'fr' ? text.replace('.', ',') : text }
+  function tokens(n) {
+    if (n >= 1e6) return Fremkit.t(L.millions, { n: dec(n / 1e6, 1) })
+    if (n >= 1e3) return Fremkit.t(L.thousands, { n: Math.round(n / 1e3) })
+    return String(n)
+  }
+  function cls(p) { return p < 60 ? 'ok' : p < 85 ? 'warn' : 'hot' }
+  function lineFor(s, now) {
+    if (s.question) return ''
+    if (s.discovered) return Fremkit.t(L.discovered)
+    var tool = s.tool ? s.tool + (s.toolDetail ? ' · ' + s.toolDetail : '') : ''
+    if (s.state === 'working') return tool
+    if (s.state === 'permission') return tool || s.lastMessage || ''
+    if (s.state === 'error') return s.error || ''
+    if (s.state === 'done') return (s.lastMessage ? s.lastMessage + ' · ' : '') + Fremkit.t(L.silentFor, { delay: ago(now - s.lastEventAt) })
+    if (s.state === 'idle') return Fremkit.t(L.silentFor, { delay: ago(now - s.lastEventAt) })
+    return ''
+  }
+  function metaFor(s, now) {
+    var meta = '<span>' + ago(now - s.since) + '</span>'
+    if (typeof s.costUsd === 'number') meta += '<span>$' + s.costUsd.toFixed(2) + '</span>'
+    if (s.subagents > 0) meta += '<span class="sub">' + Fremkit.esc(plural(s.subagents, L.agentOne, L.agentMany)) + '</span>'
+    return meta
+  }
+  function footFor(s) {
+    var model = s.modelId ? s.modelId.replace(/^claude-/, '') : s.model
+    if (!model) return ''
+    var html = '<span class="model">' + Fremkit.esc(model) + '</span>'
+    if (s.context) html += '<span class="sep">·</span><span>' + Fremkit.esc(Fremkit.t(L.contextUsed, { tokens: tokens(s.context.used) })) + '</span><span class="sep">·</span><span class="ctx"><i class="' + cls(s.context.pct) + '" style="width:' + Math.min(100, s.context.pct) + '%"></i></span><span>' + Fremkit.esc(Fremkit.t(L.percent, { n: Math.round(s.context.pct) })) + '</span>'
+    return html
+  }
+  function build(s) {
+    var card = document.createElement('div')
+    card.setAttribute('data-id', s.sessionId)
+    card.innerHTML = '<div class="head"><span class="title"></span><span class="badge"></span></div><div class="where"></div><div class="q"></div><div class="line"></div><div class="meta"></div><div class="foot"></div>'
+    return card
+  }
+  function update(card, s, now) {
+    if (card.getAttribute('data-state') !== s.state) { card.className = 'card ' + s.state; card.setAttribute('data-state', s.state) }
+    if (s.discovered) card.setAttribute('data-discovered', '1'); else card.removeAttribute('data-discovered')
+    card.querySelector('.title').textContent = s.title || s.project
+    card.querySelector('.badge').textContent = LABELS[s.state] ? Fremkit.t(LABELS[s.state]) : s.state
+    var where = s.branch ? s.project + '@' + s.branch : (s.title ? s.project : ''), whereEl = card.querySelector('.where')
+    whereEl.textContent = where; whereEl.hidden = !where
+    var qEl = card.querySelector('.q')
+    if (s.question) {
+      qEl.innerHTML = (s.question.header ? '<b>' + Fremkit.esc(s.question.header) + '</b>' : '') + Fremkit.esc(s.question.text) + (s.question.options.length ? '<ul>' + s.question.options.map(function (o) { return '<li>' + Fremkit.esc(o) + '</li>' }).join('') + '</ul>' : '')
+      qEl.hidden = false
+    } else {
+      qEl.hidden = true
+    }
+    var line = lineFor(s, now), lineEl = card.querySelector('.line')
+    lineEl.textContent = line; lineEl.hidden = !line
+    card.querySelector('.meta').innerHTML = metaFor(s, now)
+    var footHtml = footFor(s), footEl = card.querySelector('.foot')
+    footEl.innerHTML = footHtml; footEl.hidden = !footHtml
+  }
+  /** Only exactly one takes the singular: zero reads as a plural in both languages. */
+  function plural(n, one, many) { return n === 1 ? Fremkit.t(one) : Fremkit.t(many, { n: n }) }
+  function statsFor(t) {
+    return Fremkit.t(L.today, {
+      sessions: t.sessions,
+      done: plural(t.done, L.doneOne, L.doneMany),
+      commits: plural(t.commits, L.commitOne, L.commitMany),
+    })
+  }
+  function render() {
+    var el = document.getElementById('cards'), now = Date.now(), seen = {}
+    document.getElementById('count').textContent = sessions.length ? '· ' + sessions.length : ''
+    document.getElementById('stats').textContent = today ? statsFor(today) : ''
+    var empty = document.getElementById('empty')
+    if (!sessions.length) {
+      if (!empty) { empty = document.createElement('div'); empty.id = 'empty'; empty.className = 'muted'; el.appendChild(empty) }
+      empty.textContent = Fremkit.t(L.empty)
+    } else if (empty) { empty.remove() }
+    // The count above keeps the real total; the list itself honours the "max" setting.
+    var shown = maxShown > 0 ? sessions.slice(0, maxShown) : sessions
+    shown.forEach(function (s, i) {
+      var card = nodes[s.sessionId]
+      if (!card) { card = build(s); nodes[s.sessionId] = card }
+      update(card, s, now)
+      if (el.children[i] !== card) el.insertBefore(card, el.children[i] || null)
+      seen[s.sessionId] = true
+    })
+    Object.keys(nodes).forEach(function (id) { if (!seen[id]) { nodes[id].remove(); delete nodes[id] } })
+  }
+  var maxShown = 0
+  function applySettings(s) { var n = Number((s || {}).max); maxShown = isFinite(n) && n > 0 ? Math.floor(n) : 0 }
+  Fremkit.whenReady(function () {
+    document.documentElement.lang = Fremkit.locale
+    applySettings(Fremkit.settings)
+    Fremkit.onSettings(function (s) { applySettings(s); render() })
+    Fremkit.onLocale(function (locale) { document.documentElement.lang = locale; render() })
+    Fremkit.subscribe('claude-sessions', function (d) { if (d.error) return; sessions = d.sessions || []; today = d.today || null; render() })
+    setInterval(render, 1000)
+    document.getElementById('cards').addEventListener('click', function (e) {
+      var card = e.target.closest('.card'); if (!card || card.getAttribute('data-discovered')) return
+      var st = card.getAttribute('data-state')
+      if (st === 'done' || st === 'idle' || st === 'error') Fremkit.sendCommand('claude-sessions', 'dismiss', { sessionId: card.getAttribute('data-id') })
+    })
+  })
+</script></body></html>

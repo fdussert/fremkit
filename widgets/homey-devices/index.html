@@ -1,0 +1,322 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Homey devices</title>
+<style>
+  html,body{margin:0;height:100%;background:transparent;color:#e6e8eb;font-family:-apple-system,system-ui,sans-serif;overflow:hidden}
+  .wrap{box-sizing:border-box;height:100%;padding:14px 18px;display:flex;flex-direction:column;gap:8px}
+  .note{font-size:13px;color:#8b93a0;letter-spacing:.06em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  [hidden]{display:none!important}
+  html.on-light body{color:var(--on-surface,#0b0d10)}
+  html.on-light .note{color:var(--on-surface,#0b0d10);opacity:.75}
+</style>
+<style>
+  .banner{flex:0 0 auto;font-size:12px;letter-spacing:.06em;color:#f0a020;background:rgba(240,160,32,.12);border-radius:8px;padding:4px 8px}
+  .grid{flex:1;min-height:0;overflow-y:auto;touch-action:pan-y;-webkit-overflow-scrolling:touch;
+    display:grid;grid-template-columns:repeat(auto-fill,minmax(var(--col,150px),1fr));gap:10px;align-content:start}
+  .stale{opacity:.55}
+  .dev{box-sizing:border-box;display:flex;flex-direction:column;gap:6px;padding:8px 10px;border-radius:12px;
+    background:rgba(128,128,128,.14);min-height:44px}
+  .dev.off{opacity:.4}
+  .head{min-width:0;display:flex;flex-direction:column;gap:1px}
+  .name{font-size:var(--body,15px);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .zone{font-size:calc(var(--body,15px) * .78);color:#8b93a0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  html.on-light .zone{color:var(--on-surface,#0b0d10);opacity:.65}
+  /* The reading a sensor tile is really about: big, so it reads across the room. */
+  .value{font-size:calc(var(--body,15px) * 1.6);font-weight:600;font-variant-numeric:tabular-nums;line-height:1.05}
+  .unit{font-size:calc(var(--body,15px) * .8);font-weight:400;opacity:.7;margin-left:2px}
+  .alarms{display:flex;flex-wrap:wrap;gap:4px}
+  .alarm{font-size:calc(var(--body,15px) * .7);padding:1px 6px;border-radius:6px;background:#b3261e;color:#fff;white-space:nowrap}
+  /* A toggle wide enough for a finger, whatever the tile does to the type scale. */
+  .toggle{font:inherit;border:0;border-radius:10px;min-height:44px;padding:6px 10px;
+    background:rgba(128,128,128,.25);color:inherit;font-size:var(--body,15px);font-weight:600;text-align:left;
+    display:flex;align-items:center;gap:8px;cursor:pointer}
+  .toggle .pip{flex:0 0 auto;width:14px;height:14px;border-radius:50%;background:#5f6771}
+  .toggle.on{background:var(--accent, #d9b36a);color:var(--on-accent,#0b0d10)}
+  .toggle.on .pip{background:currentColor}
+  .toggle:disabled{cursor:default}
+  .toggle.busy{opacity:.6}
+  input[type=range]{width:100%;height:44px;margin:0;background:transparent;-webkit-appearance:none;appearance:none}
+  input[type=range]::-webkit-slider-runnable-track{height:10px;border-radius:5px;background:rgba(128,128,128,.35)}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:26px;height:26px;margin-top:-8px;
+    border-radius:50%;background:var(--accent, #d9b36a);border:2px solid rgba(0,0,0,.25)}
+  html.accent-fill input[type=range]::-webkit-slider-thumb{background:var(--on-surface,#0b0d10)}
+  html.tight .dev{gap:4px;padding:6px 8px}
+</style>
+<style>
+  /* Compact: the navigation bar draws one line, no title and no surface of its own. */
+  html.compact,html.compact body{overflow:hidden}
+  html.compact .wrap{display:none}
+  .cwrap{display:none}
+  html.compact .cwrap{display:flex;box-sizing:border-box;height:100%;width:100%;align-items:center;
+    padding:0 calc(var(--h,80px) * .10)}
+  html.compact .cline{min-width:0;display:flex;align-items:baseline;gap:calc(var(--h,80px) * .10);
+    font-size:clamp(13px, calc(var(--h,80px) * .30), 26px);font-weight:600;line-height:1.1;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  html.compact .clabel{font-size:.7em;font-weight:400;color:#8b93a0;text-transform:uppercase;letter-spacing:.06em}
+  html.on-light.compact .clabel{color:var(--on-surface,#0b0d10);opacity:.7}
+  html.compact.slot-right .cwrap{justify-content:flex-end;text-align:right}
+</style></head>
+<body><div class="wrap">
+  <div class="banner" id="banner" hidden></div>
+  <div class="grid" id="grid"></div>
+  <div class="note" id="empty" hidden></div>
+</div>
+<div class="cwrap"><div class="cline"><span id="cvalue"></span><span class="clabel" id="clabel"></span></div></div>
+<script>
+  var L = {
+    noConnection: { fr: 'Aucun Homey sélectionné', en: 'No Homey selected' },
+    loading: { fr: 'Chargement…', en: 'Loading…' },
+    empty: { fr: 'Aucun appareil correspondant', en: 'No matching device' },
+    pickSome: { fr: 'Cochez des appareils dans les réglages', en: 'Pick devices in the widget settings' },
+    offline: { fr: 'Homey hors ligne', en: 'Homey offline' },
+    unconfigured: { fr: 'Homey non configuré', en: 'Homey not configured' },
+    on: { fr: 'Allumé', en: 'On' },
+    off: { fr: 'Éteint', en: 'Off' },
+    unavailable: { fr: 'Injoignable', en: 'Unavailable' },
+    lit: { fr: 'allumés', en: 'on' },
+    none: { fr: 'Rien d’allumé', en: 'Nothing on' }
+  }
+  /** Alarm capability -> the badge drawn while it is raised. */
+  var ALARMS = {
+    alarm_motion: { fr: 'Mouvement', en: 'Motion' },
+    alarm_contact: { fr: 'Ouvert', en: 'Open' },
+    alarm_smoke: { fr: 'Fumée', en: 'Smoke' },
+    alarm_water: { fr: 'Fuite', en: 'Water' },
+    alarm_co: { fr: 'CO', en: 'CO' },
+    alarm_co2: { fr: 'CO₂', en: 'CO2' },
+    alarm_tamper: { fr: 'Sabotage', en: 'Tamper' },
+    alarm_battery: { fr: 'Batterie', en: 'Battery' },
+    alarm_generic: { fr: 'Alarme', en: 'Alarm' }
+  }
+  /** Which reading a sensor tile shows, most telling first. */
+  var SENSOR_ORDER = ['measure_temperature', 'measure_power', 'measure_humidity', 'measure_battery', 'measure_luminance']
+  /** How long an optimistic value survives before the snapshot has the last word. */
+  var PENDING_MS = 4000
+
+  var settings = {}, size = null, snapshot = null, unsub = null, channel = null
+  /** deviceId + '/' + capability -> { value, until }: what was just tapped, before the next poll. */
+  var pending = {}
+
+  function lower(v) { return String(v == null ? '' : v).toLowerCase() }
+
+  function connectionId() { return typeof settings.connection === 'string' ? settings.connection : '' }
+
+  /**
+   * The device ids ticked in the settings. Anything that is not a string is dropped: an instance
+   * configured before `devices` became a picker still holds rows of typed names, and a stale row
+   * must leave the widget empty-handed rather than break it.
+   */
+  function wanted() {
+    var list = Array.isArray(settings.devices) ? settings.devices : []
+    return list.filter(function (v) { return typeof v === 'string' && v !== '' })
+  }
+
+  function capability(device, id) {
+    var caps = device.capabilities || []
+    for (var i = 0; i < caps.length; i++) if (caps[i].id === id) return caps[i]
+    return null
+  }
+
+  /** The optimistic value of a capability, while one is still standing. */
+  function shown(device, cap) {
+    var hit = pending[device.id + '/' + cap.id]
+    return hit && hit.until > Date.now() ? hit.value : cap.value
+  }
+
+  /**
+   * The devices drawn: those ticked, in the order they were ticked, or the whole house when
+   * `all` is on. An empty selection with `all` off draws nothing — the widget says so instead of
+   * quietly showing everything.
+   */
+  function devices() {
+    var snap = snapshot && Array.isArray(snapshot.devices) ? snapshot.devices : []
+    var zone = lower(settings.zone).trim()
+    var max = Math.max(1, Number(settings.max) || 12)
+    var inZone = snap.filter(function (d) { return !zone || lower(d.zoneName).indexOf(zone) !== -1 })
+    if (settings.all === true) return inZone.slice(0, max)
+    var byId = {}
+    inZone.forEach(function (d) { byId[d.id] = d })
+    return wanted().map(function (id) { return byId[id] }).filter(Boolean).slice(0, max)
+  }
+
+  /** `21.4 °C`, `47 %`, `130 W`, split so the unit can be drawn smaller. */
+  function reading(cap) {
+    var value = cap.value
+    if (typeof value !== 'number') return null
+    var text
+    if (cap.id === 'measure_temperature' || cap.id === 'target_temperature') text = value.toFixed(1)
+    else if (Math.abs(value) >= 100 || Number.isInteger(value)) text = String(Math.round(value))
+    else text = value.toFixed(1)
+    return { text: text, unit: cap.unit || '' }
+  }
+
+  /** The reading a device with no control is really about, or null. */
+  function mainSensor(device) {
+    for (var i = 0; i < SENSOR_ORDER.length; i++) {
+      var cap = capability(device, SENSOR_ORDER[i])
+      if (cap && typeof cap.value === 'number') return cap
+    }
+    var caps = device.capabilities || []
+    for (var j = 0; j < caps.length; j++) {
+      if (caps[j].id.indexOf('measure_') === 0 && typeof caps[j].value === 'number') return caps[j]
+    }
+    return null
+  }
+
+  function send(device, cap, value) {
+    if (!channel) return
+    pending[device.id + '/' + cap.id] = { value: value, until: Date.now() + PENDING_MS }
+    render()
+    Fremkit.sendCommand(channel, 'setCapability', { deviceId: device.id, capability: cap.id, value: value })
+      .catch(function () { delete pending[device.id + '/' + cap.id]; render() })
+  }
+
+  function toggleFor(device, cap) {
+    var on = shown(device, cap) === true
+    var button = Fremkit.el('button', 'toggle' + (on ? ' on' : ''))
+    button.appendChild(Fremkit.el('i', 'pip'))
+    button.appendChild(Fremkit.el('span', null, Fremkit.t(on ? L.on : L.off)))
+    button.disabled = device.available === false
+    button.onclick = function () { send(device, cap, !on) }
+    return button
+  }
+
+  function sliderFor(device, cap) {
+    var input = document.createElement('input')
+    input.type = 'range'
+    input.min = '0'; input.max = '100'; input.step = '1'
+    var value = shown(device, cap)
+    input.value = String(Math.round((typeof value === 'number' ? value : 0) * 100))
+    input.disabled = device.available === false
+    // While the finger is down the widget owns the value; the command goes out on release.
+    input.oninput = function () { pending[device.id + '/' + cap.id] = { value: Number(input.value) / 100, until: Date.now() + PENDING_MS } }
+    input.onchange = function () { send(device, cap, Number(input.value) / 100) }
+    return input
+  }
+
+  function tileFor(device) {
+    var box = Fremkit.el('div', 'dev' + (device.available === false ? ' off' : ''))
+    var head = Fremkit.el('div', 'head')
+    head.appendChild(Fremkit.el('div', 'name', device.name))
+    if (settings.showZone !== false && device.zoneName) head.appendChild(Fremkit.el('div', 'zone', device.zoneName))
+    else if (device.available === false) head.appendChild(Fremkit.el('div', 'zone', Fremkit.t(L.unavailable)))
+    box.appendChild(head)
+
+    var onoff = capability(device, 'onoff')
+    var dim = capability(device, 'dim')
+    if (onoff) box.appendChild(toggleFor(device, onoff))
+    if (dim) box.appendChild(sliderFor(device, dim))
+    if (!onoff && !dim) {
+      var sensor = mainSensor(device)
+      if (sensor) {
+        var line = Fremkit.el('div', 'value', reading(sensor).text)
+        if (sensor.unit) line.appendChild(Fremkit.el('span', 'unit', sensor.unit))
+        box.appendChild(line)
+      }
+    }
+
+    var raised = (device.capabilities || []).filter(function (c) { return c.id.indexOf('alarm_') === 0 && c.value === true })
+    if (raised.length) {
+      var row = Fremkit.el('div', 'alarms')
+      raised.forEach(function (c) { row.appendChild(Fremkit.el('span', 'alarm', Fremkit.t(ALARMS[c.id] || ALARMS.alarm_generic))) })
+      box.appendChild(row)
+    }
+    return box
+  }
+
+  function renderTile() {
+    var banner = document.getElementById('banner'), grid = document.getElementById('grid'), empty = document.getElementById('empty')
+    if (!connectionId()) {
+      banner.hidden = true; grid.hidden = true
+      empty.hidden = false; empty.textContent = Fremkit.t(L.noConnection)
+      return
+    }
+    var err = snapshot && snapshot.error
+    banner.hidden = !err
+    if (err) banner.textContent = Fremkit.t(L[err] || L.offline)
+    if (settings.all !== true && !wanted().length) {
+      grid.hidden = true
+      empty.hidden = false; empty.textContent = Fremkit.t(L.pickSome)
+      return
+    }
+    if (!snapshot) {
+      grid.hidden = true
+      empty.hidden = false; empty.textContent = Fremkit.t(L.loading)
+      return
+    }
+    var list = devices()
+    grid.hidden = false
+    grid.innerHTML = ''
+    grid.classList.toggle('stale', !!err)
+    list.forEach(function (d) { grid.appendChild(tileFor(d)) })
+    empty.hidden = list.length > 0
+    empty.textContent = Fremkit.t(L.empty)
+  }
+
+  function renderCompact() {
+    var value = document.getElementById('cvalue'), label = document.getElementById('clabel')
+    var list = devices()
+    if (settings.compactMode === 'sensor') {
+      for (var i = 0; i < list.length; i++) {
+        var cap = mainSensor(list[i])
+        if (!cap) continue
+        var read = reading(cap)
+        value.textContent = read.text + (read.unit ? ' ' + read.unit : '')
+        label.textContent = list[i].name
+        return
+      }
+      value.textContent = '—'; label.textContent = ''
+      return
+    }
+    var on = 0
+    list.forEach(function (d) {
+      var cap = capability(d, 'onoff')
+      if (cap && shown(d, cap) === true) on++
+    })
+    if (!on) { value.textContent = '0'; label.textContent = Fremkit.t(L.none); return }
+    value.textContent = String(on)
+    label.textContent = Fremkit.t(L.lit)
+  }
+
+  function render() {
+    document.documentElement.lang = Fremkit.locale
+    if (Fremkit.compact) renderCompact()
+    else renderTile()
+  }
+
+  /** Type and column widths follow the tile; the bar's height drives the compact line. */
+  function applySize(next) {
+    size = next
+    var root = document.documentElement
+    if (next && next.px && Fremkit.compact) root.style.setProperty('--h', next.px.height + 'px')
+    if (!next) return
+    root.classList.toggle('tight', next.h < 6)
+    var body = next.h < 6 ? 13 : next.h < 10 ? 15 : 17
+    root.style.setProperty('--body', body + 'px')
+    root.style.setProperty('--col', (next.w < 12 ? 120 : 150) + 'px')
+    render()
+  }
+
+  /** Only the connection touches the subscription; the filters are applied at render time. */
+  function applySettings(next) {
+    settings = next || {}
+    var id = connectionId()
+    var target = id ? 'homey:' + id : null
+    if (target !== channel) {
+      if (unsub) { unsub(); unsub = null }
+      // The devices of a Homey that was unselected are not this widget's business any more.
+      snapshot = null; pending = {}
+      channel = target
+      if (channel) unsub = Fremkit.subscribe(channel, function (data) { snapshot = data; pending = {}; render() })
+    }
+    render()
+  }
+
+  Fremkit.whenReady(function () {
+    document.documentElement.lang = Fremkit.locale
+    Fremkit.onLocale(render)
+    applySize(Fremkit.size)
+    Fremkit.onResize(applySize)
+    applySettings(Fremkit.settings)
+    Fremkit.onSettings(applySettings)
+  })
+</script></body></html>

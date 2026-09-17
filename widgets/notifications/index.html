@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Notifications</title>
+<style>
+  html,body{margin:0;height:100%;background:transparent;color:#e6e8eb;font-family:-apple-system,system-ui,sans-serif;overflow:hidden}
+  .wrap{box-sizing:border-box;height:100%;padding:14px 18px;position:relative;display:flex;flex-direction:column;justify-content:center;gap:6px}
+  .muted{color:#8b93a0}
+  .note{font-size:13px;color:#8b93a0;letter-spacing:.06em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  [hidden]{display:none!important}
+  /* The host says which way round the tile is: on-light means dark text on a light body. */
+  html.on-light body{color:var(--on-surface,#0b0d10)}
+  html.on-light .muted,html.on-light .note{color:var(--on-surface,#0b0d10);opacity:.75}
+</style>
+<style>
+  .row{display:flex;align-items:center;justify-content:center;gap:18px;flex-wrap:wrap}
+  .app{position:relative;border:0;background:transparent;padding:0;cursor:pointer;line-height:0}
+  .app img{width:64px;height:64px;display:block;border-radius:14px}
+  .small .app img{width:48px;height:48px;border-radius:11px}
+  .app.off img{opacity:.4}
+  .app:active img{transform:scale(.94)}
+  .badge{position:absolute;top:-4px;right:-6px;min-width:20px;height:20px;box-sizing:border-box;padding:0 5px;
+    border-radius:10px;background:#d9463f;color:#fff;font-size:12px;font-weight:600;line-height:20px;text-align:center;
+    box-shadow:0 0 0 2px #14171c}
+  .badge.dot{min-width:12px;height:12px;padding:0;border-radius:6px}
+  .stale .row{opacity:.45}
+  .app .fallback{width:64px;height:64px;border-radius:14px;background:#2a2f38;color:#8b93a0;font-size:26px;
+    line-height:64px;text-align:center;display:block}
+  .small .app .fallback{width:48px;height:48px;border-radius:11px;font-size:20px;line-height:48px}
+  .toast{position:absolute;left:0;right:0;bottom:4px;text-align:center;font-size:12px;color:#d9463f}
+</style></head>
+<body><div class="wrap" id="wrap">
+  <div class="row" id="row"></div>
+  <div class="note" id="msg" hidden></div>
+  <div class="toast" id="toast" hidden></div>
+</div>
+<script>
+  var L = {
+    loading: { fr: 'Chargement…', en: 'Loading…' },
+    helperMissing: { fr: 'Le helper Fremkit doit tourner', en: 'The Fremkit helper must be running' },
+    noApps: { fr: 'Aucune application choisie', en: 'No application chosen' },
+    openFailed: { fr: 'Ouverture impossible', en: 'Could not open it' }
+  }
+  var chosen = [], snapshot = null, nodes = {}
+  /** The helper uploads icons as it discovers them, so a missing one is retried, not final. */
+  var ICON_RETRY_MS = 30000
+
+  /**
+   * The icon of one app: an `<img>`, replaced by a glyph while the server has nothing to serve,
+   * and rebuilt as an `<img>` every thirty seconds until one lands.
+   */
+  function icon(app, button) {
+    var attempt = 0
+    function attach() {
+      var img = document.createElement('img')
+      img.alt = app.name
+      // The attempt number defeats any caching of the 404 by the previous try.
+      img.src = '/api/apps/icon/' + encodeURIComponent(app.bundleId) + (attempt ? '?retry=' + attempt : '')
+      img.addEventListener('error', function () {
+        if (!img.parentNode) return
+        var glyph = document.createElement('span')
+        glyph.className = 'fallback'
+        glyph.title = app.name
+        glyph.textContent = '◻︎'
+        img.parentNode.replaceChild(glyph, img)
+        button.retryTimer = setTimeout(function () {
+          if (!glyph.parentNode) return
+          attempt += 1
+          glyph.parentNode.replaceChild(attach(), glyph)
+        }, ICON_RETRY_MS)
+      })
+      return img
+    }
+    return attach()
+  }
+
+  function build(app) {
+    var button = document.createElement('button')
+    button.className = 'app'
+    button.setAttribute('data-id', app.bundleId)
+    var img = icon(app, button)
+    var badge = document.createElement('span')
+    badge.className = 'badge'
+    badge.hidden = true
+    button.appendChild(img)
+    button.appendChild(badge)
+    return button
+  }
+  function toast(text) {
+    var node = document.getElementById('toast')
+    node.textContent = text
+    node.hidden = false
+    clearTimeout(toast.timer)
+    toast.timer = setTimeout(function () { node.hidden = true }, 3000)
+  }
+  /** Removes one app button, cancelling the icon retry it may have pending. */
+  function drop(id) {
+    clearTimeout(nodes[id].retryTimer)
+    nodes[id].remove()
+    delete nodes[id]
+  }
+  function render() {
+    var row = document.getElementById('row'), msg = document.getElementById('msg'), wrap = document.getElementById('wrap')
+    if (!snapshot) { msg.hidden = false; msg.textContent = Fremkit.t(L.loading); return }
+    if (!snapshot.available) {
+      wrap.classList.add('stale')
+      msg.hidden = false
+      msg.textContent = Fremkit.t(L.helperMissing)
+    } else {
+      wrap.classList.remove('stale')
+      msg.hidden = true
+    }
+    var byId = {}
+    ;(snapshot.apps || []).forEach(function (a) { byId[a.bundleId] = a })
+    var wanted = chosen.length ? chosen : (snapshot.apps || []).map(function (a) { return a.bundleId })
+    var seen = {}
+    wanted.forEach(function (id, index) {
+      var app = byId[id]
+      if (!app) return
+      var node = nodes[id]
+      if (!node) { node = build(app); nodes[id] = node }
+      node.classList.toggle('off', !app.running)
+      var badge = node.querySelector('.badge')
+      badge.hidden = !app.badge
+      if (app.badge) {
+        var numeric = /^\d+$/.test(app.badge)
+        badge.classList.toggle('dot', !numeric)
+        badge.textContent = numeric ? app.badge : ''
+      }
+      if (row.children[index] !== node) row.insertBefore(node, row.children[index] || null)
+      seen[id] = true
+    })
+    Object.keys(nodes).forEach(function (id) { if (!seen[id]) drop(id) })
+    if (!row.children.length && snapshot.available) { msg.hidden = false; msg.textContent = Fremkit.t(L.noApps) }
+  }
+
+  /**
+   * Applies the settings, live. The channel never changes — there is only one Dock — so this
+   * only rebuilds the row: the chosen apps decide which buttons exist and in which order.
+   */
+  function applySettings(s) {
+    var next = Array.isArray(s.apps) ? s.apps : []
+    // A bundle id never contains a pipe, so this compares the lists, order included.
+    var changed = next.join('|') !== chosen.join('|')
+    chosen = next
+    document.getElementById('wrap').classList.toggle('small', s.size === 'petite')
+    if (changed) Object.keys(nodes).forEach(drop)
+    render()
+  }
+
+  Fremkit.whenReady(function () {
+    document.documentElement.lang = Fremkit.locale
+    Fremkit.onLocale(function (locale) { document.documentElement.lang = locale; render() })
+    applySettings(Fremkit.settings)
+    // Live preview: the admin pushes edited settings instead of reloading the widget.
+    Fremkit.onSettings(function (next) { applySettings(next || {}) })
+    Fremkit.subscribe('dock', function (d) { snapshot = d; render() })
+    document.getElementById('row').addEventListener('click', function (e) {
+      var button = e.target.closest('.app')
+      if (!button) return
+      var result = Fremkit.sendCommand('dock', 'activate', { bundleId: button.getAttribute('data-id') })
+      // A refused or lost command must not surface as an unhandled rejection.
+      if (result && typeof result.catch === 'function') {
+        result.catch(function (err) {
+          console.error('activate failed', err)
+          toast(Fremkit.t(L.openFailed))
+        })
+      }
+    })
+    render()
+  })
+</script></body></html>

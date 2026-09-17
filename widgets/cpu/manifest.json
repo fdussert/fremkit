@@ -1,0 +1,4 @@
+{ "id": "cpu", "name": "CPU", "version": "1.1.0",
+  "description": { "fr": "Charge CPU et température", "en": "CPU load and temperature" },
+  "icon": "cpu", "minSize": [8, 4], "defaultSize": [8, 4], "compact": { "width": 4 }, "subscriptions": ["system"],
+  "settingsSchema": { "showTemp": { "type": "boolean", "default": true, "label": { "fr": "Afficher la température", "en": "Show the temperature" } } } }

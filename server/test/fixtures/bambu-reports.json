@@ -1,0 +1,67 @@
+{
+  "pushall": {
+    "print": {
+      "command": "push_status",
+      "gcode_state": "RUNNING",
+      "subtask_name": "benchy-plate-1",
+      "mc_percent": 12,
+      "mc_remaining_time": 74,
+      "layer_num": 18,
+      "total_layer_num": 152,
+      "nozzle_temper": 219.8,
+      "nozzle_target_temper": 220,
+      "bed_temper": 59.6,
+      "bed_target_temper": 60,
+      "spd_lvl": 2,
+      "stg_cur": 0,
+      "print_error": 0,
+      "ams": {
+        "ams": [
+          { "id": "0", "tray": [
+            { "id": "0", "tray_color": "FF6A13FF", "tray_type": "PLA", "remain": 78 },
+            { "id": "1", "tray_color": "1C1C1CFF", "tray_type": "PETG", "remain": 40 },
+            { "id": "2", "tray_color": "", "tray_type": "", "remain": -1 },
+            { "id": "3", "tray_color": "FFFFFFFF", "tray_type": "PLA", "remain": 5 }
+          ] }
+        ]
+      }
+    }
+  },
+  "progress": { "print": { "command": "push_status", "mc_percent": 41, "mc_remaining_time": 51, "layer_num": 62 } },
+  "paused": { "print": { "command": "push_status", "gcode_state": "PAUSE", "stg_cur": 4 } },
+  "amsChange": { "print": { "command": "push_status", "ams": { "ams": [ { "id": "0", "tray": [ { "id": "0", "tray_color": "0A7CFFFF", "tray_type": "PLA", "remain": 61 } ] } ] } } },
+  "multiAms": {
+    "print": {
+      "command": "push_status",
+      "gcode_state": "RUNNING",
+      "ams": {
+        "tray_now": "5",
+        "tray_tar": "5",
+        "ams": [
+          { "id": "0", "humidity": "2", "temp": "28.5", "tray": [
+            { "id": "0", "tray_color": "FF6A13FF", "tray_type": "PLA", "remain": 78 },
+            { "id": "1", "tray_color": "1C1C1CFF", "tray_type": "PETG", "remain": 40 },
+            { "id": "2", "tray_color": "", "tray_type": "", "remain": -1 },
+            { "id": "3", "tray_color": "FFFFFFFF", "tray_type": "PLA", "remain": 5 }
+          ] },
+          { "id": "1", "humidity": "3", "temp": "29.0", "tray": [
+            { "id": "0", "tray_color": "0A7CFFFF", "tray_type": "PLA", "remain": 61 },
+            { "id": "1", "tray_color": "", "tray_type": "", "remain": -1 },
+            { "id": "2", "tray_color": "7A4FD6FF", "tray_type": "ABS", "remain": 90 },
+            { "id": "3", "tray_color": "", "tray_type": "", "remain": -1 }
+          ] },
+          { "id": "2", "humidity": "1", "temp": "55.0", "tray": [
+            { "id": "0", "tray_color": "2FB36BFF", "tray_type": "PA-CF", "remain": 33 }
+          ] },
+          { "id": "3", "humidity": "1", "temp": "54.0", "tray": [
+            { "id": "0", "tray_color": "D9463FFF", "tray_type": "TPU", "remain": 12 }
+          ] }
+        ],
+        "vt_tray": { "id": "254", "tray_color": "C0C0C0FF", "tray_type": "PLA", "remain": -1 }
+      }
+    }
+  },
+  "failed": { "print": { "command": "push_status", "gcode_state": "FAILED", "print_error": 50348044 } },
+  "finished": { "print": { "command": "push_status", "gcode_state": "FINISH", "mc_percent": 100, "mc_remaining_time": 0, "print_error": 0 } },
+  "notPrint": { "info": { "command": "get_version", "module": [] } }
+}

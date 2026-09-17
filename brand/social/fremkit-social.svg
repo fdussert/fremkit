@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="640" viewBox="0 0 1280 640">
+  <rect width="1280" height="640" fill="#0b0d10"/>
+  <path d="M 0 588 C 160 584 250 560 360 550 C 450 542 540 554 640 572 C 760 594 900 606 1280 608 L 1280 640 L 0 640 Z" fill="#131820"/>
+  <path d="M 0 606 C 200 602 360 588 470 566 C 560 548 616 522 690 514 C 734 509 772 522 812 540 C 910 584 1080 604 1280 606 L 1280 640 L 0 640 Z" fill="#1a2028"/>
+  <path d="M 0 606 C 200 602 360 588 470 566 C 560 548 616 522 690 514 C 734 509 772 522 812 540 C 910 584 1080 604 1280 606" fill="none" stroke="#d9b36a" stroke-opacity="0.30" stroke-width="3" stroke-linecap="round"/>
+  <g transform="translate(542,122) scale(0.191406)">
+    <rect x="100" y="100" width="824" height="824" rx="185.4" ry="185.4" fill="#14171c"/>
+    <clipPath id="sq2"><rect x="100" y="100" width="824" height="824" rx="185.4" ry="185.4"/></clipPath>
+    <g clip-path="url(#sq2)">
+      <path d="M 100 878 C 190 872 250 840 320 826 C 380 814 440 822 510 842 C 600 868 700 886 780 892 C 840 896 890 898 924 898 L 924 1024 L 100 1024 Z" fill="#9a7540"/>
+      <path d="M 100 906 C 268 902 410 882 500 848 C 566 823 600 782 660 770 C 690 776 730 800 760 830 C 812 878 872 890 924 888 L 924 1024 L 100 1024 Z" fill="#d9b36a"/>
+    </g>
+    <rect x="240" y="262" width="430" height="92" rx="12" fill="#d9b36a"/>
+<rect x="658" y="262" width="126" height="92" rx="12" fill="#9a7540"/>
+<rect x="240" y="410" width="372" height="92" rx="12" fill="#eef2f8"/>
+<rect x="240" y="262" width="92" height="376" rx="12" fill="#eef2f8"/>
+  </g>
+  <text x="640" y="418" text-anchor="middle" font-family="Inter, -apple-system, Helvetica, Arial, sans-serif"
+        font-size="84" font-weight="700" fill="#eef2f8">Fremkit</text>
+  <text x="640" y="486" text-anchor="middle" font-family="Inter, -apple-system, Helvetica, Arial, sans-serif"
+        font-size="28" font-weight="400" fill="#98a1ae">Widget dashboard for the Corsair Xeneon Edge</text>
+</svg>

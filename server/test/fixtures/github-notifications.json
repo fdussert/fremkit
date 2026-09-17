@@ -1,0 +1,66 @@
+[
+  {
+    "id": "10101",
+    "unread": true,
+    "reason": "review_requested",
+    "updated_at": "2026-09-17T09:12:00Z",
+    "subject": {
+      "title": "Add the widget rescan button",
+      "url": "https://api.github.com/repos/example-org/example-repo/pulls/318",
+      "type": "PullRequest"
+    },
+    "repository": {
+      "full_name": "example-org/example-repo",
+      "html_url": "https://github.com/example-org/example-repo",
+      "private": false
+    }
+  },
+  {
+    "id": "10102",
+    "unread": true,
+    "reason": "mention",
+    "updated_at": "2026-09-17T08:40:30Z",
+    "subject": {
+      "title": "Grid snaps to the wrong cell on a 2560×720 screen",
+      "url": "https://api.github.com/repos/example-org/example-repo/issues/291",
+      "type": "Issue"
+    },
+    "repository": {
+      "full_name": "example-org/example-repo",
+      "html_url": "https://github.com/example-org/example-repo",
+      "private": false
+    }
+  },
+  {
+    "id": "10103",
+    "unread": true,
+    "reason": "ci_activity",
+    "updated_at": "2026-09-17T08:05:00Z",
+    "subject": {
+      "title": "build",
+      "url": "https://api.github.com/repos/example-user/second-repo/check-suites/77",
+      "type": "CheckSuite"
+    },
+    "repository": {
+      "full_name": "example-user/second-repo",
+      "html_url": "https://github.example.com/example-user/second-repo",
+      "private": true
+    }
+  },
+  {
+    "id": "10104",
+    "unread": true,
+    "reason": "subscribed",
+    "updated_at": "2026-09-16T17:00:00Z",
+    "subject": {
+      "title": "v2.4.0",
+      "url": "https://api.github.com/repos/example-org/example-repo/releases/9001",
+      "type": "Release"
+    },
+    "repository": {
+      "full_name": "example-org/example-repo",
+      "html_url": "https://github.com/example-org/example-repo",
+      "private": false
+    }
+  }
+]

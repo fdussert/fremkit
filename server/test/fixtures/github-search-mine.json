@@ -1,0 +1,17 @@
+{
+  "total_count": 1,
+  "incomplete_results": false,
+  "items": [
+    {
+      "id": 5010,
+      "number": 319,
+      "title": "Keep the last snapshot when the network drops",
+      "html_url": "https://github.com/example-org/example-repo/pull/319",
+      "repository_url": "https://api.github.com/repos/example-org/example-repo",
+      "user": { "login": "example-user" },
+      "updated_at": "2026-09-17T09:40:00Z",
+      "draft": false,
+      "pull_request": { "html_url": "https://github.com/example-org/example-repo/pull/319" }
+    }
+  ]
+}

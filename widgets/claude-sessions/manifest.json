@@ -1,0 +1,9 @@
+{ "id": "claude-sessions",
+  "name": { "fr": "Sessions Claude", "en": "Claude sessions" },
+  "version": "1.0.0",
+  "description": { "fr": "Sessions Claude Code en direct", "en": "Live Claude Code sessions" },
+  "icon": "message-square", "minSize": [16, 4], "defaultSize": [16, 8],
+  "subscriptions": ["claude-sessions"], "commands": ["claude-sessions"],
+  "settingsSchema": {
+    "max": { "type": "number", "label": { "fr": "Sessions affichées (0 = toutes)", "en": "Sessions shown (0 = all)" }, "default": 0 }
+  } }

@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Batteries</title>
+<style>
+  html,body{margin:0;height:100%;background:transparent;color:#e6e8eb;font-family:-apple-system,system-ui,sans-serif;overflow:hidden}
+  .wrap{box-sizing:border-box;height:100%;padding:clamp(8px,3vh,16px) clamp(10px,3vw,18px);display:flex;flex-direction:column;justify-content:center;gap:clamp(4px,1.6vh,10px)}
+  .row{display:flex;align-items:center;gap:clamp(6px,2vw,12px);min-width:0}
+  .name{flex:1;min-width:0;font-size:clamp(11px,3.4vh,17px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .pct{font-size:clamp(12px,3.6vh,18px);font-weight:600;font-variant-numeric:tabular-nums;opacity:.9}
+  /* The glyph is a shell with a nub and a fill whose width is the charge, so it reads at a glance. */
+  .glyph{flex:0 0 auto;position:relative;width:clamp(22px,7vh,34px);height:clamp(11px,3.5vh,17px);
+         border:1.5px solid currentColor;border-radius:3px;opacity:.85;box-sizing:border-box}
+  .glyph::after{content:'';position:absolute;right:-4px;top:28%;width:2.5px;height:44%;border-radius:0 2px 2px 0;background:currentColor}
+  .glyph>i{display:block;height:100%;background:currentColor;border-radius:1px}
+  .glyph.low{color:#e5534b}
+  .glyph.charging::before{content:'⚡';position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+                          font-size:clamp(8px,2.2vh,11px);color:var(--on-surface,#e6e8eb);mix-blend-mode:difference}
+  .parts{font-size:clamp(9px,2.4vh,12px);opacity:.6;font-variant-numeric:tabular-nums;white-space:nowrap}
+  .note{font-size:clamp(10px,2.8vh,14px);color:#8b93a0;text-align:center}
+  html.on-light body{color:var(--on-surface,#0b0d10)}
+  html.on-light .note{color:var(--on-surface,#0b0d10);opacity:.75}
+  /* Compact: one line — the battery that needs charging first — sized off the bar's height. */
+  html.compact .wrap{padding:0 calc(var(--h) * .16);gap:0}
+  html.compact .row{gap:calc(var(--h) * .1)}
+  html.compact .name,html.compact .parts{display:none}
+  html.compact .glyph{width:calc(var(--h) * .42);height:calc(var(--h) * .21)}
+  html.compact .pct{font-size:calc(var(--h) * .26)}
+  html.compact.slot-right .wrap{align-items:flex-end}
+</style></head><body><div class="wrap" id="wrap"></div>
+<script>
+  var L = {
+    mac: { fr: 'Mac', en: 'Mac' },
+    none: { fr: 'Aucune batterie', en: 'No battery' },
+    left: { fr: 'G', en: 'L' },
+    right: { fr: 'D', en: 'R' },
+    caseLabel: { fr: 'Boîtier', en: 'Case' },
+    remaining: { fr: '{h} h {m} min', en: '{h} h {m} min' },
+    remainingMinutes: { fr: '{m} min', en: '{m} min' }
+  }
+
+  var LOW = 20
+
+  function glyph(percent, charging) {
+    var el = document.createElement('span')
+    el.className = 'glyph' + (percent < LOW ? ' low' : '') + (charging ? ' charging' : '')
+    var fill = document.createElement('i')
+    fill.style.width = Math.max(0, Math.min(100, percent)) + '%'
+    el.appendChild(fill)
+    return el
+  }
+
+  function row(entry) {
+    var el = document.createElement('div')
+    el.className = 'row'
+    el.appendChild(glyph(entry.percent, entry.charging))
+    var name = document.createElement('span')
+    name.className = 'name'
+    name.textContent = entry.name
+    el.appendChild(name)
+    if (entry.detail) {
+      var detail = document.createElement('span')
+      detail.className = 'parts'
+      detail.textContent = entry.detail
+      el.appendChild(detail)
+    }
+    var pct = document.createElement('span')
+    pct.className = 'pct'
+    pct.textContent = Math.round(entry.percent) + '%'
+    el.appendChild(pct)
+    return el
+  }
+
+  function partsText(parts) {
+    if (!parts) return ''
+    var bits = []
+    if (typeof parts.left === 'number') bits.push(Fremkit.t(L.left) + ' ' + parts.left + '%')
+    if (typeof parts.right === 'number') bits.push(Fremkit.t(L.right) + ' ' + parts.right + '%')
+    if (typeof parts.case === 'number') bits.push(Fremkit.t(L.caseLabel) + ' ' + parts.case + '%')
+    return bits.join(' · ')
+  }
+
+  function macDetail(mac) {
+    if (!mac || typeof mac.minutesLeft !== 'number') return ''
+    var h = Math.floor(mac.minutesLeft / 60), m = mac.minutesLeft % 60
+    return h > 0 ? Fremkit.t(L.remaining, { h: h, m: m }) : Fremkit.t(L.remainingMinutes, { m: m })
+  }
+
+  Fremkit.whenReady(function () {
+    var last = null
+    document.documentElement.style.setProperty('--h', Fremkit.size.px.height + 'px')
+
+    /* The Mac first on the tile — it is the battery the user owns — and lowest first in the bar. */
+    function entries(d) {
+      var out = []
+      if (d.mac && Fremkit.settings.showMac !== false) {
+        out.push({ name: Fremkit.t(L.mac), percent: d.mac.percent, charging: d.mac.charging, detail: macDetail(d.mac) })
+      }
+      ;(d.devices || []).forEach(function (device) {
+        out.push({ name: device.name, percent: device.percent, charging: false, detail: partsText(device.parts) })
+      })
+      return out
+    }
+
+    function render() {
+      document.documentElement.lang = Fremkit.locale
+      var wrap = document.getElementById('wrap')
+      wrap.textContent = ''
+      var d = last
+      if (!d || d.error) return
+      var list = entries(d)
+      if (list.length === 0) {
+        var note = document.createElement('div')
+        note.className = 'note'
+        note.textContent = Fremkit.t(L.none)
+        wrap.appendChild(note)
+        return
+      }
+      if (Fremkit.compact) {
+        /* One line: the one that will run out first, whether that is a peripheral or the Mac. */
+        var lowest = list.reduce(function (a, b) { return b.percent < a.percent ? b : a })
+        wrap.appendChild(row({ name: lowest.name, percent: lowest.percent, charging: lowest.charging }))
+        return
+      }
+      var max = Number(Fremkit.settings.max)
+      if (!Number.isFinite(max) || max < 1) max = 6
+      list.slice(0, max).forEach(function (entry) { wrap.appendChild(row(entry)) })
+    }
+
+    render()
+    Fremkit.subscribe('battery', function (d) { last = d; render() })
+    Fremkit.onLocale(render)
+    Fremkit.onSettings(render)
+    Fremkit.onResize(function (size) {
+      document.documentElement.style.setProperty('--h', size.px.height + 'px')
+      render()
+    })
+  })
+</script></body></html>

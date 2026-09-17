@@ -1,0 +1,6 @@
+{ "id": "processes",
+  "name": { "fr": "Processus", "en": "Processes" },
+  "version": "1.0.0",
+  "description": { "fr": "Top processus", "en": "Top processes" },
+  "icon": "list", "minSize": [16, 4], "defaultSize": [16, 8], "subscriptions": ["processes"],
+  "settingsSchema": { "count": { "type": "number", "default": 6, "label": { "fr": "Nombre de lignes", "en": "Number of rows" } } } }

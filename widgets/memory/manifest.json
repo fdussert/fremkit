@@ -1,0 +1,5 @@
+{ "id": "memory",
+  "name": { "fr": "Mémoire", "en": "Memory" },
+  "version": "1.1.0",
+  "description": { "fr": "Utilisation mémoire", "en": "Memory usage" },
+  "icon": "memory-stick", "minSize": [8, 4], "defaultSize": [8, 4], "compact": { "width": 4 }, "subscriptions": ["system"] }

@@ -1,0 +1,17 @@
+{ "id": "weather",
+  "name": { "fr": "Météo", "en": "Weather" },
+  "version": "1.0.0",
+  "description": { "fr": "Météo et prévisions, sans compte (Open-Meteo)", "en": "Weather and forecast, no account (Open-Meteo)" },
+  "icon": "cloud-sun", "minSize": [8, 4], "defaultSize": [16, 6],
+  "compact": { "width": 5 },
+  "permissions": { "network": ["geocoding-api.open-meteo.com", "api.open-meteo.com"] },
+  "settingsSchema": {
+    "location": { "type": "string", "default": "Paris", "label": { "fr": "Ville", "en": "City" } },
+    "units": { "type": "enum", "default": "metric",
+      "label": { "fr": "Unités", "en": "Units" },
+      "options": [{ "value": "metric", "label": { "fr": "°C, km/h", "en": "°C, km/h" } },
+                  { "value": "imperial", "label": { "fr": "°F, mph", "en": "°F, mph" } }] },
+    "hours": { "type": "number", "scope": "tile", "default": 6, "label": { "fr": "Heures à venir", "en": "Upcoming hours" } },
+    "showDaily": { "type": "boolean", "scope": "tile", "default": true, "label": { "fr": "Afficher les prochains jours", "en": "Show the next days" } },
+    "compactCity": { "type": "boolean", "scope": "compact", "default": false, "label": { "fr": "Barre : ajouter la ville", "en": "Bar: add the city" } }
+  } }

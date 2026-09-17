@@ -1,0 +1,37 @@
+{
+  "total_count": 2,
+  "incomplete_results": false,
+  "items": [
+    {
+      "id": 5001,
+      "number": 318,
+      "title": "Add the widget rescan button",
+      "html_url": "https://github.com/example-org/example-repo/pull/318",
+      "repository_url": "https://api.github.com/repos/example-org/example-repo",
+      "user": { "login": "example-author" },
+      "updated_at": "2026-09-17T09:12:00Z",
+      "draft": false,
+      "pull_request": { "html_url": "https://github.com/example-org/example-repo/pull/318" }
+    },
+    {
+      "id": 5002,
+      "number": 44,
+      "title": "Bump the pinned toolchain",
+      "html_url": "https://github.com/example-user/second-repo/pull/44",
+      "repository_url": "https://api.github.com/repos/example-user/second-repo",
+      "user": { "login": "example-bot" },
+      "updated_at": "2026-09-17T07:30:00Z",
+      "draft": true,
+      "pull_request": { "html_url": "https://github.com/example-user/second-repo/pull/44" }
+    },
+    {
+      "id": 5003,
+      "number": 12,
+      "title": "An issue, which the widget must not draw as a pull request",
+      "html_url": "https://github.com/example-org/example-repo/issues/12",
+      "repository_url": "https://api.github.com/repos/example-org/example-repo",
+      "user": { "login": "example-author" },
+      "updated_at": "2026-09-17T06:00:00Z"
+    }
+  ]
+}

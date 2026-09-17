@@ -1,0 +1,11 @@
+{ "id": "clipboard",
+  "name": { "fr": "Presse-papiers", "en": "Clipboard" },
+  "version": "1.0.0",
+  "description": { "fr": "Entrées récentes du presse-papiers, touchez pour recopier. En mémoire uniquement, jamais sur disque, rien ne quitte le Mac ; les secrets sont masqués et le presse-papiers n’est lu que pendant qu’un widget l’affiche.",
+                   "en": "Recent clipboard entries, tap to copy back. Memory only, never on disk, nothing leaves the Mac; secrets are masked and the pasteboard is read only while a widget shows it." },
+  "icon": "copy", "minSize": [8, 4], "defaultSize": [16, 8],
+  "subscriptions": ["clipboard"], "commands": ["clipboard"],
+  "settingsSchema": {
+    "max": { "type": "number", "default": 8, "label": { "fr": "Entrées affichées", "en": "Entries shown" } },
+    "showTime": { "type": "boolean", "default": true, "label": { "fr": "Afficher l’ancienneté", "en": "Show how long ago" } }
+  } }

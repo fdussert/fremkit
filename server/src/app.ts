@@ -1,0 +1,162 @@
+import Fastify, { type FastifyInstance } from 'fastify'
+import fastifyStatic from '@fastify/static'
+import fastifyWebsocket from '@fastify/websocket'
+import { homedir } from 'node:os'
+import { join } from 'node:path'
+import { access } from 'node:fs/promises'
+import { ConfigStore } from './config/store.js'
+import { setServerLocale } from './i18n.js'
+import { ConnectionManager } from './connections/manager.js'
+import { ConnectionTypeRegistry } from './connections/registry.js'
+import { connectionRoutes } from './connections/routes.js'
+import { defaultConnectionTypes } from './connections/types/index.js'
+import type { ConnectionType } from './connections/types.js'
+import { createSecretStore } from './secrets/index.js'
+import { configRoutes } from './config/routes.js'
+import { WidgetCatalog } from './widgets/catalog.js'
+import { widgetRoutes } from './widgets/routes.js'
+import { ProviderRegistry } from './providers/registry.js'
+import type { Provider } from './providers/types.js'
+import { Hub } from './ws/hub.js'
+import { wsRoutes } from './ws/routes.js'
+import { proxyRoutes } from './proxy/routes.js'
+import { backgroundRoutes } from './backgrounds/routes.js'
+import { faviconRoutes } from './favicons/routes.js'
+import { ClaudeTracker } from './claude/tracker.js'
+import { ClaudeUsage } from './claude/usage.js'
+import { claudeRoutes } from './claude/routes.js'
+import { createClaudeSessionsProvider, createClaudeUsageProvider, createClaudeAccountProvider } from './claude/providers.js'
+import { DockState } from './dock/state.js'
+import { dockRoutes } from './dock/routes.js'
+import { InstalledApps } from './apps/installed.js'
+import { AppIcons } from './apps/icons.js'
+import { appsRoutes } from './apps/routes.js'
+import { helperRoutes } from './helper/routes.js'
+import { createDockProvider } from './dock/provider.js'
+import { bambuCameras } from './bambu/cameras.js'
+import { bambuRoutes } from './bambu/routes.js'
+import { BYTES_CSP, isByteRoute } from './http/headers.js'
+import { isAllowedHost, isReadMethod } from './http/guard.js'
+import { isOriginAllowed } from './ws/routes.js'
+import { tr } from './i18n.js'
+
+export interface AppOptions {
+  dataDir: string
+  widgetsDir: string
+  uiDist?: string
+  providers?: Provider[]
+  logger?: boolean
+  claudeTranscriptsDir?: string
+  /** Overrides the built-in connection types; tests inject fakes here. */
+  connectionTypes?: ConnectionType[]
+  /**
+   * The port this instance listens on, so the request gate can refuse a `Host` naming another
+   * one. An embedded instance that never listens leaves it out and is judged on the host name
+   * alone.
+   */
+  port?: number
+}
+
+export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
+  const app = Fastify({ logger: opts.logger ?? false })
+
+  const store = new ConfigStore(join(opts.dataDir, 'fremkit.json'))
+  await store.load()
+  // Providers, the proxy and the connection types are far from any request, so they read the
+  // language from this module-level copy rather than being handed a store they have no use for.
+  setServerLocale(store.get().locale)
+  const catalog = new WidgetCatalog(opts.widgetsDir)
+  await catalog.scan()
+
+  const dock = new DockState({ iconsDir: join(opts.dataDir, 'icons') })
+  await dock.loadIcons()
+  const installedApps = new InstalledApps()
+  const appIcons = new AppIcons({ dir: join(opts.dataDir, 'icons', 'apps'), apps: installedApps })
+
+  const tracker = new ClaudeTracker({ filePath: join(opts.dataDir, 'claude-sessions.json') })
+  await tracker.load()
+  const usage = new ClaudeUsage({ filePath: join(opts.dataDir, 'claude-usage.json'), transcriptsDir: opts.claudeTranscriptsDir ?? join(homedir(), '.claude', 'projects') })
+  await usage.load()
+
+  let hub!: Hub
+  const registry = new ProviderRegistry((channel, data) => hub.broadcast(channel, data))
+  hub = new Hub(registry)
+  for (const p of opts.providers ?? []) registry.register(p)
+  registry.register(createClaudeSessionsProvider(tracker))
+  registry.register(createClaudeUsageProvider(usage))
+  registry.register(createClaudeAccountProvider({
+    filePath: join(opts.dataDir, 'claude-account.json'),
+    enabled: () => store.get().privacy.claudeAccountUsage,
+  }))
+  registry.register(createDockProvider(dock))
+  const secrets = createSecretStore(store.get().secrets.backend, opts.dataDir)
+  const connectionTypes = new ConnectionTypeRegistry(opts.connectionTypes ?? defaultConnectionTypes())
+  const connections = new ConnectionManager({ registry, types: connectionTypes, secrets })
+  /** A camera whose connection is gone keeps neither a socket nor the access code it was built on. */
+  const retainCameras = (cfg: { connections: { id: string; type: string }[] }): void => {
+    bambuCameras.retain(new Set(cfg.connections.filter((c) => c.type === 'bambu').map((c) => c.id)))
+  }
+  await connections.sync(store.get().connections)
+  retainCameras(store.get())
+
+  hub.broadcast('config', store.get())
+  store.onChange((cfg) => {
+    setServerLocale(cfg.locale)
+    hub.broadcast('config', cfg)
+    // Fire and forget: a failed sync must not break the save that triggered it.
+    void connections.sync(cfg.connections)
+      .then(() => retainCameras(cfg))
+      .catch((err: Error) => app.log.warn({ err }, 'connection sync failed'))
+  })
+
+  // The gate described in http/guard.ts: no request whose Host names anything but this server
+  // (DNS rebinding), and no write from a page we did not serve (cross-site writes). It runs
+  // before every route, the WebSocket handshake and the static UI included. A client that sends
+  // no Origin at all — curl, the Claude Code hook scripts, the native helper — is not a browser
+  // doing cross-site work and passes.
+  app.addHook('onRequest', async (req, reply) => {
+    if (!isAllowedHost(req.headers.host, opts.port)) {
+      return reply.code(421).send({ error: tr(store.get().locale, 'http.hostNotAllowed') })
+    }
+    if (!isReadMethod(req.method) && !isOriginAllowed(req.headers.origin)) {
+      return reply.code(403).send({ error: tr(store.get().locale, 'http.originNotAllowed') })
+    }
+  })
+
+  // Never let a browser re-guess a type we declared, and make the answers that carry bytes from
+  // elsewhere inert if one is ever opened as a document. A route that sets its own CSP — the
+  // widgets, which need a looser one to run at all — keeps it.
+  app.addHook('onSend', async (req, reply, payload) => {
+    reply.header('x-content-type-options', 'nosniff')
+    if (isByteRoute(req.url) && !reply.getHeader('content-security-policy')) {
+      reply.header('content-security-policy', BYTES_CSP)
+    }
+    return payload
+  })
+
+  await app.register(fastifyWebsocket)
+  await app.register(fastifyStatic, { root: opts.widgetsDir, serve: false, decorateReply: true })
+
+  await app.register(configRoutes, { store, catalog })
+  await app.register(connectionRoutes, { store, catalog, types: connectionTypes, manager: connections, secrets })
+  await app.register(widgetRoutes, { catalog })
+  await app.register(proxyRoutes, { catalog })
+  await app.register(backgroundRoutes, { dataDir: opts.dataDir })
+  await app.register(faviconRoutes, { dir: join(opts.dataDir, 'icons', 'favicons') })
+  await app.register(claudeRoutes, { tracker, usage })
+  await app.register(dockRoutes, { state: dock, appIcons })
+  await app.register(appsRoutes, { apps: installedApps })
+  await app.register(helperRoutes)
+  await app.register(bambuRoutes, { cameras: bambuCameras })
+  await app.register(wsRoutes, { hub })
+
+  if (opts.uiDist && (await access(opts.uiDist).then(() => true, () => false))) {
+    await app.register(fastifyStatic, { root: opts.uiDist, prefix: '/', serve: true, decorateReply: false })
+    for (const route of ['/admin', '/admin/']) {
+      app.get(route, async (_req, reply) => reply.sendFile('admin.html', opts.uiDist!))
+    }
+  }
+
+  app.addHook('onClose', async () => { registry.stop(); bambuCameras.stopAll(); await tracker.flush(); await usage.flush() })
+  return app
+}

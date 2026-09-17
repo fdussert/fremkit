@@ -1,0 +1,15 @@
+{ "id": "battery",
+  "name": { "fr": "Batteries", "en": "Batteries" },
+  "version": "1.0.0",
+  "description": { "fr": "Le Mac et ses périphériques Bluetooth", "en": "The Mac and its Bluetooth peripherals" },
+  "icon": "battery",
+  "minSize": [8, 4],
+  "defaultSize": [8, 6],
+  "compact": { "width": 5 },
+  "subscriptions": ["battery"],
+  "settingsSchema": {
+    "showMac": { "type": "boolean", "default": true, "scope": "tile",
+                 "label": { "fr": "Afficher la batterie du Mac", "en": "Show the Mac's battery" } },
+    "max": { "type": "number", "default": 6, "scope": "tile",
+             "label": { "fr": "Nombre de lignes au maximum", "en": "Most rows to show" } }
+  } }

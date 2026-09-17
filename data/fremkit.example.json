@@ -1,0 +1,33 @@
+{
+  "version": 2,
+  "display": {
+    "cols": 64,
+    "rows": 16,
+    "cell": 40,
+    "autoCycleSeconds": 0
+  },
+  "connections": [],
+  "secrets": {
+    "backend": "keychain"
+  },
+  "locale": "en",
+  "pages": [
+    {
+      "id": "home",
+      "name": "Home",
+      "widgets": [
+        {
+          "instanceId": "clock-1",
+          "widgetId": "clock",
+          "x": 0,
+          "y": 0,
+          "w": 16,
+          "h": 4,
+          "showTitle": true,
+          "appearance": "panel",
+          "settings": {}
+        }
+      ]
+    }
+  ]
+}

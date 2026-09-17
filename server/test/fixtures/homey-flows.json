@@ -1,0 +1,6 @@
+{
+  "flow-morning": { "id": "flow-morning", "name": "Morning routine", "folder": "folder-daily", "enabled": true, "broken": false },
+  "flow-away": { "id": "flow-away", "name": "Leaving home", "folder": null, "enabled": false },
+  "flow-root": { "id": "flow-root", "name": "Panic", "enabled": true },
+  "nameless": { "name": "No id here" }
+}

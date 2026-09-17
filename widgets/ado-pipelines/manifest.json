@@ -1,0 +1,11 @@
+{ "id": "ado-pipelines",
+  "name": { "fr": "Pipelines Azure DevOps", "en": "Azure DevOps pipelines" },
+  "version": "1.0.0",
+  "description": { "fr": "Runs en cours et historique", "en": "Running builds and history" },
+  "icon": "layout-grid", "minSize": [16, 6], "defaultSize": [24, 10],
+  "subscriptions": ["azure-devops:*"], "commands": ["azure-devops:*"],
+  "settingsSchema": {
+    "connection": { "type": "connection", "label": { "fr": "Connexion", "en": "Connection" }, "connectionType": "azure-devops" },
+    "history": { "type": "number", "label": { "fr": "Runs d’historique", "en": "Runs of history" }, "default": 8 },
+    "branchFilter": { "type": "string", "label": { "fr": "Filtre de branche", "en": "Branch filter" }, "default": "" }
+  } }

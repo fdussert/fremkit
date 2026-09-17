@@ -1,0 +1,59 @@
+{
+  "count": 4,
+  "value": [
+    {
+      "id": 4821,
+      "buildNumber": "20260917.3",
+      "status": "inProgress",
+      "result": null,
+      "queueTime": "2026-09-17T08:59:40.12Z",
+      "startTime": "2026-09-17T09:00:02.44Z",
+      "finishTime": null,
+      "sourceBranch": "refs/heads/main",
+      "reason": "individualCI",
+      "definition": { "id": 12, "name": "web-ci" },
+      "requestedFor": { "displayName": "Placeholder User" },
+      "_links": { "web": { "href": "https://dev.azure.com/example-org/example-project/_build/results?buildId=4821" } }
+    },
+    {
+      "id": 4820,
+      "buildNumber": "20260917.2",
+      "status": "completed",
+      "result": "failed",
+      "queueTime": "2026-09-17T08:40:00Z",
+      "startTime": "2026-09-17T08:40:20Z",
+      "finishTime": "2026-09-17T08:47:05Z",
+      "sourceBranch": "refs/heads/feature/login",
+      "reason": "pullRequest",
+      "definition": { "id": 12, "name": "web-ci" },
+      "requestedFor": { "displayName": "Placeholder User" },
+      "_links": { "web": { "href": "https://dev.azure.com/example-org/example-project/_build/results?buildId=4820" } }
+    },
+    {
+      "id": 4819,
+      "buildNumber": "20260917.1",
+      "status": "completed",
+      "result": "canceled",
+      "queueTime": "2026-09-17T08:10:00Z",
+      "startTime": "2026-09-17T08:10:11Z",
+      "finishTime": "2026-09-17T08:12:00Z",
+      "sourceBranch": "refs/pull/318/merge",
+      "reason": "pullRequest",
+      "definition": { "id": 31, "name": "nightly-e2e" },
+      "requestedFor": { "displayName": "Placeholder User" },
+      "_links": { "web": { "href": "https://dev.azure.com/example-org/example-project/_build/results?buildId=4819" } }
+    },
+    {
+      "id": 4818,
+      "buildNumber": "legacy-77",
+      "status": "notStarted",
+      "result": null,
+      "queueTime": "2026-09-17T09:01:00Z",
+      "sourceBranch": "refs/heads/release/2026.09",
+      "reason": "manual",
+      "definition": { "id": 4, "name": "legacy-classic" },
+      "requestedFor": { "displayName": "Placeholder User" },
+      "_links": { "web": { "href": "https://dev.azure.com/example-org/example-project/_build/results?buildId=4818" } }
+    }
+  ]
+}

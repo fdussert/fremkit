@@ -1,0 +1,9 @@
+{
+  "records": [
+    { "id": "5b0d1c20-0000-4000-8000-000000000001", "parentId": null, "type": "Phase", "name": "Agent job", "order": 1, "state": "completed", "result": "succeeded" },
+    { "id": "5b0d1c20-0000-4000-8000-000000000002", "parentId": null, "type": "Phase", "name": "Publish", "order": 2, "state": "inProgress", "result": null },
+    { "id": "5b0d1c20-0000-4000-8000-000000000011", "parentId": "5b0d1c20-0000-4000-8000-000000000001", "type": "Job", "name": "Agent job 1", "order": 1, "state": "completed", "result": "succeeded" },
+    { "id": "5b0d1c20-0000-4000-8000-000000000012", "parentId": "5b0d1c20-0000-4000-8000-000000000011", "type": "Task", "name": "Initialize job", "order": 1, "state": "completed", "result": "succeeded" }
+  ],
+  "lastChangedOn": "2026-09-17T09:03:12.9Z"
+}

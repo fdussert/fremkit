@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Service status</title>
+<style>
+  html,body{margin:0;height:100%;background:transparent;color:#e6e8eb;font-family:-apple-system,system-ui,sans-serif;overflow:hidden}
+  .wrap{box-sizing:border-box;height:100%;padding:12px 16px;display:flex;flex-direction:column;gap:8px}
+  .note{font-size:13px;color:#8b93a0;letter-spacing:.04em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  [hidden]{display:none!important}
+  html.on-light body{color:var(--on-surface,#0b0d10)}
+  html.on-light .note{color:var(--on-surface,#0b0d10);opacity:.7}
+</style>
+<style>
+  /* The three states, as one variable a dot and a bar both read. */
+  .up{--state:#2fae62}
+  .warn{--state:#d99a2b}
+  .down{--state:#c2453c}
+  .unknown{--state:rgba(128,128,128,.45)}
+
+  .grid{flex:1;min-height:0;overflow-y:auto;touch-action:pan-y;-webkit-overflow-scrolling:touch;
+    display:grid;grid-template-columns:repeat(var(--cols,2),minmax(0,1fr));gap:6px 14px;align-content:start}
+  .svc{display:flex;align-items:center;gap:8px;min-width:0}
+  .dot{flex:0 0 auto;width:var(--dot,11px);height:var(--dot,11px);border-radius:50%;background:var(--state)}
+  .name{flex:1;min-width:0;font-size:var(--body,14px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .lat{flex:0 0 auto;font-size:calc(var(--body,14px) * .82);opacity:.68;font-variant-numeric:tabular-nums}
+  /* Twenty probes as twenty slivers: not a chart, just a shape you read in a glance. */
+  .strip{flex:0 0 auto;display:flex;gap:1px;align-items:flex-end;height:var(--strip,12px)}
+  .strip i{width:2px;height:100%;border-radius:1px;background:var(--state);opacity:.85}
+  .strip i.unknown{opacity:.25}
+  .summary{flex:0 0 auto;display:flex;align-items:center;gap:8px;font-size:calc(var(--body,14px) * .92);opacity:.85}
+
+  /* Compact: one dot in the worst colour, and how many of them are up. */
+  html.compact .grid,html.compact .summary{display:none}
+  html.compact .wrap{padding:0 10px;justify-content:center;gap:0}
+  html.compact .cwrap{display:flex;align-items:center;gap:calc(var(--h,80px) * .09)}
+  html.compact.slot-right .cwrap{justify-content:flex-end}
+  html.compact .cdot{width:calc(var(--h,80px) * .15);height:calc(var(--h,80px) * .15);border-radius:50%;background:var(--state)}
+  html.compact .ccount{font-size:calc(var(--h,80px) * .3);font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
+</style></head>
+<body><div class="wrap">
+  <div class="grid" id="grid"></div>
+  <div class="summary" id="summary" hidden><span class="dot" id="sdot"></span><span id="stext"></span></div>
+  <div class="cwrap" id="cwrap" hidden><span class="cdot" id="cdot"></span><span class="ccount" id="ccount"></span></div>
+  <div class="note" id="empty" hidden></div>
+</div>
+<script>
+  var L = {
+    empty: { fr: 'Ajoutez des services dans les réglages', en: 'Add services in the widget settings' },
+    allUp: { fr: 'Tout est en ligne', en: 'All services up' },
+    someDown: { fr: '{n} hors ligne sur {total}', en: '{n} of {total} down' },
+    someWarn: { fr: '{n} à surveiller sur {total}', en: '{n} of {total} need a look' },
+    waiting: { fr: 'Première mesure…', en: 'First probe…' }
+  }
+  /** The manifest's own defaults, repeated for a settings object that predates a key. */
+  var DEFAULTS = { interval: 30, columns: 2, showLatency: true }
+  /** Never probe more often than this, whatever the settings say. */
+  var MIN_INTERVAL_S = 10
+  /** How many probes the uptime strip remembers, per service. */
+  var HISTORY = 20
+  var KINDS = { http: 1, tcp: 1, ping: 1 }
+  var ORDER = { up: 0, warn: 1, down: 2, unknown: -1 }
+
+  var settings = {}, timer = null, inFlight = false
+  /** name -> { state, latencyMs, detail } from the last probe. */
+  var last = {}
+  /** name -> array of the last twenty states, oldest first. */
+  var history = {}
+
+
+  function setting(key) {
+    var value = settings[key]
+    return value === undefined || value === null || value === '' ? DEFAULTS[key] : value
+  }
+
+  /**
+   * The services actually probed. A half-typed row in the admin — no target — is not a service:
+   * it is skipped rather than sent to the server to be refused.
+   */
+  function services() {
+    var list = Array.isArray(settings.services) ? settings.services : []
+    return list
+      .map(function (s) {
+        var kind = KINDS[s.kind] ? s.kind : 'http'
+        var url = typeof s.url === 'string' ? s.url.trim() : ''
+        var name = typeof s.name === 'string' && s.name.trim() ? s.name.trim() : url
+        return { kind: kind, url: url, name: name }
+      })
+      .filter(function (s) { return s.url !== '' && s.name !== '' })
+  }
+
+  function worst(list) {
+    var seen = 'unknown'
+    for (var i = 0; i < list.length; i++) {
+      var state = (last[list[i].name] || {}).state || 'unknown'
+      if (ORDER[state] > ORDER[seen]) seen = state
+    }
+    return seen
+  }
+
+  function stripFor(name) {
+    var bars = Fremkit.el('span', 'strip')
+    var past = history[name] || []
+    // Always twenty slots, so the strip does not grow under the name as the history fills.
+    for (var i = 0; i < HISTORY; i++) {
+      var state = past[past.length - HISTORY + i]
+      bars.appendChild(Fremkit.el('i', state || 'unknown'))
+    }
+    return bars
+  }
+
+  function rowFor(spec) {
+    var result = last[spec.name] || {}
+    var state = result.state || 'unknown'
+    var row = Fremkit.el('div', 'svc ' + state)
+    row.appendChild(Fremkit.el('span', 'dot'))
+    var name = Fremkit.el('span', 'name', spec.name)
+    if (result.detail) name.title = spec.name + ' — ' + result.detail
+    row.appendChild(name)
+    if (setting('showLatency') !== false && typeof result.latencyMs === 'number') {
+      row.appendChild(Fremkit.el('span', 'lat', result.latencyMs + ' ms'))
+    }
+    row.appendChild(stripFor(spec.name))
+    return row
+  }
+
+  function summaryText(list) {
+    var down = 0, warn = 0, known = 0
+    for (var i = 0; i < list.length; i++) {
+      var state = (last[list[i].name] || {}).state
+      if (!state) continue
+      known++
+      if (state === 'down') down++
+      else if (state === 'warn') warn++
+    }
+    if (!known) return Fremkit.t(L.waiting)
+    if (down) return Fremkit.t(L.someDown, { n: down, total: list.length })
+    if (warn) return Fremkit.t(L.someWarn, { n: warn, total: list.length })
+    return Fremkit.t(L.allUp)
+  }
+
+  function renderCompact(list) {
+    var up = 0
+    for (var i = 0; i < list.length; i++) {
+      if ((last[list[i].name] || {}).state === 'up') up++
+    }
+    var wrap = document.getElementById('cwrap')
+    wrap.hidden = list.length === 0
+    wrap.className = 'cwrap ' + worst(list)
+    document.getElementById('ccount').textContent = list.length ? up + '/' + list.length : ''
+    document.getElementById('empty').hidden = list.length > 0
+  }
+
+  function render() {
+    document.documentElement.lang = Fremkit.locale
+    var list = services()
+    var empty = document.getElementById('empty')
+    empty.textContent = Fremkit.t(L.empty)
+    if (Fremkit.compact) return renderCompact(list)
+
+    var grid = document.getElementById('grid'), summary = document.getElementById('summary')
+    grid.innerHTML = ''
+    var cols = Math.max(1, Math.min(6, Math.round(Number(setting('columns'))) || 2))
+    grid.style.setProperty('--cols', cols)
+    list.forEach(function (spec) { grid.appendChild(rowFor(spec)) })
+    grid.hidden = list.length === 0
+    summary.hidden = list.length === 0
+    summary.className = 'summary ' + worst(list)
+    document.getElementById('stext').textContent = summaryText(list)
+    empty.hidden = list.length > 0
+  }
+
+  /** Files one probe's answers away, and trims each service's history to the last twenty. */
+  function record(list, results) {
+    var byName = {}
+    for (var i = 0; i < results.length; i++) byName[results[i].name] = results[i]
+    var keep = {}
+    list.forEach(function (spec) {
+      keep[spec.name] = true
+      var result = byName[spec.name]
+      if (!result) return
+      last[spec.name] = result
+      var past = history[spec.name] || []
+      past.push(result.state)
+      history[spec.name] = past.slice(-HISTORY)
+    })
+    // A service removed in the admin takes its history with it.
+    for (var name in last) if (!keep[name]) { delete last[name]; delete history[name] }
+    for (var key in history) if (!keep[key]) delete history[key]
+  }
+
+  function probe() {
+    var list = services()
+    if (!list.length || inFlight) return
+    inFlight = true
+    var payload = list.map(function (s) { return { kind: s.kind, name: s.name, url: s.url } })
+    Fremkit.sendCommand('service-status', 'probe', { services: payload })
+      .then(function (result) {
+        inFlight = false
+        if (!result || !result.ok || !Array.isArray(result.results)) {
+          // A refusal is about the whole list, not one service: say nothing rather than paint
+          // everything red because the payload was mistyped.
+          return
+        }
+        record(list, result.results)
+        render()
+      })
+      .catch(function () { inFlight = false })
+  }
+
+  /**
+   * The provider has no clock of its own — the list of services lives here — so the widget owns
+   * the timer. The bridge exposes no visible state, so this is a plain interval.
+   */
+  function restart() {
+    if (timer) clearInterval(timer)
+    var seconds = Math.max(MIN_INTERVAL_S, Math.round(Number(setting('interval'))) || DEFAULTS.interval)
+    timer = setInterval(probe, seconds * 1000)
+    probe()
+  }
+
+  function applySize(next) {
+    if (!next) return
+    var root = document.documentElement
+    if (Fremkit.compact) root.style.setProperty('--h', next.px.height + 'px')
+    root.style.setProperty('--body', (next.h < 6 ? 13 : next.h < 10 ? 15 : 17) + 'px')
+    root.style.setProperty('--dot', (next.h < 6 ? 10 : 12) + 'px')
+    root.style.setProperty('--strip', (next.h < 6 ? 10 : 14) + 'px')
+    render()
+  }
+
+  Fremkit.whenReady(function () {
+    document.documentElement.lang = Fremkit.locale
+    settings = Fremkit.settings || {}
+    applySize(Fremkit.size)
+    Fremkit.onResize(applySize)
+    Fremkit.onLocale(render)
+    Fremkit.onSettings(function (next) {
+      settings = next || {}
+      render()
+      restart()
+    })
+    render()
+    restart()
+  })
+</script></body></html>

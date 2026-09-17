@@ -1,0 +1,50 @@
+{
+  "total_count": 3,
+  "workflow_runs": [
+    {
+      "id": 900001,
+      "name": "CI",
+      "display_title": "Add the widget rescan button",
+      "head_branch": "feature/rescan",
+      "status": "in_progress",
+      "conclusion": null,
+      "event": "pull_request",
+      "actor": { "login": "example-author" },
+      "run_started_at": "2026-09-17T09:10:00Z",
+      "created_at": "2026-09-17T09:09:50Z",
+      "updated_at": "2026-09-17T09:10:30Z",
+      "html_url": "https://github.com/example-org/example-repo/actions/runs/900001",
+      "repository": { "full_name": "example-org/example-repo" }
+    },
+    {
+      "id": 900000,
+      "name": "CI",
+      "display_title": "Fix the grid snap",
+      "head_branch": "main",
+      "status": "completed",
+      "conclusion": "failure",
+      "event": "push",
+      "actor": { "login": "example-user" },
+      "run_started_at": "2026-09-17T08:40:00Z",
+      "created_at": "2026-09-17T08:39:55Z",
+      "updated_at": "2026-09-17T08:46:12Z",
+      "html_url": "https://github.com/example-org/example-repo/actions/runs/900000",
+      "repository": { "full_name": "example-org/example-repo" }
+    },
+    {
+      "id": 899999,
+      "name": null,
+      "display_title": "Nightly",
+      "head_branch": "main",
+      "status": "queued",
+      "conclusion": null,
+      "event": "schedule",
+      "triggering_actor": { "login": "example-bot" },
+      "run_started_at": null,
+      "created_at": "2026-09-17T03:00:00Z",
+      "updated_at": "2026-09-17T03:00:05Z",
+      "html_url": "https://github.com/example-org/example-repo/actions/runs/899999",
+      "repository": { "full_name": "example-org/example-repo" }
+    }
+  ]
+}

@@ -1,0 +1,4 @@
+{
+  "adv-movie": { "id": "adv-movie", "name": "Movie night", "folder": "folder-daily", "enabled": true },
+  "adv-holiday": { "id": "adv-holiday", "name": "Holiday mode", "folder": null, "enabled": false }
+}

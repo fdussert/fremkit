@@ -1,0 +1,17 @@
+{ "id": "calendar",
+  "name": { "fr": "Prochains rendez-vous", "en": "Next events" },
+  "version": "1.0.0",
+  "description": { "fr": "L’agenda des jours qui viennent", "en": "The days ahead, calendar by calendar" },
+  "icon": "calendar-days", "minSize": [8, 4], "defaultSize": [16, 10],
+  "compact": { "width": 8 },
+  "subscriptions": ["calendar:*"],
+  "settingsSchema": {
+    "calendars": { "type": "connections", "connectionType": "ics", "default": [],
+      "label": { "fr": "Calendriers", "en": "Calendars" } },
+    "days": { "type": "number", "scope": "tile", "default": 7,
+      "label": { "fr": "Jours affichés", "en": "Days shown" } },
+    "max": { "type": "number", "scope": "tile", "default": 8,
+      "label": { "fr": "Rendez-vous affichés", "en": "Events shown" } },
+    "showLocation": { "type": "boolean", "scope": "tile", "default": true,
+      "label": { "fr": "Afficher le lieu", "en": "Show the location" } }
+  } }

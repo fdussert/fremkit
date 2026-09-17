@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Weather</title>
+<style>
+  html,body{margin:0;height:100%;background:transparent;color:#e6e8eb;font-family:-apple-system,system-ui,sans-serif;overflow:hidden}
+  .wrap{box-sizing:border-box;height:100%;padding:12px 16px;position:relative;display:flex;flex-direction:column;gap:10px}
+  .muted{color:#8b93a0}
+  /* The host says which way round the tile is: on-light means dark text on a light body. */
+  html.on-light body{color:var(--on-surface,#0b0d10)}
+  html.on-light .muted{color:var(--on-surface,#0b0d10);opacity:.7}
+
+  /* Row 1: the glyph, the temperature, then the condition and the three readings beside it. */
+  .now{display:flex;align-items:center;gap:14px;flex:0 0 auto;min-width:0}
+  .now .glyph{flex:0 0 auto;display:flex;color:var(--accent,#d9b36a)}
+  html.accent-fill .now .glyph{color:var(--on-surface,#0b0d10)}
+  .now .temp{font-size:calc(var(--s,64px) * .58);font-weight:600;line-height:1;letter-spacing:-.02em}
+  .now .txt{min-width:0;display:flex;flex-direction:column;gap:2px}
+  .now .cond{font-size:calc(var(--s,64px) * .21);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .now .meta{font-size:calc(var(--s,64px) * .17);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .city{margin-left:auto;text-align:right;font-size:calc(var(--s,64px) * .19);text-transform:uppercase;
+    letter-spacing:.06em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:40%}
+
+  /* Row 2 and 3: the hours, then the days. Both are flex rows that simply lose their last items. */
+  .hours{display:flex;gap:2px;flex:1 1 auto;min-height:0;align-items:stretch}
+  .hours .h{flex:1 1 0;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px}
+  .hours .hh{font-size:12px;letter-spacing:.04em}
+  .hours .ht{font-size:15px;font-weight:600}
+  .hours .hp{font-size:11px;color:#6f93c0;min-height:13px}
+  html.on-light .hours .hp{color:var(--on-surface,#0b0d10);opacity:.6}
+  /* The attribution sits in the bottom-right corner, so the day row stops short of it. */
+  .days{display:flex;gap:14px;flex:0 0 auto;font-size:13px;padding-right:74px;overflow:hidden}
+  .days .d{display:flex;gap:6px;align-items:center;white-space:nowrap}
+  .days .dn{text-transform:uppercase;letter-spacing:.06em;opacity:.7}
+  .days .dmin{opacity:.6}
+
+  /* The attribution their terms ask for, and the mark shown while the last fetch failed. */
+  .foot{position:absolute;right:8px;bottom:4px;font-size:10px;letter-spacing:.04em;opacity:.45}
+  .off{position:absolute;right:8px;top:6px;width:7px;height:7px;border-radius:50%;background:#c8804a;opacity:.85}
+  .hidden{display:none}
+
+  /* Compact: one line in the navigation bar, everything sized from the bar's own height. */
+  html.compact,html.compact body{overflow:hidden}
+  html.compact .wrap{display:none}
+  .cwrap{display:none}
+  html.compact .cwrap{display:flex;box-sizing:border-box;height:100%;width:100%;align-items:center;
+    gap:calc(var(--h,80px) * .10);padding:0 calc(var(--h,80px) * .10)}
+  html.compact .cglyph{flex:0 0 auto;display:flex;color:var(--accent,#d9b36a)}
+  html.compact.accent-fill .cglyph{color:var(--on-surface,#0b0d10)}
+  html.compact .cline{min-width:0;font-size:clamp(13px, calc(var(--h,80px) * .30), 26px);
+    font-weight:600;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  html.compact .cmuted{font-weight:400;color:#8b93a0}
+  html.compact .cmuted:not(:empty)::before{content:'·';margin:0 calc(var(--h,80px) * .10)}
+  /* Right cluster: the bar pushes the iframe against the dots, so its content hugs that edge too. */
+  html.compact.slot-right .cwrap{justify-content:flex-end;text-align:right}
+</style></head><body>
+<div class="wrap">
+  <div class="now"><span class="glyph" id="glyph"></span><span class="temp" id="temp">--°</span>
+    <span class="txt"><span class="cond" id="cond"></span><span class="meta muted" id="meta"></span></span>
+    <span class="city muted" id="city"></span></div>
+  <div class="hours" id="hours"></div>
+  <div class="days muted" id="days"></div>
+  <div class="off hidden" id="off"></div><div class="foot" id="foot">Open-Meteo</div>
+</div>
+<div class="cwrap"><span class="cglyph" id="cglyph"></span><span class="cline"><span id="ctemp">--°</span><span class="cmuted" id="ccity"></span></span></div>
+<script src="wmo.js"></script>
+<script>
+  var L = {
+    loading: { fr: 'Chargement…', en: 'Loading…' },
+    noCity: { fr: 'Indiquez une ville', en: 'Set a city' },
+    unknownCity: { fr: 'Ville introuvable', en: 'City not found' },
+    failed: { fr: 'Météo indisponible', en: 'Weather unavailable' },
+    /* The three readings under the condition, joined into one line. */
+    feels: { fr: 'ressenti {v}', en: 'feels like {v}' },
+    wind: { fr: 'vent {v}', en: 'wind {v}' },
+    humidity: { fr: 'humidité {v}', en: 'humidity {v}' }
+  }
+  /** Formatting tag per app language: en-GB so English keeps the 24-hour clock, like `clock`. */
+  var APP_FORMAT = { fr: 'fr-FR', en: 'en-GB' }
+  var GEOCODE = 'https://geocoding-api.open-meteo.com/v1/search'
+  var FORECAST = 'https://api.open-meteo.com/v1/forecast'
+  var CURRENT_VARS = 'temperature_2m,apparent_temperature,weather_code,wind_speed_10m,relative_humidity_2m'
+  var HOURLY_VARS = 'temperature_2m,weather_code,precipitation_probability'
+  var DAILY_VARS = 'weather_code,temperature_2m_max,temperature_2m_min'
+  var REFRESH_MS = 10 * 60 * 1000
+  /** How wide one column of the hourly row needs to be to stay readable. */
+  var HOUR_COLUMN_PX = 52
+  /** Room the current conditions take before the hourly row may start borrowing width. */
+  var NOW_ROW_PX = 230
+
+  Fremkit.whenReady(function () {
+    var W = globalThis.FremkitWmo
+    var s = Fremkit.settings
+    var el = function (id) { return document.getElementById(id) }
+    /** The last good forecast, kept across a failed poll so the tile never blanks out. */
+    var data = null
+    /** `{ query, locale, latitude, longitude, name }` — geocoding is redone only when one moves. */
+    var place = null
+    var offline = false
+    var timer = null
+    var inFlight = false
+
+    function format() { return APP_FORMAT[Fremkit.locale] || 'en-GB' }
+    function imperial() { return s.units === 'imperial' }
+    function city() { return String(s.location || '').trim() }
+    function hourCount() {
+      var n = Number(s.hours)
+      return Number.isFinite(n) && n > 0 ? Math.min(Math.round(n), 12) : 6
+    }
+    function num(v, digits) {
+      if (typeof v !== 'number' || !isFinite(v)) return '--'
+      try { return new Intl.NumberFormat(format(), { minimumFractionDigits: digits || 0, maximumFractionDigits: digits || 0 }).format(v) }
+      catch (e) { return String(Math.round(v)) }
+    }
+    function temp(v, digits) { return num(v, digits) + '°' }
+    /**
+     * An Open-Meteo timestamp is the location's own local time with no zone suffix, so it is read
+     * as a naive date and formatted without a `timeZone`: the two cancel out and the hour shown is
+     * the hour there.
+     */
+    function hourLabel(iso) {
+      try {
+        return new Intl.DateTimeFormat(format(), { hour: 'numeric', hourCycle: imperial() ? 'h12' : 'h23' }).format(new Date(iso))
+      } catch (e) { return iso.slice(11, 16) }
+    }
+    function dayLabel(iso) {
+      try { return new Intl.DateTimeFormat(format(), { weekday: 'short' }).format(new Date(iso + 'T12:00')) }
+      catch (e) { return iso.slice(5) }
+    }
+
+    function proxyUrl(base, params) {
+      var q = Object.keys(params).map(function (k) { return k + '=' + encodeURIComponent(params[k]) }).join('&')
+      return base + '?' + q
+    }
+    function getJson(url) {
+      return Fremkit.fetch(url).then(function (r) {
+        if (!r.ok) throw new Error('HTTP ' + r.status)
+        return r.json()
+      })
+    }
+
+    /** Resolves the city once and keeps its coordinates until the name or the language changes. */
+    function locate() {
+      var q = city()
+      if (!q) return Promise.reject(new Error('no-city'))
+      if (place && place.query === q && place.locale === Fremkit.locale) return Promise.resolve(place)
+      return getJson(proxyUrl(GEOCODE, { name: q, count: 1, language: Fremkit.locale, format: 'json' })).then(function (j) {
+        var hit = j && j.results && j.results[0]
+        if (!hit) throw new Error('unknown-city')
+        place = { query: q, locale: Fremkit.locale, latitude: hit.latitude, longitude: hit.longitude, name: hit.name }
+        return place
+      })
+    }
+
+    function forecast(p) {
+      var params = {
+        latitude: p.latitude, longitude: p.longitude,
+        current: CURRENT_VARS, hourly: HOURLY_VARS, daily: DAILY_VARS,
+        timezone: 'auto', forecast_days: 4
+      }
+      if (imperial()) { params.temperature_unit = 'fahrenheit'; params.wind_speed_unit = 'mph' }
+      return getJson(proxyUrl(FORECAST, params))
+    }
+
+    function message(text) {
+      el('cond').textContent = text
+      el('meta').textContent = ''
+      el('temp').textContent = '--°'
+      el('glyph').innerHTML = ''
+      el('hours').innerHTML = ''
+      el('days').innerHTML = ''
+      el('cglyph').innerHTML = ''
+      el('ctemp').textContent = '--°'
+    }
+
+    function load() {
+      if (inFlight) return
+      if (!city()) { data = null; place = null; offline = false; render(); return }
+      inFlight = true
+      locate().then(forecast).then(function (j) {
+        data = j
+        offline = false
+      }, function (err) {
+        // A failed poll keeps the last forecast on screen and raises the offline mark instead.
+        if (err && (err.message === 'unknown-city' || err.message === 'no-city')) { data = null; place = null }
+        offline = true
+      }).then(function () { inFlight = false; render() })
+    }
+
+    /** How many hourly columns actually fit, so a narrow tile drops them instead of squashing them. */
+    function fittingHours() {
+      var width = (Fremkit.size && Fremkit.size.px && Fremkit.size.px.width) || 640
+      return Math.max(2, Math.floor((width - 24) / HOUR_COLUMN_PX))
+    }
+
+    function renderHours() {
+      var host = el('hours')
+      var count = Math.min(hourCount(), fittingHours())
+      var list = W.upcomingHours(data.hourly, data.current ? data.current.time : '', count)
+      var px = (Fremkit.size && Fremkit.size.px) || { height: 240 }
+      host.style.display = px.height < 140 ? 'none' : ''
+      // The glyph grows with the row it sits in, so it reads as part of the column and not as a
+      // footnote under the hour; the tile's own height is the only thing the row can borrow from.
+      var glyphSize = Math.round(Math.max(16, Math.min(px.height * 0.13, 30)))
+      host.innerHTML = list.map(function (h) {
+        var d = W.describe(h.code)
+        var rain = typeof h.precipitation === 'number' && h.precipitation >= 10 ? num(h.precipitation) + '%' : ''
+        return '<div class="h"><span class="hh muted">' + Fremkit.esc(hourLabel(h.time)) + '</span>' +
+          W.svg(d.key, glyphSize) +
+          '<span class="ht">' + Fremkit.esc(temp(h.temperature)) + '</span>' +
+          '<span class="hp">' + Fremkit.esc(rain) + '</span></div>'
+      }).join('')
+    }
+
+    function renderDays() {
+      var host = el('days')
+      var daily = data.daily
+      var px = (Fremkit.size && Fremkit.size.px) || { height: 240 }
+      if (s.showDaily === false || !daily || !Array.isArray(daily.time) || px.height < 200) { host.innerHTML = ''; return }
+      var out = []
+      for (var i = 1; i < daily.time.length; i++) {
+        var d = W.describe(daily.weather_code ? daily.weather_code[i] : null)
+        out.push('<span class="d"><span class="dn">' + Fremkit.esc(dayLabel(daily.time[i])) + '</span>' + W.svg(d.key, 15) +
+          '<span>' + Fremkit.esc(temp(daily.temperature_2m_max[i])) + '</span>' +
+          '<span class="dmin">' + Fremkit.esc(temp(daily.temperature_2m_min[i])) + '</span></span>')
+      }
+      host.innerHTML = out.join('')
+    }
+
+    function render() {
+      document.documentElement.lang = Fremkit.locale
+      var px = (Fremkit.size && Fremkit.size.px) || { width: 640, height: 240 }
+      // One scale for the whole current-conditions row, from the tile's height and its width.
+      var scale = Math.max(34, Math.min(px.height * 0.42, px.width * 0.14, 86))
+      document.documentElement.style.setProperty('--s', scale + 'px')
+      document.documentElement.style.setProperty('--h', px.height + 'px')
+      el('off').classList.toggle('hidden', !offline)
+      el('foot').classList.toggle('hidden', px.height < 120)
+
+      if (!city()) { message(Fremkit.t(L.noCity)); return }
+      if (!data) { message(Fremkit.t(offline ? L.failed : L.loading)); return }
+
+      var cur = data.current || {}
+      var d = W.describe(cur.weather_code)
+      var glyph = W.svg(d.key, Math.round(scale))
+      el('glyph').innerHTML = glyph
+      el('temp').textContent = temp(cur.temperature_2m)
+      el('cond').textContent = Fremkit.t(d.label)
+      el('meta').textContent = [
+        Fremkit.t(L.feels, { v: temp(cur.apparent_temperature) }),
+        Fremkit.t(L.wind, { v: num(cur.wind_speed_10m) + ' ' + (imperial() ? 'mph' : 'km/h') }),
+        Fremkit.t(L.humidity, { v: num(cur.relative_humidity_2m) + '%' })
+      ].join(' · ')
+      el('city').textContent = px.width < 420 ? '' : (place ? place.name : '')
+      renderHours()
+      renderDays()
+
+      el('cglyph').innerHTML = W.svg(d.key, Math.round(Math.min(px.height * 0.42, 30)))
+      el('ctemp').textContent = temp(cur.temperature_2m)
+      el('ccity').textContent = s.compactCity === true && place && px.width > 190 ? place.name : ''
+    }
+
+    function schedule() {
+      if (timer) clearInterval(timer)
+      timer = setInterval(load, REFRESH_MS)
+    }
+
+    Fremkit.onResize(render)
+    // Live preview: the admin pushes edited settings instead of reloading the widget.
+    Fremkit.onSettings(function (next) {
+      var before = city() + '|' + s.units
+      s = next || {}
+      render()
+      if (before !== city() + '|' + s.units) load()
+    })
+    // The geocoder answers in the app's language, so a language change re-resolves the city too.
+    Fremkit.onLocale(function () { render(); load() })
+
+    render()
+    load()
+    schedule()
+  })
+</script></body></html>

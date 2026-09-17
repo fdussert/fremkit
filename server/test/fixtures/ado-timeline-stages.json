@@ -1,0 +1,12 @@
+{
+  "records": [
+    { "id": "8c1e0a10-0000-4000-8000-000000000001", "parentId": null, "type": "Stage", "name": "Build", "order": 1, "state": "completed", "result": "succeeded" },
+    { "id": "8c1e0a10-0000-4000-8000-000000000002", "parentId": null, "type": "Stage", "name": "Test", "order": 2, "state": "inProgress", "result": null },
+    { "id": "8c1e0a10-0000-4000-8000-000000000003", "parentId": null, "type": "Stage", "name": "Package", "order": 3, "state": "completed", "result": "succeededWithIssues" },
+    { "id": "8c1e0a10-0000-4000-8000-000000000004", "parentId": null, "type": "Stage", "name": "Deploy", "order": 4, "state": "pending", "result": null },
+    { "id": "8c1e0a10-0000-4000-8000-000000000005", "parentId": null, "type": "Stage", "name": "Smoke", "order": 5, "state": "completed", "result": "skipped" },
+    { "id": "8c1e0a10-0000-4000-8000-000000000011", "parentId": "8c1e0a10-0000-4000-8000-000000000001", "type": "Job", "name": "build_job", "order": 1, "state": "completed", "result": "succeeded" },
+    { "id": "8c1e0a10-0000-4000-8000-000000000012", "parentId": "8c1e0a10-0000-4000-8000-000000000011", "type": "Task", "name": "Checkout", "order": 1, "state": "completed", "result": "succeeded" }
+  ],
+  "lastChangedOn": "2026-09-17T09:03:12.9Z"
+}

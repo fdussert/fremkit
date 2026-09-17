@@ -1,0 +1,19 @@
+{
+  "name": "fremkit",
+  "private": true,
+  "version": "0.1.0",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "setup": "bash scripts/setup.sh",
+    "dev": "bash scripts/dev.sh",
+    "build": "pnpm -r build",
+    "test": "pnpm -r test",
+    "typecheck": "pnpm -r typecheck",
+    "start": "pnpm --filter server start",
+    "kiosk": "bash scripts/kiosk.sh",
+    "helper:build": "bash scripts/build-helper.sh",
+    "helper:install": "bash scripts/install-helper.sh",
+    "helper:test": "bash scripts/test-helper.sh"
+  }
+}

@@ -1,0 +1,18 @@
+{ "id": "homey-flows",
+  "name": { "fr": "Flows Homey", "en": "Homey flows" },
+  "version": "1.1.0",
+  "description": { "fr": "Boutons pour lancer les flows d’un Homey Pro", "en": "Buttons that run the flows of a Homey Pro" },
+  "icon": "play", "minSize": [8, 4], "defaultSize": [16, 8],
+  "subscriptions": ["homey:*"], "commands": ["homey:*"],
+  "settingsSchema": {
+    "connection": { "type": "connection", "connectionType": "homey",
+      "label": { "fr": "Connexion", "en": "Connection" } },
+    "all": { "type": "boolean", "default": false,
+      "label": { "fr": "Afficher tous les flows", "en": "Show every flow" } },
+    "flows": { "type": "pick", "connection": "connection", "source": "flows", "default": [],
+      "label": { "fr": "Flows", "en": "Flows" } },
+    "folder": { "type": "string", "default": "",
+      "label": { "fr": "Filtre de dossier", "en": "Folder filter" } },
+    "max": { "type": "number", "default": 8,
+      "label": { "fr": "Flows affichés", "en": "Flows shown" } }
+  } }

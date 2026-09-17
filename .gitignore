@@ -1,0 +1,23 @@
+node_modules/
+dist/
+data/secrets.json
+data/icons/
+data/*.bak
+data/*.tmp
+data/*.corrupt
+data/claude-usage.json
+data/claude-usage.json.tmp
+data/claude-sessions.json
+data/claude-sessions.json.*.tmp
+.DS_Store
+.vitest/
+native/.build/
+native/dist/
+data/claude-account.json
+data/claude-account.json.tmp
+.worktrees/
+data/backgrounds/
+data/fremkit.json
+# Working notes of the coding agents: local only
+docs/superpowers/
+.superpowers/
