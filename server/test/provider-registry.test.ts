@@ -162,3 +162,124 @@ describe('dynamic providers', () => {
     expect(again.started).toEqual(['start', 'stop'])
   })
 })
+
+describe('a provider that has been replaced', () => {
+  /**
+   * A provider whose poll hangs until the test lets it through. `let()` releases a poll that is
+   * already waiting *and* opens the gate for later ones, so calling it up front gives a provider
+   * that simply polls normally.
+   */
+  function gated(channel: string, data: unknown) {
+    let release: (() => void) | undefined
+    let open = false
+    const polls: unknown[] = []
+    const provider: Provider = {
+      channel,
+      intervalMs: 1000,
+      async poll() {
+        polls.push(data)
+        if (open) return data
+        await new Promise<void>((r) => { release = r })
+        return data
+      },
+    }
+    return { provider, polls, let: () => { open = true; release?.() } }
+  }
+
+  it('does not publish the old provider\'s answer once it has been replaced', async () => {
+    const published: [string, unknown][] = []
+    const registry = new ProviderRegistry((channel, data) => published.push([channel, data]))
+    const old = gated('conn', 'from the old credentials')
+    registry.register(old.provider)
+    registry.addSubscriber('conn')
+    await vi.advanceTimersByTimeAsync(0)
+    expect(old.polls).toHaveLength(1)
+
+    // The connection was edited: the manager rebuilds the provider on the same channel while the
+    // old poll is still in flight.
+    const fresh = gated('conn', 'from the new credentials')
+    fresh.let()
+    registry.register(fresh.provider)
+    old.let()
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(published.map(([, d]) => d)).not.toContain('from the old credentials')
+  })
+
+  it('does not keep polling the old provider after it has been replaced', async () => {
+    const registry = new ProviderRegistry(() => {})
+    const old = gated('conn', 'old')
+    registry.register(old.provider)
+    registry.addSubscriber('conn')
+    await vi.advanceTimersByTimeAsync(0)
+    expect(old.polls).toHaveLength(1)
+
+    const fresh = gated('conn', 'new')
+    fresh.let()
+    registry.register(fresh.provider)
+    old.let()
+    await vi.advanceTimersByTimeAsync(0)
+    const after = old.polls.length
+
+    // An orphaned state used to re-arm its own timer and go on polling the device for ever,
+    // with the credentials the user had just changed.
+    await vi.advanceTimersByTimeAsync(5000)
+    expect(old.polls).toHaveLength(after)
+  })
+
+  it('does not keep polling a channel that was unregistered mid-poll', async () => {
+    const registry = new ProviderRegistry(() => {})
+    const old = gated('conn', 'old')
+    registry.register(old.provider)
+    registry.addSubscriber('conn')
+    await vi.advanceTimersByTimeAsync(0)
+
+    // The connection was deleted outright.
+    registry.unregister('conn')
+    old.let()
+    await vi.advanceTimersByTimeAsync(0)
+    const after = old.polls.length
+    await vi.advanceTimersByTimeAsync(5000)
+    expect(old.polls).toHaveLength(after)
+  })
+
+  it('keeps the new provider polling normally', async () => {
+    const registry = new ProviderRegistry(() => {})
+    const old = gated('conn', 'old')
+    registry.register(old.provider)
+    registry.addSubscriber('conn')
+    await vi.advanceTimersByTimeAsync(0)
+
+    const fresh = gated('conn', 'new')
+    fresh.let()
+    registry.register(fresh.provider)
+    old.let()
+    await vi.advanceTimersByTimeAsync(0)
+    const started = fresh.polls.length
+    expect(started).toBeGreaterThan(0)
+    await vi.advanceTimersByTimeAsync(3000)
+    expect(fresh.polls.length).toBeGreaterThan(started)
+  })
+})
+
+describe('runCommand and the prototype chain', () => {
+  it('refuses a command name that is a prototype member', async () => {
+    const registry = new ProviderRegistry(() => {})
+    registry.register({
+      channel: 'test', intervalMs: 1000,
+      commands: { real: async () => 'ok' },
+    })
+    expect(await registry.runCommand('test', 'real', null)).toBe('ok')
+    // A command name arrives in a widget's message; a plain property read answered these off
+    // Function.prototype and the registry then called them.
+    for (const name of ['constructor', 'toString', 'call', 'apply', 'bind', '__proto__', 'valueOf']) {
+      await expect(registry.runCommand('test', name, null), name).rejects.toThrow(/commande inconnue/)
+    }
+  })
+  it('still refuses a plainly unknown command', async () => {
+    const registry = new ProviderRegistry(() => {})
+    registry.register({ channel: 'test', intervalMs: 1000, commands: { real: async () => 'ok' } })
+    await expect(registry.runCommand('test', 'nope', null)).rejects.toThrow(/commande inconnue/)
+    await expect(registry.runCommand('ghost', 'real', null)).rejects.toThrow(/canal inconnu/)
+  })
+})
