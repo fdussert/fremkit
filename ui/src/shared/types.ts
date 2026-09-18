@@ -308,6 +308,51 @@ export function fieldsInScope(
 /** Where a widget came from: shipped with Fremkit, or installed from the marketplace. */
 export type WidgetSource = 'builtin' | 'installed'
 
+/** The three lists a widget asks for, as the registry index and a consent record spell them. */
+export interface WidgetPermissionSet { subscriptions: string[]; commands: string[]; network: string[] }
+
+/**
+ * One row of the marketplace: what the registry published, plus what this machine makes of it.
+ *
+ * The permissions here are what the entry *advertises*. The install re-reads them from the
+ * manifest inside the downloaded package, which is the one that was hashed — so the dialog shows
+ * the shop window and the server consents against the goods.
+ */
+export interface MarketplaceWidget {
+  id: string
+  version: string
+  sdk: number
+  name: LocalizedText
+  description: LocalizedText
+  icon: string
+  author?: string
+  license?: string
+  homepage?: string
+  permissions: WidgetPermissionSet
+  /** Connection types the widget's settings need: "needs a Synology connection". */
+  connections: string[]
+  size: number
+  publishedAt: string
+  installed: boolean
+  installedVersion: string | null
+  updateAvailable: boolean
+  /** The widget needs a newer Fremkit than this one. */
+  sdkTooNew: boolean
+  consentNeeded: boolean
+  newPermissions: WidgetPermissionSet
+  /** A built-in already owns this id, so it can never be installed. */
+  shadowsBuiltin: boolean
+}
+
+export interface MarketplaceResponse {
+  registry: string | null
+  generatedAt: string | null
+  widgets: MarketplaceWidget[]
+  /** The index could not be read; `widgets` is the last one seen, or empty. */
+  offline: boolean
+  sdk: number
+}
+
 export interface WidgetsResponse {
   widgets: Record<string, WidgetManifest>; errors: { id: string; error: string }[]
   /** One entry per widget in `widgets`; a fact about the folder, not a claim of the manifest. */

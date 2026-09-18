@@ -25,21 +25,45 @@ function unbindDragFallback(): void {
 </script>
 
 <script setup lang="ts">
-import { onMounted, onBeforeUnmount } from 'vue'
+import { onMounted, onBeforeUnmount, ref } from 'vue'
 import BaseButton from '../shared/ui/BaseButton.vue'
 import BaseCard from '../shared/ui/BaseCard.vue'
 import BaseIcon from '../shared/ui/BaseIcon.vue'
+import BaseSegmented from '../shared/ui/BaseSegmented.vue'
+import BrowseLibrary from './BrowseLibrary.vue'
 import WidgetPermissions from './WidgetPermissions.vue'
 import { pick, useI18n } from '../shared/i18n'
 import { DND_TYPE, useAdminStore } from './store'
+import { createMarketplaceStore } from './marketplace'
 
 const s = useAdminStore()
 const { t } = useI18n()
+
+/**
+ * The two halves of the same column: what is here, and what could be. `local` stays the default
+ * because that is the one used on every visit; Browse is a trip somebody makes on purpose.
+ */
+const tab = ref<'local' | 'browse'>('local')
+
+/**
+ * Installing writes files on the server; the library is what reads them, so a rescan is how the
+ * new widget appears in the local tab without a reload.
+ */
+const market = createMarketplaceStore({ onChanged: () => s.rescan() })
 
 function onDragStart(e: DragEvent, id: string): void {
   s.setDragWidget(id)
   e.dataTransfer?.setData(DND_TYPE, id)
   if (e.dataTransfer) e.dataTransfer.effectAllowed = 'copy'
+}
+
+/** The version of an installed widget, for the chip on its card in the local tab. */
+function installedVersion(id: string): string | null {
+  return s.state.sources[id] === 'installed' ? s.state.manifests[id]?.version ?? null : null
+}
+/** True when the registry has something newer for a widget that is already here. */
+function hasUpdate(id: string): boolean {
+  return market.state.widgets.some((w) => w.id === id && w.updateAvailable)
 }
 
 onMounted(bindDragFallback)
@@ -48,13 +72,28 @@ onBeforeUnmount(unbindDragFallback)
 
 <template>
   <section>
-    <h2>{{ t('admin.library.title') }} <BaseButton variant="icon" :title="t('admin.library.rescan')" @click="s.rescan()"><BaseIcon name="redo-2" :size="16" /></BaseButton></h2>
-    <div class="list">
+    <h2>
+      {{ t('admin.library.title') }}
+      <BaseButton v-if="tab === 'local'" variant="icon" :title="t('admin.library.rescan')" @click="s.rescan()">
+        <BaseIcon name="redo-2" :size="16" />
+      </BaseButton>
+    </h2>
+
+    <BaseSegmented v-model="tab" class="tabs" :options="[
+      { value: 'local', label: t('admin.library.tabLocal') },
+      { value: 'browse', label: market.updates.value ? t('admin.library.tabBrowseN', { n: market.updates.value }) : t('admin.library.tabBrowse') },
+    ]" />
+
+    <div v-if="tab === 'local'" class="list">
       <BaseCard v-for="m in Object.values(s.state.manifests)" :key="m.id" grab :draggable="true" @dragstart="onDragStart($event, m.id)" @dragend="s.setDragWidget(null)"
         @click="s.addWidget(m.id)">
         <BaseIcon :name="m.icon" :size="20" />
         <div class="txt">
-          <strong>{{ pick(m.name) }}</strong>
+          <strong>
+            {{ pick(m.name) }}
+            <span v-if="installedVersion(m.id)" class="chip">{{ t('admin.market.installedAt', { version: installedVersion(m.id) ?? '' }) }}</span>
+            <span v-if="hasUpdate(m.id)" class="chip up">{{ t('admin.market.updateChip') }}</span>
+          </strong>
           <small>{{ m.defaultSize[0] }}×{{ m.defaultSize[1] }} · {{ pick(m.description) }}</small>
           <WidgetPermissions :manifest="m" compact />
         </div>
@@ -64,6 +103,8 @@ onBeforeUnmount(unbindDragFallback)
         <div class="txt"><strong>{{ e.id }}</strong><small>{{ e.error }}</small></div>
       </BaseCard>
     </div>
+
+    <BrowseLibrary v-else :store="market" />
   </section>
 </template>
 
@@ -71,9 +112,13 @@ onBeforeUnmount(unbindDragFallback)
 section { margin-top: var(--space-4); }
 h2 { display: flex; align-items: center; justify-content: space-between; font-size: var(--fs-xs);
   text-transform: uppercase; letter-spacing: .08em; color: var(--text-muted); margin: 0 0 var(--space-2); }
+.tabs { margin-bottom: var(--space-2); }
 .list { display: flex; flex-direction: column; gap: var(--space-2); }
 .txt { display: flex; flex-direction: column; min-width: 0; }
-.txt strong { font-size: var(--fs-sm); font-weight: 600; }
+.txt strong { display: flex; align-items: center; gap: var(--space-1); flex-wrap: wrap; font-size: var(--fs-sm); font-weight: 600; }
 .txt small { font-size: var(--fs-xs); color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chip { font-size: var(--fs-xs); font-weight: 400; color: var(--text-muted); border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm); padding: 0 5px; }
+.chip.up { color: var(--on-accent); background: var(--accent); border-color: var(--accent); }
 .err { border-color: var(--danger); color: var(--danger); }
 </style>

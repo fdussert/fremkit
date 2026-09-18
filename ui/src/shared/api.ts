@@ -1,4 +1,4 @@
-import type { Config, ConnectionSummary, ConnectionTypeInfo, InstalledAppInfo, PickOption, WidgetsResponse } from './types'
+import type { Config, ConnectionSummary, ConnectionTypeInfo, InstalledAppInfo, MarketplaceResponse, PickOption, WidgetsResponse } from './types'
 
 export interface ConnectionInput { type: string; name: string; fields: Record<string, string>; secrets?: Record<string, string> }
 
@@ -39,6 +39,24 @@ export const api = {
       .then((r) => json<{ name: string }>(r)),
   deleteBackground: (name: string) =>
     fetch(`/api/backgrounds/${encodeURIComponent(name)}`, { method: 'DELETE' }).then((r) => json<{ ok: boolean }>(r)),
+
+  /** The registry index merged with what this machine has installed. Never throws on offline. */
+  getMarketplace: () => fetch('/api/marketplace').then((r) => json<MarketplaceResponse>(r)),
+  refreshMarketplace: () =>
+    fetch('/api/marketplace/refresh', { method: 'POST' }).then((r) => json<MarketplaceResponse>(r)),
+  /**
+   * `consent` says the permission dialog was answered, not that something is allowed: the
+   * server recomputes the difference from the package it downloads and refuses either way.
+   */
+  installWidget: (id: string, opts: { consent?: boolean; version?: string; update?: boolean } = {}) =>
+    fetch(`/api/marketplace/${opts.update ? 'update' : 'install'}`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ id, consent: opts.consent ?? false, ...(opts.version ? { version: opts.version } : {}) }),
+    }).then((r) => json<{ ok: true; id: string; version: string }>(r)),
+  uninstallWidget: (id: string) =>
+    fetch('/api/marketplace/uninstall', {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id }),
+    }).then((r) => json<{ ok: true; id: string }>(r)),
 
   /** The applications installed on this machine, for the fields a manifest marks `suggest: apps`. */
   getInstalledApps: () => fetch('/api/apps/installed').then((r) => json<InstalledAppInfo[]>(r)),
