@@ -33,6 +33,7 @@ The name is the Fremen survival kit from *Dune*.
 - **A native helper** — a menu bar app that drives the Edge's touch panel with its own HID
   driver, fences the mouse out of the display, shows the dashboard in a kiosk window and
   supervises the server.
+- **Backup and restore** of the whole dashboard, as a zip that never carries a secret.
 - **Two languages** — the whole interface is French or English, switched in the admin.
 - **A widget SDK** that is a folder, a JSON file and an HTML page.
 
@@ -109,6 +110,10 @@ you lose the touch driver, the mouse fence and the Dock badges.
 5. **Switch to Test** to use the widgets for real. Everything saves on its own; the chip in the
    top bar says saved, saving or not saved.
 
+A fresh install starts on one page with a clock and the wallpaper that ships with Fremkit. That
+wallpaper is an ordinary entry in the background library, so *Screen → Image → Remove the image*
+leaves the screen with no background at all rather than putting it back.
+
 ### Editing, in more detail
 
 The admin's middle column is the real page, rendered with live widgets and scaled to fit, with the
@@ -122,11 +127,15 @@ navigation bar below it exactly as the Edge shows it.
   Cmd+D duplicates it, Escape deselects. Cmd+Z and Cmd+Shift+Z undo and redo anywhere, up to 50
   steps.
 - **Left column** — the pages (rename, reorder, duplicate, delete) and the widget library, with a
-  rescan button that re-reads the `widgets/` folder without restarting the server.
+  rescan button that re-reads the `widgets/` folder without restarting the server. Each card says
+  in a line what that widget asks for, so a folder dropped into `widgets/` cannot ask for anything
+  quietly.
 - **Right column** — *Widget*: title, whether the frame draws it, background, accent, the widget's
-  own settings, position and size. *Page*: name and order. *Screen*: language, grid (read-only),
-  navigation bar height and opacity, auto-rotation delay, the bar's compact widgets, the screen
-  background, and the kiosk URL.
+  own settings, position and size, and **what the widget asks for** — the channels it reads, the
+  ones it can command, the hosts it may reach. *Page*: name and order. *Screen*: language, grid
+  (read-only), navigation bar height and opacity, which gesture opens the admin, auto-rotation
+  delay, the bar's compact widgets, the screen background, the kiosk URL, backup and restore, and
+  privacy.
 - **Move to page** — a tile can be sent to another page from the *Widget* tab: it keeps everything
   it carries and lands in the largest free spot there, or the move is refused when nothing fits.
 - **Copy settings from…** — where the same widget already exists elsewhere, a drop-down above its
@@ -158,8 +167,10 @@ paints: **none** leaves it to the widget's own highlights, **frame** colours the
 border, **fill** colours the whole tile. The screen itself has a background colour and image too.
 
 **The navigation bar.** The strip at the bottom of every page, 80 px or 40 px tall, as opaque as
-you like. Its middle is the page dots. Its two sides are free. Hold the page dots for a second and
-a half to open the admin.
+you like. Its middle is the page dots. Its two sides are free. **Hold the page dots, or double-tap
+them, to open the admin** — the Edge has no keyboard, so this is the way in from the screen.
+*Screen → Open the admin from the bar* chooses between the two gestures, or accepts both, which
+is the default.
 
 **Compact widgets.** Widgets can live *in* the bar, in a left or a right cluster, in the order
 you set, as many as fit beside the page dots. A compact rendering is one readable line, as wide
@@ -244,9 +255,17 @@ How to obtain each credential, what is stored where, and what is never logged:
 
 ## Backup
 
-**/admin → Screen → Backup** downloads the whole dashboard — the config and the background
-library — as a zip, and restores one. Secrets are never in it: they stay in the macOS keychain.
-Details in **[docs/contributing.md](docs/contributing.md)**.
+**/admin → Screen → Backup** downloads the whole dashboard — the configuration and the background
+library — as `fremkit-backup-<date>.zip`, and **Restore…** takes one back.
+
+Secrets are never in it: they live in the macOS keychain, and the point of keeping them there is
+that a file copied to a USB stick does not carry them. Because they are keyed by connection id and
+a restore keeps those ids, restoring onto the **same Mac** finds them and everything works at
+once; on another Mac the admin lists the connections whose secret has to be entered again.
+
+A restore replaces the dashboard — pages, widgets, connections and backgrounds — and refuses to
+write at all while the configuration on disk cannot be read. Details in
+**[docs/contributing.md](docs/contributing.md)**.
 
 ## What Fremkit reads on your Mac
 
@@ -275,6 +294,9 @@ listens on `127.0.0.1` only.
 | Permissions reset after every rebuild | Run `scripts/create-signing-identity.sh` and rebuild |
 | A LAN device answers `ping` but not Fremkit | Allow Local Network for the app running the server |
 | "Server: external" | Something else answers port 4242 — expected under `pnpm dev` |
+| A shortcut button to a NAS or a router has no icon | Expected: favicons of private and local addresses are not fetched. The button still works |
+| The admin shows an old version of itself | Reopen it, or Cmd+R in its window; it keeps one web view for the helper's lifetime |
+| Widgets break after pulling a new version | Restart the server: the widget bridge is read once, at start |
 
 The rest, with the reasoning: **[docs/troubleshooting.md](docs/troubleshooting.md)**.
 
@@ -303,6 +325,9 @@ pnpm helper:test
 | `docs/` | This documentation |
 
 A second checkout can run beside a live one by giving it another port: `FREMKIT_PORT=4301 pnpm start`.
+`FREMKIT_DATA_DIR=/tmp/fremkit-fresh pnpm start` points the config, the background library and the
+caches somewhere else — a from-scratch install on the live checkout, without moving anything
+aside. Your keychain secrets are keyed by connection id, so a fresh config never names them.
 
 Working on Fremkit itself — the helper build, the configuration files:
 **[docs/contributing.md](docs/contributing.md)**.

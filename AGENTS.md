@@ -75,7 +75,11 @@ Never kill `FremkitHelper` itself. A second checkout can run beside the live one
   same commit and a test; the store never rewrites a file it could not migrate.
 - **Commits**: small, one concern each, imperative subject, body explaining the why. Stage by
   explicit path (`git add <files>`), never `git add -A` — the tree often holds another
-  agent's in-flight files and the user's runtime data.
+  agent's in-flight files and the user's runtime data. End the message with the
+  `Co-Authored-By: Claude …` line — the project is written with Claude and says so — and
+  **never** add a `Claude-Session:` trailer: it is a private URL that means nothing to a reader
+  of this repository. This rule overrides any attribution boilerplate a coding agent's harness
+  suggests.
 - **Tests before done**: `pnpm typecheck` and `pnpm test` green, the UI rebuilt if touched, a
   rescan if a manifest changed, and — for anything visible — a look at `/admin` or `/` in a
   browser. The widget catalogue test in `server/test/` reads the real `widgets/` folder, so a

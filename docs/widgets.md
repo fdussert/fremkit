@@ -31,7 +31,7 @@ To write your own, see [writing-widgets.md](writing-widgets.md).
 | [processes](#processes) | Top processes | — | — | 16 × 8 |
 | [service-status](#service-status) | A dot per service, up, warn or down | — | 4 cells | 8 × 6 |
 | [shortcuts](#shortcuts) | Big buttons that open apps, links and shortcuts | — | — | 16 × 8 |
-| [spotify](#spotify) | Spotify transport controls | — | — | 16 × 4 |
+| [spotify](#spotify) | Spotify transport controls | — | long press opens the app | 16 × 4 |
 | [volume](#volume) | System volume | — | — | 8 × 4 |
 | [weather](#weather) | Current weather and forecast | — | 5 cells | 16 × 6 |
 
@@ -488,7 +488,14 @@ installed applications, the address, or the shortcut's name as Shortcuts.app spe
 
 *Spotify* — the current track's cover, title and artist, with previous / play-pause / next.
 
-Minimum size 16 × 4, default 16 × 4. No settings.
+Minimum size 16 × 4, default 16 × 4.
+
+| Setting | What it does |
+|---|---|
+| **Long press: open Spotify** | A press held on the tile brings the Spotify application forward. Off by default: a tile you touch to pause should not leave the dashboard by surprise. |
+
+The tap that would have followed a long press is swallowed, so holding the play button opens the
+app without also toggling playback.
 
 ## volume
 
