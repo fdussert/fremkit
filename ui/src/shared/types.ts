@@ -334,6 +334,11 @@ export interface MarketplaceWidget {
   name: LocalizedText
   description: LocalizedText
   icon: string
+  /**
+   * The shelf the Available view puts it on, one of `WIDGET_CATEGORIES`. The server resolves an
+   * absent or unknown one to `other`, so unlike a manifest's this is always there.
+   */
+  category: string
   author?: string
   license?: string
   homepage?: string

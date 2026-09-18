@@ -237,6 +237,27 @@ describe('the development override', () => {
   })
 })
 
+describe('the category of an entry', () => {
+  it('reads what the registry published', async () => {
+    const { registry } = make(JSON.stringify(index({ widgets: [widget({ category: 'home' })] })))
+    expect((await registry.index()).widgets[0].category).toBe('home')
+  })
+
+  it('reads an index published before categories reached it as `other`', async () => {
+    // The key is simply absent there, and refusing the whole index over it would take every
+    // widget out of the admin for the sake of a shelf label.
+    const { registry } = make(JSON.stringify(index()))
+    expect((await registry.index()).widgets[0].category).toBe('other')
+  })
+
+  it('files a category this build does not know under `other`', async () => {
+    // A registry running ahead of this Fremkit: the widget belongs on a shelf that exists here
+    // rather than taking the index down, which is the rule the manifest schema already applies.
+    const { registry } = make(JSON.stringify(index({ widgets: [widget({ category: 'quantum' })] })))
+    expect((await registry.index()).widgets[0].category).toBe('other')
+  })
+})
+
 describe('themes in the index', () => {
   const theme = (over: Record<string, unknown> = {}): Record<string, unknown> => ({
     id: 'nuit', version: '1.0.0',

@@ -10,7 +10,7 @@ function widget(over: Partial<MarketplaceWidget> = {}): MarketplaceWidget {
   return {
     id: 'demo', version: '1.0.0', sdk: 1,
     name: { fr: 'Démo', en: 'Demo' }, description: { fr: 'Un widget', en: 'A widget' },
-    icon: 'layout-grid', author: 'A. Author', license: 'MIT',
+    icon: 'layout-grid', category: 'other', author: 'A. Author', license: 'MIT',
     permissions: { subscriptions: [], commands: [], network: [] },
     connections: [], size: 2048, publishedAt: '2026-09-18T12:00:00.000Z',
     installed: false, installedVersion: null, updateAvailable: false,

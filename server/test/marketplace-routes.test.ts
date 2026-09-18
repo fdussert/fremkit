@@ -105,6 +105,15 @@ describe('GET /api/marketplace', () => {
     expect(w.newPermissions.subscriptions).toEqual(['system'])
   })
 
+  it('passes the category straight through, so the panel can shelve it', async () => {
+    await app.close()
+    const zip = packageOf()
+    await build({ zip, index: { ...indexFor(zip), widgets: [
+      { ...(indexFor(zip).widgets as Record<string, unknown>[])[0], category: 'home' },
+    ] } })
+    expect((await app.inject({ url: '/api/marketplace' })).json().widgets[0].category).toBe('home')
+  })
+
   it('names the pages a widget is placed on, installed or not', async () => {
     // The whole point of the field: a dashboard built before a widget moved to the registry has
     // a tile of it, painted as missing, and this is what lets the admin offer the install.

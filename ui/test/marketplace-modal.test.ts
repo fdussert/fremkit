@@ -23,7 +23,7 @@ function widget(over: Partial<MarketplaceWidget> = {}): MarketplaceWidget {
   return {
     id: 'demo', version: '2.0.0', sdk: 1,
     name: { fr: 'Démo', en: 'Demo' }, description: { fr: 'Un widget', en: 'A widget' },
-    icon: 'layout-grid',
+    icon: 'layout-grid', category: 'other',
     permissions: { subscriptions: [], commands: [], network: [] },
     connections: [], size: 2048, publishedAt: '2026-09-18T12:00:00.000Z',
     installed: true, installedVersion: '1.0.0', updateAvailable: true,

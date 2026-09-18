@@ -19,7 +19,7 @@ function widget(over: Partial<MarketplaceWidget> = {}): MarketplaceWidget {
     id: 'homey-devices', version: '1.1.0', sdk: 1,
     name: { fr: 'Appareils Homey', en: 'Homey devices' },
     description: { fr: 'Les appareils', en: 'The devices' },
-    icon: 'layout-grid',
+    icon: 'layout-grid', category: 'other',
     permissions: { subscriptions: ['homey:*'], commands: [], network: [] },
     connections: ['homey'], size: 17000, publishedAt: '2026-09-18T12:00:00.000Z',
     installed: false, installedVersion: null, updateAvailable: false,

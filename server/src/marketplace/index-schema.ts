@@ -14,7 +14,7 @@
  */
 
 import { z } from 'zod'
-import { SEMVER_RE } from '../widgets/manifest.js'
+import { SEMVER_RE, WIDGET_CATEGORIES } from '../widgets/manifest.js'
 import { WIDGET_ID_RE } from '../config/schema.js'
 
 /** The version of the index format this build reads. */
@@ -50,6 +50,16 @@ export const IndexWidgetSchema = z.object({
   name: LocalizedTextSchema,
   description: LocalizedTextSchema,
   icon: z.string().min(1),
+  /**
+   * The shelf of the library the admin puts it on, before it is installed.
+   *
+   * Both forgiving forms on purpose, and for two different reasons. `.default('other')` is for an
+   * index published before categories reached it, which must not be refused whole over a key it
+   * never had. `.catch('other')` is for a registry that has grown a category this build does not
+   * know: the widget belongs on a shelf that exists here rather than taking the whole index down
+   * — the same rule the manifest schema applies to an installed widget.
+   */
+  category: z.enum(WIDGET_CATEGORIES).default('other').catch('other'),
   author: z.string().max(200).optional(),
   license: z.string().max(64).optional(),
   homepage: HttpsUrl.optional(),
