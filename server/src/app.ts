@@ -15,6 +15,8 @@ import { createSecretStore } from './secrets/index.js'
 import { configRoutes } from './config/routes.js'
 import { WidgetCatalog } from './widgets/catalog.js'
 import { installedWidgetsDir } from './widgets/installed.js'
+import { Registry } from './marketplace/registry.js'
+import { marketplaceRoutes } from './marketplace/routes.js'
 import { widgetRoutes } from './widgets/routes.js'
 import { ProviderRegistry } from './providers/registry.js'
 import type { Provider } from './providers/types.js'
@@ -77,7 +79,8 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   // Providers, the proxy and the connection types are far from any request, so they read the
   // language from this module-level copy rather than being handed a store they have no use for.
   setServerLocale(store.get().locale)
-  const catalog = new WidgetCatalog(opts.widgetsDir, installedWidgetsDir(opts.dataDir))
+  const installedDir = installedWidgetsDir(opts.dataDir)
+  const catalog = new WidgetCatalog(opts.widgetsDir, installedDir)
   await catalog.scan()
 
   // A camera stream writes a one-line concat list into its own temp directory and removes it on
@@ -177,6 +180,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   await app.register(connectionRoutes, { store, catalog, types: connectionTypes, manager: connections, secrets })
   await app.register(widgetRoutes, { catalog, store })
   await app.register(proxyRoutes, { catalog, store })
+  await app.register(marketplaceRoutes, { store, catalog, registry: new Registry(), installedDir })
   await app.register(backgroundRoutes, { dataDir: opts.dataDir })
   await app.register(backupRoutes, {
     store,

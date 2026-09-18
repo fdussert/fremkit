@@ -1,6 +1,7 @@
 import { readdir, readFile, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { ManifestSchema, type WidgetManifest } from './manifest.js'
+import { WIDGET_ID_RE } from '../config/schema.js'
 
 export interface CatalogError { id: string; error: string }
 
@@ -61,6 +62,10 @@ export class WidgetCatalog {
       try { ids = await readdir(root.dir) } catch { ids = [] }
       for (const id of ids) {
         const folder = join(root.dir, id)
+        // A name that could never be a widget id is not a widget: `.DS_Store`, the installer's
+        // `.tmp-…` staging folder and the `<id>.bak` it keeps while a version is replaced. None
+        // of them is an error to report — they are simply not part of the catalogue.
+        if (!WIDGET_ID_RE.test(id)) continue
         try {
           if (!(await stat(folder)).isDirectory()) continue
           // Built-ins are read first and keep their id: a folder dropped into `data/widgets`
