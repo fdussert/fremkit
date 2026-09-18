@@ -46,6 +46,14 @@ export interface ConnectionProviderContext {
    * that has no such case simply never calls it.
    */
   saveSecret?(fieldKey: string, value: string): Promise<void>
+  /**
+   * Forgets a secret of this connection, for the one that has been *spent*.
+   *
+   * A Synology one-time code works once: after the device token that replaces it has been
+   * stored, the six digits are dead weight — and a dead secret sitting in the store is one more
+   * thing that could be read or sent somewhere. Same key space and same guard as `saveSecret`.
+   */
+  forgetSecret?(fieldKey: string): Promise<void>
 }
 
 /**

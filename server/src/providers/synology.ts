@@ -6,12 +6,23 @@
  *    and `enable_device_token=yes` it also returns a `device_id`, which stands in for the code on
  *    every later login. That is the whole reason the one-time code is asked for once: DSM will
  *    not take the same six digits twice, so without the device token a 2FA account would need a
- *    fresh code every restart.
- *  - `SYNO.API.Auth` v1, `method=logout` — ends a session. Used by `test()`, which must not leave
- *    a session behind on the NAS every time the button is pressed.
+ *    fresh code every restart. `session` and `device_name` are sent too: DSM keys a session on
+ *    the name, so a logout under a different name would not end it, and the name is what shows
+ *    up in DSM's trusted-devices list.
+ *  - `SYNO.API.Auth` v1, `method=logout` — ends a session. Used by the provider when its channel
+ *    goes quiet and by anything that fails, so a session does not linger on the NAS.
  *  - `SYNO.Core.System.Utilization` v1, `method=get` — CPU, memory and network counters.
+ *  - `SYNO.Core.System` v1, `method=info` — `model`, `firmware_ver` and `up_time`. This is where
+ *    the uptime really comes from; `SYNO.Core.System.Utilization` may carry a `time.uptime`, but
+ *    the field is undocumented and absent on some DSM versions, so it is only a fallback.
  *  - `SYNO.Storage.CGI.Storage` v1, `method=load_info` — volumes and disks: size, used, status,
  *    model, temperature, SMART verdict.
+ *
+ * **Everything is a POST.** DSM accepts the parameters as an `application/x-www-form-urlencoded`
+ * body, and that is where the password, the one-time code and the session id belong: a query
+ * string lands in the NAS's own access log and in any reverse proxy in front of it. Only `api`,
+ * `version` and `method` stay in the URL, because `entry.cgi` routes on them and none of the
+ * three is a secret.
  *
  * **Nothing here is logged or quoted.** The session id, the password, the one-time code and the
  * device token never appear in an error, a log line or a snapshot. DSM's own error bodies are
@@ -28,7 +39,6 @@ import { z } from 'zod'
 import type { ConnectionProviderContext } from '../connections/types.js'
 import type { Provider } from './types.js'
 import { USER_AGENT } from '../version.js'
-import { tr } from '../i18n.js'
 
 /** One request may take this long; a NAS waking a sleeping disk array is slow. */
 export const SYNOLOGY_TIMEOUT_MS = 15_000
@@ -38,14 +48,41 @@ export const SYNOLOGY_RETRY_MS = 10_000
 export const SYNOLOGY_DEFAULT_PORT = 5001
 /** An answer bigger than this is not a DSM answer. Sixteen disks of metadata is a few kilobytes. */
 export const MAX_ANSWER_BYTES = 2 * 1024 * 1024
+/**
+ * The session name DSM keys this session on, sent on login *and* logout.
+ *
+ * It has to be the same on both, or the logout ends a session that does not exist and ours
+ * lingers on the NAS until DSM expires it.
+ */
+export const SESSION_NAME = 'FremkitDSM'
+/** What DSM's trusted-devices list will call this Mac after a two-factor enrolment. */
+export const DEVICE_NAME = 'Fremkit'
 
-/** DSM error codes worth acting on. 119 is a session id it does not know; 105 a session that lost its rights. */
-const SESSION_GONE = new Set([105, 119])
-/** Wrong account or password. 403/404 are the two-factor codes; 400 is the catch-all. */
+/**
+ * DSM error codes, and what each one means for the next call.
+ *
+ * `SESSION_GONE` is "log in again and retry once": 106 is a timeout, 107 a session interrupted
+ * by a duplicate login, 119 a session id DSM does not know. 105 is *not* one of them — it means
+ * the account lacks the privilege for that API, and retrying the login changes nothing; it used
+ * to sit here and turned a read-only account without storage rights into a login loop reported
+ * as `offline`.
+ */
+const SESSION_GONE = new Set([106, 107, 119])
+/** The account lacks the privilege for this API. Re-logging in will not help. */
+const FORBIDDEN = 105
+/**
+ * Wrong account, password or code — **on the login call only**. 403 and 404 are the two-factor
+ * codes, 400 the catch-all. On `SYNO.Core.System.Utilization` the same numbers mean something
+ * else entirely, which is why this table is applied in `login()` and nowhere else.
+ */
 const AUTH_FAILED = new Set([400, 401, 402, 403, 404, 406])
+/** DSM's "a one-time code is required", which only arrives once the password was accepted. */
+export const OTP_REQUIRED = 403
+
+export type SynologyErrorKind = 'auth' | 'otpRequired' | 'forbidden' | 'session' | 'network' | 'answer'
 
 export class SynologyError extends Error {
-  constructor(readonly code: number | null, readonly kind: 'auth' | 'session' | 'network' | 'answer') {
+  constructor(readonly code: number | null, readonly kind: SynologyErrorKind) {
     super(`synology ${kind}${code === null ? '' : ` ${code}`}`)
     this.name = 'SynologyError'
   }
@@ -94,18 +131,23 @@ export interface SynologySnapshot {
   memory: { usedPercent: number | null; totalBytes: number | null }
   /** Bytes per second, summed over the interfaces DSM reports. */
   network: { rx: number | null; tx: number | null }
+  /** From `SYNO.Core.System` `info.up_time`; the utilization `time.uptime` is a fallback. */
   uptimeSeconds: number | null
+  /** `SYNO.Core.System` `info.model`, e.g. `DS923+`. Null until that call has answered once. */
+  model: string | null
+  /** `SYNO.Core.System` `info.firmware_ver`, DSM's own version string. */
+  dsmVersion: string | null
   volumes: SynologyVolume[]
   disks: SynologyDisk[]
   /** The last moment any of this was true, as epoch milliseconds. */
   at: number
-  /** `offline`, `unauthorized`, `unconfigured`, or absent when the last poll worked. */
+  /** `offline`, `unauthorized`, `forbidden`, `unconfigured`, or absent when the poll worked. */
   error?: string
 }
 
 export const EMPTY_SNAPSHOT: SynologySnapshot = {
   cpu: null, memory: { usedPercent: null, totalBytes: null }, network: { rx: null, tx: null },
-  uptimeSeconds: null, volumes: [], disks: [], at: 0,
+  uptimeSeconds: null, model: null, dsmVersion: null, volumes: [], disks: [], at: 0,
 }
 
 /** DSM answers `{ success, data? , error? }` for everything. */
@@ -127,7 +169,18 @@ export const UtilizationSchema = z.object({
   cpu: z.object({ user_load: num.optional(), system_load: num.optional(), other_load: num.optional() }).optional(),
   memory: z.object({ real_usage: num.optional(), memory_size: num.optional() }).optional(),
   network: z.array(z.object({ device: z.string().optional(), rx: num.optional(), tx: num.optional() })).optional(),
+  /** Undocumented and absent on some DSM versions; `SYNO.Core.System` is the real source. */
   time: z.object({ uptime: num.optional() }).optional(),
+})
+
+/**
+ * `SYNO.Core.System` `method=info`. `up_time` is a duration DSM formats as text on some
+ * versions (`"12 days 3:14:15"`) and as a number of seconds on others, so both are read.
+ */
+export const SystemInfoSchema = z.object({
+  model: z.string().optional(),
+  firmware_ver: z.string().optional(),
+  up_time: z.union([z.number(), z.string()]).optional(),
 })
 
 export const StorageSchema = z.object({
@@ -149,32 +202,67 @@ export const StorageSchema = z.object({
   })).optional(),
 })
 
-export interface SynologyTransport {
-  (url: URL, opts: { rejectUnauthorized: boolean; timeoutMs: number }): Promise<{ status: number; body: Buffer }>
+/** One request, as the transport receives it. `body` is already form-encoded. */
+export interface SynologyRequest {
+  url: URL
+  method: 'POST'
+  body: string
+  rejectUnauthorized: boolean
+  timeoutMs: number
 }
 
-/** One GET, by hand, so `rejectUnauthorized` can be a per-connection decision. */
-export const httpsTransport: SynologyTransport = (url, opts) =>
+export type SynologyTransport = (req: SynologyRequest) => Promise<{ status: number; body: Buffer }>
+
+export class AnswerTooLargeError extends Error {
+  constructor() {
+    super('answer too large')
+    this.name = 'AnswerTooLargeError'
+  }
+}
+
+/**
+ * Reads a response body with a ceiling, and **throws** past it.
+ *
+ * Throwing is the whole point. The first version destroyed the request and returned, relying on
+ * an `error` event Node does not promise — and the provider registry awaits `poll()` with no
+ * timeout, so a NAS (or anything answering for its address) streaming past the cap would have
+ * stopped the channel for the life of the process. Awaiting the stream rather than juggling
+ * `data`/`end`/`error` also means there is only one way out.
+ */
+export async function readCapped(stream: AsyncIterable<Buffer | Uint8Array>, max: number): Promise<Buffer> {
+  const chunks: Buffer[] = []
+  let total = 0
+  for await (const chunk of stream) {
+    total += chunk.byteLength
+    if (total > max) throw new AnswerTooLargeError()
+    chunks.push(Buffer.from(chunk))
+  }
+  return Buffer.concat(chunks)
+}
+
+/** One POST, by hand, so `rejectUnauthorized` can be a per-connection decision. */
+export const httpsTransport: SynologyTransport = (req) =>
   new Promise((resolve, reject) => {
+    const body = Buffer.from(req.body, 'utf8')
     const options: RequestOptions = {
-      method: 'GET',
-      rejectUnauthorized: opts.rejectUnauthorized,
-      headers: { accept: 'application/json', 'user-agent': USER_AGENT },
+      method: req.method,
+      rejectUnauthorized: req.rejectUnauthorized,
+      headers: {
+        accept: 'application/json',
+        'user-agent': USER_AGENT,
+        'content-type': 'application/x-www-form-urlencoded; charset=utf-8',
+        'content-length': String(body.byteLength),
+      },
     }
-    const req = httpsRequest(url, options, (res) => {
-      const chunks: Buffer[] = []
-      let total = 0
-      res.on('data', (chunk: Buffer) => {
-        total += chunk.byteLength
-        if (total > MAX_ANSWER_BYTES) { req.destroy(); return }
-        chunks.push(chunk)
-      })
-      res.on('end', () => resolve({ status: res.statusCode ?? 0, body: Buffer.concat(chunks) }))
-      res.on('error', reject)
+    const client = httpsRequest(req.url, options, (res) => {
+      readCapped(res, MAX_ANSWER_BYTES).then(
+        (read) => resolve({ status: res.statusCode ?? 0, body: read }),
+        (err: Error) => { client.destroy(); reject(err) },
+      )
     })
-    req.setTimeout(opts.timeoutMs, () => req.destroy(new Error('timeout')))
-    req.on('error', reject)
-    req.end()
+    client.setTimeout(req.timeoutMs, () => client.destroy(new Error('timeout')))
+    client.on('error', reject)
+    client.end(body)
   })
 
 export interface SynologyClientOptions {
@@ -195,7 +283,8 @@ export interface SynologyClientOptions {
  *
  * The session id lives in memory and nowhere else: it is not written to the config, not stored
  * as a secret, and not logged. A restart logs in again, which is cheap, and a session that DSM
- * has forgotten (105 or 119) is re-established once per call rather than surfacing as an error.
+ * has forgotten (106, 107, 119) is re-established once per call rather than surfacing as an
+ * error.
  */
 export class SynologyClient {
   private sid: string | null = null
@@ -210,16 +299,31 @@ export class SynologyClient {
     this.deviceId = opts.deviceId ?? null
   }
 
-  private url(params: Record<string, string>): URL {
-    const url = new URL(`https://${this.opts.host.includes(':') ? `[${this.opts.host}]` : this.opts.host}:${this.opts.port}/webapi/entry.cgi`)
-    for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value)
+  private url(api: string, version: string, method: string): URL {
+    const host = this.opts.host.includes(':') ? `[${this.opts.host}]` : this.opts.host
+    const url = new URL(`https://${host}:${this.opts.port}/webapi/entry.cgi`)
+    // Only the routing triple. Everything else travels in the body — see the note at the top.
+    url.searchParams.set('api', api)
+    url.searchParams.set('version', version)
+    url.searchParams.set('method', method)
     return url
   }
 
-  private async call(params: Record<string, string>): Promise<unknown> {
+  /**
+   * One call. `on` says how to read a DSM error code: the login table only applies to the login.
+   */
+  private async call(
+    route: { api: string; version: string; method: string },
+    params: Record<string, string>,
+    on: 'login' | 'data',
+  ): Promise<unknown> {
+    const body = new URLSearchParams({ ...params, api: route.api, version: route.version, method: route.method })
     let answer: { status: number; body: Buffer }
     try {
-      answer = await this.transport(this.url(params), {
+      answer = await this.transport({
+        url: this.url(route.api, route.version, route.method),
+        method: 'POST',
+        body: body.toString(),
         rejectUnauthorized: !this.opts.allowSelfSigned,
         timeoutMs: this.opts.timeoutMs ?? SYNOLOGY_TIMEOUT_MS,
       })
@@ -228,26 +332,36 @@ export class SynologyClient {
       // host is the user's own address. The caller says "offline" instead.
       throw new SynologyError(null, 'network')
     }
+    // A 3xx is a hop nothing here has checked, and DSM has no reason to redirect its own API.
     if (answer.status < 200 || answer.status >= 300) throw new SynologyError(null, 'network')
     let parsed: z.infer<typeof EnvelopeSchema>
     try { parsed = EnvelopeSchema.parse(JSON.parse(answer.body.toString('utf8'))) }
     catch { throw new SynologyError(null, 'answer') }
     if (parsed.success) return parsed.data
     const code = parsed.error?.code ?? null
+    if (code === FORBIDDEN) throw new SynologyError(code, 'forbidden')
     if (code !== null && SESSION_GONE.has(code)) throw new SynologyError(code, 'session')
-    if (code !== null && AUTH_FAILED.has(code)) throw new SynologyError(code, 'auth')
+    if (on === 'login' && code === OTP_REQUIRED) throw new SynologyError(code, 'otpRequired')
+    if (on === 'login' && code !== null && AUTH_FAILED.has(code)) throw new SynologyError(code, 'auth')
     throw new SynologyError(code, 'answer')
   }
 
   /** Logs in, keeping the device token DSM hands back when a one-time code was given. */
   async login(): Promise<void> {
     const params: Record<string, string> = {
-      api: 'SYNO.API.Auth', version: '6', method: 'login',
-      account: this.opts.account, passwd: this.opts.password, format: 'sid',
+      account: this.opts.account,
+      passwd: this.opts.password,
+      format: 'sid',
+      session: SESSION_NAME,
     }
-    if (this.opts.otp) { params.otp_code = this.opts.otp; params.enable_device_token = 'yes' }
-    else if (this.deviceId) params.device_id = this.deviceId
-    const data = LoginSchema.safeParse(await this.call(params))
+    if (this.opts.otp) {
+      params.otp_code = this.opts.otp
+      params.enable_device_token = 'yes'
+      params.device_name = DEVICE_NAME
+    } else if (this.deviceId) {
+      params.device_id = this.deviceId
+    }
+    const data = LoginSchema.safeParse(await this.call({ api: 'SYNO.API.Auth', version: '6', method: 'login' }, params, 'login'))
     if (!data.success) throw new SynologyError(null, 'answer')
     this.sid = data.data.sid
     if (data.data.device_id) this.deviceId = data.data.device_id
@@ -257,26 +371,34 @@ export class SynologyClient {
     if (!this.sid) return
     const sid = this.sid
     this.sid = null
-    try { await this.call({ api: 'SYNO.API.Auth', version: '1', method: 'logout', session: 'FremkitDSM', _sid: sid }) }
-    catch { /* a session the NAS already dropped is the outcome we wanted */ }
+    try {
+      await this.call({ api: 'SYNO.API.Auth', version: '1', method: 'logout' }, { session: SESSION_NAME, _sid: sid }, 'data')
+    } catch { /* a session the NAS already dropped is the outcome we wanted */ }
   }
 
   /** A call that logs in first if needed, and once more if DSM says the session is gone. */
-  private async authed(params: Record<string, string>): Promise<unknown> {
+  private async authed(route: { api: string; version: string; method: string }, params: Record<string, string> = {}): Promise<unknown> {
     if (!this.sid) await this.login()
     try {
-      return await this.call({ ...params, _sid: this.sid ?? '' })
+      return await this.call(route, { ...params, _sid: this.sid ?? '' }, 'data')
     } catch (err) {
       if (!(err instanceof SynologyError) || err.kind !== 'session') throw err
       this.sid = null
       await this.login()
-      return this.call({ ...params, _sid: this.sid ?? '' })
+      return this.call(route, { ...params, _sid: this.sid ?? '' }, 'data')
     }
   }
 
   async utilization(): Promise<z.infer<typeof UtilizationSchema>> {
     const raw = await this.authed({ api: 'SYNO.Core.System.Utilization', version: '1', method: 'get' })
     const parsed = UtilizationSchema.safeParse(raw)
+    if (!parsed.success) throw new SynologyError(null, 'answer')
+    return parsed.data
+  }
+
+  async systemInfo(): Promise<z.infer<typeof SystemInfoSchema>> {
+    const raw = await this.authed({ api: 'SYNO.Core.System', version: '1', method: 'info' })
+    const parsed = SystemInfoSchema.safeParse(raw)
     if (!parsed.success) throw new SynologyError(null, 'answer')
     return parsed.data
   }
@@ -296,10 +418,29 @@ export function cpuPercent(cpu: z.infer<typeof UtilizationSchema>['cpu']): numbe
   return Math.min(100, Math.max(0, Math.round(parts.reduce((a, b) => a + b, 0))))
 }
 
+/**
+ * `up_time` as seconds.
+ *
+ * DSM writes it as a number of seconds on some versions and as `"12 days 3:14:15"` — or
+ * `"3:14:15"` — on others, so both shapes are read and anything else is null rather than a
+ * confident zero.
+ */
+export function upTimeSeconds(raw: unknown): number | null {
+  if (typeof raw === 'number') return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : null
+  if (typeof raw !== 'string') return null
+  const trimmed = raw.trim()
+  if (/^\d+$/.test(trimmed)) return Number(trimmed)
+  const m = /^(?:(\d+)\s*\D+?\s+)?(\d+):(\d{2}):(\d{2})$/.exec(trimmed)
+  if (!m) return null
+  const days = m[1] ? Number(m[1]) : 0
+  return days * 86400 + Number(m[2]) * 3600 + Number(m[3]) * 60 + Number(m[4])
+}
+
 export function toSnapshot(
   util: z.infer<typeof UtilizationSchema>,
   storage: z.infer<typeof StorageSchema>,
   at: number,
+  info: z.infer<typeof SystemInfoSchema> = {},
 ): SynologySnapshot {
   const sum = (key: 'rx' | 'tx'): number | null => {
     const values = (util.network ?? [])
@@ -317,7 +458,10 @@ export function toSnapshot(
       totalBytes: typeof util.memory?.memory_size === 'number' ? util.memory.memory_size * 1024 : null,
     },
     network: { rx: sum('rx'), tx: sum('tx') },
-    uptimeSeconds: typeof util.time?.uptime === 'number' ? util.time.uptime : null,
+    // `SYNO.Core.System` first; the utilization field is undocumented and only a fallback.
+    uptimeSeconds: upTimeSeconds(info.up_time) ?? (typeof util.time?.uptime === 'number' ? util.time.uptime : null),
+    model: info.model?.trim() || null,
+    dsmVersion: info.firmware_ver?.trim() || null,
     volumes: (storage.volumes ?? []).map((v) => ({
       id: v.display_name || v.id || '',
       size: v.size?.total ?? 0,
@@ -360,6 +504,8 @@ export function createSynologyProvider(ctx: ConnectionProviderContext, deps: Syn
   let failed = false
   let client: SynologyClient | null = null
   let storedDeviceId = ctx.secrets.deviceId ?? ''
+  /** What `SYNO.Core.System` last said. Kept so the model survives a poll that only half worked. */
+  let info: z.infer<typeof SystemInfoSchema> = {}
 
   const build = (): SynologyClient | null => {
     if (!parsed || !account || !ctx.secrets.password) return null
@@ -367,8 +513,8 @@ export function createSynologyProvider(ctx: ConnectionProviderContext, deps: Syn
       client = new SynologyClient({
         host: parsed.host, port: parsed.port, account,
         password: ctx.secrets.password,
-        // Only on the first login of this process: DSM refuses a code it has already seen, and
-        // the device token is what replaces it afterwards.
+        // Only while no device token exists: DSM refuses a code it has already seen, and the
+        // token is what replaces it afterwards.
         ...(ctx.secrets.otp && !storedDeviceId ? { otp: ctx.secrets.otp } : {}),
         ...(storedDeviceId ? { deviceId: storedDeviceId } : {}),
         allowSelfSigned,
@@ -384,6 +530,13 @@ export function createSynologyProvider(ctx: ConnectionProviderContext, deps: Syn
     return last
   }
 
+  /** Drops the session, logging out first so it does not linger on the NAS until it expires. */
+  const drop = (): void => {
+    const nas = client
+    client = null
+    void nas?.logout().catch(() => {})
+  }
+
   return {
     channel: ctx.channel,
     /** A NAS that just failed is worth asking again sooner than one that is answering. */
@@ -393,40 +546,36 @@ export function createSynologyProvider(ctx: ConnectionProviderContext, deps: Syn
       const nas = build()
       if (!nas) return fail('unconfigured')
       try {
-        const [util, storage] = [await nas.utilization(), await nas.storage()]
+        const util = await nas.utilization()
+        const storage = await nas.storage()
+        // One more request per poll, and the only source of the model and the DSM version. Its
+        // failure is not the poll's: an account without this privilege still gets its gauges.
+        try { info = await nas.systemInfo() } catch { /* keep whatever it said last */ }
         // DSM issued a device token: store it as this connection's secret, so the one-time code
-        // is asked for once rather than at every restart.
+        // is asked for once rather than at every restart, and forget the code itself.
         if (nas.deviceId && nas.deviceId !== storedDeviceId) {
           storedDeviceId = nas.deviceId
           await ctx.saveSecret?.('deviceId', nas.deviceId).catch(() => {
             // Not fatal: the session is open and the poll succeeded. The cost of failing here is
             // that the next restart asks for a code again, which is the situation we were in.
           })
+          // The code is spent — DSM will not take it twice — and a spent secret sitting in the
+          // store is one more thing that could be sent somewhere.
+          await ctx.forgetSecret?.('otp').catch(() => {})
         }
         failed = false
-        last = toSnapshot(util, storage, now())
+        last = toSnapshot(util, storage, now(), info)
         return last
       } catch (err) {
         // The session is dropped on any failure, so the next poll logs in rather than reusing
         // something the NAS may have forgotten while we were not looking.
-        client = null
-        if (err instanceof SynologyError && err.kind === 'auth') return fail('unauthorized')
+        drop()
+        if (err instanceof SynologyError && (err.kind === 'auth' || err.kind === 'otpRequired')) return fail('unauthorized')
+        if (err instanceof SynologyError && err.kind === 'forbidden') return fail('forbidden')
         return fail('offline')
       }
     },
 
-    stop(): void {
-      const nas = client
-      client = null
-      void nas?.logout().catch(() => {})
-    },
+    stop(): void { drop() },
   }
-}
-
-/** The one-line answer the connection's Test button shows. */
-export function testDetail(snapshot: SynologySnapshot): string {
-  return tr(undefined, 'synology.connected', {
-    volumes: String(snapshot.volumes.length),
-    disks: String(snapshot.disks.length),
-  })
 }

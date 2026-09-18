@@ -232,24 +232,41 @@ folder, and deny it every application. The two APIs Fremkit reads —
 that also opens the file shares is a password on a dashboard, which is a strictly worse trade
 than the five minutes it takes.
 
-**Two-factor accounts.** Fill `otp` with a fresh six-digit code the first time and save. DSM
-refuses a code it has already seen, so Fremkit asks it to issue a *device token* at the same
-time and stores that token as another secret of the connection; every later login uses the token
-and the code is never needed again. Clear `otp` afterwards if you like — nothing reads it once
-the token exists.
+**Two-factor accounts.** Fill `otp` with a fresh six-digit code and save. DSM refuses a code it
+has already seen, so Fremkit asks it to issue a *device token* at the same time and stores that
+token as another secret of the connection; every later login uses the token, and the spent code
+is deleted for you.
+
+**The Test button never spends the code.** It logs in with the password alone, because it has
+nowhere to put a device token — there is no saved connection yet — and a Test that enrolled
+would consume the six digits and leave the first poll to retry them, which DSM refuses for
+ever. DSM asks for a code only *after* accepting the password, so on a two-factor account Test
+answers "password accepted — enrolment happens on the first poll after saving". That is a
+success: the credentials are right.
+
+**A privilege the account lacks** is reported as such rather than as a wrong password. DSM
+answers code 105 for an API the account may not call, and a new session would not change it —
+so the connection says "this DSM account lacks the permission to read this", and the widgets
+show `forbidden`. `SYNO.Core.System`, which carries the model and the DSM version, is the one
+call whose refusal costs only a label: the gauges and the volumes still arrive without it.
 
 **The certificate.** Fremkit only ever talks HTTPS to the NAS. A Synology on the local network
 almost always serves a certificate no authority signed, so `allowSelfSigned` exists; turn it on
 only for a local address you know. It is off by default and applies to this connection alone —
 never to anything else the server talks to.
 
-Every thirty seconds Fremkit reads CPU, memory and network counters, then the volumes and disks:
-size, used, status, and each disk's model, temperature and SMART verdict. A poll that fails keeps
-the last snapshot on screen with an `offline` or `unauthorized` marker and retries after ten
-seconds. The session id lives in memory only; a session DSM has forgotten is re-established
-without the widget noticing. The password, the code, the token and the session id are never
-logged, never echoed back by the API and never quoted in an error — not even the network error's
-own message, which carries the address.
+Every thirty seconds Fremkit reads CPU, memory and network counters, the model, the DSM version
+and the uptime, then the volumes and disks: size, used, status, and each disk's model,
+temperature and SMART verdict. A poll that fails keeps the last snapshot on screen with an
+`offline`, `unauthorized` or `forbidden` marker and retries after ten seconds.
+
+Every call is a `POST` with its parameters in the body. The password, the code and the session
+id would otherwise travel in a query string, which is the first thing the NAS's own access log
+and any reverse proxy in front of it write down. The session id lives in memory only; a session
+DSM has forgotten (codes 106, 107 and 119) is re-established without the widget noticing, and a
+failed poll logs out rather than leaving a session behind to expire on its own. None of the
+password, the code, the token or the session id is ever logged, echoed back by the API or quoted
+in an error — not even the network error's own message, which carries the address.
 
 Used by the `synology-storage` and `synology-system` widgets, published on
 [the registry](https://github.com/fdussert/fremkit-sietch) rather than shipped with Fremkit.

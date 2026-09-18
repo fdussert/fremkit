@@ -20,6 +20,21 @@ export interface ConnectionManagerDeps {
 export class ConnectionManager {
   /** channel -> signature of the connection the registered provider was built from. */
   private active = new Map<string, string>()
+  /**
+   * channel -> the liveness flag of the provider generation currently registered on it.
+   *
+   * A provider may write one of its connection's secrets (`saveSecret`), and a poll can still be
+   * in flight when the connection is rebuilt or dropped. Clearing the flag makes those writes
+   * no-ops, so a value obtained from the old configuration cannot be stored against the new one.
+   */
+  private disposers = new Map<string, { live: boolean }>()
+
+  /** Retires whatever generation held `channel`, so its late writes stop landing. */
+  private disposeProvider(channel: string): void {
+    const previous = this.disposers.get(channel)
+    if (previous) previous.live = false
+    this.disposers.delete(channel)
+  }
 
   /**
    * Serializes `sync`. A sync is a read (the secrets) then a write (the registry and `active`),
@@ -69,6 +84,7 @@ export class ConnectionManager {
         await this.deps.secrets.delete(`${connection.id}/${key}`)
       }
       const channel = this.channelFor(connection)
+      this.disposeProvider(channel)
       this.deps.registry.unregister(channel)
       this.active.delete(channel)
     })
@@ -92,19 +108,32 @@ export class ConnectionManager {
       const secrets = await this.secretsFor(connection)
       const signature = this.signature(connection, secrets)
       if (this.active.get(channel) === signature) continue
+      // A poll in flight when the connection is re-synced must not write a secret against the
+      // connection as it now is: a device token issued by the *old* host would land under the
+      // new one. The flag is flipped the moment this generation of the provider is replaced.
+      const generation = { live: true }
+      this.disposeProvider(channel)
+      this.disposers.set(channel, generation)
+      const owns = (fieldKey: string): boolean =>
+        generation.live && this.deps.types.secretKeys(type).includes(fieldKey)
       this.deps.registry.register(type.createProvider({
         id: connection.id, channel, fields: connection.fields, secrets,
         // Bound to this connection's id, so a provider can only ever write its own secrets —
         // and only under a key its own type declares.
         saveSecret: async (fieldKey, value) => {
-          if (!this.deps.types.secretKeys(type).includes(fieldKey)) return
+          if (!owns(fieldKey)) return
           await this.deps.secrets.set(`${connection.id}/${fieldKey}`, value)
+        },
+        forgetSecret: async (fieldKey) => {
+          if (!owns(fieldKey)) return
+          await this.deps.secrets.delete(`${connection.id}/${fieldKey}`)
         },
       }))
       this.active.set(channel, signature)
     }
     for (const channel of [...this.active.keys()]) {
       if (wanted.has(channel)) continue
+      this.disposeProvider(channel)
       this.deps.registry.unregister(channel)
       this.active.delete(channel)
     }

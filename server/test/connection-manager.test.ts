@@ -10,6 +10,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 const built: { channel: string; token: string; org: string }[] = []
+/** The writers handed to the last provider built, so a test can call them late on purpose. */
+let lastWriters: { save?: (k: string, v: string) => Promise<void>; forget?: (k: string) => Promise<void> } = {}
 
 const fakeType: ConnectionType = {
   id: 'azure-devops',
@@ -23,6 +25,7 @@ const fakeType: ConnectionType = {
   test: async () => ({ ok: true, detail: 'ok' }),
   createProvider: (ctx) => {
     built.push({ channel: ctx.channel, token: ctx.secrets.pat ?? '', org: ctx.fields.organization ?? '' })
+    lastWriters = { save: ctx.saveSecret, forget: ctx.forgetSecret }
     return { channel: ctx.channel, intervalMs: 1000, poll: async () => ({ org: ctx.fields.organization }) }
   },
 }
@@ -128,5 +131,62 @@ describe('ConnectionManager', () => {
     await secrets.set('ado-x1z9/pat', 'token-1')
     await manager.forget(conn({ organization: 'example-org' }))
     expect(await secrets.get('ado-x1z9/pat')).toBeNull()
+  })
+})
+
+describe('a provider writing its own secrets', () => {
+  it('writes and forgets under its own connection, and only its type\'s keys', async () => {
+    const { secrets, manager } = await makeManager()
+    await secrets.set('ado-x1z9/pat', 'token-1')
+    await manager.sync([conn({ organization: 'example-org' })])
+
+    await lastWriters.save!('pat', 'token-2')
+    expect(await secrets.get('ado-x1z9/pat')).toBe('token-2')
+    // A key the type does not declare as a secret is not this provider's to write.
+    await lastWriters.save!('organization', 'somewhere-else')
+    expect(await secrets.get('ado-x1z9/organization')).toBeNull()
+    await lastWriters.forget!('pat')
+    expect(await secrets.get('ado-x1z9/pat')).toBeNull()
+  })
+
+  it('ignores a write from a generation that has been replaced', async () => {
+    // A poll can still be in flight when the connection is rebuilt. A token obtained from the
+    // *old* host must not land under the new one — which is exactly what a Synology device
+    // token would be.
+    const { secrets, manager } = await makeManager()
+    await secrets.set('ado-x1z9/pat', 'token-1')
+    await manager.sync([conn({ organization: 'first-org' })])
+    const stale = lastWriters.save!
+
+    await secrets.set('ado-x1z9/pat', 'token-2')
+    await manager.sync([conn({ organization: 'second-org' })])
+    expect(built).toHaveLength(2)
+
+    await stale('pat', 'from-the-old-host')
+    expect(await secrets.get('ado-x1z9/pat')).toBe('token-2')
+    // The current generation still writes.
+    await lastWriters.save!('pat', 'token-3')
+    expect(await secrets.get('ado-x1z9/pat')).toBe('token-3')
+  })
+
+  it('ignores a write from a provider whose connection was forgotten', async () => {
+    const { secrets, manager } = await makeManager()
+    await secrets.set('ado-x1z9/pat', 'token-1')
+    const connection = conn({ organization: 'example-org' })
+    await manager.sync([connection])
+    const stale = lastWriters.save!
+    await manager.forget(connection)
+    await stale('pat', 'resurrected')
+    expect(await secrets.get('ado-x1z9/pat')).toBeNull()
+  })
+
+  it('ignores a write from a provider the sync dropped', async () => {
+    const { secrets, manager } = await makeManager()
+    await secrets.set('ado-x1z9/pat', 'token-1')
+    await manager.sync([conn({ organization: 'example-org' })])
+    const stale = lastWriters.save!
+    await manager.sync([])
+    await stale('pat', 'resurrected')
+    expect(await secrets.get('ado-x1z9/pat')).toBe('token-1')
   })
 })
