@@ -8,7 +8,11 @@ them when you pull.
 ```
 themes/
   fremkit/theme.json    the built-in theme: graphite and sand
-  edge/theme.json       anodised graphite, cream legends, larger text
+  edge/theme.json       anodised graphite, cream legends, larger text, no tile cards
+  nuit/theme.json       midnight blue, cool accent
+  brume/theme.json      soft slate and sage, larger text
+  terminal/theme.json   green phosphor, monospace throughout
+  papier/theme.json     light: dark ink on warm paper
   mine/theme.json       yours
 ```
 
@@ -104,6 +108,19 @@ alone. Either one alone works as well — `edge` paints a surface and no outline
 It stays a per-tile decision too: **Background** → **Opacity** in the editor fades one tile,
 border included, whatever the theme says, and a background colour set there gives a card back to
 a single tile on an otherwise flat screen.
+
+## What a theme does not reach yet
+
+Three kinds of colour in the widgets stay where they are:
+
+- the amber `#f0a020` nine widgets paint their own warnings and rings with, next to the theme
+  accent it predates;
+- two shades in `claude-sessions` (`#0f1216`, `#3a2f14`);
+- brand colours, which should not follow a theme at all.
+
+They read well on a dark theme and are the rough edges of a light one. Moving the first two groups
+onto `--accent` and `--bg` is a one-line change per widget, and a visible one under the built-in
+theme, so it is left as a decision rather than made here.
 
 ## Keeping your own theme
 

@@ -1,0 +1,39 @@
+{
+  "id": "brume",
+  "name": {
+    "fr": "Brume",
+    "en": "Haze"
+  },
+  "version": "1.0.0",
+  "description": {
+    "fr": "Ardoise douce et vert de gris : peu de contraste, gros texte",
+    "en": "Soft slate and sage: little contrast, large text"
+  },
+  "tokens": {
+    "bg": "#171a1d",
+    "surface": "#1e2226",
+    "surface-2": "#252a2f",
+    "surface-3": "#2d333a",
+    "border": "#262b30",
+    "border-strong": "#39414a",
+    "tile-surface": "#1e2226",
+    "tile-outline": "#262b30",
+    "nav-surface": "#13161a",
+    "nav-outline": "#262b30",
+    "text": "#dfe3e6",
+    "text-muted": "#9aa3ab",
+    "text-dim": "#6f7880",
+    "accent": "#7fb3a3",
+    "accent-hover": "#9ac7b8",
+    "accent-2": "#4f7f72",
+    "on-accent": "#10161a",
+    "danger": "#cf6b60",
+    "ok": "#74b98a",
+    "warn": "#d9a441",
+    "radius-sm": "12px",
+    "radius-md": "18px",
+    "shadow": "0 12px 30px rgba(0, 0, 0, .35)",
+    "ring": "0 0 0 2px rgba(127, 179, 163, .5)",
+    "text-scale": 1.15
+  }
+}

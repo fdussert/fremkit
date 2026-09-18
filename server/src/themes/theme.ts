@@ -34,6 +34,9 @@ export const TOKENS = {
   /** The tile's own card: a theme that sets both to #00000000 draws no card at all. */
   'tile-surface': COLOR,
   'tile-outline': COLOR,
+  /** The navigation bar, which sits on the page rather than on a tile. */
+  'nav-surface': COLOR,
+  'nav-outline': COLOR,
   'border-strong': COLOR,
   text: COLOR,
   'text-muted': COLOR,

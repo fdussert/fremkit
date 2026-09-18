@@ -14,6 +14,8 @@
     "border": "#262d35",
     "tile-surface": "#13171b",
     "tile-outline": "#00000000",
+    "nav-surface": "#0f1316",
+    "nav-outline": "#262d35",
     "border-strong": "#39424d",
     "text": "#ebe4d3",
     "text-muted": "#8a929a",

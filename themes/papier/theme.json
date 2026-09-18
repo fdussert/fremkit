@@ -1,0 +1,39 @@
+{
+  "id": "papier",
+  "name": {
+    "fr": "Papier",
+    "en": "Paper"
+  },
+  "version": "1.0.0",
+  "description": {
+    "fr": "Clair, pour un bureau en plein jour : encre sombre sur papier chaud",
+    "en": "Light, for a desk in daylight: dark ink on warm paper"
+  },
+  "tokens": {
+    "bg": "#efebe1",
+    "surface": "#fbf9f4",
+    "surface-2": "#f3efe5",
+    "surface-3": "#e6e1d4",
+    "border": "#ddd7c8",
+    "border-strong": "#bdb5a2",
+    "tile-surface": "#fbf9f4",
+    "tile-outline": "#ddd7c8",
+    "nav-surface": "#e6e1d4",
+    "nav-outline": "#ccc5b4",
+    "text": "#23201a",
+    "text-muted": "#5f5a4e",
+    "text-dim": "#8a8275",
+    "accent": "#a2622a",
+    "accent-hover": "#bd7735",
+    "accent-2": "#6f431c",
+    "on-accent": "#fffdf7",
+    "danger": "#b3392f",
+    "ok": "#2f7d4f",
+    "warn": "#b4671a",
+    "radius-sm": "8px",
+    "radius-md": "12px",
+    "shadow": "0 6px 18px rgba(31, 26, 18, .12)",
+    "ring": "0 0 0 2px rgba(162, 98, 42, .45)",
+    "text-scale": 1.05
+  }
+}

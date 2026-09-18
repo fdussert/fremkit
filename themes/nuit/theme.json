@@ -1,0 +1,39 @@
+{
+  "id": "nuit",
+  "name": {
+    "fr": "Nuit",
+    "en": "Night"
+  },
+  "version": "1.0.0",
+  "description": {
+    "fr": "Bleu de nuit, accent froid : un écran qui n'éclaire pas la pièce",
+    "en": "Midnight blue with a cool accent: a screen that does not light the room"
+  },
+  "tokens": {
+    "bg": "#080b14",
+    "surface": "#0f1523",
+    "surface-2": "#151c2d",
+    "surface-3": "#1d2639",
+    "border": "#1c2436",
+    "border-strong": "#2c3850",
+    "tile-surface": "#0f1523",
+    "tile-outline": "#1c2436",
+    "nav-surface": "#05070e",
+    "nav-outline": "#182034",
+    "text": "#e8ecf5",
+    "text-muted": "#98a3bb",
+    "text-dim": "#6b7794",
+    "accent": "#6aa8ff",
+    "accent-hover": "#8dbcff",
+    "accent-2": "#3d6fb5",
+    "on-accent": "#08111f",
+    "danger": "#ff6b81",
+    "ok": "#46d39a",
+    "warn": "#ffb454",
+    "radius-sm": "10px",
+    "radius-md": "14px",
+    "shadow": "0 10px 26px rgba(0, 0, 0, .55)",
+    "ring": "0 0 0 2px rgba(106, 168, 255, .55)",
+    "text-scale": 1.05
+  }
+}
