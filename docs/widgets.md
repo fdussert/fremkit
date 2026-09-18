@@ -1,30 +1,23 @@
 # Widgets
 
-Every widget that ships with Fremkit, with the settings its manifest declares. Sizes are in grid
-cells (40 px each). **Scope** says which editor offers a setting: *tile* only appears in the
+Every widget Fremkit has, with the settings its manifest declares. The ones that need a printer,
+a hub, a NAS or an account are published on the registry rather than shipped; they are listed
+apart and documented the same. Sizes are in grid cells (40 px each). **Scope** says which editor offers a setting: *tile* only appears in the
 widget inspector, *compact* only in the navigation bar's list, *both* in either.
 
 To write your own, see [writing-widgets.md](writing-widgets.md).
 
 | Widget | Shows | Connection | Compact | Default size |
 |---|---|---|---|---|
-| [ado-pipelines](#ado-pipelines) | Azure DevOps builds | Azure DevOps | — | 24 × 10 |
-| [bambu-job](#bambu-job) | A Bambu Lab printer's current job | Bambu Lab | — | 16 × 6 |
 | [battery](#battery) | The Mac and its Bluetooth peripherals | — | 5 cells | 8 × 6 |
 | [calendar](#calendar) | The next events of published calendars | ICS calendar | 8 cells | 16 × 10 |
 | [claude-sessions](#claude-sessions) | Live Claude Code sessions | — | — | 16 × 8 |
 | [claude-usage](#claude-usage) | Claude 5 h / 7 day limits | — | 9 cells | 16 × 4 |
-| [cleanshot](#cleanshot) | Big buttons for CleanShot X captures | — | — | 12 × 6 |
 | [clipboard](#clipboard) | Recent clipboard entries, tap to copy back | — | — | 16 × 8 |
 | [clock](#clock) | Time, date and other cities | — | 5 cells | 16 × 4 |
 | [cpu](#cpu) | CPU load and temperature | — | 4 cells | 8 × 4 |
 | [disk](#disk) | Disk usage | — | — | 16 × 4 |
-| [github-actions](#github-actions) | Running and finished GitHub Actions workflows | GitHub | — | 24 × 10 |
-| [github-inbox](#github-inbox) | GitHub notifications, review requests, pull requests | GitHub | 5 cells | 20 × 10 |
-| [homey-devices](#homey-devices) | Lights, plugs and sensors | Homey Pro | 6 cells | 24 × 8 |
-| [homey-flows](#homey-flows) | Buttons that run flows | Homey Pro | — | 16 × 8 |
 | [memory](#memory) | Memory usage | — | 4 cells | 8 × 4 |
-| [mutedeck](#mutedeck) | Meeting controls | — | — | 8 × 4 |
 | [network](#network) | Live network throughput | — | 6 cells | 12 × 4 |
 | [notifications](#notifications) | Unread badges read from the Dock | — | — | 16 × 4 |
 | [pomodoro](#pomodoro) | A work and break timer | — | 5 cells | 8 × 6 |
@@ -35,34 +28,30 @@ To write your own, see [writing-widgets.md](writing-widgets.md).
 | [volume](#volume) | System volume | — | — | 8 × 4 |
 | [weather](#weather) | Current weather and forecast | — | 5 cells | 16 × 6 |
 
+## On the sietch
+
+These are published on the [widget registry](https://github.com/fdussert/fremkit-sietch) rather
+than shipped with Fremkit: they only do anything with a printer, a hub, a NAS or an account
+behind them, and the core ships what works on any Mac with nothing set up. Install them from the
+**Sietch** panel in the admin. The provider or connection type each one reads is part of Fremkit,
+so there is nothing else to install — see [connections.md](connections.md).
+
+Their settings are documented below like any other, because the widget is the same widget.
+
+| Widget | Shows | Connection | Compact | Default size |
+|---|---|---|---|---|
+| [ado-pipelines](#ado-pipelines) | Azure DevOps builds | Azure DevOps | — | 24 × 10 |
+| [bambu-job](#bambu-job) | A Bambu Lab printer's current job | Bambu Lab | — | 16 × 6 |
+| [cleanshot](#cleanshot) | Big buttons for CleanShot X captures | — | — | 12 × 6 |
+| [github-actions](#github-actions) | Running and finished GitHub Actions workflows | GitHub | — | 24 × 10 |
+| [github-inbox](#github-inbox) | GitHub notifications, review requests, pull requests | GitHub | 5 cells | 20 × 10 |
+| [homey-devices](#homey-devices) | Lights, plugs and sensors | Homey Pro | 6 cells | 24 × 8 |
+| [homey-flows](#homey-flows) | Buttons that run flows | Homey Pro | — | 16 × 8 |
+| [mutedeck](#mutedeck) | Meeting controls | — | — | 8 × 4 |
+| [synology-storage](https://github.com/fdussert/fremkit-sietch) | Volumes, disk health and temperature | Synology | 5 cells | 16 × 8 |
+| [synology-system](https://github.com/fdussert/fremkit-sietch) | CPU, memory, network and uptime of a NAS | Synology | 5 cells | 16 × 8 |
+
 ---
-
-## ado-pipelines
-
-*Azure DevOps pipelines* — runs in progress with their stage chain, then recent history. Tapping a
-run opens it in your browser. Needs an [Azure DevOps connection](connections.md#azure-devops).
-
-Minimum size 16 × 6, default 24 × 10.
-
-| Setting | Type | Default | Scope | What it is |
-|---|---|---|---|---|
-| `connection` | connection (`azure-devops`) | — | both | Which organisation and project to read |
-| `history` | number | `8` | both | How many finished runs to keep under the running ones |
-| `branchFilter` | string | `""` | both | Keep only branches starting with this. `refs/heads/` is already stripped, so type `feature/` |
-
-## bambu-job
-
-*Bambu print* — the file, progress, layer, remaining time and temperatures of the current job,
-plus the AMS and the chamber camera on demand. Needs a
-[Bambu Lab connection](connections.md#bambu-lab).
-
-Minimum size 12 × 4, default 16 × 6.
-
-| Setting | Type | Default | Scope | What it is |
-|---|---|---|---|---|
-| `connection` | connection (`bambu`) | — | both | Which printer |
-| `showAms` | boolean | `false` | both | One row per AMS unit: humidity, temperature, slot colours and types, filament left, slot in use. An external spool gets its own row |
-| `showCamera` | boolean | `false` | both | The chamber camera. X1 and H2 printers need ffmpeg and "LAN Mode Liveview" — see the [connection notes](connections.md#the-chamber-camera) |
 
 ## battery
 
@@ -119,67 +108,6 @@ limits when the account provider can read them. See [claude-code.md](claude-code
 
 Minimum size 16 × 4, default 16 × 4. Compact width 9 cells. No settings.
 
-## cleanshot
-
-*CleanShot X* — a grid of large touch buttons that drive [CleanShot X](https://cleanshot.com)
-through its `cleanshot://` [URL scheme](https://cleanshot.com/docs/api). A tap lights the button
-and answers with a brief ✓ or ✗. **CleanShot X must be installed on the Mac running Fremkit**;
-without it macOS has nothing to open the URL with and every button answers ✗. **CleanShot must
-also be allowed to take URL commands**: in CleanShot X → Settings → Advanced → API, turn on
-*Allow URL scheme API*. It is off by default; with it off, every button answers ✓ (macOS did
-hand the URL over) and nothing happens.
-
-The widget never sends a URL. It names an action, and the server builds the URL from a closed
-allow-list — fourteen actions, no parameter that is not an enum or a boolean, no file path, no
-geometry — then runs `open <url>` with an argument list rather than through a shell. An action
-that is not on the list is refused, and, like the `shortcuts` widget, a command is only obeyed
-when it comes from this machine.
-
-The URL goes to the CleanShot X that is **running right now**, found by its bundle path: a Mac
-that keeps an older copy around — in `~/Downloads`, in a second `Applications` folder — otherwise
-risks having LaunchServices hand the URL to that one, which launches, does nothing and quits. With
-no copy running, the bundle id is used instead, which at least keeps the URL away from an
-application that is not CleanShot at all.
-
-| Action | Button | URL |
-|---|---|---|
-| Area | ⛶ | `cleanshot://capture-area` |
-| Window | 🪟 | `cleanshot://capture-window` |
-| Fullscreen | 🖥 | `cleanshot://capture-fullscreen` |
-| Scrolling | 📜 | `cleanshot://scrolling-capture` |
-| Text (OCR) | 🔡 | `cleanshot://capture-text` |
-| Record | ⏺ | `cleanshot://record-screen` |
-| Previous area | ↺ | `cleanshot://capture-previous-area` |
-| All-in-one | ✳ | `cleanshot://all-in-one` |
-| Self-timer | ⏱ | `cleanshot://self-timer` |
-| History | 🕘 | `cleanshot://open-history` |
-| Clipboard | 📋 | `cleanshot://open-from-clipboard` |
-| Pin | 📌 | `cleanshot://pin` |
-| Desktop icons | 🗂 | `cleanshot://toggle-desktop-icons` |
-| Restore | ♻ | `cleanshot://restore-recently-closed` |
-
-Minimum size 8 × 4, default 12 × 6.
-
-| Setting | Type | Default | Scope | What it is |
-|---|---|---|---|---|
-| `showCaptureArea` | boolean | `true` | both | Capture a selected area |
-| `showCaptureWindow` | boolean | `true` | both | Capture a window |
-| `showCaptureFullscreen` | boolean | `true` | both | Capture the whole screen |
-| `showScrollingCapture` | boolean | `true` | both | Scrolling capture |
-| `showCaptureText` | boolean | `true` | both | Text recognition (OCR) |
-| `showRecordScreen` | boolean | `true` | both | Record the screen |
-| `showCapturePreviousArea` | boolean | `false` | both | Capture the previous area again |
-| `showAllInOne` | boolean | `false` | both | CleanShot's all-in-one mode |
-| `showSelfTimer` | boolean | `false` | both | Capture after the self-timer |
-| `showOpenHistory` | boolean | `false` | both | Open the capture history |
-| `showOpenFromClipboard` | boolean | `false` | both | Open what the clipboard holds |
-| `showPin` | boolean | `false` | both | Pin the last capture to the screen |
-| `showToggleDesktopIcons` | boolean | `false` | both | Show or hide the desktop icons |
-| `showRestoreRecentlyClosed` | boolean | `false` | both | Bring back the last closed capture |
-| `columns` | number | `3` | both | How many buttons per row |
-
-With every button off the tile says so rather than going blank.
-
 ## clipboard
 
 *Clipboard* — the texts you copied recently, newest first; tapping one puts it back on the
@@ -235,104 +163,11 @@ Minimum size 8 × 4, default 8 × 4. Compact width 4 cells.
 
 Minimum size 8 × 4, default 16 × 4. No settings.
 
-## github-actions
-
-*GitHub Actions* — the workflow runs of the repositories the connection watches: the ones still
-going at the top, each with a pulsing dot, then the finished ones as history rows coloured by
-conclusion, with the repository, the workflow name, the branch, who triggered it and how long ago.
-Needs a [GitHub connection](connections.md#github), whose `repos` field decides which repositories
-are fetched at all.
-
-Minimum size 16 × 6, default 24 × 10.
-
-| Setting | Type | Default | Scope | What it is |
-|---|---|---|---|---|
-| `connection` | connection (`github`) | — | both | Which GitHub account |
-| `repos` | pick (`repos` of `connection`) | `[]` | both | Narrows the display to these repositories; empty shows every repository the connection fetches |
-| `max` | number | `4` | both | How many running or queued workflows to draw |
-| `history` | number | `8` | both | How many finished runs to draw under them |
-
-## github-inbox
-
-*GitHub inbox* — your unread notifications, the pull requests waiting for your review and, on
-demand, your own open pull requests. Each row carries a glyph for its kind (pull request, issue,
-release, CI), the repository, the title and how long ago it moved. Tapping a notification marks
-that thread read — greyed out at once, confirmed by the next poll — and the **Mark all read**
-button clears the lot. Needs a [GitHub connection](connections.md#github).
-
-In the navigation bar it shows a short `GH` label, the unread count and the number of review
-requests in the accent colour.
-
-A source the connection cannot read draws one line under its header rather than emptying the tile
-— "Notifications need a classic token" for a fine-grained token, "No access", "Rate limited" or
-"Offline" — and its count leaves the header line. With a fine-grained token the widget therefore
-shows the review count alone and keeps drawing reviews and pull requests. See
-[the GitHub connection](connections.md#github).
-
-Minimum size 12 × 5, default 20 × 10. Compact width 5 cells.
-
-| Setting | Type | Default | Scope | What it is |
-|---|---|---|---|---|
-| `connection` | connection (`github`) | — | both | Which GitHub account |
-| `showNotifications` | boolean | `true` | tile | The unread notification rows |
-| `showReviews` | boolean | `true` | tile | The pull requests waiting for your review |
-| `showMyPrs` | boolean | `false` | tile | Your own open pull requests |
-| `max` | number | `12` | tile | Total rows drawn, shared between the sections in that order |
-
-## homey-devices
-
-*Homey devices* — a grid of device tiles: a large toggle for a switchable device, a slider for a
-dimmable one, the main reading for a sensor, a badge for each raised alarm. An unavailable device
-is dimmed. Needs a [Homey Pro connection](connections.md#homey-pro).
-
-Minimum size 8 × 4, default 24 × 8. Compact width 6 cells.
-
-| Setting | Type | Default | Scope | What it is |
-|---|---|---|---|---|
-| `connection` | connection (`homey`) | — | both | Which Homey |
-| `all` | boolean | `false` | both | Show every device instead of the picked ones |
-| `devices` | pick (`devices` of `connection`) | `[]` | both | The devices to draw, picked live from the Homey and stored as ids, so a rename in the Homey app changes nothing |
-| `zone` | string | `""` | tile | Keep only devices of this zone |
-| `max` | number | `12` | tile | How many devices to draw |
-| `showZone` | boolean | `true` | tile | Show each device's zone |
-| `compactMode` | enum `on` \| `sensor` | `on` | compact | Bar: the number of devices that are on, or the first sensor value |
-
-## homey-flows
-
-*Homey flows* — one large button per flow, plain or advanced, that runs it on tap with a brief
-confirmation. A flow switched off in the Homey app is dimmed and refuses the tap. Needs a
-[Homey Pro connection](connections.md#homey-pro).
-
-Minimum size 8 × 4, default 16 × 8.
-
-| Setting | Type | Default | Scope | What it is |
-|---|---|---|---|---|
-| `connection` | connection (`homey`) | — | both | Which Homey |
-| `all` | boolean | `false` | both | Show every flow instead of the picked ones |
-| `flows` | pick (`flows` of `connection`) | `[]` | both | The flows to draw, picked live and stored as ids |
-| `folder` | string | `""` | both | Keep only flows of this folder |
-| `max` | number | `8` | both | How many flows to draw |
-
 ## memory
 
 *Memory* — memory usage.
 
 Minimum size 8 × 4, default 8 × 4. Compact width 4 cells. No settings.
-
-## mutedeck
-
-*MuteDeck* — meeting controls, through the MuteDeck app's own HTTP API on `localhost:3491`. The
-buttons act on whatever meeting MuteDeck reports; without MuteDeck running the tile stays idle.
-
-Minimum size 8 × 4, default 8 × 4.
-
-| Setting | Type | Default | Scope | What it is |
-|---|---|---|---|---|
-| `showMute` | boolean | `true` | both | Microphone button |
-| `showVideo` | boolean | `true` | both | Camera button |
-| `showShare` | boolean | `false` | both | Screen share button |
-| `showRecord` | boolean | `false` | both | Record button |
-| `showLeave` | boolean | `true` | both | Leave button |
 
 ## network
 
@@ -526,3 +361,193 @@ city where the bar has room for it.
 | `hours` | number | `6` | tile | How many upcoming hours to draw, capped by the tile's width |
 | `showDaily` | boolean | `true` | tile | The next days' minimum and maximum, on tall enough tiles |
 | `compactCity` | boolean | `false` | compact | Bar: add the city name after the temperature |
+
+---
+
+# Widgets on the sietch
+
+The same reference, for the widgets published on the
+[registry](https://github.com/fdussert/fremkit-sietch). Nothing about a widget changes when it is
+installed from there rather than shipped: same manifest, same settings, same permissions — only
+the folder it arrives in.
+
+## ado-pipelines
+
+*Azure DevOps pipelines* — runs in progress with their stage chain, then recent history. Tapping a
+run opens it in your browser. Needs an [Azure DevOps connection](connections.md#azure-devops).
+
+Minimum size 16 × 6, default 24 × 10.
+
+| Setting | Type | Default | Scope | What it is |
+|---|---|---|---|---|
+| `connection` | connection (`azure-devops`) | — | both | Which organisation and project to read |
+| `history` | number | `8` | both | How many finished runs to keep under the running ones |
+| `branchFilter` | string | `""` | both | Keep only branches starting with this. `refs/heads/` is already stripped, so type `feature/` |
+
+## bambu-job
+
+*Bambu print* — the file, progress, layer, remaining time and temperatures of the current job,
+plus the AMS and the chamber camera on demand. Needs a
+[Bambu Lab connection](connections.md#bambu-lab).
+
+Minimum size 12 × 4, default 16 × 6.
+
+| Setting | Type | Default | Scope | What it is |
+|---|---|---|---|---|
+| `connection` | connection (`bambu`) | — | both | Which printer |
+| `showAms` | boolean | `false` | both | One row per AMS unit: humidity, temperature, slot colours and types, filament left, slot in use. An external spool gets its own row |
+| `showCamera` | boolean | `false` | both | The chamber camera. X1 and H2 printers need ffmpeg and "LAN Mode Liveview" — see the [connection notes](connections.md#the-chamber-camera) |
+
+## cleanshot
+
+*CleanShot X* — a grid of large touch buttons that drive [CleanShot X](https://cleanshot.com)
+through its `cleanshot://` [URL scheme](https://cleanshot.com/docs/api). A tap lights the button
+and answers with a brief ✓ or ✗. **CleanShot X must be installed on the Mac running Fremkit**;
+without it macOS has nothing to open the URL with and every button answers ✗. **CleanShot must
+also be allowed to take URL commands**: in CleanShot X → Settings → Advanced → API, turn on
+*Allow URL scheme API*. It is off by default; with it off, every button answers ✓ (macOS did
+hand the URL over) and nothing happens.
+
+The widget never sends a URL. It names an action, and the server builds the URL from a closed
+allow-list — fourteen actions, no parameter that is not an enum or a boolean, no file path, no
+geometry — then runs `open <url>` with an argument list rather than through a shell. An action
+that is not on the list is refused, and, like the `shortcuts` widget, a command is only obeyed
+when it comes from this machine.
+
+The URL goes to the CleanShot X that is **running right now**, found by its bundle path: a Mac
+that keeps an older copy around — in `~/Downloads`, in a second `Applications` folder — otherwise
+risks having LaunchServices hand the URL to that one, which launches, does nothing and quits. With
+no copy running, the bundle id is used instead, which at least keeps the URL away from an
+application that is not CleanShot at all.
+
+| Action | Button | URL |
+|---|---|---|
+| Area | ⛶ | `cleanshot://capture-area` |
+| Window | 🪟 | `cleanshot://capture-window` |
+| Fullscreen | 🖥 | `cleanshot://capture-fullscreen` |
+| Scrolling | 📜 | `cleanshot://scrolling-capture` |
+| Text (OCR) | 🔡 | `cleanshot://capture-text` |
+| Record | ⏺ | `cleanshot://record-screen` |
+| Previous area | ↺ | `cleanshot://capture-previous-area` |
+| All-in-one | ✳ | `cleanshot://all-in-one` |
+| Self-timer | ⏱ | `cleanshot://self-timer` |
+| History | 🕘 | `cleanshot://open-history` |
+| Clipboard | 📋 | `cleanshot://open-from-clipboard` |
+| Pin | 📌 | `cleanshot://pin` |
+| Desktop icons | 🗂 | `cleanshot://toggle-desktop-icons` |
+| Restore | ♻ | `cleanshot://restore-recently-closed` |
+
+Minimum size 8 × 4, default 12 × 6.
+
+| Setting | Type | Default | Scope | What it is |
+|---|---|---|---|---|
+| `showCaptureArea` | boolean | `true` | both | Capture a selected area |
+| `showCaptureWindow` | boolean | `true` | both | Capture a window |
+| `showCaptureFullscreen` | boolean | `true` | both | Capture the whole screen |
+| `showScrollingCapture` | boolean | `true` | both | Scrolling capture |
+| `showCaptureText` | boolean | `true` | both | Text recognition (OCR) |
+| `showRecordScreen` | boolean | `true` | both | Record the screen |
+| `showCapturePreviousArea` | boolean | `false` | both | Capture the previous area again |
+| `showAllInOne` | boolean | `false` | both | CleanShot's all-in-one mode |
+| `showSelfTimer` | boolean | `false` | both | Capture after the self-timer |
+| `showOpenHistory` | boolean | `false` | both | Open the capture history |
+| `showOpenFromClipboard` | boolean | `false` | both | Open what the clipboard holds |
+| `showPin` | boolean | `false` | both | Pin the last capture to the screen |
+| `showToggleDesktopIcons` | boolean | `false` | both | Show or hide the desktop icons |
+| `showRestoreRecentlyClosed` | boolean | `false` | both | Bring back the last closed capture |
+| `columns` | number | `3` | both | How many buttons per row |
+
+With every button off the tile says so rather than going blank.
+
+## github-actions
+
+*GitHub Actions* — the workflow runs of the repositories the connection watches: the ones still
+going at the top, each with a pulsing dot, then the finished ones as history rows coloured by
+conclusion, with the repository, the workflow name, the branch, who triggered it and how long ago.
+Needs a [GitHub connection](connections.md#github), whose `repos` field decides which repositories
+are fetched at all.
+
+Minimum size 16 × 6, default 24 × 10.
+
+| Setting | Type | Default | Scope | What it is |
+|---|---|---|---|---|
+| `connection` | connection (`github`) | — | both | Which GitHub account |
+| `repos` | pick (`repos` of `connection`) | `[]` | both | Narrows the display to these repositories; empty shows every repository the connection fetches |
+| `max` | number | `4` | both | How many running or queued workflows to draw |
+| `history` | number | `8` | both | How many finished runs to draw under them |
+
+## github-inbox
+
+*GitHub inbox* — your unread notifications, the pull requests waiting for your review and, on
+demand, your own open pull requests. Each row carries a glyph for its kind (pull request, issue,
+release, CI), the repository, the title and how long ago it moved. Tapping a notification marks
+that thread read — greyed out at once, confirmed by the next poll — and the **Mark all read**
+button clears the lot. Needs a [GitHub connection](connections.md#github).
+
+In the navigation bar it shows a short `GH` label, the unread count and the number of review
+requests in the accent colour.
+
+A source the connection cannot read draws one line under its header rather than emptying the tile
+— "Notifications need a classic token" for a fine-grained token, "No access", "Rate limited" or
+"Offline" — and its count leaves the header line. With a fine-grained token the widget therefore
+shows the review count alone and keeps drawing reviews and pull requests. See
+[the GitHub connection](connections.md#github).
+
+Minimum size 12 × 5, default 20 × 10. Compact width 5 cells.
+
+| Setting | Type | Default | Scope | What it is |
+|---|---|---|---|---|
+| `connection` | connection (`github`) | — | both | Which GitHub account |
+| `showNotifications` | boolean | `true` | tile | The unread notification rows |
+| `showReviews` | boolean | `true` | tile | The pull requests waiting for your review |
+| `showMyPrs` | boolean | `false` | tile | Your own open pull requests |
+| `max` | number | `12` | tile | Total rows drawn, shared between the sections in that order |
+
+## homey-devices
+
+*Homey devices* — a grid of device tiles: a large toggle for a switchable device, a slider for a
+dimmable one, the main reading for a sensor, a badge for each raised alarm. An unavailable device
+is dimmed. Needs a [Homey Pro connection](connections.md#homey-pro).
+
+Minimum size 8 × 4, default 24 × 8. Compact width 6 cells.
+
+| Setting | Type | Default | Scope | What it is |
+|---|---|---|---|---|
+| `connection` | connection (`homey`) | — | both | Which Homey |
+| `all` | boolean | `false` | both | Show every device instead of the picked ones |
+| `devices` | pick (`devices` of `connection`) | `[]` | both | The devices to draw, picked live from the Homey and stored as ids, so a rename in the Homey app changes nothing |
+| `zone` | string | `""` | tile | Keep only devices of this zone |
+| `max` | number | `12` | tile | How many devices to draw |
+| `showZone` | boolean | `true` | tile | Show each device's zone |
+| `compactMode` | enum `on` \| `sensor` | `on` | compact | Bar: the number of devices that are on, or the first sensor value |
+
+## homey-flows
+
+*Homey flows* — one large button per flow, plain or advanced, that runs it on tap with a brief
+confirmation. A flow switched off in the Homey app is dimmed and refuses the tap. Needs a
+[Homey Pro connection](connections.md#homey-pro).
+
+Minimum size 8 × 4, default 16 × 8.
+
+| Setting | Type | Default | Scope | What it is |
+|---|---|---|---|---|
+| `connection` | connection (`homey`) | — | both | Which Homey |
+| `all` | boolean | `false` | both | Show every flow instead of the picked ones |
+| `flows` | pick (`flows` of `connection`) | `[]` | both | The flows to draw, picked live and stored as ids |
+| `folder` | string | `""` | both | Keep only flows of this folder |
+| `max` | number | `8` | both | How many flows to draw |
+
+## mutedeck
+
+*MuteDeck* — meeting controls, through the MuteDeck app's own HTTP API on `localhost:3491`. The
+buttons act on whatever meeting MuteDeck reports; without MuteDeck running the tile stays idle.
+
+Minimum size 8 × 4, default 8 × 4.
+
+| Setting | Type | Default | Scope | What it is |
+|---|---|---|---|---|
+| `showMute` | boolean | `true` | both | Microphone button |
+| `showVideo` | boolean | `true` | both | Camera button |
+| `showShare` | boolean | `false` | both | Screen share button |
+| `showRecord` | boolean | `false` | both | Record button |
+| `showLeave` | boolean | `true` | both | Leave button |
