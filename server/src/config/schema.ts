@@ -144,6 +144,18 @@ export const NavWidgetSchema = z.object({
   settings: z.record(z.string(), z.unknown()).default({}),
 })
 
+/**
+ * Which gesture on the page dots opens the admin.
+ *
+ * The Edge has no keyboard and no window chrome, so this is the only way in from the screen. The
+ * touch driver turns a held press into a right click and a double tap into a double click, and
+ * the two are independent — hence the choice, and hence `both` as the default: whichever the
+ * panel and the browser happen to deliver, one of them gets there.
+ */
+export const AdminGestureSchema = z.enum(['longPress', 'doubleTap', 'both'])
+export type AdminGesture = z.infer<typeof AdminGestureSchema>
+export const DEFAULT_ADMIN_GESTURE: AdminGesture = 'both'
+
 export const DisplaySchema = z.object({
   cols: z.number().int().min(1).default(64),
   rows: z.number().int().min(1).default(16),
@@ -153,6 +165,8 @@ export const DisplaySchema = z.object({
   navHeight: NavHeightSchema.optional(),
   /** Opacity of the navigation bar's background. Absent means a solid bar. */
   navOpacity: OpacitySchema.optional(),
+  /** Absent means `both`; see `AdminGestureSchema`. */
+  adminGesture: AdminGestureSchema.optional(),
   /** Absent means the plain --bg theme background, which is the default everywhere. */
   background: BackgroundSchema.optional(),
   /**

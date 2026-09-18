@@ -15,7 +15,8 @@ import BackgroundPicker from './BackgroundPicker.vue'
 import NavWidgetsEditor from './NavWidgetsEditor.vue'
 import { surfaceOpacity } from '../shared/background'
 import { useI18n, type Locale } from '../shared/i18n'
-import { NAV_HEIGHTS, navHeightOf, type Background, type NavHeight } from '../shared/types'
+import { ADMIN_GESTURES, DEFAULT_ADMIN_GESTURE, NAV_HEIGHTS, navHeightOf,
+  type AdminGesture, type Background, type NavHeight } from '../shared/types'
 import { useAdminStore } from './store'
 
 const s = useAdminStore()
@@ -82,6 +83,18 @@ const NAV_OPTIONS = NAV_HEIGHTS.map((h) => ({ value: String(h), label: `${h} px`
 const kioskUrl = `${location.origin}/?kiosk=1`
 
 /** The slider works in whole percents; the config stores the 0–1 opacity itself. */
+const ADMIN_GESTURE_OPTIONS = computed(() => ADMIN_GESTURES.map((value) => ({
+  value, label: t(`admin.inspector.screen.adminGesture.${value}`),
+})))
+/**
+ * How the admin is reached from the screen. `both` is the default and is stored as an absent key,
+ * like every other default here.
+ */
+function setAdminGesture(value: string): void {
+  const next = value as AdminGesture
+  s.apply((c) => { c.display.adminGesture = next === DEFAULT_ADMIN_GESTURE ? undefined : next })
+}
+
 const navOpacityPercent = computed(() => Math.round(surfaceOpacity(d.value.navOpacity) * 100))
 /** A solid bar is the default, so it is stored as an absent key rather than an explicit 1. */
 function setNavOpacity(percent: number): void {
@@ -125,6 +138,12 @@ function setBackground(patch: Partial<Background>): void {
     <BaseSegmented :model-value="String(navHeight)" :options="NAV_OPTIONS"
       @update:model-value="s.setNavHeight(Number($event) as NavHeight)" />
   </BaseField>
+  <BaseField :label="t('admin.inspector.screen.adminGesture')"
+    :hint="t('admin.inspector.screen.adminGesture.hint')">
+    <BaseSegmented :model-value="d.adminGesture ?? DEFAULT_ADMIN_GESTURE" :options="ADMIN_GESTURE_OPTIONS"
+      @update:model-value="setAdminGesture($event)" />
+  </BaseField>
+
   <BaseField :label="t('admin.inspector.screen.navOpacity', { percent: navOpacityPercent })"
     :hint="t('admin.inspector.screen.navOpacity.hint')">
     <BaseRange :model-value="navOpacityPercent" :step="5"

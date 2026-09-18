@@ -105,7 +105,8 @@ watch(() => config.value?.locale, (l) => setLocale(l))
     </div>
     <NavBar :pages="config.pages" :active="pageIndex" :height="navHeightOf(config.display)"
       :opacity="config.display.navOpacity" :nav-widgets="navWidgetsOf(config.display)"
-      :manifests="manifests" :cell="config.display.cell" @select="select" @swipe="go"
+      :manifests="manifests" :cell="config.display.cell" :admin-gesture="config.display.adminGesture"
+      @select="select" @swipe="go"
       @tap="popover.toggle" @admin="openAdmin" />
     <!-- Drawn by the root, above the stage and the bar, so it is never clipped by either. -->
     <NavPopover v-if="popover.open.value" fixed

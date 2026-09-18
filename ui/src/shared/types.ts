@@ -52,6 +52,8 @@ export interface Display {
   navHeight?: NavHeight
   /** Opacity of the navigation bar's background, 0–1; absent means solid. */
   navOpacity?: number
+  /** Absent means `both`; see `AdminGesture`. */
+  adminGesture?: AdminGesture
   /** Compact widgets drawn in the navigation bar; absent when the bar carries none. */
   navWidgets?: NavWidget[]
   background?: Background
@@ -220,6 +222,17 @@ export interface WidgetManifest {
   settingsSchema: Record<string, SettingField>
   permissions: { network: string[] }
 }
+
+/**
+ * Which gesture on the page dots opens the admin.
+ *
+ * The Edge has no keyboard and no window chrome, so this is the only way in from the screen. The
+ * touch driver turns a held press into a right click and a double tap into a double click, and
+ * the two are independent — hence the choice, and hence `both` as the default.
+ */
+export type AdminGesture = 'longPress' | 'doubleTap' | 'both'
+export const ADMIN_GESTURES: AdminGesture[] = ['both', 'longPress', 'doubleTap']
+export const DEFAULT_ADMIN_GESTURE: AdminGesture = 'both'
 
 /** The height of the nav bar when `display.navHeight` says nothing, which is the usual case. */
 export const DEFAULT_NAV_HEIGHT: NavHeight = 80

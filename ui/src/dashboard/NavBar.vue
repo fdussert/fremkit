@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { cancelsHold, startsHold } from './longPress'
+import { DEFAULT_ADMIN_GESTURE, type AdminGesture } from '../shared/types'
 import { computed, onBeforeUnmount, ref } from 'vue'
 import { DEFAULT_NAV_HEIGHT, type NavSlot, type NavWidget, type Page, type WidgetManifest } from '../shared/types'
 import { surfaceOpacity } from '../shared/background'
@@ -19,12 +20,14 @@ const props = withDefaults(defineProps<{
   cell?: number
   /** Admin Edit mode: the bar's widgets stay live but inert, since the Screen tab configures them. */
   edit?: boolean
+  /** Which gesture on the dots opens the admin. Absent means `both`. */
+  adminGesture?: AdminGesture
 }>(), { navWidgets: () => [], manifests: () => ({}), cell: 40 })
 const emit = defineEmits<{
   select: [index: number]; swipe: [delta: 1 | -1]
   /** A compact widget with `popup` on was tapped; the element is where its popover hangs from. */
   tap: [widget: NavWidget, el: Element]
-  /** The page dots were held down long enough to ask for the admin. */
+  /** The dots asked for the admin — a long press, or a double tap. */
   admin: []
 }>()
 
@@ -46,31 +49,66 @@ let holdStart: { x: number; y: number } | null = null
 let suppressClick = false
 
 /**
- * The long press as the Edge's touch driver actually delivers it.
+ * Opening the admin from the bar, on whichever gesture the panel actually delivers.
  *
- * A press held past the driver's threshold is turned into a **right click** —
- * `rightMouseDown` and `rightMouseUp` back to back (see `GestureEngine.endPress`). The page
- * never sees a held button, so the timer below never completes on the panel: `pointerup` arrives
- * milliseconds after `pointerdown`.
+ * The touch driver never sends a held button. A press held past its threshold becomes a **right
+ * click** — `rightMouseDown` and `rightMouseUp` back to back — and a double tap becomes a
+ * **double click** with `clickState: 2` (`GestureEngine.endPress`). Neither is a held button, so
+ * a timer started on `pointerdown` and cancelled on `pointerup` never completes on the Edge.
  *
- * It used to work by accident. WebKit opened its context menu on the right mouse down and
- * swallowed the matching up while the menu tracked the mouse, so the timer ran to completion
- * behind it — which is also why the menu and the admin used to appear together. Removing that
- * menu removed the accident.
+ * The timer used to complete by accident: WebKit opened its context menu on the right mouse down
+ * and swallowed the matching up while the menu tracked, so it ran on behind the menu. That is
+ * why the menu and the admin appeared together — and why removing the menu took the long press
+ * with it.
  *
- * So the `contextmenu` event *is* the signal. The timer stays for a real mouse and for a held
- * left button, which is what the plain-Chrome kiosk path produces.
+ * `contextmenu` looked like the replacement, and it is the right signal in a browser. In the
+ * helper's web view it never arrives: with the native menu emptied and text interaction off,
+ * WebKit does not run that pipeline at all. So the *right button itself* is what this listens
+ * for — a plain mouse event, dispatched whatever the menu does. The other three paths are kept
+ * because each is real somewhere: `contextmenu` for a mouse and for Chrome, the timer for a held
+ * left button, `dblclick` for the double tap.
  */
-function holdContextMenu(e: Event): void {
-  e.preventDefault()
-  e.stopPropagation()
+function wantsGesture(kind: 'longPress' | 'doubleTap'): boolean {
+  const setting = props.adminGesture ?? DEFAULT_ADMIN_GESTURE
+  return setting === 'both' || setting === kind
+}
+
+/** Fires the admin once, cancelling anything the same gesture had started. */
+function openAdmin(): void {
   endHold()
   suppressClick = true
   emit('admin')
 }
 
+/** The driver's long press, as the page really receives it: a right button down. */
+function holdRightButton(e: PointerEvent): void {
+  if (!wantsGesture('longPress')) return
+  e.preventDefault()
+  e.stopPropagation()
+  openAdmin()
+}
+
+/** The same gesture in a browser, where WebKit does raise the event. */
+function holdContextMenu(e: Event): void {
+  e.preventDefault()
+  e.stopPropagation()
+  if (!wantsGesture('longPress')) return
+  openAdmin()
+}
+
+/** The driver's double tap, which arrives as an ordinary double click. */
+function adminDoubleClick(e: Event): void {
+  if (!wantsGesture('doubleTap')) return
+  e.preventDefault()
+  e.stopPropagation()
+  openAdmin()
+}
+
 function holdDown(e: PointerEvent): void {
+  // A non-primary button is the driver's long press, handled above — never a hold to start.
+  if (e.button === 2) { holdRightButton(e); return }
   if (!startsHold(e.button)) return
+  if (!wantsGesture('longPress')) return
   holdStart = { x: e.clientX, y: e.clientY }
   holding.value = true
   suppressClick = false
@@ -164,7 +202,7 @@ const style = computed<Record<string, string | number>>(() => {
       />
     </div>
     <div class="dots" :class="{ holding }" @pointerdown="holdDown" @contextmenu="holdContextMenu"
-      @click.capture="dotsClick">
+      @dblclick="adminDoubleClick" @click.capture="dotsClick">
       <button v-for="(p, i) in pages" :key="p.id" class="dot" :class="{ active: i === active }" :aria-label="p.name" @click="$emit('select', i)" />
     </div>
   </nav>

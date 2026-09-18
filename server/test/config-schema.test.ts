@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { ConfigSchema, DEFAULT_CONFIG, MAX_NAV_WIDGETS, defaultLocale, validateConnections, validateLayout, validateNavWidgets } from '../src/config/schema.js'
+import { ConfigSchema, DEFAULT_CONFIG, MAX_NAV_WIDGETS, defaultLocale, validateConnections, validateLayout, validateNavWidgets, DisplaySchema, DEFAULT_ADMIN_GESTURE } from '../src/config/schema.js'
 import { ManifestSchema } from '../src/widgets/manifest.js'
 
 const manifests = new Map([['clock', { minSize: [8, 4] as [number, number] }]])
@@ -301,5 +301,26 @@ describe('locale', () => {
 
   it('ships a locale in the default config', () => {
     expect(['fr', 'en']).toContain(DEFAULT_CONFIG.locale)
+  })
+})
+
+describe('display.adminGesture', () => {
+  const display = (extra: object) => DisplaySchema.safeParse({ cols: 64, rows: 16, cell: 40, autoCycleSeconds: 0, ...extra })
+
+  it('accepts the three gestures', () => {
+    for (const adminGesture of ['both', 'longPress', 'doubleTap']) {
+      expect(display({ adminGesture }).success, adminGesture).toBe(true)
+    }
+  })
+  it('refuses anything else', () => {
+    for (const adminGesture of ['swipe', '', 'LongPress', 1, null]) {
+      expect(display({ adminGesture }).success, String(adminGesture)).toBe(false)
+    }
+  })
+  it('is absent by default, which reads as both', () => {
+    const parsed = display({})
+    expect(parsed.success).toBe(true)
+    if (parsed.success) expect(parsed.data.adminGesture).toBeUndefined()
+    expect(DEFAULT_ADMIN_GESTURE).toBe('both')
   })
 })
