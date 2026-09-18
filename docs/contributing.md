@@ -65,7 +65,36 @@ overwritten. Stop the helper's server first if you want the same port, or pair i
 `FREMKIT_PORT`.
 
 The other way round is to move `data/` aside while the helper's server is stopped, which is the
-same thing done by hand. 
+same thing done by hand.
+
+## Backup and restore
+
+**/admin → Screen → Backup.** "Back up" downloads `fremkit-backup-<date>.zip`; "Restore…" takes
+one back.
+
+What is in the archive:
+
+| Entry | What it is |
+|---|---|
+| `fremkit.json` | the live config, as the store has migrated it |
+| `backgrounds/*` | the whole background library, the shipped wallpaper included |
+| `manifest.json` | the Fremkit version, the date, the config version, and `secrets: "excluded"` |
+
+**No secrets, ever.** They live in the macOS keychain (or `data/secrets.json` under the file
+backend), keyed by connection id, and the point of keeping them there is that a file copied to a
+USB stick does not carry them. A restore therefore brings each connection back with its host, its
+organisation and its repository list, and nothing to authenticate with.
+
+With one useful exception: because secrets are keyed by connection *id* and a restore keeps those
+ids, restoring onto the **same Mac** finds the keychain items that are already there and
+everything works straight away. The answer lists only the connections whose secret is genuinely
+absent — on another Mac, or with the file backend and a fresh `data/`, that is all of them.
+
+A restore replaces the dashboard: pages, widgets, connections and backgrounds. The store keeps
+its usual `.bak` of the config it overwrote, and it refuses to write at all while the file on disk
+cannot be read. A v1 archive is migrated on the way in.
+
+Copying `data/` by hand is the same thing without the zip. 
 
 ## The helper build
 

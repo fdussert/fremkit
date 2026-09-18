@@ -33,6 +33,14 @@ const fr = {
   'config.degraded': 'configuration sur disque illisible : corrigez data/fremkit.json puis redémarrez le serveur',
 
   // app.ts — the global request gate
+  'backup.noArchive': 'aucune archive reçue',
+  'backup.badArchive': 'archive illisible',
+  'backup.noConfig': 'l’archive ne contient pas fremkit.json',
+  'backup.badConfig': 'la configuration de l’archive est invalide',
+  'backup.badName': 'nom de fond d’écran invalide dans l’archive',
+  'backup.notAnImage': 'un fond d’écran de l’archive n’est pas une image',
+  'backup.imageTooLarge': 'un fond d’écran de l’archive est trop grand',
+  'backup.writeFailed': 'écriture des fonds d’écran impossible',
   'http.hostNotAllowed': 'hôte non autorisé',
   'http.originNotAllowed': 'origine non autorisée',
 
@@ -177,6 +185,14 @@ const en: Record<MessageKey, string> = {
   'config.duplicateConnection': 'connection {id} declared twice',
   'config.degraded': 'configuration on disk is unreadable: fix data/fremkit.json then restart the server',
 
+  'backup.noArchive': 'no archive received',
+  'backup.badArchive': 'the archive could not be read',
+  'backup.noConfig': 'the archive holds no fremkit.json',
+  'backup.badConfig': 'the configuration in the archive is not valid',
+  'backup.badName': 'invalid background name in the archive',
+  'backup.notAnImage': 'a background in the archive is not an image',
+  'backup.imageTooLarge': 'a background in the archive is too large',
+  'backup.writeFailed': 'the backgrounds could not be written',
   'http.hostNotAllowed': 'host not allowed',
   'http.originNotAllowed': 'origin not allowed',
   'connections.originNotAllowed': 'origin not allowed',

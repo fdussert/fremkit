@@ -36,6 +36,7 @@ import { createDockProvider } from './dock/provider.js'
 import { bambuCameras } from './bambu/cameras.js'
 import { sweepStaleCameraDirs } from './providers/bambu-rtsp.js'
 import { seedDefaultBackground } from './backgrounds/seed.js'
+import { backupRoutes } from './backup/routes.js'
 import { bambuRoutes } from './bambu/routes.js'
 import { createShortcutsProvider } from './providers/shortcuts.js'
 import { createServiceStatusProvider } from './providers/service-status.js'
@@ -173,6 +174,15 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   await app.register(widgetRoutes, { catalog })
   await app.register(proxyRoutes, { catalog })
   await app.register(backgroundRoutes, { dataDir: opts.dataDir })
+  await app.register(backupRoutes, {
+    store,
+    dataDir: opts.dataDir,
+    types: connectionTypes,
+    secrets,
+    // A restored config brings its own connections; the manager rebuilds their providers, which
+    // then report `unauthorized` until the secrets are typed back in.
+    onRestored: async (config) => { await connections.sync(config.connections); retainCameras(config) },
+  })
   await app.register(faviconRoutes, { dir: join(opts.dataDir, 'icons', 'favicons') })
   await app.register(claudeRoutes, { tracker, usage })
   await app.register(dockRoutes, { state: dock, appIcons })

@@ -242,6 +242,12 @@ own, see **[docs/writing-widgets.md](docs/writing-widgets.md)**.
 How to obtain each credential, what is stored where, and what is never logged:
 **[docs/connections.md](docs/connections.md)**.
 
+## Backup
+
+**/admin → Screen → Backup** downloads the whole dashboard — the config and the background
+library — as a zip, and restores one. Secrets are never in it: they stay in the macOS keychain.
+Details in **[docs/contributing.md](docs/contributing.md)**.
+
 ## What Fremkit reads on your Mac
 
 Fremkit is a dashboard of your own machine, so several widgets read things that belong to you.
