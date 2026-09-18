@@ -2,10 +2,10 @@ import type { WidgetManifest } from '../shared/types'
 
 /**
  * The shelves of the widget library, in reading order: what the person is building with first,
- * then the machine, then the room. A widget whose manifest names no category — or one this
- * version does not know — lands in `other` rather than disappearing from the list.
+ * then the machine, then the day's work, then the room. A widget whose manifest names no
+ * category — or one this version does not know — lands in `other` rather than disappearing.
  */
-export const WIDGET_CATEGORIES = ['claude', 'dev', 'system', 'mac', 'media', 'info', 'home', 'other'] as const
+export const WIDGET_CATEGORIES = ['ai', 'dev', 'system', 'productivity', 'media', 'info', 'home', 'other'] as const
 export type WidgetCategory = (typeof WIDGET_CATEGORIES)[number]
 
 export const categoryOf = (manifest: WidgetManifest): WidgetCategory =>

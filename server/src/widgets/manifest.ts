@@ -120,7 +120,7 @@ const DEFAULT_MIN_SIZE: [number, number] = [4, 2]
  * The shelf of the library a widget sits on. A manifest that names none lands in `other`, which
  * is where a widget written before this existed still shows up.
  */
-export const WIDGET_CATEGORIES = ['claude', 'dev', 'system', 'mac', 'media', 'info', 'home', 'other'] as const
+export const WIDGET_CATEGORIES = ['ai', 'dev', 'system', 'productivity', 'media', 'info', 'home', 'other'] as const
 export type WidgetCategory = (typeof WIDGET_CATEGORIES)[number]
 
 export const CompactSchema = z.object({ width: z.number().int().min(2).max(16) })

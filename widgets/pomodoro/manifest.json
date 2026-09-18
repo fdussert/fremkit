@@ -2,7 +2,7 @@
   "name": { "fr": "Pomodoro", "en": "Pomodoro" },
   "version": "1.0.0",
   "description": { "fr": "Minuteur de travail et de pauses, au doigt", "en": "A touch timer for work and breaks" },
-  "category": "info",
+  "category": "productivity",
   "icon": "timer", "minSize": [8, 4], "defaultSize": [8, 6],
   "compact": { "width": 5 },
   "settingsSchema": {

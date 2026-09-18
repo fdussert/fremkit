@@ -2,7 +2,7 @@
   "name": { "fr": "Prochains rendez-vous", "en": "Next events" },
   "version": "1.0.0",
   "description": { "fr": "L’agenda des jours qui viennent", "en": "The days ahead, calendar by calendar" },
-  "category": "info",
+  "category": "productivity",
   "icon": "calendar-days", "minSize": [8, 4], "defaultSize": [16, 10],
   "compact": { "width": 8 },
   "subscriptions": ["calendar:*"],

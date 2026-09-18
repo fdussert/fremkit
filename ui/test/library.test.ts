@@ -29,8 +29,8 @@ describe('groupByCategory', () => {
   const byName = (a: WidgetManifest, b: WidgetManifest) => String(a.name).localeCompare(String(b.name))
 
   it('returns the shelves in reading order, empty ones left out', () => {
-    const groups = groupByCategory([widget('weather', 'info'), widget('cpu', 'system'), widget('claude-usage', 'claude')], byName)
-    expect(groups.map((g) => g.id)).toEqual(['claude', 'system', 'info'])
+    const groups = groupByCategory([widget('weather', 'info'), widget('cpu', 'system'), widget('claude-usage', 'ai')], byName)
+    expect(groups.map((g) => g.id)).toEqual(['ai', 'system', 'info'])
   })
 
   it('sorts each shelf with the comparator it is given', () => {
