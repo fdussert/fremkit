@@ -31,6 +31,12 @@ export function parseSpotify(raw: string) {
 
 /** The one program the `activate` command runs, by bundle id, with a fixed argv. */
 export const SPOTIFY_BUNDLE_ID = 'com.spotify.client'
+/**
+ * By absolute path, not by name: `execFile` resolves a bare name through `PATH`, and the server
+ * inherits whatever `PATH` the helper — or a terminal, or a login shell's rc file — happened to
+ * hand it. There is one `open` on macOS and this is where it lives.
+ */
+export const OPEN_PROGRAM = '/usr/bin/open'
 /** How long `open` may take before the command gives up. */
 export const ACTIVATE_TIMEOUT_MS = 10_000
 
@@ -39,6 +45,9 @@ export type Opener = (file: string, args: string[]) => Promise<void>
 const openProgram: Opener = (file, args) =>
   new Promise((resolve, reject) => {
     execFile(file, args, { timeout: ACTIVATE_TIMEOUT_MS }, (err, _out, stderr) => {
+      // Neither `stderr` nor the error's own message goes any further: both quote the command
+      // line, and a widget learns nothing useful from either. The caller turns this into one
+      // fixed sentence.
       if (err) reject(new Error(stderr.trim() || err.message))
       else resolve()
     })
@@ -68,10 +77,12 @@ export function createSpotifyProvider(run: Runner = osascript, open: Opener = op
       activate: async (_payload, ctx?: CommandContext) => {
         if (!ctx?.loopback) return { ok: false, error: tr(undefined, 'provider.localOnly') }
         try {
-          await open('open', ['-b', SPOTIFY_BUNDLE_ID])
+          await open(OPEN_PROGRAM, ['-b', SPOTIFY_BUNDLE_ID])
           return { ok: true }
-        } catch (err) {
-          return { ok: false, error: (err as Error).message || String(err) }
+        } catch {
+          // A fixed sentence: the underlying failure quotes the command line, and a widget in a
+          // sandboxed iframe is not who that belongs to. The server's log has the rest.
+          return { ok: false, error: tr(undefined, 'spotify.activateFailed') }
         }
       },
     },

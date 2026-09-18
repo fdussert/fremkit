@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import Fastify, { type FastifyInstance } from 'fastify'
-import { HELPER_ADMIN_URL, HELPER_BUNDLE_ID, helperRoutes, runningHelperPath, type Runner } from '../src/helper/routes.js'
+import { HELPER_ADMIN_URL, HELPER_BUNDLE_ID, helperRoutes, LSAPPINFO_PROGRAM, OPEN_PROGRAM, runningHelperPath, type Runner } from '../src/helper/routes.js'
 
 const HELPER_PATH = '/Users/example/Applications/Fremkit Helper.app'
 const ASN = 'ASN:0x0-0x9c7d673a-"Fremkit_Helper":'
@@ -23,7 +23,7 @@ async function build(run: Runner): Promise<FastifyInstance> {
 function fakeRunner(calls: [string, string[]][], open?: () => Promise<string>): Runner {
   return async (file, args) => {
     calls.push([file, args])
-    if (file === 'lsappinfo') return args[0] === 'find' ? FIND_OUT : INFO_OUT
+    if (file === LSAPPINFO_PROGRAM) return args[0] === 'find' ? FIND_OUT : INFO_OUT
     return open ? await open() : ''
   }
 }
@@ -38,8 +38,8 @@ describe('runningHelperPath', () => {
     const calls: [string, string[]][] = []
     expect(await runningHelperPath(fakeRunner(calls))).toBe(HELPER_PATH)
     expect(calls).toEqual([
-      ['lsappinfo', ['find', `bundleid=${HELPER_BUNDLE_ID}`]],
-      ['lsappinfo', ['info', '-only', 'bundlepath', ASN]],
+      [LSAPPINFO_PROGRAM, ['find', `bundleid=${HELPER_BUNDLE_ID}`]],
+      [LSAPPINFO_PROGRAM, ['info', '-only', 'bundlepath', ASN]],
     ])
   })
 
@@ -62,7 +62,7 @@ describe('POST /api/helper/admin', () => {
 
     expect(res.statusCode).toBe(200)
     expect(res.json()).toEqual({ ok: true })
-    expect(calls[2]).toEqual(['open', ['-a', HELPER_PATH, HELPER_ADMIN_URL]])
+    expect(calls[2]).toEqual([OPEN_PROGRAM, ['-a', HELPER_PATH, HELPER_ADMIN_URL]])
   })
 
   it('falls back to the bundle id when no helper is running', async () => {
@@ -72,7 +72,7 @@ describe('POST /api/helper/admin', () => {
     const res = await server.inject({ method: 'POST', url: '/api/helper/admin' })
 
     expect(res.statusCode).toBe(200)
-    expect(calls.at(-1)).toEqual(['open', ['-b', HELPER_BUNDLE_ID, HELPER_ADMIN_URL]])
+    expect(calls.at(-1)).toEqual([OPEN_PROGRAM, ['-b', HELPER_BUNDLE_ID, HELPER_ADMIN_URL]])
   })
 
   it('answers 503 when open fails, without quoting the raw error', async () => {

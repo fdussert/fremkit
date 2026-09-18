@@ -9,6 +9,15 @@ export const HELPER_BUNDLE_ID = 'dev.fremkit.helper'
 /** The URL the helper answers with its admin window (see `HelperURL` in FremkitCore). */
 export const HELPER_ADMIN_URL = 'fremkit://admin'
 const OPEN_TIMEOUT_MS = 5000
+/**
+ * The two programs this route runs, by absolute path.
+ *
+ * `execFile` resolves a bare name through `PATH`, and the server inherits whatever `PATH` the
+ * helper — or a terminal, or a login shell's rc file — happened to hand it. There is one `open`
+ * and one `lsappinfo` on macOS, and this is where they live.
+ */
+export const OPEN_PROGRAM = '/usr/bin/open'
+export const LSAPPINFO_PROGRAM = '/usr/bin/lsappinfo'
 
 /** The one way this route reaches the Mac: a program and its argv, never a command line. */
 export type Runner = (file: string, args: string[]) => Promise<string>
@@ -32,10 +41,10 @@ export async function runningHelperPath(run: Runner): Promise<string | undefined
     // `lsappinfo info` only answers for an ASN, not for a bundle id, so the lookup takes two
     // steps. `find` lists one ASN per running copy, oldest first; the first one is the helper
     // that has been up longest, which is the one supervising this server.
-    const found = await run('lsappinfo', ['find', `bundleid=${HELPER_BUNDLE_ID}`])
+    const found = await run(LSAPPINFO_PROGRAM, ['find', `bundleid=${HELPER_BUNDLE_ID}`])
     const asn = found.split(/\s+/).find((token) => token.startsWith('ASN:'))
     if (!asn) return undefined
-    const out = await run('lsappinfo', ['info', '-only', 'bundlepath', asn])
+    const out = await run(LSAPPINFO_PROGRAM, ['info', '-only', 'bundlepath', asn])
     const path = /"LSBundlePath"="([^"]+)"/.exec(out)?.[1]
     return path && path.startsWith('/') ? path : undefined
   } catch {
@@ -67,7 +76,7 @@ export async function helperRoutes(app: FastifyInstance, opts: { run?: Runner } 
     }
 
     try {
-      await run('open', await openArgs(run))
+      await run(OPEN_PROGRAM, await openArgs(run))
       return { ok: true }
     } catch (err) {
       // A helper built before the URL scheme existed, or LaunchServices refusing it. Nothing the

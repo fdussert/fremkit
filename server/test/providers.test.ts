@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { parseVolume, createVolumeProvider } from '../src/providers/volume.js'
-import { parseSpotify, createSpotifyProvider, SPOTIFY_BUNDLE_ID } from '../src/providers/spotify.js'
+import { parseSpotify, createSpotifyProvider, OPEN_PROGRAM, SPOTIFY_BUNDLE_ID } from '../src/providers/spotify.js'
 import { createMutedeckProvider } from '../src/providers/mutedeck.js'
 
 describe('volume', () => {
@@ -90,14 +90,14 @@ describe('spotify activate', () => {
     const p = createSpotifyProvider(vi.fn(async () => ''), open)
     expect(await p.commands!.activate(null, LOCAL)).toEqual({ ok: true })
     // Nothing in the argv comes from the caller: there is no payload at all.
-    expect(open).toHaveBeenCalledWith('open', ['-b', SPOTIFY_BUNDLE_ID])
+    expect(open).toHaveBeenCalledWith(OPEN_PROGRAM, ['-b', SPOTIFY_BUNDLE_ID])
   })
 
   it('ignores whatever payload a widget sends, because there is nothing to steer', async () => {
     const open = vi.fn(async () => {})
     const p = createSpotifyProvider(vi.fn(async () => ''), open)
     await p.commands!.activate({ bundleId: 'com.apple.Terminal', target: 'Terminal' }, LOCAL)
-    expect(open).toHaveBeenCalledWith('open', ['-b', SPOTIFY_BUNDLE_ID])
+    expect(open).toHaveBeenCalledWith(OPEN_PROGRAM, ['-b', SPOTIFY_BUNDLE_ID])
   })
 
   it('refuses a command that did not come from this machine', async () => {
@@ -108,10 +108,14 @@ describe('spotify activate', () => {
     expect(open).not.toHaveBeenCalled()
   })
 
-  it('reports a failure rather than throwing', async () => {
-    const open = vi.fn(async () => { throw new Error('Unable to find application') })
+  it('reports a failure as a fixed sentence, never the program\u2019s own words', async () => {
+    // `open`\u2019s stderr and the spawn error both quote the command line, and the caller is code in
+    // a sandboxed iframe. It learns that Spotify did not open, and nothing else.
+    const open = vi.fn(async () => { throw new Error('/usr/bin/open -b com.spotify.client: Unable to find application') })
     const p = createSpotifyProvider(vi.fn(async () => ''), open)
-    expect(await p.commands!.activate(null, LOCAL)).toEqual({ ok: false, error: 'Unable to find application' })
+    const res = await p.commands!.activate(null, LOCAL) as { ok: boolean; error: string }
+    expect(res.ok).toBe(false)
+    expect(res.error).not.toMatch(/usr\/bin|Unable to find/)
   })
 })
 
