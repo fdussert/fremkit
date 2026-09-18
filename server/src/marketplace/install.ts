@@ -161,24 +161,46 @@ export function readPackage(
  * removal itself fails the install is still done, and a stale `.bak` is inert: the catalogue
  * scans `<dataDir>/widgets` and a name with a dot in it is not a widget id.
  */
+export interface RecoverOptions {
+  /**
+   * Restore only this widget's backup.
+   *
+   * Passed by `writePackage`, and the reason it has to be: the route's lock serialises installs
+   * *per id*, so installing B while A is between its two renames is allowed and normal. A
+   * recovery that restored every backup would then put `A.bak` back over the hole A is about to
+   * fill, and A's own rename would fail on a directory that is suddenly not empty. Left out —
+   * at boot, when nothing can be in flight — every backup is considered.
+   */
+  id?: string
+  now?: number
+}
+
 /**
- * Undoes whatever a crash in the middle of the previous swap left behind.
+ * Undoes whatever a crash in the middle of a swap left behind.
  *
  * Two shapes are possible, because the swap is `target → .bak`, then `staging → target`. If the
  * process died between the two, the widget's folder is *gone* and its previous version is
  * sitting in `<id>.bak` — so it goes back. And a staging folder nobody renamed is dead weight
- * that the catalogue ignores but the disk does not; anything older than a few minutes is swept.
+ * that the catalogue ignores but the disk does not.
  *
- * Both are best-effort: an install that cannot tidy up is still an install, and the mess is
- * inert — `<id>.bak` and `.tmp-…` are not widget ids, so the catalogue never reads them.
+ * The staging sweep stays whole-directory, because it is guarded by age instead: a `.tmp-…` that
+ * belongs to an install happening right now is minutes newer than the threshold, and one left by
+ * a process that died would otherwise never be swept at all — its widget may never be installed
+ * again.
+ *
+ * Everything here is best-effort: an install that cannot tidy up is still an install, and the
+ * mess is inert — neither `<id>.bak` nor `.tmp-…` is a widget id, so the catalogue never reads
+ * them.
  */
-export async function recoverStaging(installedDir: string, now: number = Date.now()): Promise<void> {
+export async function recoverStaging(installedDir: string, opts: RecoverOptions = {}): Promise<void> {
+  const now = opts.now ?? Date.now()
   let entries: string[]
   try { entries = await readdir(installedDir) } catch { return }
   for (const entry of entries) {
     const full = join(installedDir, entry)
     const backup = /^(.+)\.bak$/.exec(entry)
     if (backup) {
+      if (opts.id !== undefined && backup[1] !== opts.id) continue
       const target = join(installedDir, backup[1])
       // Only when the widget itself is missing: a `.bak` beside a working folder is the leftover
       // of a *successful* swap whose cleanup failed, and restoring it would undo the install.
@@ -195,7 +217,7 @@ export async function recoverStaging(installedDir: string, now: number = Date.no
 
 export async function writePackage(installedDir: string, id: string, files: { name: string; data: Buffer }[]): Promise<void> {
   await mkdir(installedDir, { recursive: true })
-  await recoverStaging(installedDir)
+  await recoverStaging(installedDir, { id })
   const target = join(installedDir, id)
   const backup = join(installedDir, `${id}.bak`)
   const staging = await mkdtemp(join(installedDir, `.tmp-${id}-`))

@@ -17,6 +17,7 @@ import { WidgetCatalog } from './widgets/catalog.js'
 import { installedWidgetsDir } from './widgets/installed.js'
 import { Registry } from './marketplace/registry.js'
 import { marketplaceRoutes } from './marketplace/routes.js'
+import { recoverStaging } from './marketplace/install.js'
 import { widgetRoutes } from './widgets/routes.js'
 import { ProviderRegistry } from './providers/registry.js'
 import type { Provider } from './providers/types.js'
@@ -84,6 +85,11 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   // language from this module-level copy rather than being handed a store they have no use for.
   setServerLocale(store.get().locale)
   const installedDir = installedWidgetsDir(opts.dataDir)
+  // Before the first scan, and the one moment no install can be in flight: an install killed
+  // between its two renames left a widget's folder gone and its previous version in `<id>.bak`,
+  // and this is where every one of those goes back. An install does the same for its own id
+  // only, because installs of different widgets legitimately overlap.
+  await recoverStaging(installedDir)
   const catalog = new WidgetCatalog(opts.widgetsDir, installedDir)
   await catalog.scan()
 

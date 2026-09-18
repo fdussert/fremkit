@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach } from 'vitest'
-import { mkdtemp, readFile, readdir, utimes, writeFile, mkdir } from 'node:fs/promises'
+import { mkdtemp, readFile, readdir, rename, utimes, writeFile, mkdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { InstallError, LIMITS, STALE_STAGING_MS, readPackage, recoverStaging, removePackage, safeEntryName, sha256, writePackage } from '../src/marketplace/install.js'
@@ -194,14 +194,47 @@ describe('recoverStaging', () => {
     { name: 'manifest.json', data: Buffer.from(JSON.stringify(MANIFEST)) },
   ]
 
-  it('puts a backup back when the widget folder is missing', async () => {
+  it('puts every backup back when no id is named, which is the boot case', async () => {
     // The swap is `target → .bak` then `staging → target`. A crash between the two leaves the
     // widget gone and its previous version in `.bak`.
-    await mkdir(join(dir, 'demo.bak'), { recursive: true })
-    await writeFile(join(dir, 'demo.bak', 'index.html'), 'the version that worked')
+    for (const id of ['demo', 'other']) {
+      await mkdir(join(dir, `${id}.bak`), { recursive: true })
+      await writeFile(join(dir, `${id}.bak`, 'index.html'), `the ${id} that worked`)
+    }
     await recoverStaging(dir)
-    expect(await readFile(join(dir, 'demo', 'index.html'), 'utf8')).toBe('the version that worked')
-    expect(await readdir(dir)).toEqual(['demo'])
+    expect(await readFile(join(dir, 'demo', 'index.html'), 'utf8')).toBe('the demo that worked')
+    expect(await readFile(join(dir, 'other', 'index.html'), 'utf8')).toBe('the other that worked')
+    expect((await readdir(dir)).sort()).toEqual(['demo', 'other'])
+  })
+
+  it('leaves another widget\'s backup alone when an id is named', async () => {
+    // The route's lock is per id, so installing B while A is between its two renames is normal.
+    // Restoring `A.bak` there would fill the hole A is about to rename into, and A's own rename
+    // would fail on a directory that is suddenly not empty.
+    await mkdir(join(dir, 'a.bak'), { recursive: true })
+    await writeFile(join(dir, 'a.bak', 'index.html'), 'a, mid-swap')
+    await recoverStaging(dir, { id: 'b' })
+    expect((await readdir(dir)).sort()).toEqual(['a.bak'])
+    // And naming it does restore it.
+    await recoverStaging(dir, { id: 'a' })
+    expect(await readFile(join(dir, 'a', 'index.html'), 'utf8')).toBe('a, mid-swap')
+  })
+
+  it('does not disturb a widget being installed beside another one', async () => {
+    // The whole scenario, end to end: A is mid-swap (its folder renamed aside), B installs.
+    await writePackage(dir, 'a', files)
+    await rename(join(dir, 'a'), join(dir, 'a.bak'))
+    const aStaging = join(dir, '.tmp-a-inflight')
+    await mkdir(aStaging, { recursive: true })
+    await writeFile(join(aStaging, 'index.html'), '<html>a v2</html>')
+
+    await writePackage(dir, 'b', files)
+
+    // A's backup and its staging folder are both untouched, so A's own rename can still land.
+    expect(await readFile(join(dir, 'a.bak', 'index.html'), 'utf8')).toBe('<html>v1</html>')
+    expect(await readFile(join(aStaging, 'index.html'), 'utf8')).toBe('<html>a v2</html>')
+    await rename(aStaging, join(dir, 'a'))
+    expect(await readFile(join(dir, 'a', 'index.html'), 'utf8')).toBe('<html>a v2</html>')
   })
 
   it('drops a backup sitting beside a working widget', async () => {
@@ -230,11 +263,13 @@ describe('recoverStaging', () => {
     await expect(recoverStaging(join(dir, 'nope'))).resolves.toBeUndefined()
   })
 
-  it('runs on the way into an install, so a crashed one is undone first', async () => {
+  it('runs on the way into an install, for that install\'s own id', async () => {
     await mkdir(join(dir, 'demo.bak'), { recursive: true })
     await writeFile(join(dir, 'demo.bak', 'index.html'), 'the version that worked')
-    await writePackage(dir, 'other', files)
-    // `demo` came back even though the install was for `other`.
-    expect(await readFile(join(dir, 'demo', 'index.html'), 'utf8')).toBe('the version that worked')
+    // A reinstall of `demo` writes over it, which is the right outcome — what matters is that
+    // `.bak` is gone rather than left to be restored on top of something later.
+    await writePackage(dir, 'demo', files)
+    expect(await readFile(join(dir, 'demo', 'index.html'), 'utf8')).toBe('<html>v1</html>')
+    expect(await readdir(dir)).toEqual(['demo'])
   })
 })
