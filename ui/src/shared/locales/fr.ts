@@ -64,6 +64,7 @@ export const fr: Record<string, string> = {
   'admin.market.noMatch': 'Aucun widget ne correspond.',
   'admin.market.working': 'en cours…',
   'admin.market.install': 'Installer',
+  'admin.connections.form.widgets': 'Widgets pour cette connexion',
   'admin.market.update': 'Mettre à jour',
   'admin.market.uninstall': 'Désinstaller',
   'admin.market.installedAt': 'installé v{version}',

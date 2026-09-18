@@ -3,6 +3,7 @@ import { computed, reactive, ref, watch } from 'vue'
 import BaseButton from '../shared/ui/BaseButton.vue'
 import BaseField from '../shared/ui/BaseField.vue'
 import BaseInput from '../shared/ui/BaseInput.vue'
+import ConnectionWidgets from './ConnectionWidgets.vue'
 import { useI18n } from '../shared/i18n'
 import { boundSecretsToReveal, buildSecretsPayload, useConnectionsStore } from './connections'
 import { nextConnectionColor, type ConnectionSummary, type ConnectionTypeInfo } from '../shared/types'
@@ -152,6 +153,9 @@ async function onSave(): Promise<void> {
         </div>
       </BaseField>
     </template>
+
+    <!-- A connection shows nothing by itself; this is what puts it on a screen. -->
+    <ConnectionWidgets :type="type.id" />
 
     <!-- One message at a time: the test result if there is one, the store's error otherwise. -->
     <p v-if="result" class="result" :class="{ ok: result.ok }">{{ result.text }}</p>
