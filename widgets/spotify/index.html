@@ -70,5 +70,49 @@
     document.getElementById('pp').onclick = function () { Fremkit.sendCommand('spotify', 'playPause') }
     document.getElementById('next').onclick = function () { Fremkit.sendCommand('spotify', 'next') }
     document.getElementById('prev').onclick = function () { Fremkit.sendCommand('spotify', 'previous') }
+
+    /*
+     * A long press anywhere on the tile brings the Spotify application forward.
+     *
+     * Off unless the user turns it on: a tile you touch to pause should not leave the dashboard
+     * by surprise. The press is cancelled by a release, a cancel, or a finger that travels —
+     * which on a touch panel it always does a little, hence the slack.
+     */
+    var HOLD_MS = 500
+    var SLACK_PX = 10
+    var holdTimer = null
+    var holdAt = null
+    var suppressClick = false
+
+    function holdCancel() {
+      if (holdTimer !== null) { clearTimeout(holdTimer); holdTimer = null }
+      holdAt = null
+    }
+
+    document.addEventListener('pointerdown', function (e) {
+      if (Fremkit.settings.longPressOpensApp !== true) return
+      holdAt = { x: e.clientX, y: e.clientY }
+      suppressClick = false
+      holdTimer = window.setTimeout(function () {
+        holdTimer = null
+        holdAt = null
+        // The press became a gesture of its own: the tap it would otherwise have been is dropped.
+        suppressClick = true
+        Fremkit.sendCommand('spotify', 'activate')
+      }, HOLD_MS)
+    })
+    document.addEventListener('pointermove', function (e) {
+      if (!holdAt) return
+      if (Math.abs(e.clientX - holdAt.x) > SLACK_PX || Math.abs(e.clientY - holdAt.y) > SLACK_PX) holdCancel()
+    })
+    document.addEventListener('pointerup', holdCancel)
+    document.addEventListener('pointercancel', holdCancel)
+    // Capture, so the button handlers above never see the click the long press swallowed.
+    document.addEventListener('click', function (e) {
+      if (!suppressClick) return
+      suppressClick = false
+      e.stopPropagation()
+      e.preventDefault()
+    }, true)
   })
 </script></body></html>
