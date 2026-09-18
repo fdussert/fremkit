@@ -67,6 +67,17 @@ overwritten. Stop the helper's server first if you want the same port, or pair i
 The other way round is to move `data/` aside while the helper's server is stopped, which is the
 same thing done by hand.
 
+## Upgrading an existing install
+
+Pulling this release **requires restarting the server**. Every widget now depends on
+`Fremkit.esc()`, `Fremkit.el()` and `Fremkit.color()`, which live in
+`server/src/bridge/fremkit.js` — and that file is read **once, at server start**, unlike a
+widget's `index.html`, which is read per request. A dashboard reloaded against a server that
+started before the pull gets the old bridge, and every widget using one of those helpers fails
+silently, looking exactly like a broken widget.
+
+Under the helper: `kill $(lsof -nP -iTCP:4242 -sTCP:LISTEN -t)` and it respawns within seconds.
+
 ## Backup and restore
 
 **/admin → Screen → Backup.** "Back up" downloads `fremkit-backup-<date>.zip`; "Restore…" takes

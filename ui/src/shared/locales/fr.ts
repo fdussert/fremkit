@@ -94,7 +94,7 @@ export const fr: Record<string, string> = {
   'admin.inspector.screen.restore.reenter': 'Secrets à ressaisir dans Connexions :',
   'admin.inspector.screen.privacy': 'Confidentialité',
   'admin.inspector.screen.claudeUsage': 'Lire la consommation du compte Claude',
-  'admin.inspector.screen.claudeUsage.hint': 'Désactivé par défaut. Une fois activé, le serveur lit le jeton OAuth de Claude Code dans l’élément de trousseau « Claude Code-credentials » et le présente à api.anthropic.com pour obtenir la consommation du compte — rien n’est envoyé ailleurs, et le jeton n’est ni enregistré ni journalisé. C’est ce qui alimente les jauges du widget Claude. Le point d’accès n’est pas documenté par Anthropic et peut disparaître.',
+  'admin.inspector.screen.claudeUsage.hint': 'Désactivé pour une nouvelle installation. Un tableau de bord qui affichait déjà le widget Claude avant l’existence de ce réglage le conserve activé, pour que les jauges ne se vident pas lors d’une mise à jour. Une fois activé, le serveur lit le jeton OAuth de Claude Code dans l’élément de trousseau « Claude Code-credentials » et le présente à api.anthropic.com pour obtenir la consommation du compte — rien n’est envoyé ailleurs, et le jeton n’est ni enregistré ni journalisé. Le point d’accès n’est pas documenté par Anthropic et peut disparaître.',
   'admin.inspector.screen.navWidgets': 'Widgets de la barre',
   'admin.inspector.screen.navWidgets.hint': 'Répartis de part et d’autre des pastilles, dans cet ordre.',
   'admin.inspector.screen.navWidgets.slot.left': 'Gauche',

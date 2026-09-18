@@ -94,7 +94,7 @@ export const en: Record<string, string> = {
   'admin.inspector.screen.restore.reenter': 'Secrets to enter again under Connections:',
   'admin.inspector.screen.privacy': 'Privacy',
   'admin.inspector.screen.claudeUsage': 'Read the Claude account usage',
-  'admin.inspector.screen.claudeUsage.hint': 'Off by default. Once on, the server reads Claude Code’s OAuth token from the “Claude Code-credentials” keychain item and presents it to api.anthropic.com to get the account’s usage — nothing is sent anywhere else, and the token is never stored or logged. This is what fills the Claude widget’s gauges. The endpoint is not documented by Anthropic and may disappear.',
+  'admin.inspector.screen.claudeUsage.hint': 'Off for a new install. A dashboard that already showed the Claude widget before this setting existed keeps it on, so the gauges do not go blank on an upgrade. Once on, the server reads Claude Code’s OAuth token from the “Claude Code-credentials” keychain item and presents it to api.anthropic.com to get the account’s usage — nothing is sent anywhere else, and the token is never stored or logged. The endpoint is not documented by Anthropic and may disappear.',
   'admin.inspector.screen.navWidgets': 'Navigation bar widgets',
   'admin.inspector.screen.navWidgets.hint': 'Drawn on either side of the dots, in this order.',
   'admin.inspector.screen.navWidgets.slot.left': 'Left',

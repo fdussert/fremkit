@@ -256,7 +256,7 @@ The list is short and it is all of it.
 | What | Who reads it | When |
 |---|---|---|
 | `~/.claude/projects/` — Claude Code's session transcripts | the `claude-sessions` and `claude-usage` widgets, for the session list and the token counts | whenever one of those widgets is on the dashboard |
-| The `Claude Code-credentials` keychain item — Claude Code's OAuth token | the account usage behind the `claude-usage` gauges. The token is presented to `api.anthropic.com` and nowhere else; it is never stored, never logged, never in an error message | **off by default.** Turn it on in **/admin → Screen → Privacy**. The endpoint (`/api/oauth/usage`) is not documented by Anthropic and may disappear |
+| The `Claude Code-credentials` keychain item — Claude Code's OAuth token | the account usage behind the `claude-usage` gauges. The token is presented to `api.anthropic.com` and nowhere else; it is never stored, never logged, never in an error message | **off for a new install.** Turn it on in **/admin → Screen → Privacy**. A dashboard that already showed the Claude widget before this setting existed keeps it *on*, so the gauges do not go blank on an upgrade — turn it off there if you would rather. The endpoint (`/api/oauth/usage`) is not documented by Anthropic and may disappear |
 | The clipboard, through `pbpaste` | the `clipboard` widget | whenever that widget is on the dashboard |
 | The Dock's badge counts and the icons of installed applications | the `notifications` and `shortcuts` widgets, through the helper | whenever one of those widgets is on the dashboard |
 | The volume, the battery, the disks, the processes, the network | those widgets, through `pmset`, `df`, `ps` and friends | whenever one of them is on the dashboard |

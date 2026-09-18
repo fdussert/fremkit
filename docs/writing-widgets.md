@@ -290,6 +290,17 @@ pull request title, a printer field — and any of it can contain `<img src=x on
   it;
 - a number written into a `style` attribute is clamped to a range first.
 
+**A widget must not navigate or reload itself.** Setting `location`, or calling
+`location.reload()`, gives the frame a new document behind the same `contentWindow` — so the host
+drops the widget's subscriptions and stops answering it, for good. Re-render from the data you
+already have, or ask the host. (A rescan that recreates the frame is a different thing and is
+fine.)
+
+**A widget that declares `homey:*` can drive every settable device on that Homey** — a switch, a
+dimmer, a thermostat — and one that declares `shortcuts` can press the buttons configured on its
+own tile. The admin shows what each widget asks for; that is the list to read before installing
+one from elsewhere.
+
 ## Compact widgets
 
 `"compact": { "width": 4 }` says the widget also has a rendering fit for the navigation bar:

@@ -450,7 +450,16 @@ icon it declares — an `apple-touch-icon` first, a plain `icon`/`shortcut icon`
 declared `sizes` breaking the tie — and falls back to `/favicon.ico` when the page declares none.
 A site that serves its icon as `application/octet-stream` or with no type at all, which is common
 for `favicon.ico`, is judged by the file's first bytes rather than by what it claims: PNG, GIF,
-WebP, ICO, JPEG and SVG are recognised, anything else is dropped.
+WebP, ICO and JPEG are recognised, anything else is dropped.
+
+**SVG is not**, and a site whose only icon is one gets no icon. An SVG is a document that can
+carry script, and it would be served back from this server's own origin — the one the WebSocket
+and the connections API trust.
+
+**A site on a private or local address gets no icon either.** A button pointing at a NAS, a
+router, Home Assistant or anything else on the LAN keeps working; it simply draws its glyph
+instead of a favicon. The server will not fetch from a loopback, private, link-local or reserved
+address, because it runs on your Mac and that would make it a way to reach the services on it.
 
 Privacy: that favicon is the one thing here that reaches the outside. The server asks the site
 itself — only its origin, never the path the button points at — at most once a week, keeps the
