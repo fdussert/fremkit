@@ -1,4 +1,3 @@
-import type { WidgetManifest } from '../shared/types'
 
 /**
  * The shelves of the widget library, in reading order: what the person is building with first,
@@ -8,19 +7,26 @@ import type { WidgetManifest } from '../shared/types'
 export const WIDGET_CATEGORIES = ['ai', 'dev', 'system', 'productivity', 'media', 'info', 'home', 'other'] as const
 export type WidgetCategory = (typeof WIDGET_CATEGORIES)[number]
 
-export const categoryOf = (manifest: WidgetManifest): WidgetCategory =>
-  ((WIDGET_CATEGORIES as readonly string[]).includes(manifest.category ?? '') ? manifest.category : 'other') as WidgetCategory
+export const categoryOf = (widget: { category?: string }): WidgetCategory =>
+  ((WIDGET_CATEGORIES as readonly string[]).includes(widget.category ?? '') ? widget.category : 'other') as WidgetCategory
 
-/** The manifests grouped by shelf, empty shelves left out, each group sorted by `compare`. */
-export function groupByCategory(
-  manifests: WidgetManifest[],
-  compare: (a: WidgetManifest, b: WidgetManifest) => number,
-): { id: WidgetCategory; widgets: WidgetManifest[] }[] {
-  const groups = new Map<WidgetCategory, WidgetManifest[]>()
-  for (const manifest of manifests) {
-    const key = categoryOf(manifest)
+/**
+ * Anything with a shelf, grouped by it — empty shelves left out, each group sorted by `compare`.
+ *
+ * Generic over the row because two lists want the same shelves: the palette, which groups
+ * manifests of what is installed, and the registry panel, which groups index entries of what is
+ * not. Writing the order and the empty-shelf rule twice is how the two would end up disagreeing
+ * about where a widget lives before and after it is installed.
+ */
+export function groupByCategory<T extends { category?: string }>(
+  widgets: T[],
+  compare: (a: T, b: T) => number,
+): { id: WidgetCategory; widgets: T[] }[] {
+  const groups = new Map<WidgetCategory, T[]>()
+  for (const widget of widgets) {
+    const key = categoryOf(widget)
     const list = groups.get(key) ?? []
-    list.push(manifest)
+    list.push(widget)
     groups.set(key, list)
   }
   return WIDGET_CATEGORIES

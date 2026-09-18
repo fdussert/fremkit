@@ -92,6 +92,8 @@ function reset(): void {
   m.state.installMissingOpen = false
   m.state.resultsAre = 'update'
   m.setView('available')
+  // BaseSection remembers which shelves are open in localStorage, module scope, across mounts.
+  try { localStorage.clear() } catch { /* private window */ }
 }
 
 beforeEach(reset)
@@ -398,6 +400,57 @@ describe('what a finished series calls itself', () => {
     m.state.resultsAre = 'update'
     await wrapper.vm.$nextTick()
     expect(wrapper.find('[data-widget="demo"] .note.ok').text()).toMatch(/mis à jour|updated/)
+    wrapper.unmount()
+  })
+})
+
+describe('the Available view, on shelves', () => {
+  async function panel(widgets: MarketplaceWidget[]): Promise<ReturnType<typeof mount>> {
+    serve(answer(widgets))
+    const wrapper = mount(MarketplacePanel, { attachTo: document.body })
+    await settle()
+    await wrapper.vm.$nextTick()
+    return wrapper
+  }
+
+  const listed = (w: ReturnType<typeof mount>) =>
+    w.findAll('[data-widget]').map((r) => r.attributes('data-widget'))
+
+  it('gives each category its own shelf, in the library order', async () => {
+    const wrapper = await panel([
+      widget({ id: 'nas', category: 'home', updateAvailable: false, installed: false }),
+      widget({ id: 'runs', category: 'dev', updateAvailable: false, installed: false }),
+    ])
+    expect(wrapper.findAll('details.section')).toHaveLength(2)
+    // `dev` comes before `home` in WIDGET_CATEGORIES, whatever order the index listed them in.
+    expect(listed(wrapper)).toEqual(['runs', 'nas'])
+    wrapper.unmount()
+  })
+
+  it('puts a widget with no category of its own on the Other shelf', async () => {
+    const wrapper = await panel([widget({ id: 'plain', category: 'other', updateAvailable: false, installed: false })])
+    const section = wrapper.find('details.section')
+    expect(section.exists()).toBe(true)
+    expect(section.text()).toMatch(/Autre|Other/)
+    wrapper.unmount()
+  })
+
+  it('draws no shelf at all for a category nothing is on', async () => {
+    const wrapper = await panel([widget({ id: 'runs', category: 'dev', updateAvailable: false, installed: false })])
+    // Eight headings with seven blanks would read as a broken panel.
+    expect(wrapper.findAll('details.section')).toHaveLength(1)
+    wrapper.unmount()
+  })
+
+  it('leaves Installed and Updates flat, since they are short by definition', async () => {
+    const wrapper = await panel([
+      widget({ id: 'nas', category: 'home', installed: true, installedVersion: '1.0.0' }),
+      widget({ id: 'runs', category: 'dev', installed: true, installedVersion: '1.0.0' }),
+    ])
+    useMarketplaceStore().setView('installed')
+    await wrapper.vm.$nextTick()
+    expect(wrapper.findAll('details.section')).toHaveLength(0)
+    expect(listed(wrapper)).toHaveLength(2)
     wrapper.unmount()
   })
 })
