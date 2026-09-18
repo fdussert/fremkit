@@ -84,6 +84,12 @@ function setOpacity(percent: number): void {
   const clamped = Math.min(100, Math.max(0, percent))
   s.updateInstance(inst.value!.instanceId, { opacity: clamped === 100 ? undefined : clamped / 100 })
 }
+/**
+ * The same opacity, as the yes/no question people actually ask of a tile. A tile with no
+ * surface is one at 0; ticking the box brings back a solid one rather than the value it had,
+ * which is the answer someone who just hid the surface is looking for.
+ */
+const showBg = computed(() => opacityPercent.value > 0)
 function onSetting(key: string, value: unknown): void {
   s.updateInstance(inst.value!.instanceId, { settings: { ...inst.value!.settings, [key]: value } })
 }
@@ -120,6 +126,8 @@ function moveToPage(): void {
       @update:model-value="s.updateInstance(inst!.instanceId, { showTitle: $event })" />
 
     <BaseSection id="widget.background" :title="t('admin.inspector.widget.background')">
+    <BaseCheckbox :model-value="showBg" :label="t('admin.inspector.widget.showBg')"
+      @update:model-value="setOpacity($event ? 100 : 0)" />
     <BaseField :label="t('admin.inspector.widget.bgColor')" :hint="t('admin.inspector.widget.bgColor.hint')">
       <BaseColor :model-value="inst.bgColor ?? ''" :fallback="THEME_SURFACE" :reset-label="t('common.reset')"
         :aria-label="t('admin.inspector.widget.bgColor')"

@@ -54,6 +54,7 @@ export const en: Record<string, string> = {
   'admin.inspector.widget.title': 'Title',
   'admin.inspector.widget.showTitle': 'Show the title',
   'admin.inspector.widget.background': 'Background',
+  'admin.inspector.widget.showBg': 'Show the background',
   'admin.inspector.widget.bgColor': 'Background colour',
   'admin.inspector.widget.bgColor.hint': 'With no colour chosen, the tile keeps the theme surface.',
   'admin.inspector.widget.opacity': 'Background opacity',
