@@ -34,6 +34,7 @@
  * for GitHub too. So the request is made by hand, with `rejectUnauthorized` set per call.
  */
 
+import type { MessageKey } from '../i18n.js'
 import { request as httpsRequest, type RequestOptions } from 'node:https'
 import { z } from 'zod'
 import type { ConnectionProviderContext } from '../connections/types.js'
@@ -71,13 +72,42 @@ const SESSION_GONE = new Set([106, 107, 119])
 /** The account lacks the privilege for this API. Re-logging in will not help. */
 const FORBIDDEN = 105
 /**
- * Wrong account, password or code — **on the login call only**. 403 and 404 are the two-factor
- * codes, 400 the catch-all. On `SYNO.Core.System.Utilization` the same numbers mean something
- * else entirely, which is why this table is applied in `login()` and nowhere else.
+ * Why DSM refused a login, **on the login call only**.
+ *
+ * `SYNO.API.Auth` has a code per reason and they are not interchangeable: a disabled account, an
+ * account forbidden the DSM application, an address the auto-block list caught and an expired
+ * password are four different things to go and do, and collapsing them into "account or password
+ * refused" sends the user to retype a password that was never the problem. On
+ * `SYNO.Core.System.Utilization` the same numbers mean something else entirely, which is why this
+ * table is applied in `login()` and nowhere else.
+ *
+ * The keys are messages for the admin's Test button. The provider's snapshot stays `unauthorized`
+ * for all of them — a widget on the wall has one word of room, and it is the same word.
  */
-const AUTH_FAILED = new Set([400, 401, 402, 403, 404, 406])
-/** DSM's "a one-time code is required", which only arrives once the password was accepted. */
+export const LOGIN_REFUSALS: Record<number, MessageKey> = {
+  400: 'synology.unauthorized',
+  401: 'synology.accountDisabled',
+  402: 'synology.dsmNotAllowed',
+  404: 'synology.otpRejected',
+  407: 'synology.ipBlocked',
+  408: 'synology.passwordExpired',
+  409: 'synology.passwordExpired',
+  410: 'synology.passwordExpired',
+}
+const AUTH_FAILED = new Set([...Object.keys(LOGIN_REFUSALS).map(Number), 403, 406])
+/**
+ * DSM's "a one-time code is required", which only arrives once the password was accepted.
+ *
+ * Two codes, not one: 403 asks for the code, 406 says the account is *required* to use two-factor
+ * and has not. Either way the password was accepted and the next step is the same.
+ */
 export const OTP_REQUIRED = 403
+const OTP_REQUIRED_CODES = new Set([OTP_REQUIRED, 406])
+
+/** The message for a refused login, falling back to the catch-all for a code DSM added since. */
+export function loginRefusal(code: number | null): MessageKey {
+  return (code !== null && LOGIN_REFUSALS[code]) || 'synology.unauthorized'
+}
 
 export type SynologyErrorKind = 'auth' | 'otpRequired' | 'forbidden' | 'session' | 'network' | 'answer'
 
@@ -342,7 +372,7 @@ export class SynologyClient {
     const code = parsed.error?.code ?? null
     if (code === FORBIDDEN) throw new SynologyError(code, 'forbidden')
     if (code !== null && SESSION_GONE.has(code)) throw new SynologyError(code, 'session')
-    if (on === 'login' && code === OTP_REQUIRED) throw new SynologyError(code, 'otpRequired')
+    if (on === 'login' && code !== null && OTP_REQUIRED_CODES.has(code)) throw new SynologyError(code, 'otpRequired')
     if (on === 'login' && code !== null && AUTH_FAILED.has(code)) throw new SynologyError(code, 'auth')
     throw new SynologyError(code, 'answer')
   }

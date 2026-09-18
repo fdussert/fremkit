@@ -247,6 +247,26 @@ ever. DSM asks for a code only *after* accepting the password, so on a two-facto
 answers "password accepted — enrolment happens on the first poll after saving". That is a
 success: the credentials are right.
 
+**What Test can tell you.** DSM has a code per reason for refusing a login, and they are not
+the same problem. Fremkit reads them on the login call only — on `SYNO.Core.System.Utilization`
+the same numbers mean something else — and says which one it was:
+
+| What Test says | What DSM answered | What to do |
+|---|---|---|
+| refused the account or the password | 400 | Check the account name and retype the password |
+| this DSM account is disabled | 401 | Control Panel → User → enable it |
+| may not use the DSM application | 402 | Control Panel → User → Applications → allow **DSM** |
+| password accepted — enrolment on the first poll | 403, 406 | Nothing: this is a success |
+| the verification code is wrong, or already used | 404 | Put a fresh six-digit code in `otp` |
+| DSM has blocked this Mac's address | 407 | Control Panel → Security → Account → remove it from the block list |
+| the password has expired | 408–410 | Change it on DSM, then here |
+| lacks the permission to read this | 105 | The account is not in `administrators` |
+| this is not a DSM | anything else | Check the address and the port |
+| the NAS could not be reached | — | See [troubleshooting](troubleshooting.md): usually Local Network |
+
+The widgets show one word for all of them — `unauthorized` — because a tile on the wall has one
+word of room. The sentence is for the admin, where there is somewhere to go and act on it.
+
 **A privilege the account lacks** is reported as such rather than as a wrong password. DSM
 answers code 105 for an API the account may not call, and a new session would not change it —
 so the connection says "this DSM account lacks the permission to read this", and the widgets

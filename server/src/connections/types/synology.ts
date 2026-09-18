@@ -2,6 +2,7 @@ import {
   SynologyClient,
   SynologyError,
   createSynologyProvider,
+  loginRefusal,
   parseHost,
   toSnapshot,
   type SynologyTransport,
@@ -136,7 +137,8 @@ export const synologyType: ConnectionType = {
         // DSM asks for a code only once the password has been accepted, so this *is* the good
         // news: the credentials are right, and the enrolment is the first poll's job.
         if (err.kind === 'otpRequired') return { ok: true, detail: tr(undefined, 'synology.twoFactorPending') }
-        if (err.kind === 'auth') return { ok: false, error: tr(undefined, 'synology.unauthorized') }
+        // DSM says *why* it refused, and the four reasons are four different things to go and do.
+        if (err.kind === 'auth') return { ok: false, error: tr(undefined, loginRefusal(err.code)) }
         if (err.kind === 'forbidden') return { ok: false, error: tr(undefined, 'synology.forbidden') }
         if (err.kind === 'answer') return { ok: false, error: tr(undefined, 'synology.notADsm') }
       }

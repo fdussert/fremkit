@@ -88,6 +88,11 @@ function refusing(code: number): SynologyTransport {
   }
 }
 
+/** A DSM that refuses the login itself, which is the only call the refusal table applies to. */
+function refusingLogin(code: number): SynologyTransport {
+  return async () => ({ status: 200, body: Buffer.from(JSON.stringify({ success: false, error: { code } })) })
+}
+
 describe('parseHost', () => {
   it('takes a name or an address, with or without a port', () => {
     expect(parseHost('192.0.2.10')).toEqual({ host: '192.0.2.10', port: 5001 })
@@ -477,6 +482,42 @@ describe('the synology connection type', () => {
     const result = await synologyType.test(fields, { password: 'pw' }, { transport: needsOtp })
     expect(result.ok).toBe(true)
     if (result.ok) expect(result.detail).toMatch(/double authentification|two-factor/)
+  })
+
+  /**
+   * One row per `SYNO.API.Auth` refusal code.
+   *
+   * The sentences are the repository's own and the process's locale decides which language they
+   * come out in, so what is asserted is the thing the user can act on: the word that tells the
+   * four refusals apart. Sending somebody to retype a password DSM never objected to is the
+   * failure this table exists to prevent.
+   */
+  const REFUSALS: [number, RegExp][] = [
+    [400, /refus|password/i],
+    [401, /désactivé|disabled/i],
+    [402, /application DSM|DSM application/i],
+    [404, /code de vérification|verification code/i],
+    [407, /bloqué|blocked/i],
+    [408, /expiré|expired/i],
+    [409, /expiré|expired/i],
+    [410, /expiré|expired/i],
+  ]
+
+  it.each(REFUSALS)('says which login refusal DSM gave: %i', async (code, expected) => {
+    const result = await synologyType.test(fields, { password: 'pw' }, { transport: refusingLogin(code) })
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.error).toMatch(expected)
+  })
+
+  it('takes DSM 406 for what it is: the password was accepted, the code is required', async () => {
+    const result = await synologyType.test(fields, { password: 'pw' }, { transport: refusingLogin(406) })
+    expect(result.ok).toBe(true)
+    if (result.ok) expect(result.detail).toMatch(/double authentification|two-factor/)
+  })
+
+  it('falls back to the catch-all for a code DSM has added since', async () => {
+    const result = await synologyType.test(fields, { password: 'pw' }, { transport: refusingLogin(405) })
+    expect(result.ok).toBe(false)
   })
 
   it('says so when the account lacks a privilege, rather than blaming the password', async () => {
