@@ -95,6 +95,8 @@ export const en: Record<string, string> = {
 
   'admin.inspector.widget.empty': 'Select a widget in the preview.',
   'admin.inspector.widget.missing': 'Widget folder not found.',
+  'admin.inspector.widget.onSietch': 'It is on the sietch: {name}',
+  'admin.inspector.widget.notOnSietch': 'The registry does not have it either.',
   'admin.inspector.widget.title': 'Title',
   'admin.inspector.widget.showTitle': 'Show the title',
   'admin.inspector.widget.background': 'Background',
