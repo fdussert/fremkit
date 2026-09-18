@@ -51,16 +51,20 @@ const isOpen = computed(() => open[props.id] ?? props.defaultOpen)
 </template>
 
 <style scoped>
-.section { border-top: 1px solid var(--border); }
-.section:first-of-type { border-top: 0; }
-summary { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-3) 0 var(--space-2);
+/* A framed block with its own header bar: folded sections then read as a stack of titles. */
+.section { background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm);
+  margin-bottom: var(--space-2); overflow: hidden; }
+summary { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-3);
   cursor: pointer; list-style: none; user-select: none; color: var(--text-muted);
-  font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: .08em; }
+  font-size: var(--fs-xs); font-weight: 600; text-transform: uppercase; letter-spacing: .08em; }
 summary::-webkit-details-marker { display: none; }
 summary:hover { color: var(--text); }
+/* An open section names itself in full strength, and its header is ruled off from its body. */
+[open] > summary { color: var(--text); border-bottom: 1px solid var(--border); }
 .title { flex: 1; min-width: 0; }
-.badge { color: var(--text-dim); text-transform: none; letter-spacing: 0; }
+.badge { color: var(--text-dim); font-weight: 400; text-transform: none; letter-spacing: 0; }
 .chevron { transition: transform .12s ease; transform: rotate(-90deg); }
 [open] > summary .chevron { transform: none; }
-.body { padding-bottom: var(--space-3); }
+/* Back to the panel's own surface, so what is inside the section sits on the page, not on the bar. */
+.body { padding: var(--space-3); background: var(--surface); }
 </style>
