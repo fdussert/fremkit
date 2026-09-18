@@ -662,6 +662,18 @@ describe('POST /api/marketplace/install-missing', () => {
     expect(result.newPermissions?.subscriptions).toEqual(['system'])
   })
 
+  it('leaves out a widget that needs a newer Fremkit', async () => {
+    // The panel does not list it in the dialog, so a result for it would name something the user
+    // never saw and could do nothing about. "Update Fremkit" is already said on its own row.
+    await app.close()
+    const zip = packageOf()
+    await build({ zip, index: { ...indexFor(zip), widgets: [
+      { ...(indexFor(zip).widgets as Record<string, unknown>[])[0], sdk: SDK_VERSION + 1 },
+    ] } })
+    await place('demo')
+    expect((await installMissing({ demo: set({ subscriptions: ['system'] }) })).json().results).toEqual([])
+  })
+
   it('refuses a cross-site call and a malformed body', async () => {
     const cross = await app.inject({
       method: 'POST', url: '/api/marketplace/install-missing',

@@ -398,8 +398,12 @@ export async function marketplaceRoutes(app: FastifyInstance, opts: MarketplaceO
     if (!index) return reply
 
     const config = store.get()
+    // `sdkTooNew` is excluded here and not left to `installOne` to refuse: the panel does not
+    // list such a widget in the dialog, so a result coming back for it would name something the
+    // user was never shown and could do nothing about. The answer to that one is "update
+    // Fremkit", and it is already on its own row.
     const missing = index.widgets.filter((w) =>
-      usedBy(config, w.id).length > 0 && catalog.entry(w.id) === undefined)
+      usedBy(config, w.id).length > 0 && catalog.entry(w.id) === undefined && w.sdk <= SDK_VERSION)
     return reply.send({ results: await runSeries(missing, 'install', parsed.data.consent, req.log) })
   })
 
