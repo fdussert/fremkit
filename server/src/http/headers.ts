@@ -15,13 +15,13 @@ export const BYTES_CSP = "default-src 'none'; sandbox"
  * The routes that answer with bytes we did not write: a site's favicon, an application icon, a
  * wallpaper, a widget's proxied response, a printer snapshot.
  */
-const BYTE_ROUTES = [
+export const BYTE_ROUTES = [
   '/api/favicon',
   '/api/apps/icon/',
   '/api/backgrounds/',
-  '/api/dock/',
   '/api/proxy/',
   '/api/bambu/',
+  '/api/backup',
 ]
 
 /** True when a request path is one of those routes, query string and all. */

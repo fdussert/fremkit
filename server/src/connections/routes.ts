@@ -9,6 +9,7 @@ import type { ConnectionManager } from './manager.js'
 import type { ConnectionTypeRegistry } from './registry.js'
 import { OptionsError } from './types.js'
 import { isOriginAllowed } from '../ws/routes.js'
+import { isCrossSiteFetch } from '../http/guard.js'
 import { tr } from '../i18n.js'
 
 /** Ids the route table already spells: `/api/connections/types` must stay the type list. */
@@ -201,6 +202,9 @@ export async function connectionRoutes(
    * the connection's secrets reaches the answer, not even inside an error message.
    */
   app.get<{ Params: { id: string }; Querystring: { source?: string } }>('/api/connections/:id/options', async (req, reply) => {
+    // A read, so the plugin's Origin hook lets it through — but it dials the device behind the
+    // connection with its stored secret, so a page on another site must not be able to trigger it.
+    if (isCrossSiteFetch(req.headers)) return reply.code(403).send({ error: tr(store.get().locale, 'http.originNotAllowed') })
     const config = store.get()
     const connection = config.connections.find((c) => c.id === req.params.id)
     if (!connection) return reply.code(404).send({ error: tr(config.locale, 'connections.unknown') })

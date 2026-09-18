@@ -610,11 +610,12 @@ export function createGithubProvider(ctx: ConnectionProviderContext, deps: Githu
         const parsed = MarkAllReadPayload.safeParse(payload ?? {})
         if (!parsed.success) throw new Error(tr(undefined, 'github.invalidCommand'))
         const { lastReadAt } = parsed.data
-        // `read` is left out on purpose. GitHub documents it only as "Whether the notification
-        // has been read", with no default and no word on what it does on a mark-as-read call —
-        // and we were sending `false`, which at best means nothing and at worst asks for the
-        // opposite of the request. Omitted, the endpoint does its documented job: everything up
-        // to `last_read_at` is marked read.
+        // `read` is left out on purpose. Checked against docs.github.com (REST, activity /
+        // notifications, api-version 2022-11-28): it is optional, documented only as "Whether
+        // the notification has been read", with no stated default and nothing about what it
+        // means on a mark-as-read call. We were sending `false`, which at best means nothing and
+        // at worst asks for the opposite of the request. Omitted, the endpoint does its
+        // documented job: everything up to `last_read_at` is marked read.
         await send(`${base}/notifications`, 'PUT', {
           last_read_at: lastReadAt ?? new Date(now()).toISOString(),
         })

@@ -211,8 +211,10 @@ describe('homey commands', () => {
   const FLOW = '4d4d607f-7d3d-406a-920a-4e7b2cb752e7'
   const ADVANCED = '422d61bc-bf23-4bf3-86bc-e89af7a1642d'
 
+  /** Commands act on a device on the LAN, so they are loopback-gated like every other one. */
+  const LOCAL = { loopback: true }
   const run = async (name: string, payload: unknown, fetchFn: typeof fetch) =>
-    createHomeyProvider(ctx, { fetchFn }).commands![name](payload)
+    createHomeyProvider(ctx, { fetchFn }).commands![name](payload, LOCAL)
 
   it('setCapability PUTs the value on the device capability path', async () => {
     const fetchFn = vi.fn(async () => new Response('', { status: 200 })) as unknown as typeof fetch
@@ -359,8 +361,10 @@ describe('homey connection options', () => {
 
 describe('homey command bounds', () => {
   const LAMP = 'c5a00914-6cfe-4c0e-b2df-47f11f1f2ab5'
+  /** Commands act on a device on the LAN, so they are loopback-gated like every other one. */
+  const LOCAL = { loopback: true }
   const run = async (name: string, payload: unknown, fetchFn: typeof fetch) =>
-    createHomeyProvider(ctx, { fetchFn }).commands![name](payload)
+    createHomeyProvider(ctx, { fetchFn }).commands![name](payload, LOCAL)
 
   it('refuses an id that is not a UUID, so nothing can walk the API path', async () => {
     const fetchFn = vi.fn() as unknown as typeof fetch
@@ -414,8 +418,8 @@ describe('homey command bounds', () => {
   it('accepts no command at all when the address is not one it can dial', async () => {
     const fetchFn = vi.fn() as unknown as typeof fetch
     const bad = createHomeyProvider({ ...ctx, fields: { host: 'http://nope/' } }, { fetchFn })
-    await expect(bad.commands!.setCapability({ deviceId: LAMP, capability: 'onoff', value: true })).rejects.toThrow()
-    await expect(bad.commands!.triggerFlow({ flowId: LAMP })).rejects.toThrow()
+    await expect(bad.commands!.setCapability({ deviceId: LAMP, capability: 'onoff', value: true }, LOCAL)).rejects.toThrow()
+    await expect(bad.commands!.triggerFlow({ flowId: LAMP }, LOCAL)).rejects.toThrow()
     expect(fetchFn).not.toHaveBeenCalled()
   })
 
@@ -423,5 +427,22 @@ describe('homey command bounds', () => {
     const fetchFn = vi.fn() as unknown as typeof fetch
     await expect(run('setCapability', { deviceId: 'secret-looking-value', capability: 'onoff', value: true }, fetchFn))
       .rejects.toThrow(/^(?:(?!secret-looking-value).)*$/)
+  })
+})
+
+describe('homey commands are local-only', () => {
+  const LAMP = 'c5a00914-6cfe-4c0e-b2df-47f11f1f2ab5'
+
+  it('refuses a command that did not come from this machine', async () => {
+    const fetchFn = vi.fn() as unknown as typeof fetch
+    const p = createHomeyProvider(ctx, { fetchFn })
+    // They write to a device on the user's LAN, which a remote caller cannot see and has no
+    // business driving. Fail closed on a missing context.
+    for (const context of [{ loopback: false }, undefined]) {
+      await expect(p.commands!.setCapability({ deviceId: LAMP, capability: 'onoff', value: true }, context))
+        .rejects.toThrow()
+      await expect(p.commands!.triggerFlow({ flowId: LAMP }, context)).rejects.toThrow()
+    }
+    expect(fetchFn).not.toHaveBeenCalled()
   })
 })

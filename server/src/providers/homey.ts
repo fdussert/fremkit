@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import type { ConnectionProviderContext } from '../connections/types.js'
-import type { Provider } from './types.js'
+import type { CommandContext, Provider } from './types.js'
 import { USER_AGENT } from '../version.js'
 import { tr } from '../i18n.js'
 import { readJsonCapped } from '../net/json.js'
@@ -226,8 +226,12 @@ const CapabilityId = z.string().min(1).max(64).regex(/^[a-z0-9_.]+$/)
  * path segment and the URL parser then walked it up: `/devices/device/../capability/onoff`
  * resolves to `/devices/capability/onoff`, which is a different endpoint on the user's Homey.
  * A UUID cannot spell that.
+ *
+ * A plain pattern rather than `z.string().uuid()`: that helper is deprecated in zod 4 and also
+ * checks the RFC variant nibbles, which is stricter than anything here needs. Thirty-six
+ * characters of hex and dashes closes `..` just the same.
  */
-const HomeyId = z.string().uuid()
+const HomeyId = z.string().regex(/^[0-9a-f-]{36}$/i)
 
 /**
  * Capabilities a command may write when the snapshot has not said otherwise.
@@ -355,7 +359,10 @@ export function createHomeyProvider(ctx: ConnectionProviderContext, deps: HomeyP
 
     commands: {
       /** Sets one capability of one device: the toggle and the dimmer of the devices widget. */
-      setCapability: async (payload) => {
+      setCapability: async (payload, ctx?: CommandContext) => {
+        // Writing to a device on the user's LAN: only a client on this Mac may ask, like every
+        // other command that reaches beyond the server. Fail closed on a missing context.
+        if (!ctx?.loopback) throw new Error(tr(undefined, 'provider.localOnly'))
         if (!hostOk) throw new Error(tr(undefined, 'homey.invalidAddress'))
         const parsed = SetCapabilityPayload.safeParse(payload)
         // Never the raw ZodError: it echoes the payload back to the caller.
@@ -374,7 +381,8 @@ export function createHomeyProvider(ctx: ConnectionProviderContext, deps: HomeyP
       },
 
       /** Runs a flow, or an Advanced Flow, which lives under its own path. */
-      triggerFlow: async (payload) => {
+      triggerFlow: async (payload, ctx?: CommandContext) => {
+        if (!ctx?.loopback) throw new Error(tr(undefined, 'provider.localOnly'))
         if (!hostOk) throw new Error(tr(undefined, 'homey.invalidAddress'))
         const parsed = TriggerFlowPayload.safeParse(payload)
         if (!parsed.success) throw new Error(tr(undefined, 'homey.invalidCommand'))

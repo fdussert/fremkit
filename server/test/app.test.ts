@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { buildApp } from '../src/app.js'
 import { WIDGET_CSP } from '../src/widgets/routes.js'
+import { BYTE_ROUTES, isByteRoute } from '../src/http/headers.js'
 import { degradedMessage } from '../src/config/routes.js'
 import { defaultLocale } from '../src/config/schema.js'
 import type { FastifyInstance } from 'fastify'
@@ -206,5 +207,26 @@ describe('widget routes', () => {
     // The project's former name is gone from the bridge: no published user ever saw it.
     expect(res.body).not.toContain('Vardek')
     expect(res.body).not.toContain('vardek')
+  })
+})
+
+describe('the byte-route list', () => {
+  it('names only prefixes that a registered route answers', async () => {
+    // A prefix matching nothing is dead weight that reads as protection: /api/dock/ was one.
+    const routes = app.printRoutes({ commonPrefix: false })
+    for (const prefix of BYTE_ROUTES) {
+      // The route table spells parameters as :name, so compare on the fixed leading segments.
+      const head = prefix.replace(/\/$/, '').split('/').filter(Boolean).slice(0, 2).join('/')
+      expect(routes, prefix).toContain(head)
+    }
+  })
+  it('covers every route that hands back bytes from elsewhere', () => {
+    for (const url of ['/api/favicon?url=x', '/api/apps/icon/com.example.app', '/api/backgrounds/a.png',
+      '/api/proxy/weather?url=x', '/api/bambu/b1/snapshot.jpg', '/api/backup']) {
+      expect(isByteRoute(url), url).toBe(true)
+    }
+    for (const url of ['/api/config', '/api/widgets', '/', '/admin', '/api/connections']) {
+      expect(isByteRoute(url), url).toBe(false)
+    }
   })
 })

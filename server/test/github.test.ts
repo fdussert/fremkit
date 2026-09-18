@@ -402,10 +402,12 @@ describe('createGithubProvider', () => {
     const provider = createGithubProvider(context(), { fetchFn, now: () => Date.parse('2026-09-17T10:00:00Z') })
     await provider.commands!.markAllRead({})
     expect(calls[0]).toMatchObject({ url: 'https://api.github.com/notifications', method: 'PUT' })
-    // `read` is not sent: GitHub documents it only as "Whether the notification has been read",
-    // with no default and nothing about what it means on a mark-as-read call. We were sending
-    // `false`, which at best means nothing. Omitted, the endpoint does its documented job.
+    // The exact body, so nothing creeps back in. `read` is deliberately absent: checked against
+    // docs.github.com (activity / notifications, api-version 2022-11-28), where it is optional
+    // and documented only as "Whether the notification has been read", with no stated default
+    // and nothing about what it means on a mark-as-read call. `false` was meaningless at best.
     expect(JSON.parse(calls[0].body!)).toEqual({ last_read_at: '2026-09-17T10:00:00.000Z' })
+    expect(Object.keys(JSON.parse(calls[0].body!))).toEqual(['last_read_at'])
 
     await provider.commands!.markAllRead({ lastReadAt: '2026-09-17T09:00:00Z' })
     expect(JSON.parse(calls[1].body!).last_read_at).toBe('2026-09-17T09:00:00Z')

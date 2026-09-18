@@ -2,6 +2,16 @@ import type { CommandContext, Provider, Publish } from './types.js'
 
 const MAX_BACKOFF_MS = 60_000
 
+/**
+ * Channels whose last value is dropped as soon as nobody is watching, not only when the provider
+ * goes away.
+ *
+ * The clipboard is the one: its provider empties its history in `stop()`, so the hub holding the
+ * last snapshot would keep showing what was on the pasteboard to the next subscriber, after the
+ * widget that was allowed to see it had been removed.
+ */
+const FORGET_WHEN_IDLE = new Set(['clipboard'])
+
 interface State {
   provider: Provider
   subscribers: number
@@ -32,7 +42,7 @@ export class ProviderRegistry {
     // Read before the teardown, which zeroes it: the widgets watching this channel did not go
     // away because the connection behind it was edited, so the replacement inherits them.
     const subscribers = previous?.subscribers ?? 0
-    if (previous) this.teardown(previous)
+    if (previous) this.teardown(previous, 'gone')
     const state: State = { provider, subscribers, started: false, timer: null, backoffMs: 0, lastJson: undefined, inFlight: false }
     this.states.set(provider.channel, state)
     if (state.subscribers > 0) this.activate(state)
@@ -42,7 +52,7 @@ export class ProviderRegistry {
   unregister(channel: string): void {
     const s = this.states.get(channel)
     if (!s) return
-    this.teardown(s)
+    this.teardown(s, 'gone')
     this.states.delete(channel)
   }
 
@@ -61,7 +71,7 @@ export class ProviderRegistry {
     const s = this.states.get(channel)
     if (!s) return
     s.subscribers = Math.max(0, s.subscribers - 1)
-    if (s.subscribers === 0) this.teardown(s)
+    if (s.subscribers === 0) this.teardown(s, 'idle')
   }
 
   async runCommand(channel: string, name: string, payload: unknown, ctx?: CommandContext): Promise<unknown> {
@@ -77,7 +87,7 @@ export class ProviderRegistry {
 
   stop(): void {
     for (const s of this.states.values()) {
-      this.teardown(s)
+      this.teardown(s, 'gone')
       s.subscribers = 0
     }
   }
@@ -108,14 +118,25 @@ export class ProviderRegistry {
    * only runs after a matching `start()`, and only once — a provider should still make both
    * idempotent, since nothing stops a second registry from holding the same object.
    */
-  private teardown(s: State): void {
+  private teardown(s: State, reason: 'idle' | 'gone'): void {
     if (s.timer) { clearTimeout(s.timer); s.timer = null }
     // An in-flight poll is not a timer: zeroing this stops the orphan rescheduling itself even
     // before `isCurrent` gets a say, and keeps a torn-down state from being woken by a later
     // subscriber count.
     s.subscribers = 0
     s.lastJson = undefined
-    this.forget(s.provider.channel)
+    // `gone` is the provider being replaced or unregistered: whatever it last said belonged to
+    // credentials that no longer exist, so the hub must not replay it.
+    //
+    // `idle` is simply the last widget going away, which happens on every dashboard reload. The
+    // provider is still the same one and its last answer is still true, so the cache is kept and
+    // the reloaded page paints at once instead of showing github, the calendar and the printer
+    // blank for a network round trip.
+    //
+    // Except the clipboard, whose provider clears its history in `stop()`: keeping the last
+    // snapshot would leave what was on the pasteboard on screen after the widget that was
+    // allowed to show it has gone.
+    if (reason === 'gone' || FORGET_WHEN_IDLE.has(s.provider.channel)) this.forget(s.provider.channel)
     if (!s.started) return
     s.started = false
     s.provider.stop?.()

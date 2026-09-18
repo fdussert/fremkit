@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify'
 import type { WidgetCatalog } from '../widgets/catalog.js'
 import { resolvesToPrivate } from '../net/private.js'
+import { isCrossSiteFetch } from '../http/guard.js'
 import { tr } from '../i18n.js'
 
 const TIMEOUT_MS = 10_000
@@ -64,6 +65,9 @@ export async function proxyRoutes(app: FastifyInstance, opts: ProxyOptions): Pro
   }
 
   app.get<{ Params: { widgetId: string }; Querystring: { url?: string } }>('/api/proxy/:widgetId', async (req, reply) => {
+    // A GET, so the Origin gate never sees it — and this one makes the server go out onto the
+    // network on the caller's behalf. Same refusal as /api/favicon.
+    if (isCrossSiteFetch(req.headers)) return reply.code(403).send({ error: tr(undefined, 'http.originNotAllowed') })
     const manifest = opts.catalog.get(req.params.widgetId)
     if (!manifest) return reply.code(404).send({ error: tr(undefined, 'widgets.unknown') })
     const raw = req.query.url

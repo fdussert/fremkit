@@ -113,7 +113,24 @@ describe('the cached last value of a channel', () => {
     expect(subscribe(hub, 'homey:x').sent).toEqual([])
   })
 
-  it('is dropped when the last subscriber leaves, so the next one polls afresh', () => {
+  it('survives the last subscriber leaving, so a reload paints at once', () => {
+    let hub!: Hub
+    const registry = new ProviderRegistry((c, d) => hub.broadcast(c, d), (c) => hub.forget(c))
+    hub = new Hub(registry)
+    registry.register({ channel: 'github:gh-1', intervalMs: 1000 })
+    const first = subscribe(hub, 'github:gh-1')
+    hub.broadcast('github:gh-1', { notifications: 3 })
+    expect(first.sent).toHaveLength(1)
+    // A dashboard reload takes every widget away and brings it back. The provider is the same
+    // one and its last answer is still true, so the reloaded page must not paint blank for a
+    // network round trip.
+    first.emit('close')
+    expect(subscribe(hub, 'github:gh-1').sent).toEqual([
+      { type: 'data', channel: 'github:gh-1', data: { notifications: 3 } },
+    ])
+  })
+
+  it('is dropped when the last subscriber leaves the clipboard, which must not linger', () => {
     let hub!: Hub
     const registry = new ProviderRegistry((c, d) => hub.broadcast(c, d), (c) => hub.forget(c))
     hub = new Hub(registry)
