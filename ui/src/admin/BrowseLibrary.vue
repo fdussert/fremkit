@@ -45,7 +45,9 @@ function meta(w: MarketplaceWidget): string {
     <p v-if="store.state.offline" class="note warn">{{ t('admin.market.offline') }}</p>
     <p v-else-if="store.state.error" class="note warn">{{ store.state.error }}</p>
     <p v-if="store.state.loading && !store.state.loaded" class="note">{{ t('admin.market.loading') }}</p>
-    <p v-else-if="store.state.loaded && !store.shown.value.length" class="note">
+    <!-- Not while offline: "no widget published yet" is a claim about the registry, and an
+         unreachable registry has told us nothing. The line above already says what happened. -->
+    <p v-else-if="store.state.loaded && !store.state.offline && !store.shown.value.length" class="note">
       {{ store.state.search ? t('admin.market.noMatch') : t('admin.market.empty') }}
     </p>
 
