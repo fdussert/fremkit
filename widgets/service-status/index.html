@@ -19,8 +19,12 @@
     display:grid;grid-template-columns:repeat(var(--cols,2),minmax(0,1fr));gap:6px 14px;align-content:start}
   .svc{display:flex;align-items:center;gap:8px;min-width:0}
   .dot{flex:0 0 auto;width:var(--dot,11px);height:var(--dot,11px);border-radius:50%;background:var(--state)}
-  .name{flex:1;min-width:0;font-size:var(--body,14px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .lat{flex:0 0 auto;font-size:calc(var(--body,14px) * .82);opacity:.68;font-variant-numeric:tabular-nums}
+  /* `min-width` rather than 0: the name is what the row is *for*, so it keeps a floor and the
+     latency gives way first. */
+  .name{flex:1;min-width:4ch;font-size:var(--body,14px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  /* Allowed to shrink, unlike the dot and the strip: when a row is tight the latency is the
+     first thing that can go, and the name is the last. */
+  .lat{flex:0 1 auto;min-width:0;overflow:hidden;font-size:calc(var(--body,14px) * .82);opacity:.68;font-variant-numeric:tabular-nums}
   /* Twenty probes as twenty slivers: not a chart, just a shape you read in a glance. */
   .strip{flex:0 0 auto;display:flex;gap:1px;align-items:flex-end;height:var(--strip,12px)}
   .strip i{width:2px;height:100%;border-radius:1px;background:var(--state);opacity:.85}
@@ -106,7 +110,22 @@
     return bars
   }
 
-  function rowFor(spec) {
+  /**
+   * Narrowest a column may be before the grid drops to fewer of them.
+   *
+   * A row is a dot, a name, a latency and a twenty-slot strip. The fixed parts come to roughly
+   * 135 px, so a column below this leaves the name — the only part that says *what* is up — with
+   * nothing, and it collapses to an ellipsis. Which is exactly what the popover did: 318 px wide,
+   * still laying out the two columns the setting asks for.
+   */
+  /** `.wrap`'s left and right padding, and the grid's column gap, as the CSS sets them. */
+  var GRID_PADDING_PX = 32
+  var GRID_GAP_PX = 14
+  var MIN_COLUMN_PX = 190
+  /** Below this the strip goes instead of the name: it is decoration, the name is the content. */
+  var STRIP_MIN_PX = 150
+
+  function rowFor(spec, columnPx) {
     var result = last[spec.name] || {}
     var state = result.state || 'unknown'
     var row = Fremkit.el('div', 'svc ' + state)
@@ -117,7 +136,7 @@
     if (setting('showLatency') !== false && typeof result.latencyMs === 'number') {
       row.appendChild(Fremkit.el('span', 'lat', result.latencyMs + ' ms'))
     }
-    row.appendChild(stripFor(spec.name))
+    if (columnPx >= STRIP_MIN_PX) row.appendChild(stripFor(spec.name))
     return row
   }
 
@@ -157,9 +176,15 @@
 
     var grid = document.getElementById('grid'), summary = document.getElementById('summary')
     grid.innerHTML = ''
-    var cols = Math.max(1, Math.min(6, Math.round(Number(setting('columns'))) || 2))
+    // The setting is the *most* columns to use; the width decides how many actually fit. The
+    // same widget is drawn as a wide tile and as a narrow popover, and only one of those has
+    // room for two.
+    var wanted = Math.max(1, Math.min(6, Math.round(Number(setting('columns'))) || 2))
+    var width = document.documentElement.clientWidth || 0
+    var cols = width ? Math.max(1, Math.min(wanted, Math.floor(width / MIN_COLUMN_PX))) : wanted
+    var columnPx = width ? (width - GRID_PADDING_PX - (cols - 1) * GRID_GAP_PX) / cols : MIN_COLUMN_PX
     grid.style.setProperty('--cols', cols)
-    list.forEach(function (spec) { grid.appendChild(rowFor(spec)) })
+    list.forEach(function (spec) { grid.appendChild(rowFor(spec, columnPx)) })
     grid.hidden = list.length === 0
     summary.hidden = list.length === 0
     summary.className = 'summary ' + worst(list)
