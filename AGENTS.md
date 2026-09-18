@@ -22,6 +22,12 @@ Fremkit turns a Corsair Xeneon Edge (a 2560 × 720 touch strip) into a widget da
   `server/src/bridge/fremkit.js`. The SDK is documented in
   [docs/writing-widgets.md](docs/writing-widgets.md). After adding or editing a manifest:
   `curl -X POST http://127.0.0.1:4242/api/widgets/rescan`.
+  **What belongs here and what does not:** the core ships what works on any Mac with no account,
+  no hardware and no third-party application. Everything else is published on the registry. A
+  *provider* or a *connection type* is not the widget and stays here whatever the widget does:
+  a widget is HTML in a sandbox, a provider holds credentials, and that line is the security
+  line rather than a packaging one. Which is why `bambu`, `homey`, `github`, `azure-devops`,
+  `synology`, `mutedeck` and `cleanshot` are in `server/src/` while their widgets are not.
 - `native/` — the Swift helper (kiosk window, HID touch driver, admin window, Dock badges). It
   supervises the server: it spawns `tsx src/index.ts`, restarts it when it dies, and takes over
   an external server it finds on 4242. Built with `scripts/build-helper.sh` (plain `swiftc`, no
@@ -126,7 +132,7 @@ agent's in-flight work. Say where the worktree is, and remove it once the work h
 
 | I want to… | Start at |
 |---|---|
-| add a widget | `docs/writing-widgets.md`, then copy `widgets/clock` or `widgets/calendar`. A new one goes to the registry repository, not to `widgets/` |
+| add a widget | `docs/writing-widgets.md`, then copy `widgets/clock` or `widgets/calendar`. A new one goes to the registry repository, not to `widgets/` — see the rule above for the one case that does not |
 | change the marketplace | `server/src/marketplace/` (registry client, installer, consent), `ui/src/admin/marketplace.ts` and `MarketplacePanel.vue`, `docs/marketplace.md` |
 | add a connection type | `server/src/connections/types/ics.ts` (simplest) or `github.ts` (fullest), register in `types/index.ts`, document in `docs/connections.md` |
 | add a provider | `server/src/providers/calendar.ts` (polling) or `shortcuts.ts` (commands only), register in `providers/index.ts` |

@@ -1,13 +1,33 @@
 # The widget marketplace
 
-Fremkit ships with twenty-six widgets. Everything written after that is published to a registry
-instead, and installed from the admin — so a new widget does not need a new Fremkit, and a
-Fremkit with no network still starts with a working dashboard.
+Fremkit ships with eighteen widgets. Everything else is published to a registry instead, and
+installed from the admin — so a new widget does not need a new Fremkit, and a Fremkit with no
+network still starts with a working dashboard.
 
 The registry is [fdussert/fremkit-sietch](https://github.com/fdussert/fremkit-sietch): one
 folder per widget, curated by pull request, packed by a workflow and published as an
 `index.json` on GitHub Pages. There is exactly one, and its address is a constant in the code
 rather than a setting — adding a second is a decision nobody has taken.
+
+## What moved, and why
+
+Eight widgets that used to ship — `bambu-job`, `homey-devices`, `homey-flows`, `mutedeck`,
+`cleanshot`, `ado-pipelines`, `github-actions`, `github-inbox` — are published on the registry
+now, beside the two Synology ones that always were. The rule they were sorted by: **the core
+ships what works on any Mac with no account, no hardware and no third-party application.** A
+Bambu widget on a Mac with no printer is a tile that will never say anything; a clock is not.
+
+What did **not** move is the code that talks to those things. A provider holds an address and a
+token and puts them in the keychain; a widget is HTML in a sandbox that can only read the
+channels its manifest declares and the user consented to. That line is the security line, not a
+packaging decision, so every provider and every connection type stayed in the core. Creating a
+Homey connection in the admin therefore lists the Homey widgets, with an Install beside the ones
+this machine does not have.
+
+**An existing dashboard keeps its tiles.** A tile whose widget is no longer installed says "not
+installed" rather than showing a raw id, its inspector offers the install, and the Sietch panel
+counts them all — "3 widgets placed on your screens are not installed" — behind one consent
+dialog rather than three.
 
 ## Installing something
 
