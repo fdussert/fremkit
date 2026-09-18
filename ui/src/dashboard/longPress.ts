@@ -61,3 +61,18 @@ export function isDoubleTap(previous: Tap | null, tap: Tap): boolean {
   if (tap.at - previous.at > DOUBLE_TAP_MS) return false
   return Math.hypot(tap.x - previous.x, tap.y - previous.y) <= DOUBLE_TAP_SLOP
 }
+
+/**
+ * How long one gesture's echoes go on arriving.
+ *
+ * Four paths open the admin, because each is the only real one somewhere: the right button for the
+ * helper's web view, `contextmenu` for a mouse, the counted taps for the panel, `dblclick` for a
+ * browser that does synthesise one. Where two of them *are* real, they both fire for the same
+ * gesture — a right click raises the button event and then `contextmenu`, a double tap is counted
+ * and then reported — and the dashboard opened two admin windows for one press.
+ *
+ * So the gesture is what is answered, not the event: the first path through wins and the rest of
+ * that gesture is silence. Comfortably longer than the gap between an event and its echo, and
+ * comfortably shorter than a person pressing twice on purpose.
+ */
+export const ADMIN_REPEAT_MS = 700

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { cancelsHold, isDoubleTap, startsHold, type Tap } from './longPress'
+import { ADMIN_REPEAT_MS, cancelsHold, isDoubleTap, startsHold, type Tap } from './longPress'
 import { DEFAULT_ADMIN_GESTURE, type AdminGesture } from '../shared/types'
 import { computed, onBeforeUnmount, ref } from 'vue'
 import { DEFAULT_NAV_HEIGHT, type NavSlot, type NavWidget, type Page, type WidgetManifest } from '../shared/types'
@@ -73,10 +73,24 @@ function wantsGesture(kind: 'longPress' | 'doubleTap'): boolean {
   return setting === 'both' || setting === kind
 }
 
-/** Fires the admin once, cancelling anything the same gesture had started. */
+/**
+ * Fires the admin once, cancelling anything the same gesture had started.
+ *
+ * Once *per gesture*, not per event: where two of the four paths are real at the same time they
+ * both fire for one press — a right click raises the button event and then `contextmenu`, a
+ * double tap is counted here and then reported as `dblclick` — and two admin windows opened for
+ * one press. See `ADMIN_REPEAT_MS`.
+ */
+// Not 0: `performance.now()` counts from the page's own start, so zero would make every gesture
+// in the first 700 ms of the dashboard's life look like an echo of one that never happened.
+let lastAdminAt = Number.NEGATIVE_INFINITY
+
 function openAdmin(): void {
   endHold()
   suppressClick = true
+  const at = performance.now()
+  if (at - lastAdminAt < ADMIN_REPEAT_MS) return
+  lastAdminAt = at
   emit('admin')
 }
 
@@ -133,10 +147,7 @@ function holdDown(e: PointerEvent): void {
   suppressClick = false
   holdTimer = window.setTimeout(() => {
     holdTimer = undefined
-    holding.value = false
-    holdStart = null
-    suppressClick = true
-    emit('admin')
+    openAdmin()
   }, HOLD_MS)
   window.addEventListener('pointermove', holdMove, true)
   window.addEventListener('pointerup', holdUp, { capture: true, once: true })

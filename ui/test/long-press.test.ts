@@ -1,10 +1,12 @@
+/**
+ * The rules the bar's gestures are made of, on their own: DOM-free, so they can be exercised
+ * without a browser. What the bar *does* with them is asserted by mounting it, in
+ * `nav-bar-admin.test.ts` — these used to read NavBar.vue and match regexes against its source,
+ * which proved only that the file still said what it said.
+ */
 import { describe, expect, it } from 'vitest'
-import { readFileSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
-import { cancelsHold, DOUBLE_TAP_MS, DOUBLE_TAP_SLOP, HOLD_SLOP, isDoubleTap, startsHold } from '../src/dashboard/longPress'
+import { ADMIN_REPEAT_MS, cancelsHold, DOUBLE_TAP_MS, DOUBLE_TAP_SLOP, HOLD_SLOP, isDoubleTap, startsHold } from '../src/dashboard/longPress'
 import { ADMIN_GESTURES, DEFAULT_ADMIN_GESTURE } from '../src/shared/types'
-
-const navbar = readFileSync(fileURLToPath(new URL('../src/dashboard/NavBar.vue', import.meta.url)), 'utf8')
 
 describe('startsHold', () => {
   it('starts on the primary button only', () => {
@@ -31,35 +33,13 @@ describe('cancelsHold', () => {
   })
 })
 
-describe('the navigation bar wires every gesture the driver can deliver', () => {
-  it('treats a right button on the dots as the long press', () => {
-    // The one that works inside the helper's web view: with the native menu emptied and text
-    // interaction off, WebKit never runs the contextmenu pipeline, but a right mouse down is a
-    // plain mouse event and always arrives.
-    expect(navbar).toMatch(/if \(e\.button === 2\) \{ holdRightButton\(e\); return \}/)
-    expect(navbar).toMatch(/function holdRightButton[\s\S]*openAdmin\(\)/)
-  })
-  it('keeps contextmenu, which is the signal in a browser', () => {
-    expect(navbar).toMatch(/@contextmenu="holdContextMenu"/)
-    expect(navbar).toMatch(/function holdContextMenu[\s\S]*openAdmin\(\)/)
-    expect(navbar).toMatch(/function holdContextMenu[\s\S]*preventDefault\(\)/)
-    expect(navbar).toMatch(/function holdContextMenu[\s\S]*stopPropagation\(\)/)
-  })
-  it('accepts the double tap, which arrives as an ordinary double click', () => {
-    expect(navbar).toMatch(/@dblclick="adminDoubleClick"/)
-    expect(navbar).toMatch(/function adminDoubleClick[\s\S]*openAdmin\(\)/)
-  })
-  it('keeps the timer path for a real mouse and the Chrome kiosk', () => {
-    expect(navbar).toMatch(/@pointerdown="holdDown"/)
-    expect(navbar).toMatch(/setTimeout[\s\S]*emit\('admin'\)/)
-  })
-  it('does not start a hold on a non-primary button', () => {
-    expect(navbar).toMatch(/function holdDown[\s\S]*startsHold\(e\.button\)/)
-  })
-  it('honours the setting on every path', () => {
-    for (const fn of ['holdRightButton', 'holdContextMenu', 'adminDoubleClick']) {
-      expect(navbar, fn).toMatch(new RegExp(`function ${fn}[\\s\\S]*wantsGesture\\(`))
-    }
+describe('ADMIN_REPEAT_MS', () => {
+  it('is longer than the gap between an event and its echo, shorter than two deliberate presses', () => {
+    // A right click's `contextmenu` follows its button event immediately; a `dblclick` follows the
+    // second tap it was counted from. Both are within a frame. A person pressing twice on purpose
+    // is not.
+    expect(ADMIN_REPEAT_MS).toBeGreaterThan(DOUBLE_TAP_MS)
+    expect(ADMIN_REPEAT_MS).toBeLessThan(1500)
   })
 })
 
@@ -83,26 +63,6 @@ describe('isDoubleTap', () => {
   })
   it('forgives the wobble of a finger', () => {
     expect(isDoubleTap(tap(0, 100, 100), tap(150, 108, 104))).toBe(true)
-  })
-})
-
-describe('the navigation bar counts the double tap itself', () => {
-  it('does not rely on the browser raising dblclick', () => {
-    // The driver restores the cursor 0.25 s after a tap while its own double-tap window is
-    // 0.3 s, so the pointer warps away and back between the two and WebKit's click counting
-    // resets. dblclick never arrives on the panel.
-    expect(navbar).toMatch(/function isSecondTap[\s\S]*isDoubleTap\(lastTap, tap\)/)
-    expect(navbar).toMatch(/function holdDown[\s\S]*wantsGesture\('doubleTap'\) && isSecondTap\(e\)/)
-  })
-  it('checks it before the long-press timer, and whatever the long-press setting says', () => {
-    const holdDown = navbar.slice(navbar.indexOf('function holdDown'))
-    const second = holdDown.indexOf('isSecondTap(e)')
-    const longPress = holdDown.indexOf("wantsGesture('longPress')")
-    expect(second).toBeGreaterThan(-1)
-    expect(second).toBeLessThan(longPress)
-  })
-  it('keeps the dblclick handler for browsers that do raise it', () => {
-    expect(navbar).toMatch(/@dblclick="adminDoubleClick"/)
   })
 })
 
