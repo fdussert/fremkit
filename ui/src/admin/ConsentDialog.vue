@@ -7,9 +7,15 @@
  * user re-read six they already agreed to — so what is new is shown first and on its own, and
  * the rest is there underneath as context.
  *
- * Answering this only sends `consent: true`. The server recomputes the difference from the
- * package it downloads and refuses anyway if it does not match, so this dialog is the place the
- * user is *told*, never the place the decision is enforced.
+ * Answering it sends **the permission set this dialog rendered**, and that is the security
+ * property rather than a detail of the protocol. The card is drawn from the registry's index,
+ * which is text the registry writes; the permissions that end up granted are read from the
+ * manifest inside the downloaded package, which is the thing whose hash was verified. The server
+ * grants only what the package asks for *and* what was shown here — so a registry advertising
+ * one permission and shipping three is refused, and the dialog opens again on the real ask.
+ *
+ * A boolean could not have said any of that: it meant "a dialog was answered", which is not a
+ * claim about what was in it.
  */
 import { computed } from 'vue'
 import BaseButton from '../shared/ui/BaseButton.vue'
