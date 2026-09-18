@@ -31,14 +31,30 @@
     root.classList.add(isDark(F.onSurface) ? 'on-light' : 'on-dark')
     if (F.accentMode === 'fill') root.classList.add('accent-fill')
     if (F.onSurface) root.style.setProperty('--on-surface', F.onSurface)
-    else root.style.removeProperty('--on-surface')
+    else restoreToken('--on-surface')
     if (F.accentColor) {
       root.style.setProperty('--accent', F.accentColor)
       // Text on a light accent must be dark: same luminance rule as the host frame.
       root.style.setProperty('--on-accent', onAccent(F.accentColor))
     } else {
-      root.style.removeProperty('--accent')
-      root.style.removeProperty('--on-accent')
+      restoreToken('--accent')
+      restoreToken('--on-accent')
+    }
+  }
+
+  /**
+   * Back to what the theme painted — not to nothing. This runs after `applyTokens` on every
+   * appearance message, and most tiles carry no accent of their own, so removing the property
+   * here would take the theme's accent away from every widget on the screen and leave each one
+   * on the fallback written into its own CSS.
+   */
+  function restoreToken(name) {
+    var root = document.documentElement
+    var tokens = F.tokens
+    if (tokens && Object.prototype.hasOwnProperty.call(tokens, name)) {
+      root.style.setProperty(name, String(tokens[name]))
+    } else {
+      root.style.removeProperty(name)
     }
   }
 
