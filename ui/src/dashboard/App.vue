@@ -6,6 +6,7 @@ import { useSocket } from '../shared/socket'
 import type { Config, WidgetManifest } from '../shared/types'
 import { navHeightOf, navWidgetsOf } from '../shared/types'
 import { backgroundStyle } from '../shared/background'
+import { useConfigTheme } from '../shared/theme'
 import PageView from './PageView.vue'
 import NavBar from './NavBar.vue'
 import NavPopover from './NavPopover.vue'
@@ -18,6 +19,8 @@ const config = ref<Config | null>(null)
 const manifests = ref<Record<string, WidgetManifest>>({})
 const pageIndex = ref(0)
 const page = computed(() => config.value?.pages[pageIndex.value] ?? null)
+// The theme the config names, repainted whenever the admin saves another one.
+useConfigTheme(config)
 const direction = ref<1 | -1>(1)
 // PageView paints the same background over the widget area; repeating it on the root covers
 // the nav bar strip and any letterboxing, so the screen reads as one surface.

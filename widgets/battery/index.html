@@ -1,11 +1,11 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>Batteries</title>
 <style>
-  html,body{margin:0;height:100%;background:transparent;color:#e6e8eb;font-family:-apple-system,system-ui,sans-serif;overflow:hidden}
+  html,body{margin:0;height:100%;background:transparent;color:var(--text, #e6e8eb);font-family:var(--font, -apple-system,system-ui,sans-serif);overflow:hidden}
   .wrap{box-sizing:border-box;height:100%;padding:clamp(8px,3vh,16px) clamp(10px,3vw,18px);display:flex;flex-direction:column;justify-content:center;gap:clamp(4px,1.6vh,10px)}
   .row{display:flex;align-items:center;gap:clamp(6px,2vw,12px);min-width:0}
-  .name{flex:1;min-width:0;font-size:clamp(11px,3.4vh,17px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .pct{font-size:clamp(12px,3.6vh,18px);font-weight:600;font-variant-numeric:tabular-nums;opacity:.9}
+  .name{flex:1;min-width:0;font-size:calc(clamp(11px,3.4vh,17px) * var(--text-scale, 1));white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .pct{font-size:calc(clamp(12px,3.6vh,18px) * var(--text-scale, 1));font-weight:600;font-variant-numeric:tabular-nums;opacity:.9}
   /* The glyph is a shell with a nub and a fill whose width is the charge, so it reads at a glance. */
   .glyph{flex:0 0 auto;position:relative;width:clamp(22px,7vh,34px);height:clamp(11px,3.5vh,17px);
          border:1.5px solid currentColor;border-radius:3px;opacity:.85;box-sizing:border-box}
@@ -13,9 +13,9 @@
   .glyph>i{display:block;height:100%;background:currentColor;border-radius:1px}
   .glyph.low{color:#e5534b}
   .glyph.charging::before{content:'⚡';position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
-                          font-size:clamp(8px,2.2vh,11px);color:var(--on-surface,#e6e8eb);mix-blend-mode:difference}
-  .parts{font-size:clamp(9px,2.4vh,12px);opacity:.6;font-variant-numeric:tabular-nums;white-space:nowrap}
-  .note{font-size:clamp(10px,2.8vh,14px);color:#8b93a0;text-align:center}
+                          font-size:calc(clamp(8px,2.2vh,11px) * var(--text-scale, 1));color:var(--on-surface,#e6e8eb);mix-blend-mode:difference}
+  .parts{font-size:calc(clamp(9px,2.4vh,12px) * var(--text-scale, 1));opacity:.6;font-variant-numeric:tabular-nums;white-space:nowrap}
+  .note{font-size:calc(clamp(10px,2.8vh,14px) * var(--text-scale, 1));color:var(--text-muted, #8b93a0);text-align:center}
   html.on-light body{color:var(--on-surface,#0b0d10)}
   html.on-light .note{color:var(--on-surface,#0b0d10);opacity:.75}
   /* Compact: one line — the battery that needs charging first — sized off the bar's height. */
@@ -23,7 +23,7 @@
   html.compact .row{gap:calc(var(--h) * .1)}
   html.compact .name,html.compact .parts{display:none}
   html.compact .glyph{width:calc(var(--h) * .42);height:calc(var(--h) * .21)}
-  html.compact .pct{font-size:calc(var(--h) * .26)}
+  html.compact .pct{font-size:calc(calc(var(--h) * .26) * var(--text-scale, 1))}
   html.compact.slot-right .wrap{align-items:flex-end}
 </style></head><body><div class="wrap" id="wrap"></div>
 <script>

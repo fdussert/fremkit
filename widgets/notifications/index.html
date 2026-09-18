@@ -1,10 +1,10 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>Notifications</title>
 <style>
-  html,body{margin:0;height:100%;background:transparent;color:#e6e8eb;font-family:-apple-system,system-ui,sans-serif;overflow:hidden}
+  html,body{margin:0;height:100%;background:transparent;color:var(--text, #e6e8eb);font-family:var(--font, -apple-system,system-ui,sans-serif);overflow:hidden}
   .wrap{box-sizing:border-box;height:100%;padding:14px 18px;position:relative;display:flex;flex-direction:column;justify-content:center;gap:6px}
-  .muted{color:#8b93a0}
-  .note{font-size:13px;color:#8b93a0;letter-spacing:.06em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .muted{color:var(--text-muted, #8b93a0)}
+  .note{font-size:calc(13px * var(--text-scale, 1));color:var(--text-muted, #8b93a0);letter-spacing:.06em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   [hidden]{display:none!important}
   /* The host says which way round the tile is: on-light means dark text on a light body. */
   html.on-light body{color:var(--on-surface,#0b0d10)}
@@ -18,14 +18,14 @@
   .app.off img{opacity:.4}
   .app:active img{transform:scale(.94)}
   .badge{position:absolute;top:-4px;right:-6px;min-width:20px;height:20px;box-sizing:border-box;padding:0 5px;
-    border-radius:10px;background:#d9463f;color:#fff;font-size:12px;font-weight:600;line-height:20px;text-align:center;
-    box-shadow:0 0 0 2px #14171c}
+    border-radius:10px;background:var(--danger, #d9463f);color:#fff;font-size:calc(12px * var(--text-scale, 1));font-weight:600;line-height:20px;text-align:center;
+    box-shadow:0 0 0 2px var(--surface, #14171c)}
   .badge.dot{min-width:12px;height:12px;padding:0;border-radius:6px}
   .stale .row{opacity:.45}
-  .app .fallback{width:64px;height:64px;border-radius:14px;background:#2a2f38;color:#8b93a0;font-size:26px;
+  .app .fallback{width:64px;height:64px;border-radius:14px;background:#2a2f38;color:var(--text-muted, #8b93a0);font-size:calc(26px * var(--text-scale, 1));
     line-height:64px;text-align:center;display:block}
-  .small .app .fallback{width:48px;height:48px;border-radius:11px;font-size:20px;line-height:48px}
-  .toast{position:absolute;left:0;right:0;bottom:4px;text-align:center;font-size:12px;color:#d9463f}
+  .small .app .fallback{width:48px;height:48px;border-radius:11px;font-size:calc(20px * var(--text-scale, 1));line-height:48px}
+  .toast{position:absolute;left:0;right:0;bottom:4px;text-align:center;font-size:calc(12px * var(--text-scale, 1));color:var(--danger, #d9463f)}
 </style></head>
 <body><div class="wrap" id="wrap">
   <div class="row" id="row"></div>

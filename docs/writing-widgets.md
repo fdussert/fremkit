@@ -386,6 +386,24 @@ For a connection, a `pick` and a compact mode in one widget, read
 the registry; for an image stream and nested state,
 [`bambu-job`](https://github.com/fdussert/fremkit-sietch/tree/main/widgets/bambu-job).
 
+## Colours and text
+
+A widget paints with the tokens of the theme in force, as custom properties on its own `<html>`:
+`var(--text, #e6e8eb)`, `var(--text-muted, #8b93a0)`, `var(--accent, #d9b36a)`,
+`var(--ok)`, `var(--warn)`, `var(--danger)`, `var(--font)`, `var(--font-mono)`. Always with
+the fallback, so the widget stands on its own; a widget that reads none of them keeps its own
+colours.
+
+Text sizes are multiplied by `var(--text-scale, 1)`, which is how a theme makes the whole
+dashboard easier to read from across the room:
+
+```css
+.value { font-size: calc(28px * var(--text-scale, 1)); }
+```
+
+The tile's own accent and text colour are painted after the theme, so a colour chosen in the
+editor still wins. See [themes.md](themes.md).
+
 ## Publishing it
 
 A widget that works is a pull request on the

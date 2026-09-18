@@ -15,7 +15,8 @@ import BaseSegmented from '../shared/ui/BaseSegmented.vue'
 import BackgroundPicker from './BackgroundPicker.vue'
 import NavWidgetsEditor from './NavWidgetsEditor.vue'
 import { surfaceOpacity } from '../shared/background'
-import { useI18n, type Locale } from '../shared/i18n'
+import { pick, useI18n, type Locale } from '../shared/i18n'
+import { BUILTIN_THEME, useThemes } from '../shared/theme'
 import { ADMIN_GESTURES, DEFAULT_ADMIN_GESTURE, NAV_HEIGHTS, navHeightOf,
   type AdminGesture, type Background, type NavHeight } from '../shared/types'
 import { useAdminStore } from './store'
@@ -34,6 +35,23 @@ function setLocale(value: string): void {
   const next = (value === 'en' ? 'en' : 'fr') as Locale
   if (next !== s.state.config!.locale) s.apply((c) => { c.locale = next })
 }
+const { themes, errors: themeErrors, rescan: rescanThemes } = useThemes()
+/** The built-in theme first, then the others by name: the list reads as "the default, and yours". */
+const themeOptions = computed(() => {
+  const list = Object.values(themes.value)
+    .sort((a, b) => (a.id === BUILTIN_THEME ? -1 : b.id === BUILTIN_THEME ? 1 : pick(a.name).localeCompare(pick(b.name))))
+    .map((theme) => ({ id: theme.id, label: pick(theme.name), description: pick(theme.description ?? '') }))
+  // A config naming a theme whose folder is gone still shows it, rather than an empty select.
+  const current = s.state.config!.display.theme ?? BUILTIN_THEME
+  if (!list.some((o) => o.id === current)) list.push({ id: current, label: current, description: t('admin.inspector.screen.theme.missing') })
+  return list
+})
+const currentTheme = computed(() => s.state.config!.display.theme ?? BUILTIN_THEME)
+const themeNote = computed(() => themeOptions.value.find((o) => o.id === currentTheme.value)?.description ?? '')
+function setTheme(id: string): void {
+  if (id !== currentTheme.value) s.apply((c) => { c.display.theme = id })
+}
+
 const privacy = computed(() => s.state.config!.privacy)
 /**
  * Turning the Claude usage on is the whole consent step: until it is ticked the server does not
@@ -129,6 +147,20 @@ function setBackground(patch: Partial<Background>): void {
     <BaseSegmented :model-value="locale" :options="LANGUAGES" @update:model-value="setLocale($event)" />
   </BaseField>
 
+  <BaseField :label="t('admin.inspector.screen.theme')" :hint="t('admin.inspector.screen.theme.hint')">
+    <div class="theme">
+      <select :value="currentTheme" :aria-label="t('admin.inspector.screen.theme')"
+        @change="setTheme(($event.target as HTMLSelectElement).value)">
+        <option v-for="o in themeOptions" :key="o.id" :value="o.id">{{ o.label }}</option>
+      </select>
+      <BaseButton variant="icon" :title="t('admin.inspector.screen.theme.rescan')" @click="rescanThemes()">
+        <BaseIcon name="redo-2" :size="16" />
+      </BaseButton>
+    </div>
+  </BaseField>
+  <p v-if="themeNote" class="ro note">{{ themeNote }}</p>
+  <p v-for="e in themeErrors" :key="e.id" class="err">{{ e.id }} — {{ e.error }}</p>
+
   <BaseSection id="screen.layout" :title="t('admin.inspector.screen.layout')">
   <BaseField :label="t('admin.inspector.screen.grid')" :hint="t('admin.inspector.screen.grid.hint')">
     <p class="ro">{{ t('admin.inspector.screen.grid.value', { cols: d.cols, rows: d.rows, cell: d.cell }) }}</p>
@@ -221,4 +253,9 @@ function setBackground(patch: Partial<Background>): void {
 .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; word-break: break-all; }
 h3 { font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: .08em; color: var(--text-muted);
   margin: var(--space-4) 0 var(--space-2); }
+.theme { display: flex; gap: var(--space-2); align-items: center; }
+.theme select { flex: 1; min-width: 0; box-sizing: border-box; font: inherit; font-size: var(--fs-sm); color: var(--text);
+  background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--radius-sm); padding: 6px 8px; }
+.note { margin: calc(var(--space-2) * -1) 0 var(--space-3); }
+.err { color: var(--danger); font-size: var(--fs-xs); margin: 0 0 var(--space-2); }
 </style>

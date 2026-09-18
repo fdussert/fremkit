@@ -1,16 +1,16 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>Network</title>
 <style>
-  html,body{margin:0;height:100%;background:transparent;color:#e6e8eb;font-family:-apple-system,system-ui,sans-serif;overflow:hidden}
+  html,body{margin:0;height:100%;background:transparent;color:var(--text, #e6e8eb);font-family:var(--font, -apple-system,system-ui,sans-serif);overflow:hidden}
   .wrap{box-sizing:border-box;height:100%;padding:clamp(8px,3vh,16px) clamp(10px,3vw,18px);display:flex;flex-direction:column;justify-content:center;gap:clamp(4px,1.5vh,10px)}
   .rates{display:flex;gap:clamp(12px,4vw,32px)}
   .rate{flex:1;min-width:0;display:flex;align-items:baseline;gap:.35em}
-  .arrow{font-size:clamp(14px,4.5vh,24px);opacity:.65}
-  .n{font-size:clamp(20px,11vh,52px);font-weight:600;line-height:1;font-variant-numeric:tabular-nums}
-  .u{font-size:clamp(10px,3vh,16px);opacity:.65}
+  .arrow{font-size:calc(clamp(14px,4.5vh,24px) * var(--text-scale, 1));opacity:.65}
+  .n{font-size:calc(clamp(20px,11vh,52px) * var(--text-scale, 1));font-weight:600;line-height:1;font-variant-numeric:tabular-nums}
+  .u{font-size:calc(clamp(10px,3vh,16px) * var(--text-scale, 1));opacity:.65}
   /* The graph takes whatever height is left once the numbers and the address line are placed. */
   #graph{flex:1 1 auto;min-height:0;width:100%;display:block}
-  .note{font-size:clamp(10px,2.6vh,13px);color:#8b93a0;letter-spacing:.04em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .note{font-size:calc(clamp(10px,2.6vh,13px) * var(--text-scale, 1));color:var(--text-muted, #8b93a0);letter-spacing:.04em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   /* The host says which way round the tile is: on-light means dark text on a light body. */
   html.on-light body{color:var(--on-surface,#0b0d10)}
   html.on-light .note{color:var(--on-surface,#0b0d10);opacity:.75}
@@ -18,9 +18,9 @@
   html.compact .wrap{padding:0 calc(var(--h) * .16);justify-content:center;gap:0}
   html.compact .rates{gap:calc(var(--h) * .22)}
   html.compact #graph,html.compact .note{display:none}
-  html.compact .n{font-size:calc(var(--h) * .34)}
-  html.compact .arrow{font-size:calc(var(--h) * .24)}
-  html.compact .u{font-size:calc(var(--h) * .17)}
+  html.compact .n{font-size:calc(calc(var(--h) * .34) * var(--text-scale, 1))}
+  html.compact .arrow{font-size:calc(calc(var(--h) * .24) * var(--text-scale, 1))}
+  html.compact .u{font-size:calc(calc(var(--h) * .17) * var(--text-scale, 1))}
   html.compact.slot-right .wrap{align-items:flex-end}
 </style></head><body><div class="wrap">
 <div class="rates">

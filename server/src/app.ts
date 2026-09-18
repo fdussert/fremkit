@@ -2,6 +2,7 @@ import Fastify, { type FastifyInstance, type FastifyServerOptions } from 'fastif
 import fastifyStatic from '@fastify/static'
 import fastifyWebsocket from '@fastify/websocket'
 import { homedir } from 'node:os'
+import { fileURLToPath } from 'node:url'
 import { join } from 'node:path'
 import { access } from 'node:fs/promises'
 import { ConfigStore } from './config/store.js'
@@ -18,6 +19,8 @@ import { installedWidgetsDir } from './widgets/installed.js'
 import { Registry } from './marketplace/registry.js'
 import { marketplaceRoutes } from './marketplace/routes.js'
 import { recoverStaging } from './marketplace/install.js'
+import { ThemeCatalog } from './themes/catalog.js'
+import { themeRoutes } from './themes/routes.js'
 import { widgetRoutes } from './widgets/routes.js'
 import { ProviderRegistry } from './providers/registry.js'
 import type { Provider } from './providers/types.js'
@@ -59,6 +62,8 @@ export interface AppOptions {
   registryUrl?: string
   /** Set with `registryUrl`, and only under `FREMKIT_DEV=1`; see `RegistryOptions.dev`. */
   registryDev?: boolean
+  /** Where the themes live. Defaults to the repository folder, which is what ships the built-in one. */
+  themesDir?: string
   uiDist?: string
   providers?: Provider[]
   logger?: boolean
@@ -98,6 +103,8 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   await recoverStaging(installedDir)
   const catalog = new WidgetCatalog(opts.widgetsDir, installedDir)
   await catalog.scan()
+  const themes = new ThemeCatalog(opts.themesDir ?? fileURLToPath(new URL('../../themes', import.meta.url)))
+  await themes.scan()
 
   // A camera stream writes a one-line concat list into its own temp directory and removes it on
   // stop; a server that was killed never got there. Cleared once, at boot.
@@ -195,6 +202,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   await app.register(configRoutes, { store, catalog })
   await app.register(connectionRoutes, { store, catalog, types: connectionTypes, manager: connections, secrets })
   await app.register(widgetRoutes, { catalog, store })
+  await app.register(themeRoutes, { catalog: themes })
   await app.register(proxyRoutes, { catalog, store })
   const marketplaceRegistry = new Registry({
     ...(opts.registryUrl ? { url: opts.registryUrl } : {}),

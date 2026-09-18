@@ -31,18 +31,52 @@
     root.classList.add(isDark(F.onSurface) ? 'on-light' : 'on-dark')
     if (F.accentMode === 'fill') root.classList.add('accent-fill')
     if (F.onSurface) root.style.setProperty('--on-surface', F.onSurface)
-    else root.style.removeProperty('--on-surface')
+    else restoreToken('--on-surface')
     if (F.accentColor) {
       root.style.setProperty('--accent', F.accentColor)
       // Text on a light accent must be dark: same luminance rule as the host frame.
       root.style.setProperty('--on-accent', onAccent(F.accentColor))
     } else {
-      root.style.removeProperty('--accent')
-      root.style.removeProperty('--on-accent')
+      restoreToken('--accent')
+      restoreToken('--on-accent')
+    }
+  }
+
+  /**
+   * Back to what the theme painted — not to nothing. This runs after `applyTokens` on every
+   * appearance message, and most tiles carry no accent of their own, so removing the property
+   * here would take the theme's accent away from every widget on the screen and leave each one
+   * on the fallback written into its own CSS.
+   */
+  function restoreToken(name) {
+    var root = document.documentElement
+    var tokens = F.tokens
+    if (tokens && Object.prototype.hasOwnProperty.call(tokens, name)) {
+      root.style.setProperty(name, String(tokens[name]))
+    } else {
+      root.style.removeProperty(name)
     }
   }
 
   /** Which cluster of the navigation bar the widget sits in, or null outside the bar. */
+  /**
+   * The theme's design tokens, as custom properties on the widget's own <html>. A widget reads
+   * them the way the dashboard does — var(--accent), var(--text-muted), var(--text-scale) — and a
+   * widget that reads none of them keeps its own colours. The tile's accent is painted after, so
+   * a colour chosen in the admin still wins over the theme.
+   */
+  function applyTokens(tokens) {
+    if (!tokens || typeof tokens !== 'object') return
+    var root = document.documentElement
+    var previous = F.tokens ? Object.keys(F.tokens) : []
+    previous.forEach(function (name) { if (!(name in tokens)) root.style.removeProperty(name) })
+    Object.keys(tokens).forEach(function (name) {
+      if (/^--[a-z0-9-]+$/.test(name)) root.style.setProperty(name, String(tokens[name]))
+    })
+    F.tokens = tokens
+    applyAppearance(F.accentColor, F.accentMode, F.onSurface)
+  }
+
   function applySlot(slot) {
     F.slot = slot === 'left' || slot === 'right' ? slot : null
     var root = document.documentElement
@@ -225,6 +259,7 @@
       if (F.compact) document.documentElement.classList.add('compact')
       if (m.locale === 'fr' || m.locale === 'en') F.locale = m.locale
       applyAppearance(m.accentColor, m.accentMode, m.onSurface)
+      applyTokens(m.tokens)
       applySlot(m.slot)
       F.ready = true
       document.dispatchEvent(new Event('fremkit:ready'))
@@ -237,6 +272,7 @@
       resizeCbs.forEach(function (cb) { cb(m.size) })
     } else if (m.type === 'fremkit:appearance') {
       applyAppearance(m.accentColor, m.accentMode, m.onSurface)
+      applyTokens(m.tokens)
       applySlot(m.slot)
     } else if (m.type === 'fremkit:locale') {
       if (m.locale !== 'fr' && m.locale !== 'en') return

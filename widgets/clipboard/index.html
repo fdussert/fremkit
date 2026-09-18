@@ -1,9 +1,9 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>Clipboard</title>
 <style>
-  html,body{margin:0;height:100%;background:transparent;color:#e6e8eb;font-family:-apple-system,system-ui,sans-serif;overflow:hidden}
+  html,body{margin:0;height:100%;background:transparent;color:var(--text, #e6e8eb);font-family:var(--font, -apple-system,system-ui,sans-serif);overflow:hidden}
   .wrap{box-sizing:border-box;height:100%;padding:14px 18px;position:relative;display:flex;flex-direction:column;gap:8px}
-  .note{font-size:13px;color:#8b93a0;letter-spacing:.06em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .note{font-size:calc(13px * var(--text-scale, 1));color:var(--text-muted, #8b93a0);letter-spacing:.06em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   [hidden]{display:none!important}
   html.on-light body{color:var(--on-surface,#0b0d10)}
   html.on-light .note{color:var(--on-surface,#0b0d10);opacity:.75}
@@ -14,16 +14,16 @@
   .row{box-sizing:border-box;width:100%;font:inherit;border:0;border-radius:10px;min-height:44px;padding:8px 12px;
     background:rgba(128,128,128,.18);color:inherit;display:flex;align-items:center;gap:10px;text-align:left;cursor:pointer}
   .row:active{background:var(--accent,#d9b36a);color:var(--on-accent,#0b0d10)}
-  .row .text{flex:1;min-width:0;font-size:var(--body,15px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .row .text{flex:1;min-width:0;font-size:calc(var(--body,15px) * var(--text-scale, 1));white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .row.masked .text{opacity:.7;font-style:italic}
-  .row .age{flex:0 0 auto;font-size:calc(var(--body,15px) * .78);color:#8b93a0;font-variant-numeric:tabular-nums}
+  .row .age{flex:0 0 auto;font-size:calc(calc(var(--body,15px) * .78) * var(--text-scale, 1));color:var(--text-muted, #8b93a0);font-variant-numeric:tabular-nums}
   html.on-light .row .age{color:var(--on-surface,#0b0d10);opacity:.6}
   .row:active .age{color:inherit;opacity:.8}
   .foot{flex:0 0 auto;display:flex;align-items:center;justify-content:space-between;gap:10px}
-  .clear{font:inherit;font-size:calc(var(--body,15px) * .82);border:0;border-radius:8px;padding:6px 12px;
+  .clear{font:inherit;font-size:calc(calc(var(--body,15px) * .82) * var(--text-scale, 1));border:0;border-radius:8px;padding:6px 12px;
     background:rgba(128,128,128,.18);color:inherit;cursor:pointer}
   .clear:active{background:rgba(179,38,30,.4)}
-  .toast{position:absolute;left:0;right:0;bottom:8px;text-align:center;font-size:13px;
+  .toast{position:absolute;left:0;right:0;bottom:8px;text-align:center;font-size:calc(13px * var(--text-scale, 1));
     color:var(--accent,#d9b36a);pointer-events:none}
   html.accent-fill .toast{color:var(--on-surface,#0b0d10)}
   html.tight .row{min-height:36px;padding:6px 10px}

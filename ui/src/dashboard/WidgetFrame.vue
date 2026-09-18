@@ -3,6 +3,7 @@ import { ref, computed } from 'vue'
 import { useWidgetBridge } from '../shared/useWidgetBridge'
 import { fade, surfaceOpacity, widgetBackgroundStyle, widgetDim } from '../shared/background'
 import { isHexColor, onAccent, tileAccent, tileText } from '../shared/color'
+import { useThemeColors } from '../shared/theme'
 import { pick, useI18n } from '../shared/i18n'
 import type { AccentMode, WidgetInstance, WidgetManifest } from '../shared/types'
 
@@ -17,6 +18,8 @@ const mode = computed<AccentMode>(() => props.instance.accentMode ?? 'none')
  * no background at all, which is what the editor's checkbox promises.
  */
 const alpha = computed(() => surfaceOpacity(props.instance.opacity))
+/** What the theme paints where this instance names nothing: the luminance is judged against it. */
+const themeColors = useThemeColors()
 
 const style = computed<Record<string, string>>(() => {
   const inst = props.instance
@@ -34,15 +37,15 @@ const style = computed<Record<string, string>>(() => {
   // stays written as one and `fade()` mixes it with color-mix instead of rgba().
   const accentCss = isHexColor(inst.accentColor) ? inst.accentColor : 'var(--accent)'
   const a = alpha.value
-  const body = mode.value === 'fill' ? accentCss : (isHexColor(inst.bgColor) ? inst.bgColor : 'var(--surface)')
+  const body = mode.value === 'fill' ? accentCss : (isHexColor(inst.bgColor) ? inst.bgColor : 'var(--tile-surface)')
   s['--tile-bg'] = fade(body, a)
-  s['--tile-border'] = fade(mode.value === 'none' ? 'var(--border)' : accentCss, a)
+  s['--tile-border'] = fade(mode.value === 'none' ? 'var(--tile-outline)' : accentCss, a)
   s['--tile-title-bg'] = fade(accentCss, a)
   // Both text colours are literals: they come from the luminance of a real colour, never a var.
   s['--tile-text'] = isHexColor(inst.bgColor) || mode.value === 'fill'
-    ? tileText(mode.value, inst.accentColor, inst.bgColor)
+    ? tileText(mode.value, inst.accentColor, inst.bgColor, themeColors.value)
     : 'var(--text)'
-  s['--tile-title-text'] = onAccent(tileAccent(inst.accentColor))
+  s['--tile-title-text'] = onAccent(tileAccent(inst.accentColor, themeColors.value))
   return s
 })
 /** The instance title wins, else the manifest name, else the raw widget id. */

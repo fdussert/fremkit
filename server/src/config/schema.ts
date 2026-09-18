@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { BUILTIN_THEME } from '../themes/theme.js'
 import { defaultSecretsBackend } from '../secrets/index.js'
 import { tr } from '../i18n.js'
 import { DEFAULT_BACKGROUND } from '../backgrounds/seed.js'
@@ -161,6 +162,8 @@ export const DisplaySchema = z.object({
   rows: z.number().int().min(1).default(16),
   cell: z.number().int().min(1).default(40),
   autoCycleSeconds: z.number().int().min(0).default(0),
+  /** Id of a theme in `themes/`. An unknown id falls back to the built-in one. */
+  theme: z.string().regex(/^[a-z0-9_-]+$/).default(BUILTIN_THEME),
   /** Absent means 80: the default is stored as a missing key, never as a value. */
   navHeight: NavHeightSchema.optional(),
   /** Opacity of the navigation bar's background. Absent means a solid bar. */
@@ -272,7 +275,7 @@ export type NavWidget = z.infer<typeof NavWidgetSchema>
 export const DEFAULT_CONFIG: Config = {
   version: 2,
   display: {
-    cols: 64, rows: 16, cell: 40, autoCycleSeconds: 0,
+    cols: 64, rows: 16, cell: 40, autoCycleSeconds: 0, theme: BUILTIN_THEME,
     // The shipped wallpaper, seeded into the background library at start. Referenced like any
     // other image, so the Screen inspector shows it selected and "remove" leaves no background
     // at all rather than putting a hardcoded one back.

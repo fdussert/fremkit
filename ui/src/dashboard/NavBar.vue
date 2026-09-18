@@ -3,14 +3,13 @@ import { ADMIN_REPEAT_MS, cancelsHold, isDoubleTap, startsHold, type Tap } from 
 import { DEFAULT_ADMIN_GESTURE, type AdminGesture } from '../shared/types'
 import { computed, onBeforeUnmount, ref } from 'vue'
 import { DEFAULT_NAV_HEIGHT, type NavSlot, type NavWidget, type Page, type WidgetManifest } from '../shared/types'
-import { surfaceOpacity } from '../shared/background'
-import { rgba } from '../shared/color'
+import { fade, surfaceOpacity } from '../shared/background'
 import { useSwipe } from './useSwipe'
 import CompactWidgetFrame from './CompactWidgetFrame.vue'
 
-/** The bar's own two colours, kept as hex so an opacity can be mixed into them. */
-const NAV_BG = '#0b0d10'
-const NAV_BORDER = '#1f2329'
+/** The bar's own two colours, from the theme; `fade` mixes an opacity into either form. */
+const NAV_BG = 'var(--nav-surface)'
+const NAV_BORDER = 'var(--nav-outline)'
 
 const props = withDefaults(defineProps<{
   pages: Page[]; active: number; height: number; opacity?: number
@@ -203,8 +202,8 @@ const style = computed<Record<string, string | number>>(() => {
   const alpha = surfaceOpacity(props.opacity)
   const s: Record<string, string | number> = { height: props.height + 'px', '--nav-scale': scale.value }
   if (alpha < 1) {
-    s['--nav-bg'] = rgba(NAV_BG, alpha)
-    s['--nav-border'] = rgba(NAV_BORDER, alpha)
+    s['--nav-bg'] = fade(NAV_BG, alpha)
+    s['--nav-border'] = fade(NAV_BORDER, alpha)
   }
   return s
 })
@@ -240,13 +239,13 @@ const style = computed<Record<string, string | number>>(() => {
 
 <style scoped>
 nav { position: relative; display: grid; grid-template-columns: 1fr auto 1fr; grid-template-areas: "left dots right";
-  align-items: center; box-sizing: border-box; background: var(--nav-bg, #0b0d10); border-top: 1px solid var(--nav-border, #1f2329);
+  align-items: center; box-sizing: border-box; background: var(--nav-bg, var(--nav-surface, #0b0d10)); border-top: 1px solid var(--nav-border, var(--nav-outline, #1f2329));
   touch-action: none; user-select: none; }
 /* Each dot's hit area spans the whole bar height and a wide column: a finger on the touch
    strip is far less precise than a pointer, and the visible dot stays small. */
 .dots { grid-area: dots; display: flex; gap: 0; align-items: stretch; height: 100%; justify-self: center; }
 .dot { width: calc(64px * var(--nav-scale, 1)); height: 100%; padding: 0; border: 0; background: transparent; display: flex; align-items: center; justify-content: center; cursor: pointer; }
-.dot::after { content: ''; width: calc(14px * var(--nav-scale, 1)); height: calc(14px * var(--nav-scale, 1)); border-radius: calc(7px * var(--nav-scale, 1)); background: #3a404a; transition: width .2s, background .2s; }
+.dot::after { content: ''; width: calc(14px * var(--nav-scale, 1)); height: calc(14px * var(--nav-scale, 1)); border-radius: calc(7px * var(--nav-scale, 1)); background: var(--border-strong, #3a404a); transition: width .2s, background .2s; }
 .dot.active::after { width: calc(36px * var(--nav-scale, 1)); background: var(--accent); }
 /* Held for the admin: the accent swells and breathes, so the finger knows something is counting
    down. Subtle on purpose — this is a shortcut, not a button. */

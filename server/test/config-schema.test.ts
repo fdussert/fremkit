@@ -7,7 +7,7 @@ const manifests = new Map([['clock', { minSize: [8, 4] as [number, number] }]])
 describe('ConfigSchema', () => {
   it('accepts the default config and fills display defaults', () => {
     const parsed = ConfigSchema.parse({ version: 2, pages: [{ id: 'p', name: 'P' }] })
-    expect(parsed.display).toEqual({ cols: 64, rows: 16, cell: 40, autoCycleSeconds: 0 })
+    expect(parsed.display).toEqual({ cols: 64, rows: 16, cell: 40, autoCycleSeconds: 0, theme: 'fremkit' })
     expect(parsed.pages[0].widgets).toEqual([])
   })
   it('rejects a config without pages', () => {

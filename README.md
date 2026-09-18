@@ -37,6 +37,9 @@ The name is the Fremen survival kit from *Dune*.
 - **A widget marketplace** — *Sietch* in the admin installs widgets from a curated registry,
   showing what each one will be allowed to do and asking again when an update wants more.
 - **Backup and restore** of the whole dashboard, as a zip that never carries a secret.
+- **Themes** — the palette, the fonts and the text size, as a folder with one JSON file: six ship
+  with it, yours sits beside them. The dashboard, the editor and the widgets all wear the one you
+  pick.
 - **Two languages** — the whole interface is French or English, switched in the admin.
 - **A widget SDK** that is a folder, a JSON file and an HTML page.
 
@@ -254,7 +257,8 @@ screen whose widget is not installed offers the install where it stands.
 | `synology-system` | CPU, memory, network and uptime of a NAS | Synology | ● |
 
 Every setting of every widget is listed in **[docs/widgets.md](docs/widgets.md)**. To write your
-own, see **[docs/writing-widgets.md](docs/writing-widgets.md)**.
+own, see **[docs/writing-widgets.md](docs/writing-widgets.md)**. To change how all of it looks,
+see **[docs/themes.md](docs/themes.md)**.
 
 What the installer checks, what a consent record is and how an update asks again:
 **[docs/marketplace.md](docs/marketplace.md)**.

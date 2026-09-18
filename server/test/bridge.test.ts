@@ -20,14 +20,22 @@ interface LoadResult {
   bridge: Bridge
   listeners: string[]
   styles: { attrs: Record<string, string>; textContent: string }[]
+  /** The custom properties standing on <html>, as the last call left them. */
+  properties: Map<string, string>
+  /** Hands the bridge a message from the host, the way the dashboard posts one. */
+  send(message: Record<string, unknown>): void
 }
 
 async function loadBridge(): Promise<LoadResult> {
   const src = await readFile(fileURLToPath(new URL('../src/bridge/fremkit.js', import.meta.url)), 'utf8')
+  let onMessage: ((event: { source: unknown; data: unknown }) => void) | null = null
   const window: Record<string, unknown> = {
     parent: { postMessage: () => {} },
-    addEventListener: () => {},
+    addEventListener: (type: string, cb: (event: { source: unknown; data: unknown }) => void) => {
+      if (type === 'message') onMessage = cb
+    },
   }
+  const properties = new Map<string, string>()
   const listeners: string[] = []
   const styles: LoadResult['styles'] = []
   const element = (tag: string) => {
@@ -45,7 +53,14 @@ async function loadBridge(): Promise<LoadResult> {
     appendChild: () => {},
   }
   const document = {
-    documentElement: { lang: '', classList: { add: () => {}, remove: () => {} }, style: { setProperty: () => {}, removeProperty: () => {} } },
+    documentElement: {
+      lang: '',
+      classList: { add: () => {}, remove: () => {} },
+      style: {
+        setProperty: (name: string, value: string) => { properties.set(name, value) },
+        removeProperty: (name: string) => { properties.delete(name) },
+      },
+    },
     head,
     createElement: element,
     // The kiosk guard asks whether its stylesheet is already there. Nothing is, in a fresh
@@ -55,7 +70,14 @@ async function loadBridge(): Promise<LoadResult> {
     dispatchEvent: () => {},
   }
   new Function('window', 'document', 'console', src)(window, document, console)
-  return { bridge: window.Fremkit as Bridge, listeners, styles }
+  return {
+    bridge: window.Fremkit as Bridge,
+    listeners,
+    styles,
+    properties,
+    // The bridge answers its own parent and nothing else, so the event says it came from there.
+    send: (message: Record<string, unknown>) => onMessage?.({ source: window.parent, data: message }),
+  }
 }
 
 const loaded = await loadBridge()
@@ -154,5 +176,57 @@ describe('what the bridge does to a widget document', () => {
   it('leaves no trace of the project\'s former name', async () => {
     const src = await readFile(fileURLToPath(new URL('../src/bridge/fremkit.js', import.meta.url)), 'utf8')
     expect(src.toLowerCase()).not.toContain('vardek')
+  })
+})
+
+/**
+ * The tokens of the theme in force are painted on the widget's own <html>, and the tile's
+ * appearance is applied after them so a colour chosen in the editor still wins. Which means the
+ * appearance pass must put back what the theme set when the tile carries no colour of its own —
+ * the case of nearly every tile. It used to remove it, and the widgets stayed on the fallback
+ * written into their CSS whatever theme the screen was wearing.
+ */
+describe('a widget under a theme', () => {
+  const TERMINAL = { '--accent': '#39ff88', '--on-accent': '#041008', '--text': '#cfeede' }
+
+  /** A fresh bridge per case: the properties on <html> are what is being asked about. */
+  async function screen(): Promise<LoadResult> {
+    const loaded = await loadBridge()
+    loaded.send({ type: 'fremkit:init', instanceId: 'w-1', settings: {}, tokens: TERMINAL })
+    return loaded
+  }
+
+  it('wears the theme accent on a tile that has none of its own', async () => {
+    const { properties } = await screen()
+    expect(properties.get('--accent')).toBe('#39ff88')
+    expect(properties.get('--on-accent')).toBe('#041008')
+    expect(properties.get('--text')).toBe('#cfeede')
+  })
+
+  it('lets the tile colour win over the theme, and takes the theme back when it is cleared', async () => {
+    const loaded = await screen()
+    loaded.send({ type: 'fremkit:appearance', accentColor: '#ff0000', tokens: TERMINAL })
+    expect(loaded.properties.get('--accent')).toBe('#ff0000')
+    // Light text on a dark accent: the luminance rule the host frame uses.
+    expect(loaded.properties.get('--on-accent')).toBe('#fff')
+
+    loaded.send({ type: 'fremkit:appearance', accentColor: null, tokens: TERMINAL })
+    expect(loaded.properties.get('--accent')).toBe('#39ff88')
+    expect(loaded.properties.get('--on-accent')).toBe('#041008')
+  })
+
+  it('leaves the property unset when neither the theme nor the tile names a colour', async () => {
+    const loaded = await loadBridge()
+    loaded.send({ type: 'fremkit:init', instanceId: 'w-1', settings: {}, tokens: { '--text': '#cfeede' } })
+    expect(loaded.properties.has('--accent')).toBe(false)
+    expect(loaded.properties.has('--on-accent')).toBe(false)
+  })
+
+  it('follows a theme change without a reload', async () => {
+    const loaded = await screen()
+    loaded.send({ type: 'fremkit:appearance', tokens: { '--accent': '#a2622a' } })
+    expect(loaded.properties.get('--accent')).toBe('#a2622a')
+    // The theme that follows leaves the token out: back to the widget's own fallback.
+    expect(loaded.properties.has('--text')).toBe(false)
   })
 })

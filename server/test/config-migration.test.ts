@@ -16,7 +16,7 @@ describe('migrateConfig', () => {
   it('doubles the grid and every instance, and fills the new fields', () => {
     const c = migrateConfig(v1)
     expect(c.version).toBe(2)
-    expect(c.display).toEqual({ cols: 64, rows: 16, cell: 40, autoCycleSeconds: 30 })
+    expect(c.display).toEqual({ cols: 64, rows: 16, cell: 40, autoCycleSeconds: 30, theme: 'fremkit' })
     expect(c.pages[0].widgets[0]).toEqual({
       instanceId: 'clock-1', widgetId: 'clock', x: 8, y: 2, w: 16, h: 4,
       showTitle: true, settings: { seconds: true },
