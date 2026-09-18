@@ -14,6 +14,7 @@ import type { ConnectionType } from './connections/types.js'
 import { createSecretStore } from './secrets/index.js'
 import { configRoutes } from './config/routes.js'
 import { WidgetCatalog } from './widgets/catalog.js'
+import { installedWidgetsDir } from './widgets/installed.js'
 import { widgetRoutes } from './widgets/routes.js'
 import { ProviderRegistry } from './providers/registry.js'
 import type { Provider } from './providers/types.js'
@@ -76,7 +77,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   // Providers, the proxy and the connection types are far from any request, so they read the
   // language from this module-level copy rather than being handed a store they have no use for.
   setServerLocale(store.get().locale)
-  const catalog = new WidgetCatalog(opts.widgetsDir)
+  const catalog = new WidgetCatalog(opts.widgetsDir, installedWidgetsDir(opts.dataDir))
   await catalog.scan()
 
   // A camera stream writes a one-line concat list into its own temp directory and removes it on
@@ -167,6 +168,9 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   // of magnitude more than any of them. Without a cap a single socket could make the server hold
   // an arbitrary amount of memory before anything got round to validating it.
   await app.register(fastifyWebsocket, { options: { maxPayload: MAX_WS_PAYLOAD_BYTES } })
+  // `serve: false`: nothing is routed from here, the plugin is registered only for the
+  // `sendFile` it decorates the reply with. The widget route names the folder it sends from,
+  // which is the built-in one or the installed one depending on who owns the id.
   await app.register(fastifyStatic, { root: opts.widgetsDir, serve: false, decorateReply: true })
 
   await app.register(configRoutes, { store, catalog })

@@ -18,6 +18,13 @@ The folder name and the manifest's `id` must match the shape `[a-z0-9_-]+`. Drop
 `POST /api/widgets/rescan` and the widget appears without restarting the server. A manifest that
 does not validate is reported there rather than silently ignored.
 
+Fremkit reads widgets from two folders. `widgets/` in the checkout holds the ones that ship with
+the server: this is where you develop, and they are the reason a fresh install works with no
+network. `data/widgets/` holds the ones installed from the marketplace, and is written by the
+admin and by nothing else — it is git-ignored, it moves with `FREMKIT_DATA_DIR`, and a widget
+there can never take the id of a built-in: the installer refuses the collision, and a folder
+dropped in by hand is reported as an error while the built-in keeps the id.
+
 ## manifest.json
 
 ```json

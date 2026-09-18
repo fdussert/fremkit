@@ -305,8 +305,13 @@ export function fieldsInScope(
   return out
 }
 
+/** Where a widget came from: shipped with Fremkit, or installed from the marketplace. */
+export type WidgetSource = 'builtin' | 'installed'
+
 export interface WidgetsResponse {
   widgets: Record<string, WidgetManifest>; errors: { id: string; error: string }[]
+  /** One entry per widget in `widgets`; a fact about the folder, not a claim of the manifest. */
+  sources: Record<string, WidgetSource>
   /** The SDK generation this server speaks; a manifest asking for more needs a newer Fremkit. */
   sdk: number
 }

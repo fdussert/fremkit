@@ -60,8 +60,15 @@ export async function widgetRoutes(app: FastifyInstance, opts: { catalog: Widget
    * than `sdk` needs a newer Fremkit, and saying so is the admin's job, which means the admin has
    * to be told the number rather than guess it from the server's own version.
    */
-  const answer = (): { widgets: Record<string, unknown>; errors: unknown[]; sdk: number } =>
-    ({ widgets: Object.fromEntries(opts.catalog.manifests), errors: opts.catalog.errors, sdk: SDK_VERSION })
+  const answer = (): { widgets: Record<string, unknown>; sources: Record<string, string>; errors: unknown[]; sdk: number } => ({
+    widgets: Object.fromEntries(opts.catalog.manifests),
+    // Where each widget came from, so the library can mark the installed ones and the admin can
+    // offer to remove them. A manifest cannot carry it: it is a fact about the folder, not a
+    // claim the widget's author gets to make.
+    sources: Object.fromEntries([...opts.catalog.entries].map(([id, e]) => [id, e.source])),
+    errors: opts.catalog.errors,
+    sdk: SDK_VERSION,
+  })
 
   app.get('/api/widgets', async () => answer())
 
@@ -76,13 +83,16 @@ export async function widgetRoutes(app: FastifyInstance, opts: { catalog: Widget
     // On every answer, not just the entry point: a widget's second HTML file is the same
     // untrusted code, and on a case-insensitive filesystem so is `Index.html`.
     reply.header('content-security-policy', WIDGET_CSP)
-    if (!WIDGET_ID_RE.test(id) || !opts.catalog.get(id)) return reply.code(404).send({ error: tr(undefined, 'widgets.unknown') })
+    // The folder rather than the root: a widget may be a built-in or one the user installed, and
+    // which of the two owns an id is the catalogue's answer, decided once at scan time.
+    const folder = opts.catalog.folderOf(id)
+    if (!WIDGET_ID_RE.test(id) || !folder) return reply.code(404).send({ error: tr(undefined, 'widgets.unknown') })
     const safeRel = normalize(rel)
     if (safeRel.startsWith('..') || safeRel.includes('/../')) return reply.code(400).send({ error: 'chemin invalide' })
     if (safeRel.toLowerCase() === 'index.html') {
       let html: string
       try {
-        html = await readFile(join(opts.catalog.dir, id, 'index.html'), 'utf8')
+        html = await readFile(join(folder, 'index.html'), 'utf8')
       } catch (err) {
         if ((err as NodeJS.ErrnoException).code === 'ENOENT') return reply.code(404).send({ error: 'widget introuvable' })
         throw err
@@ -93,6 +103,8 @@ export async function widgetRoutes(app: FastifyInstance, opts: { catalog: Widget
         .send(injectBridge(html))
     }
     // A widget folder has no business serving its own dotfiles, whatever an author drops in it.
-    return reply.sendFile(join(id, safeRel), opts.catalog.dir, { dotfiles: 'deny' })
+    // `folder` is the widget's own, so `root` is it: @fastify/static still refuses a path that
+    // escapes the root it is handed, and `safeRel` was checked before getting here.
+    return reply.sendFile(safeRel, folder, { dotfiles: 'deny' })
   })
 }

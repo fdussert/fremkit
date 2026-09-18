@@ -9,15 +9,66 @@ import { WidgetCatalog } from '../src/widgets/catalog.js'
 const SHIPPED = fileURLToPath(new URL('../../widgets', import.meta.url))
 
 let dir: string
-beforeEach(async () => { dir = await mkdtemp(join(tmpdir(), 'widgets-')) })
+let installed: string
+beforeEach(async () => {
+  dir = await mkdtemp(join(tmpdir(), 'widgets-'))
+  installed = await mkdtemp(join(tmpdir(), 'installed-'))
+})
+
+async function into(root: string, id: string, manifest: unknown, withIndex = true) {
+  await mkdir(join(root, id))
+  if (manifest !== undefined) await writeFile(join(root, id, 'manifest.json'), typeof manifest === 'string' ? manifest : JSON.stringify(manifest))
+  if (withIndex) await writeFile(join(root, id, 'index.html'), '<html></html>')
+}
 
 async function widget(id: string, manifest: unknown, withIndex = true) {
-  await mkdir(join(dir, id))
-  if (manifest !== undefined) await writeFile(join(dir, id, 'manifest.json'), typeof manifest === 'string' ? manifest : JSON.stringify(manifest))
-  if (withIndex) await writeFile(join(dir, id, 'index.html'), '<html></html>')
+  await into(dir, id, manifest, withIndex)
 }
 
 const valid = (id: string) => ({ id, name: id, version: '1.0.0', minSize: [4, 2], defaultSize: [4, 2] })
+
+describe('WidgetCatalog with an installed folder', () => {
+  it('reads both folders and says which is which', async () => {
+    await widget('clock', valid('clock'))
+    await into(installed, 'synology', valid('synology'))
+    const cat = new WidgetCatalog(dir, installed)
+    await cat.scan()
+    expect([...cat.manifests.keys()].sort()).toEqual(['clock', 'synology'])
+    expect(cat.entry('clock')!.source).toBe('builtin')
+    expect(cat.entry('synology')!.source).toBe('installed')
+    expect(cat.folderOf('synology')).toBe(join(installed, 'synology'))
+    expect(cat.errors).toEqual([])
+  })
+
+  it('never lets an installed widget stand in for a built-in of the same id', async () => {
+    // The installer refuses the collision with a 409; this is what happens if a folder is
+    // dropped in by hand anyway. The built-in keeps the id and the intruder is an error.
+    await widget('clock', valid('clock'))
+    await into(installed, 'clock', { ...valid('clock'), name: 'Not the clock' })
+    const cat = new WidgetCatalog(dir, installed)
+    await cat.scan()
+    expect(cat.get('clock')!.name).toBe('clock')
+    expect(cat.entry('clock')!.source).toBe('builtin')
+    expect(cat.errors).toEqual([{ id: 'clock', error: 'id "clock" is already a built-in widget' }])
+  })
+
+  it('tolerates an installed folder that does not exist yet', async () => {
+    await widget('clock', valid('clock'))
+    const cat = new WidgetCatalog(dir, join(installed, 'nope'))
+    await cat.scan()
+    expect([...cat.manifests.keys()]).toEqual(['clock'])
+    expect(cat.errors).toEqual([])
+  })
+
+  it('a rescan picks up a widget appearing in the installed folder', async () => {
+    const cat = new WidgetCatalog(dir, installed)
+    await cat.scan()
+    expect(cat.manifests.size).toBe(0)
+    await into(installed, 'synology', valid('synology'))
+    await cat.scan()
+    expect(cat.entry('synology')!.source).toBe('installed')
+  })
+})
 
 describe('WidgetCatalog', () => {
   it('loads a valid widget with defaults', async () => {
@@ -93,6 +144,15 @@ describe('WidgetCatalog', () => {
     expect(status.settingsSchema.interval.default).toBe(30)
     expect(status.settingsSchema.columns.default).toBe(2)
   })
+  it('marks every widget with the folder it came from', async () => {
+    await widget('clock', valid('clock'))
+    const cat = new WidgetCatalog(dir)
+    await cat.scan()
+    expect(cat.entry('clock')!.source).toBe('builtin')
+    expect(cat.folderOf('clock')).toBe(join(dir, 'clock'))
+    expect(cat.folderOf('nope')).toBeUndefined()
+  })
+
   it('tolerates a missing widgets dir', async () => {
     const cat = new WidgetCatalog(join(dir, 'nope'))
     await cat.scan()

@@ -200,6 +200,39 @@ describe('widget routes', () => {
     expect(res.statusCode).toBe(404)
     expect(res.json().error).toMatch(/introuvable/)
   })
+  it('serves an installed widget the same way, with the same guards', async () => {
+    // `data/widgets` is the marketplace's folder. Everything the built-in folder gets — the CSP,
+    // the bridge injection, the dotfile denial, the traversal refusal — must hold here too, or
+    // the guards would be a property of one path rather than of widgets.
+    const folder = join(dir, 'data', 'widgets', 'synology')
+    await mkdir(folder, { recursive: true })
+    await writeFile(join(folder, 'manifest.json'), JSON.stringify({ id: 'synology', name: 'NAS', version: '1.0.0', minSize: [8, 4], defaultSize: [8, 4] }))
+    await writeFile(join(folder, 'index.html'), '<!doctype html><html><head></head><body>nas</body></html>')
+    await writeFile(join(folder, 'app.js'), 'console.log(1)')
+    await writeFile(join(folder, '.env'), 'TOKEN=secret')
+    const scan = await app.inject({ method: 'POST', url: '/api/widgets/rescan' })
+    expect(Object.keys(scan.json().widgets).sort()).toEqual(['clock', 'synology'])
+    expect(scan.json().sources).toEqual({ clock: 'builtin', synology: 'installed' })
+
+    const html = await app.inject({ url: '/widgets/synology/index.html' })
+    expect(html.statusCode).toBe(200)
+    expect(html.headers['content-security-policy']).toBe(WIDGET_CSP)
+    expect(html.body).toContain('<head><script src="/fremkit.js"></script>')
+    expect((await app.inject({ url: '/widgets/synology/app.js' })).body).toBe('console.log(1)')
+
+    const dotfile = await app.inject({ url: '/widgets/synology/.env' })
+    expect(dotfile.statusCode).toBe(403)
+    expect(dotfile.body).not.toContain('TOKEN')
+    // An escape the client does not normalise away: the built-in folder is not reachable
+    // through the installed one, and neither is anything else beside it.
+    expect((await app.inject({ url: '/widgets/synology/..%2fclock%2fstyle.css' })).statusCode).toBeGreaterThanOrEqual(400)
+    expect((await app.inject({ url: '/widgets/synology/..%2f..%2ffremkit.json' })).statusCode).toBeGreaterThanOrEqual(400)
+  })
+
+  it('says where each widget came from', async () => {
+    expect((await app.inject({ url: '/api/widgets' })).json().sources).toEqual({ clock: 'builtin' })
+  })
+
   it('serves the bridge script', async () => {
     const res = await app.inject({ url: '/fremkit.js' })
     expect(res.headers['content-type']).toContain('javascript')
