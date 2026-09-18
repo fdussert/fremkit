@@ -148,7 +148,12 @@ const RawManifestSchema = z.object({
   version: z.string().min(1),
   description: LocalizedTextSchema.default(''),
   icon: z.string().min(1).default('layout-grid'),
-  category: z.enum(WIDGET_CATEGORIES).default('other'),
+  /**
+   * The shelf of the library it sits on. A manifest published for a newer Fremkit may name a
+   * category this one does not have: it is filed under 'other' rather than refused, which would
+   * take the whole widget out of the catalogue.
+   */
+  category: z.enum(WIDGET_CATEGORIES).default('other').catch('other'),
   sizes: z.array(SizeSchema).min(1).optional(),
   minSize: SizeSchema.optional(),
   defaultSize: SizeSchema.optional(),

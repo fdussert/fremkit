@@ -135,9 +135,17 @@ describe('category', () => {
     expect(ManifestSchema.parse(base).category).toBe('other')
   })
 
-  it('keeps a category it declares, and refuses one it does not know', () => {
+  it('keeps a category it declares', () => {
     expect(ManifestSchema.parse({ ...base, category: 'system' }).category).toBe('system')
-    expect(ManifestSchema.safeParse({ ...base, category: 'weather-and-tides' }).success).toBe(false)
+  })
+
+  // A widget published for a newer Fremkit must still install on this one: refusing the manifest
+  // would take the whole widget out of the catalogue over the name of a shelf.
+  it('files a category it does not know under other, rather than refusing the manifest', () => {
+    const parsed = ManifestSchema.safeParse({ ...base, category: 'weather-and-tides' })
+    expect(parsed.success).toBe(true)
+    expect(parsed.success && parsed.data.category).toBe('other')
+    expect(ManifestSchema.parse({ ...base, category: 42 }).category).toBe('other')
   })
 })
 
