@@ -90,6 +90,7 @@ function reset(): void {
   m.state.busy = null
   m.state.kind = 'widget'
   m.state.installMissingOpen = false
+  m.state.resultsAre = 'update'
   m.setView('available')
 }
 
@@ -368,6 +369,35 @@ describe('the banner for widgets a screen is missing', () => {
     // The same dialog as "update all": one list, the permissions per widget, nothing downloaded
     // before an answer — written once so the two cannot drift.
     expect(wrapper.findAll('.entry')).toHaveLength(2)
+    // …and it is about installing, not about updating: the lead line is the one thing a reused
+    // dialog gets wrong silently.
+    expect(wrapper.find('.lead').text()).not.toMatch(/nouvelle version|new version/)
+    wrapper.unmount()
+  })
+})
+
+describe('what a finished series calls itself', () => {
+  async function panel(widgets: MarketplaceWidget[]): Promise<ReturnType<typeof mount>> {
+    serve(answer(widgets))
+    const wrapper = mount(MarketplacePanel, { attachTo: document.body })
+    await settle()
+    await wrapper.vm.$nextTick()
+    return wrapper
+  }
+
+  it('says installed after an install and updated after an update', async () => {
+    // The two series share every line of code that produces a result, which is precisely why the
+    // verb is the thing that ends up wrong: a fresh install announced itself as an update.
+    const wrapper = await panel([widget()])
+    const m = useMarketplaceStore()
+    m.setView('updates')
+    m.state.results = { demo: { ok: true, version: '2.0.0' } }
+    m.state.resultsAre = 'install'
+    await wrapper.vm.$nextTick()
+    expect(wrapper.find('[data-widget="demo"] .note.ok').text()).toMatch(/installé|installed/)
+    m.state.resultsAre = 'update'
+    await wrapper.vm.$nextTick()
+    expect(wrapper.find('[data-widget="demo"] .note.ok').text()).toMatch(/mis à jour|updated/)
     wrapper.unmount()
   })
 })

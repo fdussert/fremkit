@@ -608,3 +608,24 @@ describe('widgets a screen places and this machine does not have', () => {
     expect(store.state.updatingAll).toBe(false)
   })
 })
+
+describe('which series the results came from', () => {
+  const placed = () => widget({ placedOn: ['Home'] })
+  const waiting = () => widget({ installed: true, installedVersion: '1.0.0', version: '2.0.0', updateAvailable: true })
+
+  it('is remembered, so a row says the right verb', async () => {
+    const { store } = make([placed()], {
+      installMissingWidgets: vi.fn(async () => ({ results: [{ id: 'demo', ok: true, version: '1.0.0' }] })),
+    })
+    await store.load()
+    await store.installMissing()
+    expect(store.state.resultsAre).toBe('install')
+
+    const second = make([waiting()], {
+      updateAllWidgets: vi.fn(async () => ({ results: [{ id: 'demo', ok: true, version: '2.0.0' }] })),
+    })
+    await second.store.load()
+    await second.store.updateAll()
+    expect(second.store.state.resultsAre).toBe('update')
+  })
+})

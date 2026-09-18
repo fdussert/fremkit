@@ -20,7 +20,7 @@ import { channelFamilies } from './permissions'
 import type { MarketplaceWidget, WidgetPermissionSet } from '../shared/types'
 
 /**
- * `title` and `confirm` are passed by the caller because the same dialog covers two series: the
+ * `title`, `lead` and `confirm` are passed by the caller because the same dialog covers two series: the
  * updates waiting, and the widgets a screen places that are not installed. The list, the
  * per-widget permissions and the rule that nothing is downloaded before an answer are identical,
  * and writing that twice is how the two would drift.
@@ -28,6 +28,7 @@ import type { MarketplaceWidget, WidgetPermissionSet } from '../shared/types'
 const props = defineProps<{
   entries: { widget: MarketplaceWidget; added: WidgetPermissionSet }[]
   title?: string
+  lead?: string
   confirm?: string
 }>()
 const emit = defineEmits<{ accept: []; cancel: [] }>()
@@ -53,7 +54,7 @@ const rows = computed(() => props.entries.map((e) => ({
 <template>
   <BaseModal :title="props.title ?? t('admin.market.updateAllTitle', { n: rows.length })" :width="560"
     :close-label="t('admin.market.cancel')" @close="emit('cancel')">
-    <p class="lead">{{ t('admin.market.updateAllLead') }}</p>
+    <p class="lead">{{ props.lead ?? t('admin.market.updateAllLead') }}</p>
 
     <div v-for="row in rows" :key="row.id" class="entry">
       <strong>{{ row.name }} <span class="v">v{{ row.version }}</span></strong>

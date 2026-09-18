@@ -135,7 +135,8 @@ const empty = computed(() => {
           </p>
           <p v-if="store.state.results[w.id]" class="note" :class="store.state.results[w.id].ok ? 'ok' : 'warn'">
             {{ store.state.results[w.id].ok
-              ? t('admin.market.updatedTo', { version: store.state.results[w.id].version ?? '' })
+              ? t(store.state.resultsAre === 'install' ? 'admin.market.installedTo' : 'admin.market.updatedTo',
+                  { version: store.state.results[w.id].version ?? '' })
               : store.state.results[w.id].error }}
             <!-- A refusal on consent is the one failure the user can answer: the series could not
                  grant what it never listed, so this hands that widget to the single dialog. -->
@@ -172,6 +173,7 @@ const empty = computed(() => {
       @accept="store.updateAll()" @cancel="store.cancelUpdateAll()" />
     <UpdateAllDialog v-else-if="store.state.installMissingOpen" :entries="store.installMissingPrompt.value"
       :title="t('admin.market.installMissingTitle', { n: store.missing.value.length })"
+      :lead="t('admin.market.installMissingLead')"
       :confirm="t('admin.market.installMissing')"
       @accept="store.installMissing()" @cancel="store.cancelInstallMissing()" />
   </div>

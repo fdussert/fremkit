@@ -100,6 +100,13 @@ export interface MarketplaceState {
    * rather than the whole run collapsing into one toast.
    */
   results: Record<string, UpdateResult>
+  /**
+   * What the last series did, so a row says "installed v1.1.0" and not "updated to v1.1.0".
+   *
+   * The results carry a version and no verb, and the two series are the same code path — which
+   * is exactly why the wrong word is the thing that slips through.
+   */
+  resultsAre: 'update' | 'install'
   /** True while the series is running: the button says so and nothing else may start. */
   updatingAll: boolean
   /** The "update all" dialog is open, listing what each waiting widget newly asks for. */
@@ -178,7 +185,7 @@ export function createMarketplaceStore(deps: MarketplaceDeps = {}): MarketplaceS
   const state = reactive<MarketplaceState>({
     widgets: [], registry: null, loaded: false, loading: false, offline: false,
     busy: null, error: '', search: '', view: 'available', kind: 'widget',
-    consent: null, results: {}, updatingAll: false, updateAllOpen: false,
+    consent: null, results: {}, resultsAre: 'update', updatingAll: false, updateAllOpen: false,
     installMissingOpen: false,
   })
 
@@ -346,6 +353,7 @@ export function createMarketplaceStore(deps: MarketplaceDeps = {}): MarketplaceS
       state.updatingAll = true
       state.error = ''
       state.results = {}
+      state.resultsAre = 'update'
       try {
         const consent: Record<string, WidgetPermissionSet | false> = {}
         for (const w of waiting) consent[w.id] = empty(w.permissions) ? false : w.permissions
@@ -404,6 +412,7 @@ export function createMarketplaceStore(deps: MarketplaceDeps = {}): MarketplaceS
       state.updatingAll = true
       state.error = ''
       state.results = {}
+      state.resultsAre = 'install'
       try {
         const consent: Record<string, WidgetPermissionSet | false> = {}
         for (const w of missing) consent[w.id] = empty(w.permissions) ? false : w.permissions
