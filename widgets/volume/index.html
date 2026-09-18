@@ -52,8 +52,8 @@
   /* The pointer is a dimple pressed into the body, between its centre and its rim, like the
      moulded one on the real thing: the shadow falls inside its top edge and the light catches
      the bottom, which is what reads as a hollow rather than a stud. */
-  .pin{position:absolute;left:50%;top:15%;width:19%;height:19%;transform:translateX(-50%);border-radius:50%;
-    background:linear-gradient(180deg,rgba(0,0,0,.62) 0%,rgba(0,0,0,.12) 55%,rgba(255,255,255,.26) 100%),var(--accent,#d9b36a);
+  .pin{position:absolute;left:50%;top:8%;width:17%;height:17%;transform:translateX(-50%);border-radius:50%;
+    background:linear-gradient(180deg,rgba(0,0,0,.62) 0%,rgba(0,0,0,.12) 55%,rgba(255,255,255,.26) 100%),#333b47;
     box-shadow:inset 0 .5vmin .8vmin rgba(0,0,0,.8),inset 0 -.3vmin .5vmin rgba(255,255,255,.28),
       0 .25vmin .3vmin rgba(255,255,255,.12)}
   .face{position:absolute;inset:13%;border-radius:50%;pointer-events:none;
@@ -65,12 +65,10 @@
   /* A pointer painted in the accent vanishes when the tile *is* the accent, so both flip to the
      text colour, and the body lightens so an engraved reading stays legible on a light tile. */
   html.accent-fill #ticks line.on{stroke:var(--on-surface,#0b0d10)}
-  /* The dimple keeps the accent on a light body: it is sunk into the knob, not painted on the
-     tile, so it never has the accent-on-accent problem the ticks have. Only its lighting changes,
-     because a hollow in white plastic is a pale grey shade, not a black hole. */
+  /* A hollow in white plastic is a pale grey shade, not the near-black one a dark body wants. */
   html.on-light .pin,html.accent-fill .pin{
-    background:linear-gradient(180deg,rgba(0,0,0,.42) 0%,rgba(0,0,0,.04) 55%,rgba(255,255,255,.5) 100%),var(--accent,#d9b36a);
-    box-shadow:inset 0 .5vmin .8vmin rgba(0,0,0,.4),inset 0 -.3vmin .5vmin rgba(255,255,255,.5),
+    background:linear-gradient(180deg,rgba(0,0,0,.34) 0%,rgba(0,0,0,.03) 55%,rgba(255,255,255,.5) 100%),#c6ccd4;
+    box-shadow:inset 0 .5vmin .8vmin rgba(0,0,0,.35),inset 0 -.3vmin .5vmin rgba(255,255,255,.5),
       0 .25vmin .3vmin rgba(255,255,255,.9)}
   html.on-light .body,html.accent-fill .body{
     background:radial-gradient(circle at 34% 26%,#fff 0%,#e7e9ec 48%,#c9ced6 100%);
