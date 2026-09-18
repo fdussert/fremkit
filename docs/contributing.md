@@ -19,6 +19,7 @@ ui/        Vue 3: the dashboard (src/dashboard), the admin (src/admin), shared c
 native/    The Swift helper: kiosk window, HID touch driver, mouse fence, admin window,
            Dock badges, server supervision
 widgets/   One folder per widget
+themes/    One folder per theme — see themes.md
 scripts/   setup, dev, build/install/test the helper, signing identity, kiosk, Claude Code hooks
 data/      Your configuration and its assets. Git-ignored, never edited by hand while the
            server runs
