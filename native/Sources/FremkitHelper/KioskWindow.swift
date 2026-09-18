@@ -48,6 +48,18 @@ private final class KioskNSWindow: NSWindow {
 /// never reaches the page, so the user has to tap twice to press anything on the dashboard.
 private final class FirstMouseWebView: WKWebView {
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    /**
+     No context menu, ever.
+
+     A long press on the Edge is how the dashboard's own gestures work, and WebKit answers one
+     with its native menu: "Open Frame in New Window" inside a widget, "Reload" on the bar. Both
+     are ways out of the kiosk, on a screen with no keyboard and no window chrome to get back
+     from. Emptying the menu is enough — WebKit shows nothing for an empty one.
+     */
+    override func willOpenMenu(_ menu: NSMenu, with event: NSEvent) {
+        menu.removeAllItems()
+    }
 }
 
 /// Borderless full-screen window on the Edge display showing the kiosk dashboard.
@@ -85,9 +97,17 @@ final class KioskWindow: NSObject, WKNavigationDelegate {
         let configuration = WKWebViewConfiguration()
         configuration.preferences.isElementFullscreenEnabled = true
         configuration.mediaTypesRequiringUserActionForPlayback = []
+        // Nothing on the Edge may look or behave like a web page: no text selection and no
+        // Look Up (which a long press would otherwise offer, widgets included).
+        if #available(macOS 11.3, *) { configuration.preferences.isTextInteractionEnabled = false }
         webView = FirstMouseWebView(frame: NSRect(origin: .zero, size: frame.size), configuration: configuration)
         webView.autoresizingMask = [.width, .height]
         webView.underPageBackgroundColor = .black
+        // A pinch on the panel must not zoom the dashboard, a two-finger swipe must not navigate
+        // back out of it, and a press must not raise a link preview.
+        webView.allowsMagnification = false
+        webView.allowsBackForwardNavigationGestures = false
+        webView.allowsLinkPreview = false
 
         super.init()
 

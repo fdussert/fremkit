@@ -3,6 +3,13 @@ import Foundation
 import FremkitCore
 import WebKit
 
+/// Web view with WebKit's native context menu removed; everything else is stock.
+private final class AdminNoMenuWebView: WKWebView {
+    override func willOpenMenu(_ menu: NSMenu, with event: NSEvent) {
+        menu.removeAllItems()
+    }
+}
+
 /// Ordinary titled window showing the admin UI, opened from the status menu.
 ///
 /// One instance is kept for the lifetime of the helper: re-opening brings the existing window
@@ -48,7 +55,10 @@ final class AdminWindow: NSObject, NSWindowDelegate, WKUIDelegate {
         // Remember size and position across launches; the centred frame is only the first-run default.
         window.setFrameAutosaveName("FremkitAdmin")
 
-        let webView = WKWebView(frame: NSRect(origin: .zero, size: frame.size))
+        // No context menu here either — the admin is a touch-first panel too — but text
+        // interaction stays on: it has fields to type into and values to copy out.
+        let webView = AdminNoMenuWebView(frame: NSRect(origin: .zero, size: frame.size))
+        webView.allowsLinkPreview = false
         webView.autoresizingMask = [.width, .height]
         // Without a UI delegate a WKWebView silently ignores <input type="file">.
         webView.uiDelegate = self

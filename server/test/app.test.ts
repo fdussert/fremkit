@@ -203,6 +203,8 @@ describe('widget routes', () => {
     const res = await app.inject({ url: '/fremkit.js' })
     expect(res.headers['content-type']).toContain('javascript')
     expect(res.body).toContain('window.Fremkit')
-    expect(res.body).toContain('window.Vardek')
+    // The project's former name is gone from the bridge: no published user ever saw it.
+    expect(res.body).not.toContain('Vardek')
+    expect(res.body).not.toContain('vardek')
   })
 })

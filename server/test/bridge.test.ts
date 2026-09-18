@@ -13,22 +13,48 @@ interface Bridge {
   color(value: unknown, fallback?: string): string | null
 }
 
-async function loadBridge(): Promise<Bridge> {
+/** What the loaded bridge did to its document, for the kiosk-behaviour tests. */
+interface LoadResult {
+  bridge: Bridge
+  listeners: string[]
+  styles: { attrs: Record<string, string>; textContent: string }[]
+}
+
+async function loadBridge(): Promise<LoadResult> {
   const src = await readFile(fileURLToPath(new URL('../src/bridge/fremkit.js', import.meta.url)), 'utf8')
   const window: Record<string, unknown> = {
     parent: { postMessage: () => {} },
     addEventListener: () => {},
   }
-  const element = (tag: string) => ({ tagName: tag.toUpperCase(), className: '', textContent: '' })
+  const listeners: string[] = []
+  const styles: LoadResult['styles'] = []
+  const element = (tag: string) => {
+    const node: Record<string, unknown> = {
+      tagName: tag.toUpperCase(), className: '', textContent: '',
+      attrs: {} as Record<string, string>,
+    }
+    node.setAttribute = (name: string, value: string) => { (node.attrs as Record<string, string>)[name] = value }
+    if (tag === 'style') styles.push(node as unknown as LoadResult['styles'][number])
+    return node
+  }
+  const head = {
+    firstChild: null as unknown,
+    insertBefore: () => {},
+    appendChild: () => {},
+  }
   const document = {
     documentElement: { lang: '', classList: { add: () => {}, remove: () => {} }, style: { setProperty: () => {}, removeProperty: () => {} } },
+    head,
     createElement: element,
+    addEventListener: (type: string) => { listeners.push(type) },
+    dispatchEvent: () => {},
   }
   new Function('window', 'document', 'console', src)(window, document, console)
-  return window.Fremkit as Bridge
+  return { bridge: window.Fremkit as Bridge, listeners, styles }
 }
 
-const F = await loadBridge()
+const loaded = await loadBridge()
+const F = loaded.bridge
 
 describe('Fremkit.esc', () => {
   it('neutralises the markup a remote string can carry', () => {
@@ -79,5 +105,40 @@ describe('Fremkit.color', () => {
   })
   it('answers null when no fallback is given', () => {
     expect(F.color('nope')).toBeNull()
+  })
+})
+
+describe('what the bridge does to a widget document', () => {
+  it('refuses the context menu and drag, which is what a long press raises', () => {
+    // WebKit answers a long press inside a widget with "Open Frame in New Window", on a screen
+    // with no keyboard and no chrome to get back from.
+    expect(loaded.listeners).toContain('contextmenu')
+    expect(loaded.listeners).toContain('dragstart')
+  })
+
+  it('injects the kiosk stylesheet, marked so it can be found', () => {
+    const style = loaded.styles.find((s) => s.attrs['data-fremkit'] === 'kiosk')
+    expect(style).toBeDefined()
+    for (const rule of ['user-select:none', '-webkit-touch-callout:none',
+      '-webkit-tap-highlight-color:transparent', '-webkit-user-drag:none',
+      '::-webkit-scrollbar{display:none}', 'cursor:default']) {
+      expect(style!.textContent, rule).toContain(rule)
+    }
+  })
+
+  it('says the same thing as the dashboard\'s own copy', async () => {
+    // Two copies exist on purpose — the bridge is a plain browser script injected into a
+    // sandboxed iframe and cannot import a module — so they are compared rather than trusted.
+    const kiosk = await readFile(fileURLToPath(new URL('../../ui/src/shared/kiosk.ts', import.meta.url)), 'utf8')
+    const parts = /export const KIOSK_CSS = \[([\s\S]*?)\]\.join\(''\)/.exec(kiosk)
+    expect(parts, 'KIOSK_CSS not found in ui/src/shared/kiosk.ts').not.toBeNull()
+    const uiCss = [...parts![1].matchAll(/'([^']*)'/g)].map((m) => m[1]).join('')
+    const style = loaded.styles.find((s) => s.attrs['data-fremkit'] === 'kiosk')
+    expect(style!.textContent).toBe(uiCss)
+  })
+
+  it('leaves no trace of the project\'s former name', async () => {
+    const src = await readFile(fileURLToPath(new URL('../src/bridge/fremkit.js', import.meta.url)), 'utf8')
+    expect(src.toLowerCase()).not.toContain('vardek')
   })
 })

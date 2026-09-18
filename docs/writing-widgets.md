@@ -268,6 +268,16 @@ Scripts and styles load from the widget's own folder; images additionally from `
 and every network call goes through `Fremkit.fetch`. Forms cannot submit, frames cannot be
 created, `<base>` cannot be set, and dotfiles in the widget folder are not served.
 
+**The kiosk rules.** The bridge turns a widget document into a panel rather than a page: no
+context menu (a long press is one of the dashboard's own gestures, and WebKit would answer it
+with "Open Frame in New Window"), no drag, no text selection, no tap highlight, no scrollbars,
+no focus ring. It is one `<style data-fremkit="kiosk">` inserted before your own, so a widget
+that really has something to select or copy opts back in on that element:
+
+```css
+.note, input, textarea { -webkit-user-select: text; user-select: text; }
+```
+
 **What is still yours to get right.** The sandbox does not protect the widget from its own data.
 Everything a widget renders arrives from somewhere else — a volume name, a calendar title, a
 pull request title, a printer field — and any of it can contain `<img src=x onerror=…>`. So:

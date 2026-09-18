@@ -222,7 +222,6 @@
       applySlot(m.slot)
       F.ready = true
       document.dispatchEvent(new Event('fremkit:ready'))
-      document.dispatchEvent(new Event('vardek:ready'))
       readyCbs.splice(0).forEach(function (cb) { cb() })
     } else if (m.type === 'fremkit:data') {
       var s = subs.get(m.channel)
@@ -249,7 +248,37 @@
     }
   })
 
+  /**
+   * Makes a widget document stop behaving like a web page.
+   *
+   * The Edge is a touch panel with no keyboard and no window chrome. A long press inside a
+   * widget used to raise WebKit's own context menu — "Open Frame in New Window" — and a drag
+   * used to select text or pick an image up. The helper turns those off natively too; this is
+   * the same thing for the Chrome kiosk path (scripts/kiosk.sh), and defence in depth either way.
+   *
+   * A widget with a real text field opts back in with `user-select: text` on it; see
+   * docs/writing-widgets.md.
+   */
+  function applyKioskBehaviour() {
+    document.addEventListener('contextmenu', function (e) { e.preventDefault() })
+    document.addEventListener('dragstart', function (e) { e.preventDefault() })
+    var css = 'html{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;'
+      + '-webkit-tap-highlight-color:transparent;cursor:default}'
+      + 'img,a{-webkit-user-drag:none}'
+      + '::-webkit-scrollbar{display:none}'
+      + ':focus{outline:none}'
+    var style = document.createElement('style')
+    style.setAttribute('data-fremkit', 'kiosk')
+    style.textContent = css
+    // Before the widget's own <style>, so a widget that wants text selection back can simply
+    // say so and win on specificity and order.
+    var head = document.head || document.documentElement
+    if (head.firstChild) head.insertBefore(style, head.firstChild)
+    else head.appendChild(style)
+  }
+
+  applyKioskBehaviour()
+
   window.Fremkit = F
-  window.Vardek = F
   post({ type: 'fremkit:hello' })
 })()
