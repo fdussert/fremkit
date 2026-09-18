@@ -48,6 +48,25 @@ trusted to save this dashboard's config. Running Vite by hand (`pnpm --filter ui
 server started without the flag gives a dashboard whose WebSocket is refused — export
 `FREMKIT_DEV=1` for the server too.
 
+## Running against another data directory
+
+`FREMKIT_DATA_DIR` moves the config, the background library and the caches somewhere else. It
+must be an absolute path, and it is created on demand:
+
+```sh
+FREMKIT_DATA_DIR=/tmp/fremkit-fresh pnpm start
+```
+
+That is a from-scratch install on the live checkout: the dashboard, the connections and the
+backgrounds all come out of that folder, so you get the default config and the shipped wallpaper
+without moving anything aside. The keychain is keyed by connection id, so a fresh config never
+names the real items and your own secrets are untouched — nothing is read and nothing is
+overwritten. Stop the helper's server first if you want the same port, or pair it with
+`FREMKIT_PORT`.
+
+The other way round is to move `data/` aside while the helper's server is stopped, which is the
+same thing done by hand. 
+
 ## The helper build
 
 The helper is built by calling `swiftc` directly rather than through SwiftPM: `swift build` and
