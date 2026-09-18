@@ -15,7 +15,7 @@ and "Notifications: active" above the toggles, and *Log…* opens the supervised
 | "Touch: taken by another driver" | Touchscreen Gestures, another driver or a `--probe` run holds the panel | Quit it, and unload its launchd agent so it does not come back |
 | "Fence: permission missing" | Accessibility not granted | Add "Fremkit Helper" under Privacy & Security → Accessibility, then relaunch it |
 | Permissions reset after every rebuild | Ad-hoc signature: a new code identity each build | Run `scripts/create-signing-identity.sh`, rebuild, grant once more |
-| Printer unreachable (`EHOSTUNREACH`) while `ping` works | Local Network not granted to the app that runs the server | Allow it under Privacy & Security → Local Network |
+| Printer unreachable (`EHOSTUNREACH`) while `ping` and `curl` work | Local Network not granted to the app that runs the server | Allow it under Privacy & Security → Local Network |
 | "Server: external" | Something already answers port 4242, so the helper steps aside | Expected under `pnpm dev`; otherwise stop the stray server, or turn *Manage the server* off |
 
 ## The helper's icon is missing from the menu bar
@@ -80,9 +80,14 @@ runs inside whatever launched it. So the app to allow under System Settings → 
 - **Fremkit Helper**, when the helper manages the server (the normal case);
 - **your terminal** (Terminal, iTerm, Ghostty…), when you run `pnpm dev` yourself.
 
-Without the grant, every connection to a LAN device fails as `EHOSTUNREACH` while `ping` — which
-does not go through the same gate — keeps working. This is the usual cause of a Bambu printer or a
-Homey that looks perfectly reachable.
+Without the grant, every connection to a LAN device fails as `EHOSTUNREACH`. This is the usual
+cause of a Bambu printer or a Homey that looks perfectly reachable.
+
+**Neither `ping` nor `curl` is a witness.** Both are Apple's own binaries and both are exempt from
+the filter — on the same address, from the same shell, `curl` answers 200 while Node gets
+`EHOSTUNREACH`. So the test that means something is: `ping` or `curl` reaches the device but
+**Node** — the server, or a script — does not. That is the grant missing on the app that runs
+Node: Fremkit Helper for the live server, your terminal for anything you run yourself.
 
 **After a reinstall the helper may vanish from the Local Network list.** The grant is tied to the
 installed bundle, and deleting it drops the grant silently. Reinstall with

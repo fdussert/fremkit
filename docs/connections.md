@@ -41,9 +41,10 @@ points at is refused with a 409 naming the widgets.
 macOS 15 and later gate LAN access per application. The server runs inside whatever launched it —
 your terminal under `pnpm dev`, or Fremkit Helper when it manages the server — and *that* app must
 be allowed under System Settings → Privacy & Security → Local Network. Otherwise every connection
-to a LAN device fails as `EHOSTUNREACH` while `ping` works. This is the usual cause of a Bambu
-printer or a Homey that answers `ping` but not Fremkit. See
-[troubleshooting.md](troubleshooting.md).
+to a LAN device fails as `EHOSTUNREACH`. `ping` and `curl` are both Apple binaries and both are
+exempt from the filter, so neither proves anything: the symptom is that they reach the device and
+**Node** does not. This is the usual cause of a Bambu printer or a Homey that looks perfectly
+reachable. See [troubleshooting.md](troubleshooting.md).
 
 ---
 
