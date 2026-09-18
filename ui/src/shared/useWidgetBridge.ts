@@ -3,6 +3,7 @@ import { useSocket } from './socket'
 import { t, useI18n } from './i18n'
 import { isHexColor, tileText } from './color'
 import { channelAllowed, mergeSettings, type AccentMode, type NavSlot, type WidgetInstance, type WidgetManifest, type WidgetSize } from './types'
+import { FrameTrust, fetchTarget, nonEmptyString, stampInstance } from './widgetMessages'
 
 export type BridgeState = 'loading' | 'ready' | 'error'
 
@@ -76,31 +77,15 @@ export function useWidgetBridge(
   const post = (msg: unknown) => iframe.value?.contentWindow?.postMessage(JSON.parse(JSON.stringify(msg)), '*')
   const reply = (id: string, result?: unknown, error?: string) => post({ type: 'fremkit:result', id, result, error })
 
-  /** A non-empty string, or null. Every field of a widget's message is checked through this. */
-  const str = (value: unknown): string | null => (typeof value === 'string' && value !== '' ? value : null)
+  const str = nonEmptyString
 
-  /**
-   * The iframe's `src` at its last load, and whether we have stopped trusting what is inside it.
-   *
-   * `ev.source` is the iframe's `contentWindow`, and that object survives a navigation: a widget
-   * that sets `location` gets a brand-new document holding the same `contentWindow`, which would
-   * keep answering to this widget's identity and inherit its subscriptions — a channel carrying a
-   * connection's data among them. A load whose `src` attribute is unchanged is such a
-   * self-navigation (a host-driven change to another widget changes the attribute), so the
-   * subscriptions go and the frame is not answered again. A widget that wants to start over asks
-   * the host, it does not reload itself.
-   */
-  let loadedSrc: string | null = null
-  let disowned = false
+  /** See widgetMessages.ts: the rules live there so they can be tested without a DOM. */
+  const trust = new FrameTrust()
 
   function onLoad() {
-    const src = iframe.value?.getAttribute('src') ?? ''
-    if (loadedSrc === null || loadedSrc !== src) {
-      loadedSrc = src
-      disowned = false
-      return
-    }
-    disowned = true
+    trust.onLoad(iframe.value?.getAttribute('src') ?? '')
+    if (trust.trusted) return
+    // A document that navigated itself keeps nothing of the one we were talking to.
     unsubs.forEach((f) => f())
     unsubs.clear()
     state.value = 'error'
@@ -108,7 +93,7 @@ export function useWidgetBridge(
 
   function onMessage(ev: MessageEvent) {
     if (!iframe.value || ev.source !== iframe.value.contentWindow) return
-    if (disowned) return
+    if (!trust.trusted) return
     const m = ev.data
     if (!m || typeof m.type !== 'string') return
     switch (m.type) {
@@ -148,17 +133,16 @@ export function useWidgetBridge(
         if (!id) break
         if (!channel || !name) { reply(id, undefined, t('bridge.badRequest')); break }
         if (!channelAllowed(manifest()?.commands ?? [], channel)) { reply(id, undefined, t('bridge.channelNotAllowed', { channel })); break }
-        socket.command(channel, name, m.payload).then((r) => reply(id, r), (e: Error) => reply(id, undefined, e.message))
+        socket.command(channel, name, stampInstance(m.payload, instance().instanceId))
+          .then((r) => reply(id, r), (e: Error) => reply(id, undefined, e.message))
         break
       }
       case 'fremkit:fetch': {
         const id = str(m.id)
-        const url = str(m.url)
         if (!id) break
-        // The proxy is GET-only; a widget naming another method is asking for something the
-        // bridge never promised, so it is refused rather than quietly turned into a GET.
-        const method = str(m.init?.method) ?? 'GET'
-        if (!url || method.toUpperCase() !== 'GET') { reply(id, undefined, t('bridge.badRequest')); break }
+        // GET-only, and refused rather than coerced when the widget asks for anything else.
+        const url = fetchTarget(m)
+        if (!url) { reply(id, undefined, t('bridge.badRequest')); break }
         fetch(`/api/proxy/${encodeURIComponent(instance().widgetId)}?url=${encodeURIComponent(url)}`, { method: 'GET' })
           .then(async (r) => reply(id, { status: r.status, headers: { 'content-type': r.headers.get('content-type') }, body: await r.text() }))
           .catch((e: Error) => reply(id, undefined, e.message))
@@ -184,9 +168,14 @@ export function useWidgetBridge(
     unsubs.clear()
     window.clearTimeout(timer)
   })
-  // The frame is behind a `v-if="manifest"`, so it appears after this runs.
+  // The frame is behind a `v-if="manifest"`, so it appears after this runs — and reappears as a
+  // *new element* when a manifest goes away and comes back after a rescan. A fresh element is a
+  // fresh document, so the trust state starts over: otherwise that first load looked like a
+  // self-navigation and the frame stayed disowned for the rest of its life.
   watch(iframe, (el, old) => {
     old?.removeEventListener('load', onLoad)
+    trust.reset()
+    if (state.value === 'error' && manifest()) { state.value = 'loading'; armTimeout() }
     el?.addEventListener('load', onLoad)
   }, { immediate: true })
   watch(

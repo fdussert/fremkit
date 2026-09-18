@@ -28,7 +28,16 @@ describe('findInstance', () => {
   })
   it('finds one in the navigation bar', () => {
     // The bar holds instances too, and a command from one must resolve just the same.
-    expect(findInstance(config(), 'nav-1')).toMatchObject({ widgetId: 'service-status' })
+    const found = findInstance(config(), 'nav-1')
+    expect(found).toMatchObject({ widgetId: 'service-status' })
+    expect(found?.settings.services).toEqual([{ kind: 'ping', name: 'GW', url: '127.0.0.1' }])
+  })
+
+  it('finds a bar instance by its real id, which is the one the popover sends', () => {
+    // The popover used to hand the widget `<instanceId>:popup`, which is in no config at all —
+    // so every probe from the popover came back as an unknown widget.
+    expect(findInstance(config(), 'nav-1:popup')).toBeNull()
+    expect(findInstance(config(), 'nav-1')).not.toBeNull()
   })
   it('answers null for an id nothing carries', () => {
     for (const id of ['ghost', '', 'SC-1']) expect(findInstance(config(), id), id).toBeNull()

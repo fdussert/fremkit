@@ -53,11 +53,16 @@ const style = computed<Record<string, string>>(() => ({
 
 /**
  * The same widget as the bar draws, as a tile: full size, with its title, and no appearance of
- * its own. Its instanceId is the bar entry's with a suffix, so the two iframes of one bar widget
- * stay distinguishable to anything that keys on it.
+ * its own.
+ *
+ * The instanceId is the bar entry's, unchanged. It used to carry a `:popup` suffix so the two
+ * iframes of one bar widget stayed distinguishable — but nothing ever keyed on that, and it
+ * became a real bug once commands started resolving their target from the saved dashboard: the
+ * server looks the id up in the config, the suffixed one is in no config, and every
+ * `service-status.probe` from the popover was refused as an unknown widget.
  */
 const instance = computed<WidgetInstance>(() => ({
-  instanceId: `${props.navWidget.instanceId}:popup`,
+  instanceId: props.navWidget.instanceId,
   widgetId: props.navWidget.widgetId,
   x: 0, y: 0,
   w: Math.max(1, Math.round(box.value.width / props.cell)),

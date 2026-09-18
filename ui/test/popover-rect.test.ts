@@ -1,4 +1,6 @@
 import { describe, it, expect } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import { POPOVER_MARGIN, popoverRect } from '../src/shared/popover'
 
 /** A 2560×720 Edge panel with an 80 px bar: the widget area ends at 640. */
@@ -43,5 +45,16 @@ describe('popoverRect', () => {
   it('takes a custom margin', () => {
     const r = popoverRect(anchor(1200), { width: 400, height: 240 }, SCREEN, 40)
     expect(r.top).toBe(BAR_TOP - 40 - 240)
+  })
+})
+
+describe('the popover hands the widget its real instanceId', () => {
+  it('reads the nav entry id, unsuffixed', () => {
+    // The popover used to build `<instanceId>:popup`, which is in no config, so every command
+    // resolving its target from the dashboard came back "unknown widget".
+    const source = readFileSync(fileURLToPath(new URL('../src/dashboard/NavPopover.vue', import.meta.url)), 'utf8')
+    expect(source).toContain('instanceId: props.navWidget.instanceId')
+    // No suffix built onto the id anywhere in the code (the comment above it may name the old one).
+    expect(source).not.toMatch(/instanceId:\s*`/)
   })
 })
