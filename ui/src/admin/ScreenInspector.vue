@@ -187,6 +187,9 @@ function setBackground(patch: Partial<Background>): void {
       {{ t('admin.inspector.screen.restore.reenter') }}
       <strong>{{ restored.reenterSecrets.map((c) => c.name).join(', ') }}</strong>
     </p>
+    <!-- The common case, and worth saying: restoring onto the same Mac finds the keychain items,
+         because they are keyed by the connection ids the archive carries. -->
+    <p v-else class="ro">{{ t('admin.inspector.screen.restore.nothingToReenter') }}</p>
   </template>
 
   <h3>{{ t('admin.inspector.screen.privacy') }}</h3>
