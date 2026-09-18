@@ -33,7 +33,7 @@ The name is the Fremen survival kit from *Dune*.
 - **A native helper** — a menu bar app that drives the Edge's touch panel with its own HID
   driver, fences the mouse out of the display, shows the dashboard in a kiosk window and
   supervises the server.
-- **A widget marketplace** — *Browse* in the admin installs widgets from a curated registry,
+- **A widget marketplace** — *Sietch* in the admin installs widgets from a curated registry,
   showing what each one will be allowed to do and asking again when an update wants more.
 - **Backup and restore** of the whole dashboard, as a zip that never carries a secret.
 - **Two languages** — the whole interface is French or English, switched in the admin.
@@ -242,7 +242,7 @@ Every setting of every widget is listed in **[docs/widgets.md](docs/widgets.md)*
 own, see **[docs/writing-widgets.md](docs/writing-widgets.md)**.
 
 More are published to the [widget registry](https://github.com/fdussert/fremkit-sietch) rather
-than shipped here, and installed from *Browse* in the admin's widget column — including
+than shipped here, and installed from *Sietch* in the admin's top bar — including
 `synology-storage` and `synology-system`. What the installer checks, what a consent record is and
 how an update asks again: **[docs/marketplace.md](docs/marketplace.md)**.
 

@@ -127,7 +127,7 @@ agent's in-flight work. Say where the worktree is, and remove it once the work h
 | I want to… | Start at |
 |---|---|
 | add a widget | `docs/writing-widgets.md`, then copy `widgets/clock` or `widgets/calendar`. A new one goes to the registry repository, not to `widgets/` |
-| change the marketplace | `server/src/marketplace/` (registry client, installer, consent), `ui/src/admin/marketplace.ts` and `BrowseLibrary.vue`, `docs/marketplace.md` |
+| change the marketplace | `server/src/marketplace/` (registry client, installer, consent), `ui/src/admin/marketplace.ts` and `MarketplacePanel.vue`, `docs/marketplace.md` |
 | add a connection type | `server/src/connections/types/ics.ts` (simplest) or `github.ts` (fullest), register in `types/index.ts`, document in `docs/connections.md` |
 | add a provider | `server/src/providers/calendar.ts` (polling) or `shortcuts.ts` (commands only), register in `providers/index.ts` |
 | change the admin | `ui/src/admin/store.ts` (state), `Canvas.vue`/`EditOverlay.vue` (editing), `SettingsForm.vue` (setting types), `ScreenInspector.vue`, `ConnectionsInspector.vue` |

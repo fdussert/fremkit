@@ -11,7 +11,9 @@ rather than a setting — adding a second is a decision nobody has taken.
 
 ## Installing something
 
-*Admin → the widget column → **Browse***.
+*Admin → **Sietch** in the top bar.* Three views: **Available** is everything the registry
+publishes, **Installed** is what this machine has, **Updates** is what is waiting. The entry
+carries a count when something is.
 
 Each card says what the widget is, who wrote it, under which licence, how big the download is,
 and what it asks for. A widget that needs a connection says so — "needs a Synology connection" —
@@ -36,8 +38,9 @@ struck through: the widget is not broken, it is waiting for you.
 
 ## Updates
 
-An update is offered when the registry publishes a version newer than yours; the Browse tab
-carries a count and the card carries a chip.
+An update is offered when the registry publishes a version newer than yours. The Sietch entry
+carries the count, and the widget's card in the left column carries a `↑ version` chip that
+opens the panel on the Updates view.
 
 - An update whose permissions are **the same or narrower** installs straight away.
 - One that asks for **anything new** — one more channel, one more command, one more host — asks
@@ -49,9 +52,19 @@ handed the intersection. A channel the manifest declares and the record does not
 exactly like one that was never declared — so an update that quietly widened its own manifest
 would gain nothing by it.
 
+**Update all** does the lot in one request, behind one dialog. The dialog names every waiting
+widget and what each one is newly asking for — the ones asking for nothing say so, rather than
+being left out and leaving you to guess which of the five it was about. What it grants is what
+it listed: the server checks each package against its own entry and refuses the ones it was not
+given, so a widget that turns out to want more than was shown is skipped and says so in its row
+rather than being updated anyway.
+
+One failure does not stop the others. A run of five where the second package does not match its
+hash still updates the other four, and each row says what happened to it.
+
 ## Removing one
 
-**Remove** on the card, or in the Browse tab. Fremkit refuses while the widget is still on a page
+**Remove** on the card, in the Installed view. Fremkit refuses while the widget is still on a page
 or in the navigation bar, and names the places: removing it under your layout would leave holes
 you never asked for. Take it off the pages first.
 
@@ -100,7 +113,7 @@ your admin.
 
 ## When the registry is unreachable
 
-The Browse tab keeps the last list it read and says the registry could not be reached. An empty
+The panel keeps the last list it read and says the registry could not be reached. An empty
 list would read as "every widget was withdrawn", which is a different and much more alarming
 thing. The refresh button (⟳) goes back out on demand; otherwise the index is re-read once a day.
 
