@@ -12,6 +12,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import WidgetLibrary from '../src/admin/WidgetLibrary.vue'
+import MarketplacePanel from '../src/admin/MarketplacePanel.vue'
+import UpdateAllDialog from '../src/admin/UpdateAllDialog.vue'
 import TopBar from '../src/admin/TopBar.vue'
 import { useAdminStore } from '../src/admin/store'
 import { useMarketplaceStore } from '../src/admin/marketplace'
@@ -82,6 +84,11 @@ function reset(): void {
   m.state.error = ''
   m.state.search = ''
   m.state.results = {}
+  m.state.consent = null
+  m.state.updateAllOpen = false
+  m.state.updatingAll = false
+  m.state.busy = null
+  m.state.kind = 'widget'
   m.setView('available')
 }
 
@@ -207,5 +214,120 @@ describe('the top bar entry', () => {
     await bar.vm.$nextTick()
     expect(sietch(bar)).toBeTruthy()
     bar.unmount()
+  })
+})
+
+describe('the panel itself', () => {
+  async function panel(widgets: MarketplaceWidget[]): Promise<ReturnType<typeof mount>> {
+    serve(answer(widgets))
+    const wrapper = mount(MarketplacePanel, { attachTo: document.body })
+    await settle()
+    await wrapper.vm.$nextTick()
+    return wrapper
+  }
+
+  it('says an installed widget is here, with the dot before the words', async () => {
+    const wrapper = await panel([widget({ updateAvailable: false, version: '1.0.0' })])
+    const row = wrapper.find('[data-widget="demo"]')
+    expect(row.find('.dot.ok').exists()).toBe(true)
+    expect(row.text()).toContain('1.0.0')
+    wrapper.unmount()
+  })
+
+  it('offers Remove as the destructive one, not as the primary', async () => {
+    const wrapper = await panel([widget({ updateAvailable: false })])
+    const remove = wrapper.find('[data-widget="demo"] button.danger')
+    expect(remove.exists()).toBe(true)
+    expect(remove.classes()).not.toContain('primary')
+    wrapper.unmount()
+  })
+
+  it('has nothing to update in bulk when nothing is waiting', async () => {
+    const wrapper = await panel([widget({ updateAvailable: false })])
+    useMarketplaceStore().setView('updates')
+    await wrapper.vm.$nextTick()
+    expect(wrapper.find('.bar button.bulk').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('disables every button while a series is running', async () => {
+    const wrapper = await panel([widget()])
+    useMarketplaceStore().setView('updates')
+    useMarketplaceStore().state.updatingAll = true
+    await wrapper.vm.$nextTick()
+    expect(wrapper.find('.bar button.bulk').attributes('disabled')).toBeDefined()
+    expect(wrapper.find('[data-widget="demo"] button.danger').attributes('disabled')).toBeDefined()
+    wrapper.unmount()
+  })
+
+  it('keeps the kind switch out of the way while there is one kind', async () => {
+    const wrapper = await panel([widget()])
+    expect(wrapper.find('.kinds').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('gives a consent refusal somewhere to go', async () => {
+    const wrapper = await panel([widget()])
+    const m = useMarketplaceStore()
+    m.setView('updates')
+    m.state.results = { demo: { ok: false, error: 'it asks for more', newPermissions: { subscriptions: ['system'], commands: [], network: [] } } }
+    await wrapper.vm.$nextTick()
+    const link = wrapper.find('[data-widget="demo"] button.review')
+    expect(link.exists()).toBe(true)
+    await link.trigger('click')
+    expect(m.state.consent?.added.subscriptions).toEqual(['system'])
+    wrapper.unmount()
+  })
+
+  it('offers no way back when the failure was not about consent', async () => {
+    const wrapper = await panel([widget()])
+    const m = useMarketplaceStore()
+    m.setView('updates')
+    m.state.results = { demo: { ok: false, error: 'the package does not match its hash' } }
+    await wrapper.vm.$nextTick()
+    expect(wrapper.find('[data-widget="demo"] button.review').exists()).toBe(false)
+    expect(wrapper.find('[data-widget="demo"]').text()).toContain('does not match')
+    wrapper.unmount()
+  })
+
+  it('forgets the results of a run when it is closed', async () => {
+    const wrapper = await panel([widget()])
+    const m = useMarketplaceStore()
+    m.state.results = { demo: { ok: true, version: '2.0.0' } }
+    wrapper.unmount()
+    expect(m.state.results).toEqual({})
+  })
+})
+
+describe('the update-all dialog', () => {
+  const entry = (id: string, added: string[]) => ({
+    widget: widget({ id }),
+    added: { subscriptions: added, commands: [], network: [] },
+  })
+
+  it('names every waiting widget, and says so when one asks for nothing new', async () => {
+    const wrapper = mount(UpdateAllDialog, {
+      attachTo: document.body,
+      props: { entries: [entry('a', ['system.load']), entry('b', [])] },
+    })
+    await wrapper.vm.$nextTick()
+    const entries = wrapper.findAll('.entry')
+    expect(entries).toHaveLength(2)
+    expect(entries[0].text()).toContain('system')
+    // The ones asking nothing are named too: a list that dropped them would leave the user
+    // guessing which of the two the dialog was actually about.
+    expect(entries[1].find('.none').exists()).toBe(true)
+    wrapper.unmount()
+  })
+
+  it('emits what the two buttons mean', async () => {
+    const wrapper = mount(UpdateAllDialog, { attachTo: document.body, props: { entries: [entry('a', [])] } })
+    await wrapper.vm.$nextTick()
+    const buttons = wrapper.findAll('.actions button')
+    await buttons[1].trigger('click')
+    await buttons[0].trigger('click')
+    expect(wrapper.emitted('accept')).toHaveLength(1)
+    expect(wrapper.emitted('cancel')).toHaveLength(1)
+    wrapper.unmount()
   })
 })
