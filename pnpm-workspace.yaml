@@ -1,8 +1,3 @@
 packages:
   - server
   - ui
-
-# Only esbuild may run its install script. Vite pulls it in and it needs its postinstall to place
-# the platform binary; nothing else in this tree has any business running code at install time.
-onlyBuiltDependencies:
-  - esbuild

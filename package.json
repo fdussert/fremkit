@@ -19,5 +19,10 @@
     "helper:build": "bash scripts/build-helper.sh",
     "helper:install": "bash scripts/install-helper.sh",
     "helper:test": "bash scripts/test-helper.sh"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
   }
 }
