@@ -62,8 +62,8 @@ export const synologyType: ConnectionType = {
       required: true,
       placeholder: 'fremkit',
       help: {
-        fr: 'Créez un compte dédié en lecture seule, sans accès aux dossiers partagés : les deux API lues n’en ont pas besoin.',
-        en: 'Create a dedicated read-only account with no access to the shared folders: the two APIs read here do not need it.',
+        fr: 'Créez un compte dédié dans le groupe administrators, avec l’application DSM autorisée et aucun dossier partagé : les API système de DSM 7 ne répondent qu’aux administrateurs.',
+        en: 'Create a dedicated account in the administrators group, with the DSM application allowed and no shared folder: DSM 7 answers its system APIs to administrators only.',
       },
     },
     {

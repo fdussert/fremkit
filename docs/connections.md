@@ -226,11 +226,14 @@ Used by [`homey-devices`](widgets.md#homey-devices) and
 | `deviceId` | **yes** | Written by Fremkit after a two-factor login — leave it empty |
 | `allowSelfSigned` | no | Accept the certificate a NAS on the LAN serves |
 
-**Use a dedicated account.** Control Panel → User → create one, give it no access to any shared
-folder, and deny it every application. The two APIs Fremkit reads —
-`SYNO.Core.System.Utilization` and `SYNO.Storage.CGI.Storage` — need nothing more. A password
-that also opens the file shares is a password on a dashboard, which is a strictly worse trade
-than the five minutes it takes.
+**Use a dedicated account, in the `administrators` group.** DSM 7 answers the three APIs
+Fremkit reads — `SYNO.Core.System.Utilization`, `SYNO.Storage.CGI.Storage`, `SYNO.Core.System`
+— to administrators only; a regular user gets code 105 whatever else it is allowed. So: Control
+Panel → User → create one, put it in `administrators`, turn two-factor on, give it no access to
+any shared folder, and under Applications allow **DSM** and deny everything else — a user with
+the DSM application denied cannot log in at all (code 402). "Administrator" on DSM means the
+system APIs, not your files: with no shared folder granted, the password on the dashboard opens
+nothing else.
 
 **Two-factor accounts.** Fill `otp` with a fresh six-digit code and save. DSM refuses a code it
 has already seen, so Fremkit asks it to issue a *device token* at the same time and stores that
