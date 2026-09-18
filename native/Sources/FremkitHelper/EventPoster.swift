@@ -58,6 +58,15 @@ final class EventPoster: PointerPoster {
     private var pendingRestore: DispatchWorkItem?
     /// Whether the cursor is hidden for the gesture in progress; see `lock`.
     private var cursorHidden = false
+    /**
+     Bumped by every warp, and stamped on each restore work item.
+
+     `DispatchWorkItem.cancel()` does nothing to a block that has already started, so a restore
+     that fired just as a new gesture began would run to completion — warping the cursor away
+     from the finger and showing it again in the middle of the new gesture. The block reads this
+     under the lock and gives up when it has moved.
+     */
+    private var gesture: UInt64 = 0
 
     init() {
         source = CGEventSource(stateID: .hidSystemState)
@@ -139,6 +148,8 @@ final class EventPoster: PointerPoster {
         lock.lock()
         pendingRestore?.cancel()
         pendingRestore = nil
+        // A restore already running cannot be cancelled; this is what makes it stand down.
+        gesture &+= 1
         if savedCursor == nil { savedCursor = current }
         lock.unlock()
 
@@ -155,9 +166,13 @@ final class EventPoster: PointerPoster {
         lock.lock()
         guard savedCursor != nil else { lock.unlock(); return }
         pendingRestore?.cancel()
+        let stamp = gesture
         let work = DispatchWorkItem { [weak self] in
             guard let self else { return }
             self.lock.lock()
+            // A new gesture started while this was queued or already running: leave the cursor
+            // where that gesture put it, and leave it hidden for the gesture's duration.
+            guard stamp == self.gesture else { self.lock.unlock(); return }
             let saved = self.savedCursor
             self.savedCursor = nil
             self.pendingRestore = nil

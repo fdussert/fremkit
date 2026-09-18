@@ -52,3 +52,28 @@ final class KioskOriginTests: XCTestCase {
         XCTAssertFalse(KioskOrigin.sameOrigin(nil, as: dashboard))
     }
 }
+
+final class NodeVersionOrderTests: XCTestCase {
+    /// nvm keeps one directory per version, and the newest is the one to try first.
+    func testComparesVersionsNumericallyNotAsText() {
+        // The text order puts v9 after v20, which is how a stale Node gets picked.
+        XCTAssertTrue(NodeVersionOrder.newer("v20.1.2", "v9.9.9"))
+        XCTAssertFalse(NodeVersionOrder.newer("v9.9.9", "v20.1.2"))
+        XCTAssertTrue(NodeVersionOrder.newer("v22.0.0", "v20.19.4"))
+        XCTAssertTrue(NodeVersionOrder.newer("v20.19.4", "v20.9.0"))
+    }
+
+    func testTreatsAMissingPartAsZero() {
+        XCTAssertTrue(NodeVersionOrder.newer("v20.1", "v20.0.9"))
+        XCTAssertFalse(NodeVersionOrder.newer("v20", "v20.0.1"))
+    }
+
+    func testIsFalseForEqualVersions() {
+        XCTAssertFalse(NodeVersionOrder.newer("v20.1.2", "v20.1.2"))
+    }
+
+    func testSurvivesSomethingThatIsNotAVersion() {
+        XCTAssertFalse(NodeVersionOrder.newer("system", "system"))
+        XCTAssertTrue(NodeVersionOrder.newer("v1.0.0", "not-a-version"))
+    }
+}

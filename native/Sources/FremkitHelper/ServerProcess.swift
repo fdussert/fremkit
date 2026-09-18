@@ -361,18 +361,21 @@ final class ServerProcess {
         // used to be spawned anyway, failing once a second for ever behind the backoff. Say so
         // once and stop instead.
         guard FileManager.default.fileExists(atPath: entry.path) else {
-            NSLog("fremkit: no server/src/index.ts under repoPath; not starting a server")
+            NSLog("fremkit: no server/src/index.ts under repoPath; not starting a server. "
+                + "Fix repoPath in helper.json and relaunch the helper — this does not retry on its own.")
             state = .stopped
             return
         }
         let tsx = server.appendingPathComponent("node_modules/tsx/dist/cli.mjs")
         guard FileManager.default.fileExists(atPath: tsx.path) else {
-            NSLog("fremkit: tsx is not installed in the checkout; run pnpm install")
+            NSLog("fremkit: tsx is not installed in the checkout; run pnpm install, then relaunch "
+                + "the helper — this does not retry on its own.")
             state = .stopped
             return
         }
         guard let node = Self.resolveNode() else {
-            NSLog("fremkit: no node executable found; install Node 22 or later")
+            NSLog("fremkit: no node executable found; install Node 22 or later, then relaunch the "
+                + "helper — this does not retry on its own.")
             state = .stopped
             return
         }
@@ -551,6 +554,13 @@ final class ServerProcess {
         // Node process on the machine — the pid file is stale often enough that this was a real
         // way to kill something else entirely. Our own child is `node …/tsx/… src/index.ts` run
         // from this checkout, so it carries both the repo path and the entry point.
+        // An empty repoPath would make `contains` true for everything, which is how a guard
+        // meant to protect an unrelated process would kill it instead.
+        guard !config.repoPath.isEmpty else {
+            NSLog("fremkit: no repoPath configured; leaving pid %d alone", pid)
+            Self.removePidFile()
+            return
+        }
         let command = Self.commandLine(of: pid)
         guard command.contains(config.repoPath), command.contains("src/index.ts") else {
             // The command line is not logged: it is another process's, and the log is a file the
@@ -593,22 +603,59 @@ final class ServerProcess {
         return String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    /// The first `node` that exists among the usual places, by absolute path.
+    /**
+     The first `node` that exists among the usual places, by absolute path.
+
+     A login item inherits a bare `PATH`, so the interpreter has to be found rather than looked
+     up. Package managers first, then the version managers — which is where most people's Node
+     actually lives — and a login shell as the last resort, because that is the only way to ask a
+     setup this does not know about.
+     */
     private static func resolveNode() -> URL? {
+        let home = NSHomeDirectory()
+        let manager = FileManager.default
         var candidates = [
-            "/opt/homebrew/bin/node",
-            "/usr/local/bin/node",
+            "/opt/homebrew/bin/node",   // Homebrew, Apple silicon
+            "/usr/local/bin/node",      // Homebrew, Intel
+            "/opt/local/bin/node",      // MacPorts
+            "\(home)/.volta/bin/node",  // volta
+            "\(home)/.local/share/fnm/aliases/default/bin/node", // fnm
+            "\(home)/.asdf/shims/node", // asdf
+            "\(home)/.local/bin/node",
+            "\(home)/Library/pnpm/node",
             "/usr/bin/node",
         ]
-        // A Node installed by a version manager lives under the user's home; the login item's
-        // PATH does not carry it, so the well-known locations are tried explicitly.
-        let home = NSHomeDirectory()
-        candidates.append("\(home)/.local/bin/node")
-        candidates.append("\(home)/Library/pnpm/node")
-        for path in candidates where FileManager.default.isExecutableFile(atPath: path) {
+        // nvm keeps one directory per version; take the newest by name.
+        let nvm = "\(home)/.nvm/versions/node"
+        if let versions = try? manager.contentsOfDirectory(atPath: nvm) {
+            for version in versions.sorted(by: NodeVersionOrder.newer).prefix(4) {
+                candidates.append("\(nvm)/\(version)/bin/node")
+            }
+        }
+        for path in candidates where manager.isExecutableFile(atPath: path) {
             return URL(fileURLWithPath: path)
         }
+        // Last resort: ask a login shell, which sources the profile a version manager hooks into.
+        if let found = nodeFromLoginShell(), manager.isExecutableFile(atPath: found.path) {
+            return found
+        }
         return nil
+    }
+
+    /// `node` as a login shell resolves it, or nil.
+    private static func nodeFromLoginShell() -> URL? {
+        let shell = Process()
+        shell.executableURL = URL(fileURLWithPath: "/bin/zsh")
+        shell.arguments = ["-lc", "command -v node"]
+        let pipe = Pipe()
+        shell.standardOutput = pipe
+        shell.standardError = FileHandle.nullDevice
+        do { try shell.run() } catch { return nil }
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        shell.waitUntilExit()
+        let path = String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard shell.terminationStatus == 0, path.hasPrefix("/") else { return nil }
+        return URL(fileURLWithPath: path)
     }
 
     // MARK: - Log

@@ -82,6 +82,12 @@ let suites: [(String, () -> XCTestCase, [TestMethod])] = [
         ("testAMacWhoseOnlyScreenIsTheEdgeIsLeftAlone", { ($0 as! AdminPlacementTests).testAMacWhoseOnlyScreenIsTheEdgeIsLeftAlone() }),
         ("testCentringShrinksToFitAndRoundsToWholePoints", { ($0 as! AdminPlacementTests).testCentringShrinksToFitAndRoundsToWholePoints() }),
     ]),
+    ("NodeVersionOrderTests", { NodeVersionOrderTests() }, [
+        ("testComparesVersionsNumericallyNotAsText", { ($0 as! NodeVersionOrderTests).testComparesVersionsNumericallyNotAsText() }),
+        ("testTreatsAMissingPartAsZero", { ($0 as! NodeVersionOrderTests).testTreatsAMissingPartAsZero() }),
+        ("testIsFalseForEqualVersions", { ($0 as! NodeVersionOrderTests).testIsFalseForEqualVersions() }),
+        ("testSurvivesSomethingThatIsNotAVersion", { ($0 as! NodeVersionOrderTests).testSurvivesSomethingThatIsNotAVersion() }),
+    ]),
     ("ServerProbeTests", { ServerProbeTests() }, [
         ("testRecognisesAFremkitConfig", { ($0 as! ServerProbeTests).testRecognisesAFremkitConfig() }),
         ("testRefusesAnythingElseAnsweringOnThePort", { ($0 as! ServerProbeTests).testRefusesAnythingElseAnsweringOnThePort() }),

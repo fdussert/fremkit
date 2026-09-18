@@ -24,6 +24,26 @@ public enum ServerProbe {
     }
 }
 
+/// Ordering the version directories a Node version manager keeps.
+public enum NodeVersionOrder {
+    /**
+     True when `a` is a newer version than `b`.
+
+     Compared number by number, never as text: the text order puts `v9.9.9` after `v20.1.2`,
+     which is exactly how a years-old Node gets picked to run the dashboard.
+     */
+    public static func newer(_ a: String, _ b: String) -> Bool {
+        let parts: (String) -> [Int] = { $0.drop(while: { !$0.isNumber }).split(separator: ".").map { Int($0) ?? 0 } }
+        let (x, y) = (parts(a), parts(b))
+        for i in 0..<max(x.count, y.count) {
+            let l = i < x.count ? x[i] : 0
+            let r = i < y.count ? y[i] : 0
+            if l != r { return l > r }
+        }
+        return false
+    }
+}
+
 /// Where the kiosk window is allowed to go.
 public enum KioskOrigin {
     /**

@@ -87,7 +87,8 @@ security add-trusted-cert -p codeSign -k "$KEYCHAIN" "$WORK/cert.pem"
 # Without this, codesign asks for the login password on every single build. It needs the keychain
 # password, which is prompted for interactively rather than passed as an empty `-k ""` — that only
 # ever worked on a keychain with no password, and silently failed on every other Mac.
-security set-key-partition-list -S apple-tool:,apple:,codesign: -s "$KEYCHAIN" >/dev/null 2>&1 \
+# stdout is noise; stderr is not — a password prompt or a real error has to be visible.
+security set-key-partition-list -S apple-tool:,apple:,codesign: -s "$KEYCHAIN" >/dev/null \
   || echo "note: could not pre-authorise codesign; macOS may ask for your password on each build."
 
 if security find-identity -v -p codesigning 2>/dev/null | grep -q "\"$IDENTITY\""; then

@@ -43,7 +43,15 @@ SWIFTC="${FREMKIT_SWIFTC:-swiftc}"
 # The architecture is the machine's own: this builds a helper for the Mac it runs on, not a
 # universal binary. Hardcoding arm64 meant an Intel Mac silently produced an arm64 helper that
 # would not launch.
-ARCH="$(uname -m)"
+#
+# `sysctl hw.optional.arm64` rather than `uname -m`: under a Rosetta shell — which is easy to end
+# up in without noticing — uname reports x86_64 on Apple silicon, and the helper would be built
+# for the wrong architecture on the right Mac.
+if [ "$(sysctl -n hw.optional.arm64 2>/dev/null)" = "1" ]; then
+    ARCH="arm64"
+else
+    ARCH="$(uname -m)"
+fi
 TARGET="${FREMKIT_TARGET:-${ARCH}-apple-macos13.0}"
 
 # Swift language mode. Pinned explicitly so a newer toolchain defaulting to Swift 6 does not
