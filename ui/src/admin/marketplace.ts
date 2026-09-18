@@ -12,6 +12,7 @@
 import { computed, reactive, type ComputedRef } from 'vue'
 import { ConsentRequiredError, api as realApi } from '../shared/api'
 import { pick, t } from '../shared/i18n'
+import { useAdminStore } from './store'
 import type { MarketplaceResponse, MarketplaceWidget, WidgetPermissionSet } from '../shared/types'
 
 export interface MarketplaceApi {
@@ -19,6 +20,7 @@ export interface MarketplaceApi {
   refreshMarketplace(): Promise<MarketplaceResponse>
   installWidget(id: string, opts?: { consent?: WidgetPermissionSet | false; version?: string; update?: boolean }): Promise<{ ok: true; id: string; version: string }>
   uninstallWidget(id: string): Promise<{ ok: true; id: string }>
+  updateAllWidgets(consent: Record<string, WidgetPermissionSet | false>): Promise<{ results: ({ id: string } & UpdateResult)[] }>
 }
 
 const NONE: WidgetPermissionSet = { subscriptions: [], commands: [], network: [] }
@@ -35,6 +37,22 @@ function union(a: WidgetPermissionSet, b: WidgetPermissionSet): WidgetPermission
 function empty(p: WidgetPermissionSet): boolean {
   return p.subscriptions.length === 0 && p.commands.length === 0 && p.network.length === 0
 }
+
+/**
+ * Which of the modal's three lists is showing.
+ *
+ * `available` is the shop, `installed` is what this machine has, `updates` is the short list
+ * somebody came here to act on. They are views of one index rather than three requests.
+ */
+export type MarketView = 'available' | 'installed' | 'updates'
+
+/**
+ * What kind of thing the list is showing.
+ *
+ * One value today. It exists so that themes — already carried by the index — and wallpapers
+ * after them are one more entry rather than a second list and a second filter.
+ */
+export type MarketKind = 'widget'
 
 /** What the consent dialog is open about. `added` is what is new, `all` what the widget asks. */
 export interface ConsentPrompt {
@@ -66,16 +84,46 @@ export interface MarketplaceState {
   busy: string | null
   error: string
   search: string
+  /** Which of the three lists is showing; `updates` is where the top bar's badge sends you. */
+  view: MarketView
+  kind: MarketKind
   consent: ConsentPrompt | null
+  /**
+   * The outcome of the last "update all", by widget id, so each row can say what happened to it
+   * rather than the whole run collapsing into one toast.
+   */
+  results: Record<string, UpdateResult>
+  /** True while the series is running: the button says so and nothing else may start. */
+  updatingAll: boolean
+  /** The "update all" dialog is open, listing what each waiting widget newly asks for. */
+  updateAllOpen: boolean
+}
+
+/** What one widget's update came to. `newPermissions` means it was never attempted. */
+export interface UpdateResult {
+  ok: boolean
+  version?: string
+  error?: string
+  newPermissions?: WidgetPermissionSet
 }
 
 export interface MarketplaceStore {
   state: MarketplaceState
+  /** The rows of the view that is showing, filtered by the search box. */
   shown: ComputedRef<MarketplaceWidget[]>
-  /** How many installed widgets have a newer version: the badge on the tab. */
+  /** Every installed widget with something newer waiting, whatever the view. */
+  waiting: ComputedRef<MarketplaceWidget[]>
+  /** How many of those there are: the badge on the top bar. */
   updates: ComputedRef<number>
+  /** The consent the dialog for "update all" would have to show, per widget. */
+  updateAllPrompt: ComputedRef<{ widget: MarketplaceWidget; added: WidgetPermissionSet }[]>
+  setView(view: MarketView): void
   load(force?: boolean): Promise<void>
   refresh(): Promise<void>
+  /** Opens the one dialog that covers the whole series. */
+  askUpdateAll(): void
+  cancelUpdateAll(): void
+  updateAll(): Promise<void>
   /** Opens the dialog when something new is being asked for, installs straight away otherwise. */
   start(widget: MarketplaceWidget, update?: boolean): Promise<void>
   accept(): Promise<void>
@@ -104,8 +152,16 @@ export function createMarketplaceStore(deps: MarketplaceDeps = {}): MarketplaceS
   const api = deps.api ?? realApi
   const state = reactive<MarketplaceState>({
     widgets: [], registry: null, loaded: false, loading: false, offline: false,
-    busy: null, error: '', search: '', consent: null,
+    busy: null, error: '', search: '', view: 'available', kind: 'widget',
+    consent: null, results: {}, updatingAll: false, updateAllOpen: false,
   })
+
+  /** The rows one view is made of, before the search box narrows them. */
+  const inView = (): MarketplaceWidget[] => {
+    if (state.view === 'installed') return state.widgets.filter((w) => w.installed)
+    if (state.view === 'updates') return state.widgets.filter((w) => w.updateAvailable)
+    return state.widgets
+  }
 
   const take = (answer: MarketplaceResponse): void => {
     state.widgets = answer.widgets
@@ -153,8 +209,25 @@ export function createMarketplaceStore(deps: MarketplaceDeps = {}): MarketplaceS
 
   const store: MarketplaceStore = {
     state,
-    shown: computed(() => state.widgets.filter((w) => matches(w, state.search))),
+    shown: computed(() => inView().filter((w) => matches(w, state.search))),
+    waiting: computed(() => state.widgets.filter((w) => w.updateAvailable)),
     updates: computed(() => state.widgets.filter((w) => w.updateAvailable).length),
+    /**
+     * What a single dialog would have to list before updating everything.
+     *
+     * Every waiting widget is named, including the ones that ask for nothing new — "no new
+     * permission" beside a name is information, and a dialog that silently omitted those would
+     * leave the user guessing which of the five it was actually about.
+     */
+    updateAllPrompt: computed(() => state.widgets
+      .filter((w) => w.updateAvailable)
+      .map((w) => ({ widget: w, added: w.newPermissions }))),
+
+    setView(view: MarketView): void {
+      state.view = view
+      // The results of a finished run belong to the run, not to the list.
+      if (view !== 'updates') state.results = {}
+    },
 
     /**
      * Reads the index once, and again only when asked.
@@ -208,9 +281,68 @@ export function createMarketplaceStore(deps: MarketplaceDeps = {}): MarketplaceS
 
     cancel(): void { state.consent = null },
 
+    /**
+     * Updates every waiting widget in one request.
+     *
+     * The consent sent is what the dialog listed, per widget, exactly as a single update sends
+     * its own — the server checks each package against its own entry and refuses the ones it was
+     * not given, so this cannot grant in bulk what was not shown. A widget that comes back with
+     * `newPermissions` was never touched.
+     */
+    askUpdateAll(): void {
+      if (!state.widgets.some((w) => w.updateAvailable)) return
+      state.updateAllOpen = true
+    },
+
+    cancelUpdateAll(): void { state.updateAllOpen = false },
+
+    async updateAll(): Promise<void> {
+      state.updateAllOpen = false
+      if (state.updatingAll || state.busy) return
+      const waiting = state.widgets.filter((w) => w.updateAvailable)
+      if (!waiting.length) return
+      state.updatingAll = true
+      state.error = ''
+      state.results = {}
+      try {
+        const consent: Record<string, WidgetPermissionSet | false> = {}
+        for (const w of waiting) consent[w.id] = empty(w.permissions) ? false : w.permissions
+        const answer = await api.updateAllWidgets(consent)
+        const results: Record<string, UpdateResult> = {}
+        for (const { id, ...rest } of answer.results) results[id] = rest
+        state.results = results
+        // Once, at the end: the index is the server's answer about what is installed now.
+        take(await api.getMarketplace())
+        await deps.onChanged?.()
+      } catch (err) {
+        state.error = (err as Error).message
+      } finally {
+        state.updatingAll = false
+      }
+    },
+
     async uninstall(id: string): Promise<void> {
       await run(id, () => api.uninstallWidget(id))
     },
   }
   return store
+}
+
+let singleton: MarketplaceStore | null = null
+
+/**
+ * The one marketplace store.
+ *
+ * Three places read it now — the top bar's badge, the widget column's update chip, and the modal
+ * itself — so it cannot live inside a component the way it did when Browse was a tab. The index
+ * is still read once, when the column mounts, which is what makes the badge right on the first
+ * paint.
+ */
+export function useMarketplaceStore(): MarketplaceStore {
+  if (!singleton) {
+    // Installing writes files on the server; the widget library is what reads them, so a rescan
+    // is how an installed widget appears in the column without a reload.
+    singleton = createMarketplaceStore({ onChanged: () => useAdminStore().rescan() })
+  }
+  return singleton
 }

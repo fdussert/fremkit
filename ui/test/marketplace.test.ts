@@ -31,6 +31,7 @@ function make(widgets: MarketplaceWidget[], over: Partial<MarketplaceApi> = {}, 
     refreshMarketplace: vi.fn(async () => answer(widgets)),
     installWidget: vi.fn(async (id: string) => ({ ok: true as const, id, version: '1.0.0' })),
     uninstallWidget: vi.fn(async (id: string) => ({ ok: true as const, id })),
+    updateAllWidgets: vi.fn(async () => ({ results: [] })),
     ...over,
   }
   return { api, store: createMarketplaceStore({ api, onChanged }) }
@@ -252,6 +253,136 @@ describe('refresh', () => {
     expect(store.state.error).toMatch(/could not be reached/)
     // The list it already had is still on screen.
     expect(store.shown.value).toHaveLength(1)
+  })
+})
+
+describe('the three views', () => {
+  const rows = (store: ReturnType<typeof createMarketplaceStore>): string[] => store.shown.value.map((w) => w.id)
+
+  const three = () => [
+    widget({ id: 'fresh' }),
+    widget({ id: 'here', installed: true, installedVersion: '1.0.0' }),
+    widget({ id: 'stale', installed: true, installedVersion: '1.0.0', version: '2.0.0', updateAvailable: true }),
+  ]
+
+  it('shows everything, what is installed, and what is waiting', async () => {
+    const { store } = make(three())
+    await store.load()
+    expect(rows(store).sort()).toEqual(['fresh', 'here', 'stale'])
+    store.setView('installed')
+    expect(rows(store).sort()).toEqual(['here', 'stale'])
+    store.setView('updates')
+    expect(rows(store)).toEqual(['stale'])
+  })
+
+  it('narrows the view it is on, not the whole index', async () => {
+    const { store } = make(three())
+    await store.load()
+    store.setView('updates')
+    store.state.search = 'fresh'
+    expect(rows(store)).toEqual([])
+    store.setView('available')
+    expect(rows(store)).toEqual(['fresh'])
+  })
+
+  it('drops the results of a finished run when leaving Updates', async () => {
+    const { store } = make(three(), {
+      updateAllWidgets: vi.fn(async () => ({ results: [{ id: 'stale', ok: true, version: '2.0.0' }] })),
+    })
+    await store.load()
+    store.setView('updates')
+    await store.updateAll()
+    expect(store.state.results.stale.ok).toBe(true)
+    store.setView('available')
+    expect(store.state.results).toEqual({})
+  })
+})
+
+describe('update all', () => {
+  const waiting = (over: Partial<MarketplaceWidget> = {}) =>
+    widget({ installed: true, installedVersion: '1.0.0', version: '2.0.0', updateAvailable: true, ...over })
+
+  it('lists every waiting widget in one dialog, including the ones asking nothing new', async () => {
+    const { store } = make([
+      waiting({ id: 'a' }),
+      waiting({ id: 'b', newPermissions: set({ subscriptions: ['system'] }) }),
+      widget({ id: 'c' }),
+    ])
+    await store.load()
+    store.askUpdateAll()
+    expect(store.state.updateAllOpen).toBe(true)
+    expect(store.updateAllPrompt.value.map((e) => e.widget.id)).toEqual(['a', 'b'])
+    expect(store.updateAllPrompt.value[0].added.subscriptions).toEqual([])
+  })
+
+  it('opens nothing when nothing is waiting', async () => {
+    const { store } = make([widget()])
+    await store.load()
+    store.askUpdateAll()
+    expect(store.state.updateAllOpen).toBe(false)
+  })
+
+  it('sends the set each card showed, and `false` for a widget that asks nothing', async () => {
+    const { api, store } = make([
+      waiting({ id: 'a' }),
+      waiting({ id: 'b', permissions: set({ subscriptions: ['system'] }) }),
+    ])
+    await store.load()
+    await store.updateAll()
+    expect(api.updateAllWidgets).toHaveBeenCalledWith({
+      a: false,
+      b: set({ subscriptions: ['system'] }),
+    })
+  })
+
+  it('keeps one result per widget, so a row says what happened to it', async () => {
+    const { api, store } = make([waiting({ id: 'a' }), waiting({ id: 'b' })], {
+      updateAllWidgets: vi.fn(async () => ({
+        results: [
+          { id: 'a', ok: true, version: '2.0.0' },
+          { id: 'b', ok: false, error: 'the downloaded package does not match the index' },
+        ],
+      })),
+    })
+    await store.load()
+    await store.updateAll()
+    expect(store.state.results.a).toEqual({ ok: true, version: '2.0.0' })
+    expect(store.state.results.b.error).toMatch(/does not match/)
+    // The index is re-read once, at the end, rather than per widget.
+    expect(api.getMarketplace).toHaveBeenCalledTimes(2)
+    expect(store.state.updatingAll).toBe(false)
+  })
+
+  it('tells the library to look again once', async () => {
+    const onChanged = vi.fn()
+    const { store } = make([waiting()], {}, onChanged)
+    await store.load()
+    await store.updateAll()
+    expect(onChanged).toHaveBeenCalledTimes(1)
+  })
+
+  it('shows what went wrong when the whole request fails', async () => {
+    const { store } = make([waiting()], {
+      updateAllWidgets: vi.fn(async () => { throw new Error('the registry could not be reached') }),
+    })
+    await store.load()
+    await store.updateAll()
+    expect(store.state.error).toMatch(/could not be reached/)
+    expect(store.state.updatingAll).toBe(false)
+  })
+
+  it('does nothing while a single install is in flight', async () => {
+    let release!: () => void
+    const gate = new Promise<void>((r) => { release = r })
+    const { api, store } = make([waiting()], {
+      installWidget: vi.fn(async (id: string) => { await gate; return { ok: true as const, id, version: '2.0.0' } }),
+    })
+    await store.load()
+    const running = store.start(store.state.widgets[0], true)
+    await store.updateAll()
+    expect(api.updateAllWidgets).not.toHaveBeenCalled()
+    release()
+    await running
   })
 })
 

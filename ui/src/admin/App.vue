@@ -10,6 +10,7 @@ import BaseToast from '../shared/ui/BaseToast.vue'
 import BaseModal from '../shared/ui/BaseModal.vue'
 import ScreenInspector from './ScreenInspector.vue'
 import ConnectionsInspector from './ConnectionsInspector.vue'
+import MarketplacePanel from './MarketplacePanel.vue'
 import { fits, moveRect, resizeRect } from './layout'
 
 const s = useAdminStore()
@@ -98,6 +99,10 @@ onUnmounted(() => {
     <BaseModal v-else-if="s.state.modal === 'connections'" :title="t('admin.tabs.connections')"
       :close-label="t('common.close')" @close="s.closeModal()">
       <ConnectionsInspector />
+    </BaseModal>
+    <BaseModal v-else-if="s.state.modal === 'marketplace'" :title="t('admin.tabs.marketplace')"
+      :width="720" :close-label="t('common.close')" @close="s.closeModal()">
+      <MarketplacePanel />
     </BaseModal>
     <BaseToast v-if="s.state.toast" :message="s.state.toast" @close="s.dismissToast()" />
   </div>

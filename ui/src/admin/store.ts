@@ -8,7 +8,7 @@ import { fits, largestFreeSpot, type Grid, type Rect } from './layout'
 
 export type Mode = 'edit' | 'test'
 /** The modal dialogs opened from the top bar. Kept in the store so a widget setting can open one. */
-export type ModalName = 'screen' | 'connections'
+export type ModalName = 'screen' | 'connections' | 'marketplace'
 export type Status = 'saved' | 'saving' | 'error'
 
 /** Edits are grouped this long before one PUT of the whole config. */

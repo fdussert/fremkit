@@ -6,9 +6,11 @@ import BaseIcon from '../shared/ui/BaseIcon.vue'
 import BaseSegmented from '../shared/ui/BaseSegmented.vue'
 import { useI18n } from '../shared/i18n'
 import { useAdminStore } from './store'
+import { useMarketplaceStore } from './marketplace'
 import type { Mode } from './store'
 
 const s = useAdminStore()
+const market = useMarketplaceStore()
 const { t } = useI18n()
 const MODES = computed(() => [
   { value: 'edit', label: t('admin.topbar.mode.edit'), icon: 'pencil' },
@@ -37,6 +39,12 @@ const statusTone = computed(() => (s.state.status === 'error' ? 'danger' : s.sta
     </button>
     <button type="button" class="panel" :title="t('admin.topbar.openConnections')" @click="s.openModal('connections')">
       <BaseIcon name="network" :size="16" />{{ t('admin.tabs.connections') }}
+    </button>
+    <!-- The badge is right on the first paint: the widget column reads the index when it mounts,
+         so nobody has to open this to be told something is waiting. -->
+    <button type="button" class="panel" :title="t('admin.topbar.openMarketplace')" @click="s.openModal('marketplace')">
+      <BaseIcon name="package" :size="16" />{{ t('admin.tabs.marketplace') }}
+      <BaseChip v-if="market.updates.value" tone="accent">{{ market.updates.value }}</BaseChip>
     </button>
   </header>
 </template>
