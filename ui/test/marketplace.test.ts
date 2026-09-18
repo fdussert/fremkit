@@ -473,6 +473,18 @@ describe('after a series', () => {
     expect(store.state.consent?.send).toEqual(set({ subscriptions: ['system'], commands: ['shortcuts.run'] }))
   })
 
+  it('drops the refusal line once the reviewed widget has actually been updated', async () => {
+    const added = set({ subscriptions: ['system'] })
+    const { store } = make([], updated(['a'], [{ id: 'a', ok: false, newPermissions: added }]))
+    await store.load()
+    store.setView('updates')
+    await store.updateAll()
+    expect(store.state.results.a?.ok).toBe(false)
+    store.review(store.state.widgets[0])
+    await store.accept()
+    expect(store.state.results.a).toBeUndefined()
+  })
+
   it('has nothing to review when the failure was not about consent', async () => {
     const { store } = make([], updated(['a'], [{ id: 'a', ok: false }]))
     await store.load()

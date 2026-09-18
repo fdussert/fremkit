@@ -190,6 +190,9 @@ export function createMarketplaceStore(deps: MarketplaceDeps = {}): MarketplaceS
     state.error = ''
     try {
       await work()
+      // A single operation on a widget supersedes what the last series said about it: a row
+      // retried after "review what it asks for" must not keep its refusal line once it worked.
+      delete state.results[id]
       // The index is re-read rather than patched: `updateAvailable` and `consentNeeded` are the
       // server's answers, and guessing them here is how the two drift apart.
       take(await api.getMarketplace())
