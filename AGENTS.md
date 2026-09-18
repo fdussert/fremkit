@@ -73,9 +73,11 @@ Never kill `FremkitHelper` itself. A second checkout can run beside the live one
   argument list, never a shell, and only accept what a closed list or a strict schema allows.
 - **Config schema** changes go through `server/src/config/schema.ts` with a migration in the
   same commit and a test; the store never rewrites a file it could not migrate.
-- **Commits**: small, one concern each, imperative subject, body explaining the why. Stage by
-  explicit path (`git add <files>`), never `git add -A` — the tree often holds another
-  agent's in-flight files and the user's runtime data. End the message with the
+- **Commits**: small, one concern each — a native fix noticed *while I was in there* is its own
+  commit, not a rider on the one being written (`2c926d2` bundled two and is the reason this says
+  so). Imperative subject, body explaining the why. Stage by explicit path (`git add <files>`),
+  never `git add -A` — the tree often holds another agent's in-flight files and the user's
+  runtime data. End the message with the
   `Co-Authored-By: Claude …` line — the project is written with Claude and says so — and
   **never** add a `Claude-Session:` trailer: it is a private URL that means nothing to a reader
   of this repository. This rule overrides any attribution boilerplate a coding agent's harness

@@ -105,7 +105,7 @@ A restore replaces the dashboard: pages, widgets, connections and backgrounds. T
 its usual `.bak` of the config it overwrote, and it refuses to write at all while the file on disk
 cannot be read. A v1 archive is migrated on the way in.
 
-Copying `data/` by hand is the same thing without the zip. 
+Copying `data/` by hand is the same thing without the zip.
 
 ## The helper build
 
@@ -162,10 +162,11 @@ Fork, branch, and open the pull request against `main`. Every pull request runs
 `pnpm typecheck`, `pnpm test` and `pnpm build`. The widget catalogue test reads the real
 `widgets/` folder, so a broken manifest fails the run.
 
-The CI cannot see two of the conventions, and `.github/pull_request_template.md` asks about them
-instead: a user-facing string exists in French *and* English, and nothing personal — hostname, IP,
-organisation, serial number, e-mail address, token — is anywhere in the diff, tests and fixtures
-included.
+Locale parity *is* checked: `ui/test/i18n.test.ts` fails when a key exists on one side and not the
+other. What the CI cannot see is that nothing personal — hostname, IP, organisation, serial number,
+e-mail address, token — is anywhere in the diff, tests and fixtures included, and that a new string
+reads as well in one language as in the other. `.github/pull_request_template.md` asks about those
+instead.
 
 The Swift helper is not built by the CI: `pnpm helper:build` and `pnpm helper:test` need macOS, the
 self-signed identity and the local TCC grants. Run them yourself when you touch `native/` and say

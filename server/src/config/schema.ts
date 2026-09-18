@@ -244,6 +244,11 @@ export const DEFAULT_CONFIG: Config = {
     // The shipped wallpaper, seeded into the background library at start. Referenced like any
     // other image, so the Screen inspector shows it selected and "remove" leaves no background
     // at all rather than putting a hardcoded one back.
+    //
+    // Which means a copy of the project with no `brand/wallpaper/` starts with a config naming an
+    // image that is not there: the seed cannot fail the boot over it, and the page simply paints
+    // no background. Harmless, and the user can pick another — but it is why `brand/wallpaper/`
+    // travels with a release, not only with the git checkout. See `backgrounds/seed.ts`.
     background: { image: DEFAULT_BACKGROUND, fit: 'cover' },
   },
   connections: [],

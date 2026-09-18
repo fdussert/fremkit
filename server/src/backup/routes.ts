@@ -210,7 +210,11 @@ export async function backupRoutes(
     }
 
     // The backgrounds first: the config may name one, and a dashboard that points at an image
-    // which is not there yet would paint a missing background for a moment.
+    // which is not there yet would paint a missing background for a moment. The cost is that a
+    // restore refused *after* this point — a config the store will not take — leaves the archive's
+    // images in the library beside the user's own. They are ordinary files in a list the Screen
+    // inspector shows, so the user can delete them; nothing references them, so nothing changes on
+    // screen. The other order would trade that for a visible flash on every successful restore.
     try {
       await mkdir(backgroundsDir, { recursive: true })
       for (const image of read.backgrounds) await writeFile(join(backgroundsDir, image.name), image.data)

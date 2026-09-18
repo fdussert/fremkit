@@ -21,6 +21,11 @@ const SHIPPED = fileURLToPath(new URL('../../../brand/wallpaper/' + DEFAULT_BACK
  * nothing changes on screen; it is simply offered in the library again.
  *
  * Returns true when it copied, for the tests and for nothing else.
+ *
+ * When `brand/wallpaper/` is not there at all — a release tarball that left it out — nothing is
+ * copied and `DEFAULT_CONFIG` still names the image: a fresh install paints no background until
+ * the user picks one. Not a reason to refuse to start, but a reason for a release to ship the
+ * folder.
  */
 export async function seedDefaultBackground(dataDir: string): Promise<boolean> {
   const dir = join(dataDir, 'backgrounds')
