@@ -221,6 +221,36 @@ const PrivacySchema = z.object({
   claudeAccountUsage: z.boolean().default(false),
 }).prefault({})
 
+/**
+ * What the user was shown and accepted when a widget was installed, per widget.
+ *
+ * The manifest on disk is what a widget *asks* for; this is what it was *granted*. They are the
+ * same thing on the day of the install and can drift the moment an update lands, so the bridge
+ * enforces the intersection: a channel in the manifest and not here is refused exactly like one
+ * that was never declared. An update whose permissions grew therefore does nothing until the
+ * user has seen the difference and said yes — the widget's own files cannot widen it.
+ *
+ * Built-ins have no record and need none: they ship with the server and are trusted with it.
+ * `registry` is stored so a record says which index the widget came from, not just that one did.
+ */
+export const ConsentSchema = z.object({
+  version: z.string().min(1),
+  registry: z.string().min(1).max(64),
+  consentedPermissions: z.object({
+    subscriptions: z.array(z.string()).default([]),
+    commands: z.array(z.string()).default([]),
+    network: z.array(z.string()).default([]),
+  }),
+  installedAt: z.string().min(1),
+})
+export type WidgetConsent = z.infer<typeof ConsentSchema>
+
+export const MarketplaceSchema = z.object({
+  /** Keyed by widget id, which is also the folder name under `<dataDir>/widgets`. */
+  installed: z.record(z.string().regex(WIDGET_ID_RE), ConsentSchema).default({}),
+}).prefault({})
+export type MarketplaceState = z.infer<typeof MarketplaceSchema>
+
 export const ConfigSchema = z.object({
   version: z.literal(2),
   display: DisplaySchema.prefault({}),
@@ -229,6 +259,8 @@ export const ConfigSchema = z.object({
   /** Language of the admin and of the screen. Absent in every file written before it existed. */
   locale: LocaleSchema.default(defaultLocale()),
   privacy: PrivacySchema,
+  /** Absent in every file written before the marketplace existed, which means nothing installed. */
+  marketplace: MarketplaceSchema,
   pages: z.array(PageSchema).min(1),
 })
 
@@ -255,6 +287,7 @@ export const DEFAULT_CONFIG: Config = {
   secrets: { backend: defaultSecretsBackend() },
   locale: defaultLocale(),
   privacy: { claudeAccountUsage: false },
+  marketplace: { installed: {} },
   pages: [
     {
       id: 'home',

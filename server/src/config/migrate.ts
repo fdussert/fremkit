@@ -108,6 +108,8 @@ export function migrateConfig(raw: unknown): Config {
     secrets: { backend: defaultSecretsBackend() },
     locale: defaultLocale(),
     privacy: { claudeAccountUsage: false },
+    // A v1 config predates the marketplace by a long way; nothing can have been installed.
+    marketplace: { installed: {} },
     pages: v1.pages.map((p) => ({
       id: p.id,
       name: p.name,

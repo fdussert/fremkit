@@ -1,5 +1,7 @@
 import type { FastifyInstance } from 'fastify'
 import type { WidgetCatalog } from '../widgets/catalog.js'
+import type { ConfigStore } from '../config/store.js'
+import { grantedFor } from '../marketplace/consent.js'
 import { resolvesToPrivate } from '../net/private.js'
 import { isCrossSiteFetch } from '../http/guard.js'
 import { tr } from '../i18n.js'
@@ -25,6 +27,8 @@ const TEXT_TYPE = 'text/plain; charset=utf-8'
 
 export interface ProxyOptions {
   catalog: WidgetCatalog
+  /** Read for the consent records: what an installed widget may reach is a config fact. */
+  store: ConfigStore
   /**
    * Whether a host is private or local. Production uses `resolvesToPrivate`; the proxy's own
    * tests put their upstream on loopback and stand in for a public host here.
@@ -68,7 +72,9 @@ export async function proxyRoutes(app: FastifyInstance, opts: ProxyOptions): Pro
     // A GET, so the Origin gate never sees it — and this one makes the server go out onto the
     // network on the caller's behalf. Same refusal as /api/favicon.
     if (isCrossSiteFetch(req.headers)) return reply.code(403).send({ error: tr(undefined, 'http.originNotAllowed') })
-    const manifest = opts.catalog.get(req.params.widgetId)
+    // Granted, not declared: an installed widget reaches the hosts the user accepted, not the
+    // ones its manifest happens to name after an update.
+    const manifest = grantedFor(opts.catalog, opts.store.get(), req.params.widgetId)
     if (!manifest) return reply.code(404).send({ error: tr(undefined, 'widgets.unknown') })
     const raw = req.query.url
     if (!raw) return reply.code(400).send({ error: tr(undefined, 'proxy.missingUrl') })

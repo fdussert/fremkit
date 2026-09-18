@@ -175,8 +175,8 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
 
   await app.register(configRoutes, { store, catalog })
   await app.register(connectionRoutes, { store, catalog, types: connectionTypes, manager: connections, secrets })
-  await app.register(widgetRoutes, { catalog })
-  await app.register(proxyRoutes, { catalog })
+  await app.register(widgetRoutes, { catalog, store })
+  await app.register(proxyRoutes, { catalog, store })
   await app.register(backgroundRoutes, { dataDir: opts.dataDir })
   await app.register(backupRoutes, {
     store,

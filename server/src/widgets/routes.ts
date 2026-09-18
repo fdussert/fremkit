@@ -5,6 +5,8 @@ import { join, normalize } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { WIDGET_ID_RE } from '../config/schema.js'
 import type { WidgetCatalog } from './catalog.js'
+import type { ConfigStore } from '../config/store.js'
+import { grantedCatalog } from '../marketplace/consent.js'
 import { SDK_VERSION } from '../bridge/sdk.js'
 import { tr } from '../i18n.js'
 
@@ -50,7 +52,7 @@ export function injectBridge(html: string): string {
   return BRIDGE_TAG + html
 }
 
-export async function widgetRoutes(app: FastifyInstance, opts: { catalog: WidgetCatalog }): Promise<void> {
+export async function widgetRoutes(app: FastifyInstance, opts: { catalog: WidgetCatalog; store: ConfigStore }): Promise<void> {
   const bridge = await readFile(BRIDGE_PATH, 'utf8')
 
   app.get('/fremkit.js', async (_req, reply) => reply.type('application/javascript; charset=utf-8').send(bridge))
@@ -61,7 +63,9 @@ export async function widgetRoutes(app: FastifyInstance, opts: { catalog: Widget
    * to be told the number rather than guess it from the server's own version.
    */
   const answer = (): { widgets: Record<string, unknown>; sources: Record<string, string>; errors: unknown[]; sdk: number } => ({
-    widgets: Object.fromEntries(opts.catalog.manifests),
+    // What each widget may do, not what it asks for: an installed widget's manifest is narrowed
+    // to the permissions the user accepted, so the bridge host relays nothing beyond them.
+    widgets: Object.fromEntries(grantedCatalog(opts.catalog, opts.store.get())),
     // Where each widget came from, so the library can mark the installed ones and the admin can
     // offer to remove them. A manifest cannot carry it: it is a fact about the folder, not a
     // claim the widget's author gets to make.

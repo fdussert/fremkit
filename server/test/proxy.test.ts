@@ -2,6 +2,8 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import Fastify from 'fastify'
 import { createServer, type Server } from 'node:http'
 import { proxyRoutes, MAX_BODY_BYTES } from '../src/proxy/routes.js'
+import { DEFAULT_CONFIG } from '../src/config/schema.js'
+import type { ConfigStore } from '../src/config/store.js'
 import { WidgetCatalog } from '../src/widgets/catalog.js'
 import { ManifestSchema } from '../src/widgets/manifest.js'
 import { BYTES_CSP, isByteRoute } from '../src/http/headers.js'
@@ -58,9 +60,10 @@ function app(network: string[], opts: { real?: boolean } = {}) {
   const manifest = ManifestSchema.parse({ id: 'weather', name: 'W', version: '1.0.0', minSize: [4, 2], defaultSize: [4, 2], permissions: { network: ['api.example.com'] } })
   // Written past the schema on purpose: a manifest could not declare a private host (see below).
   manifest.permissions.network = network
-  catalog.manifests.set('weather', manifest)
+  catalog.entries.set('weather', { manifest, source: 'builtin', folder: '/nonexistent/weather' })
   const f = Fastify()
-  f.register(proxyRoutes, { catalog, ...(opts.real ? {} : { isPrivate: async () => false }) })
+  const store = { get: () => DEFAULT_CONFIG } as unknown as ConfigStore
+  f.register(proxyRoutes, { catalog, store, ...(opts.real ? {} : { isPrivate: async () => false }) })
   return f
 }
 

@@ -27,8 +27,15 @@ interface Root { dir: string; source: WidgetSource }
 
 export class WidgetCatalog {
   entries = new Map<string, CatalogEntry>()
-  manifests = new Map<string, WidgetManifest>()
   errors: CatalogError[] = []
+
+  /**
+   * The manifests alone, derived rather than stored: two maps to keep in step is one map too
+   * many, and the one that would go stale is the one everything reads.
+   */
+  get manifests(): Map<string, WidgetManifest> {
+    return new Map([...this.entries].map(([id, e]) => [id, e.manifest]))
+  }
 
   private readonly roots: Root[]
 
@@ -74,7 +81,6 @@ export class WidgetCatalog {
       }
     }
     this.entries = entries
-    this.manifests = new Map([...entries].map(([id, e]) => [id, e.manifest]))
     this.errors = errors
   }
 }

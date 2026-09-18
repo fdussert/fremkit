@@ -173,3 +173,32 @@ describe('renamed stored values', () => {
     expect(cfg.connections[0].fields.host).toBe('autre')
   })
 })
+
+describe('marketplace consent', () => {
+  it('is empty in a config written before it existed, and left alone in one that has it', () => {
+    const before = migrateConfig({ version: 2, pages: [{ id: 'p', name: 'P', widgets: [] }] })
+    expect(before.marketplace).toEqual({ installed: {} })
+
+    const record = {
+      version: '1.0.0', registry: 'fremkit-widgets', installedAt: '2026-09-18T12:00:00.000Z',
+      consentedPermissions: { subscriptions: ['synology:*'], commands: [], network: [] },
+    }
+    const kept = migrateConfig({
+      version: 2, pages: [{ id: 'p', name: 'P', widgets: [] }],
+      marketplace: { installed: { 'synology-storage': record } },
+    })
+    expect(kept.marketplace.installed['synology-storage']).toEqual(record)
+  })
+
+  it('is empty after a v1 migration, which predates the marketplace', () => {
+    const v1 = migrateConfig({ display: { cols: 32, rows: 8, cell: 80, autoCycleSeconds: 0 }, pages: [{ id: 'p', name: 'P', widgets: [] }] })
+    expect(v1.marketplace).toEqual({ installed: {} })
+  })
+
+  it('refuses a record that does not say what was granted', () => {
+    expect(() => migrateConfig({
+      version: 2, pages: [{ id: 'p', name: 'P', widgets: [] }],
+      marketplace: { installed: { demo: { version: '1.0.0', registry: 'r', installedAt: 'x' } } },
+    })).toThrow()
+  })
+})
