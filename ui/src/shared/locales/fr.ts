@@ -233,4 +233,5 @@ export const fr: Record<string, string> = {
   'socket.lost': 'connexion perdue',
 
   'dashboard.reconnecting': 'Reconnexion…',
+  'dashboard.widget.notInstalled': 'non installé',
 }

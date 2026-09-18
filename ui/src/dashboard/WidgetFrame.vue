@@ -3,7 +3,7 @@ import { ref, computed } from 'vue'
 import { useWidgetBridge } from '../shared/useWidgetBridge'
 import { fade, surfaceOpacity, widgetBackgroundStyle, widgetDim } from '../shared/background'
 import { isHexColor, onAccent, tileAccent, tileText } from '../shared/color'
-import { pick } from '../shared/i18n'
+import { pick, useI18n } from '../shared/i18n'
 import type { AccentMode, WidgetInstance, WidgetManifest } from '../shared/types'
 
 const props = defineProps<{ instance: WidgetInstance; manifest?: WidgetManifest; cell: number; edit?: boolean }>()
@@ -46,6 +46,7 @@ const style = computed<Record<string, string>>(() => {
   return s
 })
 /** The instance title wins, else the manifest name, else the raw widget id. */
+const { t } = useI18n()
 const title = computed(() => props.instance.title?.trim() || pick(props.manifest?.name) || props.instance.widgetId)
 
 /**
@@ -66,7 +67,12 @@ const dimStyle = computed(() => ({ opacity: String(widgetDim(props.instance.back
       <div class="body">
         <div v-if="imageStyle" class="image" :style="imageStyle"><div class="dim" :style="dimStyle" /></div>
         <iframe v-if="manifest" ref="iframe" :src="`/widgets/${instance.widgetId}/index.html`" sandbox="allow-scripts" :title="title" />
-        <div v-if="!manifest || state === 'error'" class="missing">{{ title }}</div>
+        <!-- No manifest is a widget that is not here: a raw id told nobody anything, and the
+             admin can offer to install it from the registry once it is named as missing. -->
+        <div v-if="!manifest || state === 'error'" class="missing">
+          <span>{{ title }}</span>
+          <small v-if="!manifest">{{ t('dashboard.widget.notInstalled') }}</small>
+        </div>
       </div>
     </div>
   </div>
@@ -91,6 +97,6 @@ const dimStyle = computed(() => ({ opacity: String(widgetDim(props.instance.back
 /* Positioned, so the widget and the fallback keep painting above the absolute image layer. */
 iframe { position: relative; z-index: 1; width: 100%; height: 100%; border: 0; background: transparent; display: block; }
 .box.edit iframe { pointer-events: none; }
-.missing { position: absolute; z-index: 1; inset: 0; display: flex; align-items: center; justify-content: center;
+.missing { position: absolute; z-index: 1; inset: 0; display: flex; flex-direction: column; gap: 2px; align-items: center; justify-content: center;
   color: var(--text-muted); font-size: var(--fs-lg); }
 </style>

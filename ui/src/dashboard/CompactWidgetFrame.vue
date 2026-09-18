@@ -6,7 +6,7 @@
  */
 import { computed, onBeforeUnmount, ref } from 'vue'
 import { useWidgetBridge } from '../shared/useWidgetBridge'
-import { pick } from '../shared/i18n'
+import { pick, useI18n } from '../shared/i18n'
 import { compactWidth, mergeSettings, type NavWidget, type WidgetInstance, type WidgetManifest } from '../shared/types'
 
 const props = defineProps<{ navWidget: NavWidget; manifest?: WidgetManifest; cell: number; height: number; edit?: boolean }>()
@@ -77,13 +77,15 @@ const { state } = useWidgetBridge(iframe, () => instance.value, () => props.mani
   pixelSize: () => ({ width: width.value, height: props.height }),
   slot: () => props.navWidget.slot,
 })
+const { t } = useI18n()
 const title = computed(() => pick(props.manifest?.name) || props.navWidget.widgetId)
 </script>
 
 <template>
   <div ref="root" class="compact" :class="{ edit }" :style="{ width: width + 'px' }">
     <iframe v-if="manifest" ref="iframe" :src="`/widgets/${navWidget.widgetId}/index.html`" sandbox="allow-scripts" :title="title" />
-    <div v-if="!manifest || state === 'error'" class="missing">{{ title }}</div>
+    <!-- One line of room here, so the words take the place of the id rather than joining it. -->
+    <div v-if="!manifest || state === 'error'" class="missing">{{ manifest ? title : t('dashboard.widget.notInstalled') }}</div>
     <!-- Pointer events still bubble to the bar, so a swipe starting here keeps changing page. -->
     <div v-if="tappable" class="tap" :class="{ pressed }" @pointerdown="down" />
   </div>

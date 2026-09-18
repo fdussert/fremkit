@@ -7,7 +7,7 @@
  */
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useWidgetBridge } from '../shared/useWidgetBridge'
-import { pick } from '../shared/i18n'
+import { pick, useI18n } from '../shared/i18n'
 import { popoverRect, type Anchor } from '../shared/popover'
 import type { NavWidget, WidgetInstance, WidgetManifest } from '../shared/types'
 
@@ -75,6 +75,7 @@ const { state } = useWidgetBridge(iframe, () => instance.value, () => props.mani
   // The box is clamped to the screen, so the widget is told the pixels it really has.
   pixelSize: () => ({ width: box.value.width, height: box.value.height - TITLE_H }),
 })
+const { t } = useI18n()
 const title = computed(() => pick(props.manifest?.name) || props.navWidget.widgetId)
 
 onMounted(() => emit('root', root.value ?? null))
@@ -86,7 +87,8 @@ onUnmounted(() => emit('root', null))
     <div class="title">{{ title }}</div>
     <div class="body">
       <iframe v-if="manifest" ref="iframe" :src="`/widgets/${navWidget.widgetId}/index.html`" sandbox="allow-scripts" :title="title" />
-      <div v-if="!manifest || state === 'error'" class="missing">{{ title }}</div>
+      <!-- One line of room here, so the words take the place of the id rather than joining it. -->
+      <div v-if="!manifest || state === 'error'" class="missing">{{ manifest ? title : t('dashboard.widget.notInstalled') }}</div>
     </div>
   </div>
 </template>
