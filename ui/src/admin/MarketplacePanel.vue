@@ -89,7 +89,7 @@ const empty = computed(() => {
       </BaseButton>
       <BaseButton variant="icon" :title="t('admin.market.refresh')" :disabled="store.state.loading"
         @click="store.refresh()">
-        <BaseIcon name="redo-2" :size="16" />
+        <BaseIcon name="refresh-cw" :size="16" />
       </BaseButton>
     </div>
 

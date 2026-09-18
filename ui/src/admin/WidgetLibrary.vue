@@ -92,7 +92,7 @@ onBeforeUnmount(unbindDragFallback)
     <h2>
       {{ t('admin.library.title') }}
       <BaseButton variant="icon" :title="t('admin.library.rescan')" @click="s.rescan()">
-        <BaseIcon name="redo-2" :size="16" />
+        <BaseIcon name="refresh-cw" :size="16" />
       </BaseButton>
     </h2>
 
