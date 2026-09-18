@@ -275,6 +275,16 @@ describe('themes in the index', () => {
     }
   })
 
+  it('refuses a token that is not the shape of a colour', async () => {
+    // The four go into a `style` attribute on a card; a value that could close the attribute
+    // must not get as far as being rendered and escaped.
+    const bad = index({ themes: [theme({ tokens: { accent: '#fff;" onload="x', bg: '#000', surface: '#111', text: '#eee' } })] })
+    await expect(make(JSON.stringify(bad)).registry.index()).rejects.toThrow(RegistryError)
+    // A function is still a colour: this refuses a shape, not an expression.
+    const ok = index({ themes: [theme({ tokens: { accent: 'color-mix(in oklab, #fff 40%, #000)', bg: '#000', surface: '#111', text: '#eee' } })] })
+    await expect(make(JSON.stringify(ok)).registry.index()).resolves.toBeTruthy()
+  })
+
   it('does not move the schema version for the new key', async () => {
     const { registry } = make(JSON.stringify(index({ themes: [theme()] })))
     expect((await registry.index()).schema).toBe(1)
