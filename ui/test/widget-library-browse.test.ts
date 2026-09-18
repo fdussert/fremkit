@@ -45,10 +45,18 @@ function serve(body: MarketplaceResponse): { calls: string[] } {
 beforeEach(() => { vi.resetModules() })
 afterEach(() => { vi.unstubAllGlobals() })
 
-/** Lets the mount's `load()` and its `.then` chain settle. */
-async function settle(times = 6): Promise<void> {
-  for (let i = 0; i < times; i++) await Promise.resolve()
+/**
+ * Lets the mount's `load()` settle. `Response.json()` crosses a macrotask on some Node versions
+ * (it did on the CI runner and not on the machine that wrote this), so a fixed number of
+ * microtask turns is not a wait — a real timer turn is.
+ */
+async function settle(): Promise<void> {
+  await new Promise<void>((resolve) => setTimeout(resolve, 0))
+  await new Promise<void>((resolve) => setTimeout(resolve, 0))
 }
+
+const tabLabels = (wrapper: ReturnType<typeof mount>): string[] =>
+  wrapper.findAll('.seg button').map((b) => b.text())
 
 describe('the Browse tab badge', () => {
   it('counts the waiting updates without the tab ever being opened', async () => {
@@ -58,8 +66,9 @@ describe('the Browse tab badge', () => {
     await wrapper.vm.$nextTick()
 
     expect(calls).toContain('/api/marketplace')
-    const tabs = wrapper.findAll('.seg button').map((b) => b.text())
-    expect(tabs.some((label) => label.includes('(1)'))).toBe(true)
+    await vi.waitFor(() => {
+      expect(tabLabels(wrapper).some((label) => label.includes('(1)'))).toBe(true)
+    })
     // And the local tab is still the one showing.
     expect(wrapper.find('.browse').exists()).toBe(false)
     wrapper.unmount()
@@ -70,8 +79,7 @@ describe('the Browse tab badge', () => {
     const wrapper = mount(WidgetLibrary, { attachTo: document.body })
     await settle()
     await wrapper.vm.$nextTick()
-    const tabs = wrapper.findAll('.seg button').map((b) => b.text())
-    expect(tabs.some((label) => label.includes('('))).toBe(false)
+    expect(tabLabels(wrapper).some((label) => label.includes('('))).toBe(false)
     wrapper.unmount()
   })
 
