@@ -32,6 +32,7 @@ function make(widgets: MarketplaceWidget[], over: Partial<MarketplaceApi> = {}, 
     installWidget: vi.fn(async (id: string) => ({ ok: true as const, id, version: '1.0.0' })),
     uninstallWidget: vi.fn(async (id: string) => ({ ok: true as const, id })),
     updateAllWidgets: vi.fn(async () => ({ results: [] })),
+    installMissingWidgets: vi.fn(async () => ({ results: [] })),
     ...over,
   }
   return { api, store: createMarketplaceStore({ api, onChanged }) }
@@ -524,5 +525,86 @@ describe('the kind switch', () => {
     await store.load()
     store.setView('installed')
     expect(store.shown.value.map((w) => w.id)).toEqual(['clock'])
+  })
+})
+
+describe('widgets a screen places and this machine does not have', () => {
+  const placed = (over: Partial<MarketplaceWidget> = {}) =>
+    widget({ placedOn: ['Home'], permissions: set({ subscriptions: ['homey:*'] }), ...over })
+
+  it('counts only what is placed, missing, and installable', async () => {
+    const { store } = make([
+      placed({ id: 'a' }),
+      placed({ id: 'b', installed: true, installedVersion: '1.0.0' }),
+      widget({ id: 'c' }),
+      placed({ id: 'd', shadowsBuiltin: true }),
+      placed({ id: 'e', sdkTooNew: true }),
+    ])
+    await store.load()
+    expect(store.missing.value.map((w) => w.id)).toEqual(['a'])
+  })
+
+  it('lists the whole ask, because nothing is granted to a widget that is not installed', async () => {
+    const { store } = make([placed({ id: 'a' })])
+    await store.load()
+    expect(store.installMissingPrompt.value[0].added).toEqual(set({ subscriptions: ['homey:*'] }))
+  })
+
+  it('opens nothing when nothing is missing', async () => {
+    const { store } = make([widget()])
+    await store.load()
+    store.askInstallMissing()
+    expect(store.state.installMissingOpen).toBe(false)
+  })
+
+  it('sends the set each card showed, and `false` for a widget that asks nothing', async () => {
+    const { api, store } = make([placed({ id: 'a' }), placed({ id: 'b', permissions: set() })])
+    await store.load()
+    await store.installMissing()
+    expect(api.installMissingWidgets).toHaveBeenCalledWith({
+      a: set({ subscriptions: ['homey:*'] }),
+      b: false,
+    })
+  })
+
+  it('keeps one result per widget and re-reads the index once', async () => {
+    const { api, store } = make([placed({ id: 'a' }), placed({ id: 'b' })], {
+      installMissingWidgets: vi.fn(async () => ({
+        results: [
+          { id: 'a', ok: true, version: '1.0.0' },
+          { id: 'b', ok: false, error: 'the downloaded package does not match the index' },
+        ],
+      })),
+    })
+    await store.load()
+    await store.installMissing()
+    expect(store.state.results.a).toEqual({ ok: true, version: '1.0.0' })
+    expect(store.state.results.b.error).toMatch(/does not match/)
+    expect(api.getMarketplace).toHaveBeenCalledTimes(2)
+    expect(store.state.updatingAll).toBe(false)
+  })
+
+  it('does nothing while a single install is in flight', async () => {
+    let release!: () => void
+    const gate = new Promise<void>((r) => { release = r })
+    const { api, store } = make([placed({ id: 'a' })], {
+      installWidget: vi.fn(async (id: string) => { await gate; return { ok: true as const, id, version: '1.0.0' } }),
+    })
+    await store.load()
+    const running = store.start(store.state.widgets[0])
+    await store.installMissing()
+    expect(api.installMissingWidgets).not.toHaveBeenCalled()
+    release()
+    await running
+  })
+
+  it('shows what went wrong when the whole request fails', async () => {
+    const { store } = make([placed({ id: 'a' })], {
+      installMissingWidgets: vi.fn(async () => { throw new Error('the registry could not be reached') }),
+    })
+    await store.load()
+    await store.installMissing()
+    expect(store.state.error).toMatch(/could not be reached/)
+    expect(store.state.updatingAll).toBe(false)
   })
 })

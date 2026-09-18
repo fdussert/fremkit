@@ -89,6 +89,7 @@ function reset(): void {
   m.state.updatingAll = false
   m.state.busy = null
   m.state.kind = 'widget'
+  m.state.installMissingOpen = false
   m.setView('available')
 }
 
@@ -328,6 +329,45 @@ describe('the update-all dialog', () => {
     await buttons[0].trigger('click')
     expect(wrapper.emitted('accept')).toHaveLength(1)
     expect(wrapper.emitted('cancel')).toHaveLength(1)
+    wrapper.unmount()
+  })
+})
+
+describe('the banner for widgets a screen is missing', () => {
+  async function panel(widgets: MarketplaceWidget[]): Promise<ReturnType<typeof mount>> {
+    serve(answer(widgets))
+    const wrapper = mount(MarketplacePanel, { attachTo: document.body })
+    await settle()
+    await wrapper.vm.$nextTick()
+    return wrapper
+  }
+
+  const placed = (over: Partial<MarketplaceWidget> = {}) =>
+    widget({ installed: false, installedVersion: null, updateAvailable: false, placedOn: ['Home'], ...over })
+
+  it('counts them and offers to install them', async () => {
+    const wrapper = await panel([placed({ id: 'a' }), placed({ id: 'b' })])
+    const banner = wrapper.find('.placed')
+    expect(banner.exists()).toBe(true)
+    expect(banner.text()).toContain('2')
+    await banner.find('button').trigger('click')
+    expect(useMarketplaceStore().state.installMissingOpen).toBe(true)
+    wrapper.unmount()
+  })
+
+  it('stays out of the way when every placed widget is installed', async () => {
+    const wrapper = await panel([placed({ id: 'a', installed: true, installedVersion: '2.0.0' })])
+    expect(wrapper.find('.placed').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('opens one dialog for the series, naming every widget', async () => {
+    const wrapper = await panel([placed({ id: 'a' }), placed({ id: 'b' })])
+    await wrapper.find('.placed button').trigger('click')
+    await wrapper.vm.$nextTick()
+    // The same dialog as "update all": one list, the permissions per widget, nothing downloaded
+    // before an answer — written once so the two cannot drift.
+    expect(wrapper.findAll('.entry')).toHaveLength(2)
     wrapper.unmount()
   })
 })

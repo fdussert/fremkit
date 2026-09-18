@@ -322,35 +322,22 @@ export async function marketplaceRoutes(app: FastifyInstance, opts: MarketplaceO
   })
 
   /**
-   * Updates every installed widget the registry has something newer for.
+   * A series of installs or updates, each through `installOne` and each under the per-id lock.
    *
-   * In sequence, each through `installOne` and each under the per-id lock, and **never stopping
-   * on a failure**: a run of five where the second package does not match its hash must still
-   * update the other four, and the answer has to say which was which. So the status is 200 with
-   * a result per widget rather than the first error — the caller paints them per row.
+   * **Never stops on a failure**: a run of five where the second package does not match its hash
+   * must still do the other four, and the answer has to say which was which. So the caller
+   * answers 200 with a result per widget rather than the first error, and paints them per row.
    */
-  app.post('/api/marketplace/update-all', async (req, reply) => {
-    if (isCrossSiteFetch(req.headers)) return reply.code(403).send({ errors: [tr(locale(), 'http.originNotAllowed')] })
-    const parsed = UpdateAllBody.safeParse(req.body)
-    if (!parsed.success) return reply.code(400).send(fail('marketplace.badRequest'))
-    const consents = parsed.data.consent
-
-    let index: RegistryIndex
-    try { index = await registry.index() } catch { return reply.code(503).send(fail('marketplace.unreachable')) }
-
-    const config = store.get()
-    // What the server itself thinks is waiting, not what the caller listed: a client asking to
-    // update something that is not installed, or not out of date, is asking for an install.
-    const waiting = index.widgets.filter((w) => {
-      const record = config.marketplace.installed[w.id]
-      return Boolean(record) && catalog.entry(w.id)?.source === 'installed'
-        && compareSemver(w.version, record.version) > 0
-    })
-
+  const runSeries = async (
+    widgets: IndexWidget[],
+    mode: 'install' | 'update',
+    consents: Record<string, Permissions | false>,
+    log: FastifyRequest['log'],
+  ): Promise<UpdateAllResult[]> => {
     const results: UpdateAllResult[] = []
-    for (const widget of waiting) {
+    for (const widget of widgets) {
       const out = await withLock(widget.id, () =>
-        installOne({ id: widget.id, consent: consents[widget.id] ?? false, mode: 'update' }, req.log))
+        installOne({ id: widget.id, consent: consents[widget.id] ?? false, mode }, log))
       if (out === null) { results.push({ id: widget.id, ok: false, error: tr(locale(), 'marketplace.busy') }); continue }
       if (out.status === 200) {
         results.push({ id: widget.id, ok: true, version: String(out.body.version ?? '') })
@@ -364,7 +351,56 @@ export async function marketplaceRoutes(app: FastifyInstance, opts: MarketplaceO
         ...(out.body.newPermissions ? { newPermissions: out.body.newPermissions as Permissions } : {}),
       })
     }
-    return reply.send({ results })
+    return results
+  }
+
+  /** The index, or a 503: both series routes need it before they can decide anything. */
+  const seriesIndex = async (reply: FastifyReply): Promise<RegistryIndex | null> => {
+    try { return await registry.index() }
+    catch { void reply.code(503).send(fail('marketplace.unreachable')); return null }
+  }
+
+  /** Updates every installed widget the registry has something newer for. */
+  app.post('/api/marketplace/update-all', async (req, reply) => {
+    if (isCrossSiteFetch(req.headers)) return reply.code(403).send({ errors: [tr(locale(), 'http.originNotAllowed')] })
+    const parsed = UpdateAllBody.safeParse(req.body)
+    if (!parsed.success) return reply.code(400).send(fail('marketplace.badRequest'))
+
+    const index = await seriesIndex(reply)
+    if (!index) return reply
+
+    const config = store.get()
+    // What the server itself thinks is waiting, not what the caller listed: a client asking to
+    // update something that is not installed, or not out of date, is asking for an install.
+    const waiting = index.widgets.filter((w) => {
+      const record = config.marketplace.installed[w.id]
+      return Boolean(record) && catalog.entry(w.id)?.source === 'installed'
+        && compareSemver(w.version, record.version) > 0
+    })
+    return reply.send({ results: await runSeries(waiting, 'update', parsed.data.consent, req.log) })
+  })
+
+  /**
+   * Installs every registry widget a screen already places and this machine does not have.
+   *
+   * The upgrade path for a dashboard built before a widget moved to the registry: the tiles are
+   * there, the folders are not, and doing them one at a time means reading the same consent
+   * dialog eight times. Which widgets those are is the server's answer, from its own config and
+   * its own catalogue — a client asking to install something nothing places is asking for an
+   * ordinary install, and gets the ordinary route.
+   */
+  app.post('/api/marketplace/install-missing', async (req, reply) => {
+    if (isCrossSiteFetch(req.headers)) return reply.code(403).send({ errors: [tr(locale(), 'http.originNotAllowed')] })
+    const parsed = UpdateAllBody.safeParse(req.body)
+    if (!parsed.success) return reply.code(400).send(fail('marketplace.badRequest'))
+
+    const index = await seriesIndex(reply)
+    if (!index) return reply
+
+    const config = store.get()
+    const missing = index.widgets.filter((w) =>
+      usedBy(config, w.id).length > 0 && catalog.entry(w.id) === undefined)
+    return reply.send({ results: await runSeries(missing, 'install', parsed.data.consent, req.log) })
   })
 
   app.post('/api/marketplace/uninstall', async (req, reply) => {

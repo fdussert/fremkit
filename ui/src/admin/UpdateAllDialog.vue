@@ -19,7 +19,17 @@ import { pick, useI18n } from '../shared/i18n'
 import { channelFamilies } from './permissions'
 import type { MarketplaceWidget, WidgetPermissionSet } from '../shared/types'
 
-const props = defineProps<{ entries: { widget: MarketplaceWidget; added: WidgetPermissionSet }[] }>()
+/**
+ * `title` and `confirm` are passed by the caller because the same dialog covers two series: the
+ * updates waiting, and the widgets a screen places that are not installed. The list, the
+ * per-widget permissions and the rule that nothing is downloaded before an answer are identical,
+ * and writing that twice is how the two would drift.
+ */
+const props = defineProps<{
+  entries: { widget: MarketplaceWidget; added: WidgetPermissionSet }[]
+  title?: string
+  confirm?: string
+}>()
 const emit = defineEmits<{ accept: []; cancel: [] }>()
 const { t } = useI18n()
 
@@ -41,7 +51,7 @@ const rows = computed(() => props.entries.map((e) => ({
 </script>
 
 <template>
-  <BaseModal :title="t('admin.market.updateAllTitle', { n: rows.length })" :width="560"
+  <BaseModal :title="props.title ?? t('admin.market.updateAllTitle', { n: rows.length })" :width="560"
     :close-label="t('admin.market.cancel')" @close="emit('cancel')">
     <p class="lead">{{ t('admin.market.updateAllLead') }}</p>
 
@@ -58,7 +68,7 @@ const rows = computed(() => props.entries.map((e) => ({
 
     <div class="actions">
       <BaseButton variant="secondary" @click="emit('cancel')">{{ t('admin.market.cancel') }}</BaseButton>
-      <BaseButton @click="emit('accept')">{{ t('admin.market.updateAll') }}</BaseButton>
+      <BaseButton @click="emit('accept')">{{ props.confirm ?? t('admin.market.updateAll') }}</BaseButton>
     </div>
   </BaseModal>
 </template>

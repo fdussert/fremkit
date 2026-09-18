@@ -87,6 +87,16 @@ export const api = {
     fetch('/api/marketplace/update-all', {
       method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ consent }),
     }).then((r) => json<{ results: { id: string; ok: boolean; version?: string; error?: string; newPermissions?: WidgetPermissionSet }[] }>(r)),
+  /**
+   * Installs every registry widget a screen already places and this machine does not have.
+   *
+   * Same answer shape as `updateAllWidgets`, and the same rule: which widgets those are is the
+   * server's answer from its own config, not a list the client gets to choose.
+   */
+  installMissingWidgets: (consent: Record<string, WidgetPermissionSet | false>) =>
+    fetch('/api/marketplace/install-missing', {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ consent }),
+    }).then((r) => json<{ results: { id: string; ok: boolean; version?: string; error?: string; newPermissions?: WidgetPermissionSet }[] }>(r)),
 
   /** The applications installed on this machine, for the fields a manifest marks `suggest: apps`. */
   getInstalledApps: () => fetch('/api/apps/installed').then((r) => json<InstalledAppInfo[]>(r)),

@@ -21,6 +21,7 @@ export interface MarketplaceApi {
   installWidget(id: string, opts?: { consent?: WidgetPermissionSet | false; version?: string; update?: boolean }): Promise<{ ok: true; id: string; version: string }>
   uninstallWidget(id: string): Promise<{ ok: true; id: string }>
   updateAllWidgets(consent: Record<string, WidgetPermissionSet | false>): Promise<{ results: ({ id: string } & UpdateResult)[] }>
+  installMissingWidgets(consent: Record<string, WidgetPermissionSet | false>): Promise<{ results: ({ id: string } & UpdateResult)[] }>
 }
 
 const NONE: WidgetPermissionSet = { subscriptions: [], commands: [], network: [] }
@@ -103,6 +104,8 @@ export interface MarketplaceState {
   updatingAll: boolean
   /** The "update all" dialog is open, listing what each waiting widget newly asks for. */
   updateAllOpen: boolean
+  /** The "install the missing ones" dialog is open. Same dialog, a different series behind it. */
+  installMissingOpen: boolean
 }
 
 /** What one widget's update came to. `newPermissions` means it was never attempted. */
@@ -119,6 +122,15 @@ export interface MarketplaceStore {
   shown: ComputedRef<MarketplaceWidget[]>
   /** Every installed widget with something newer waiting, whatever the view. */
   waiting: ComputedRef<MarketplaceWidget[]>
+  /**
+   * Every registry widget a screen already places and this machine does not have.
+   *
+   * The upgrade path for a dashboard built before a widget moved to the registry: its tiles are
+   * still there, painted as missing, and this is the list that puts them back.
+   */
+  missing: ComputedRef<MarketplaceWidget[]>
+  /** What the dialog for that series would have to list, per widget. */
+  installMissingPrompt: ComputedRef<{ widget: MarketplaceWidget; added: WidgetPermissionSet }[]>
   /** How many of those there are: the badge on the top bar. */
   updates: ComputedRef<number>
   /** The consent the dialog for "update all" would have to show, per widget. */
@@ -130,6 +142,9 @@ export interface MarketplaceStore {
   askUpdateAll(): void
   cancelUpdateAll(): void
   updateAll(): Promise<void>
+  askInstallMissing(): void
+  cancelInstallMissing(): void
+  installMissing(): Promise<void>
   /** Reopens the single-update dialog for a widget the series refused on consent. */
   review(widget: MarketplaceWidget): void
   /** Forgets what the last series came to; the panel closing ends that run's story. */
@@ -164,7 +179,12 @@ export function createMarketplaceStore(deps: MarketplaceDeps = {}): MarketplaceS
     widgets: [], registry: null, loaded: false, loading: false, offline: false,
     busy: null, error: '', search: '', view: 'available', kind: 'widget',
     consent: null, results: {}, updatingAll: false, updateAllOpen: false,
+    installMissingOpen: false,
   })
+
+  /** Placed on a screen, listed by the registry, and not here. */
+  const isMissing = (w: MarketplaceWidget): boolean => w.placedOn.length > 0 && !w.installed
+    && !w.sdkTooNew && !w.shadowsBuiltin
 
   /** The rows one view is made of, before the search box narrows them. */
   const inView = (): MarketplaceWidget[] => {
@@ -228,6 +248,11 @@ export function createMarketplaceStore(deps: MarketplaceDeps = {}): MarketplaceS
     state,
     shown: computed(() => inView().filter((w) => matches(w, state.search))),
     waiting: computed(() => state.widgets.filter((w) => w.updateAvailable)),
+    missing: computed(() => state.widgets.filter(isMissing)),
+    installMissingPrompt: computed(() => state.widgets
+      .filter(isMissing)
+      // Nothing is granted for a widget that is not installed, so the whole ask is what is new.
+      .map((w) => ({ widget: w, added: w.permissions }))),
     updates: computed(() => state.widgets.filter((w) => w.updateAvailable).length),
     /**
      * What a single dialog would have to list before updating everything.
@@ -355,6 +380,45 @@ export function createMarketplaceStore(deps: MarketplaceDeps = {}): MarketplaceS
     },
 
     clearResults(): void { state.results = {} },
+
+    askInstallMissing(): void {
+      if (!state.widgets.some(isMissing)) return
+      state.installMissingOpen = true
+    },
+
+    cancelInstallMissing(): void { state.installMissingOpen = false },
+
+    /**
+     * Installs everything a screen places and this machine does not have, in one request.
+     *
+     * The same shape as `updateAll` and for the same reason: one dialog rather than eight, the
+     * set each card listed sent per widget, and the server free to refuse the ones it was not
+     * given. A dashboard that predates the move to the registry is eight missing tiles, and
+     * eight consent dialogs in a row is not consent.
+     */
+    async installMissing(): Promise<void> {
+      state.installMissingOpen = false
+      if (state.updatingAll || state.busy) return
+      const missing = state.widgets.filter(isMissing)
+      if (!missing.length) return
+      state.updatingAll = true
+      state.error = ''
+      state.results = {}
+      try {
+        const consent: Record<string, WidgetPermissionSet | false> = {}
+        for (const w of missing) consent[w.id] = empty(w.permissions) ? false : w.permissions
+        const answer = await api.installMissingWidgets(consent)
+        const results: Record<string, UpdateResult> = {}
+        for (const { id, ...rest } of answer.results) results[id] = rest
+        state.results = results
+        take(await api.getMarketplace())
+        await deps.onChanged?.()
+      } catch (err) {
+        state.error = (err as Error).message
+      } finally {
+        state.updatingAll = false
+      }
+    },
 
     async uninstall(id: string): Promise<void> {
       await run(id, () => api.uninstallWidget(id))

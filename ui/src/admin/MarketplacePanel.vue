@@ -93,6 +93,16 @@ const empty = computed(() => {
       </BaseButton>
     </div>
 
+    <!-- A dashboard built before a widget moved to the registry has its tiles and not its
+         folders. That is the one state worth interrupting the list for: it is the reason the
+         panel was opened, and it is fixed in one press. -->
+    <div v-if="store.missing.value.length" class="placed">
+      <span>{{ t('admin.market.placedMissing', { n: store.missing.value.length }) }}</span>
+      <BaseButton variant="primary" :disabled="locked" @click="store.askInstallMissing()">
+        {{ t('admin.market.installMissing') }}
+      </BaseButton>
+    </div>
+
     <p v-if="store.state.offline" class="note warn">{{ t('admin.market.offline') }}</p>
     <p v-else-if="store.state.error" class="note warn">{{ store.state.error }}</p>
     <p v-if="store.state.loading && !store.state.loaded" class="note">{{ t('admin.market.loading') }}</p>
@@ -160,6 +170,10 @@ const empty = computed(() => {
       @accept="store.accept()" @cancel="store.cancel()" />
     <UpdateAllDialog v-else-if="store.state.updateAllOpen" :entries="store.updateAllPrompt.value"
       @accept="store.updateAll()" @cancel="store.cancelUpdateAll()" />
+    <UpdateAllDialog v-else-if="store.state.installMissingOpen" :entries="store.installMissingPrompt.value"
+      :title="t('admin.market.installMissingTitle', { n: store.missing.value.length })"
+      :confirm="t('admin.market.installMissing')"
+      @accept="store.installMissing()" @cancel="store.cancelInstallMissing()" />
   </div>
 </template>
 
@@ -168,6 +182,10 @@ const empty = computed(() => {
 .bar { display: flex; align-items: center; gap: var(--space-2); }
 .bar > :first-child { flex: 1; min-width: 0; }
 .kinds { width: 160px; }
+.placed { display: flex; align-items: center; gap: var(--space-3); font-size: var(--fs-sm);
+  padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm);
+  border: 1px solid var(--accent); background: var(--surface-2); }
+.placed span { flex: 1; min-width: 0; }
 .list { display: flex; flex-direction: column; gap: var(--space-2); }
 .row { align-items: flex-start; }
 .txt { display: flex; flex-direction: column; min-width: 0; flex: 1; }

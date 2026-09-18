@@ -606,3 +606,66 @@ describe('POST /api/marketplace/update-all', () => {
     expect((await updateAll()).statusCode).toBe(503)
   })
 })
+
+describe('POST /api/marketplace/install-missing', () => {
+  const installMissing = (consent: Record<string, unknown> = {}) =>
+    app.inject({ method: 'POST', url: '/api/marketplace/install-missing', payload: { consent } as never })
+
+  /** Puts a tile of `demo` on a page, which is what makes it missing rather than merely absent. */
+  const place = (id: string) => store.update((config) => ({
+    ...config,
+    pages: [{ id: 'a', name: 'Accueil', widgets: [
+      { instanceId: 'x', widgetId: id, x: 0, y: 0, w: 8, h: 4, showTitle: true, settings: {} },
+    ] }],
+  }))
+
+  it('installs what a screen places and this machine does not have', async () => {
+    await place('demo')
+    const res = await installMissing({ demo: set({ subscriptions: ['system'] }) })
+    expect(res.statusCode).toBe(200)
+    expect(res.json().results).toEqual([{ id: 'demo', ok: true, version: '1.0.0' }])
+    expect(await readFile(join(installedDir, 'demo', 'manifest.json'), 'utf8')).toContain('demo')
+  })
+
+  it('does nothing for a widget nothing places', async () => {
+    const res = await installMissing({ demo: set({ subscriptions: ['system'] }) })
+    expect(res.json().results).toEqual([])
+  })
+
+  it('leaves an already-installed widget alone, however many screens place it', async () => {
+    await place('demo')
+    await installMissing({ demo: set({ subscriptions: ['system'] }) })
+    // The second run has nothing to do: what is missing is the server's answer about its own
+    // catalogue, not a list the caller sent.
+    const again = await installMissing({ demo: set({ subscriptions: ['system'] }) })
+    expect(again.json().results).toEqual([])
+  })
+
+  it('refuses a widget whose consent was not the one shown, and says what it asks', async () => {
+    // The package has to *ask* for something: the consent is checked against the manifest inside
+    // the zip, never against the index entry that advertised it.
+    await app.close()
+    await build({ zip: packageOf(MANIFEST({ subscriptions: ['system'] })) })
+    await place('demo')
+    const res = await installMissing({})
+    const [result] = res.json().results as { ok: boolean; newPermissions?: { subscriptions: string[] } }[]
+    expect(result.ok).toBe(false)
+    expect(result.newPermissions?.subscriptions).toEqual(['system'])
+  })
+
+  it('refuses a cross-site call and a malformed body', async () => {
+    const cross = await app.inject({
+      method: 'POST', url: '/api/marketplace/install-missing',
+      headers: { 'sec-fetch-site': 'cross-site' }, payload: { consent: {} } as never,
+    })
+    expect(cross.statusCode).toBe(403)
+    const bad = await app.inject({ method: 'POST', url: '/api/marketplace/install-missing', payload: { consent: { demo: 'yes' } } as never })
+    expect(bad.statusCode).toBe(400)
+  })
+
+  it('answers 503 while the registry is unreachable', async () => {
+    await app.close()
+    await build({ offline: true })
+    expect((await installMissing()).statusCode).toBe(503)
+  })
+})
