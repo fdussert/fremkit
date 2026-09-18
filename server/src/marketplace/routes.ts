@@ -118,6 +118,23 @@ export async function marketplaceRoutes(app: FastifyInstance, opts: MarketplaceO
   const locale = (): Config['locale'] => store.get().locale
   const fail = (key: MessageKey): { errors: string[] } => ({ errors: [tr(locale(), key)] })
 
+  /**
+   * The widget ids currently being installed or removed.
+   *
+   * Two requests for the same id would race on the same folder: both stage, both rename, and
+   * which version survives depends on the order two `rename` calls happened to land in. The
+   * second is refused rather than queued — a person pressing Install twice wants one install,
+   * not two, and a queue would just make the duplicate arrive later.
+   */
+  const working = new Set<string>()
+
+  const exclusive = async (id: string, reply: FastifyReply, work: () => Promise<unknown>): Promise<unknown> => {
+    if (working.has(id)) return reply.code(409).send(fail('marketplace.busy'))
+    working.add(id)
+    try { return await work() }
+    finally { working.delete(id) }
+  }
+
   /** The index, plus what this machine makes of every row. `offline` when it could not be read. */
   const view = async (force = false): Promise<{ registry: string | null; generatedAt: string | null; widgets: MarketplaceEntry[]; offline: boolean; sdk: number }> => {
     let index: RegistryIndex | null = null
@@ -155,9 +172,9 @@ export async function marketplaceRoutes(app: FastifyInstance, opts: MarketplaceO
     if (!parsed.success) return reply.code(400).send(fail('marketplace.badRequest'))
     const { id, version, consent } = parsed.data
 
-    const local = catalog.entry(id)
-    // A built-in owns the id for good: no shadowing, whatever the registry publishes.
-    if (local?.source === 'builtin') return reply.code(409).send(fail('marketplace.builtinId'))
+    // The *folder* names, not the entries: a built-in whose manifest fails to parse is an error
+    // rather than an entry, and it would have freed its id for an installed widget to take.
+    if (catalog.builtinIds.has(id)) return reply.code(409).send(fail('marketplace.builtinId'))
     if (mode === 'update' && !store.get().marketplace.installed[id]) {
       return reply.code(409).send(fail('marketplace.notInstalled'))
     }
@@ -229,13 +246,31 @@ export async function marketplaceRoutes(app: FastifyInstance, opts: MarketplaceO
     return reply.send({ ok: true, id, version: pkg.manifest.version, consentedPermissions: asked })
   }
 
-  app.post('/api/marketplace/install', async (req, reply) => doInstall(req, reply, 'install'))
-  app.post('/api/marketplace/update', async (req, reply) => doInstall(req, reply, 'update'))
+  /** The id for the lock, read before the body is trusted for anything else. */
+  const lockId = (body: unknown): string | null => {
+    const id = (body as { id?: unknown } | null)?.id
+    return typeof id === 'string' && WIDGET_ID_RE.test(id) ? id : null
+  }
+
+  app.post('/api/marketplace/install', async (req, reply) => {
+    const id = lockId(req.body)
+    if (!id) return doInstall(req, reply, 'install')
+    return exclusive(id, reply, () => doInstall(req, reply, 'install'))
+  })
+  app.post('/api/marketplace/update', async (req, reply) => {
+    const id = lockId(req.body)
+    if (!id) return doInstall(req, reply, 'update')
+    return exclusive(id, reply, () => doInstall(req, reply, 'update'))
+  })
 
   app.post('/api/marketplace/uninstall', async (req, reply) => {
     const parsed = UninstallBody.safeParse(req.body)
     if (!parsed.success) return reply.code(400).send(fail('marketplace.badRequest'))
     const { id } = parsed.data
+    return exclusive(id, reply, () => doUninstall(id, req, reply))
+  })
+
+  const doUninstall = async (id: string, req: FastifyRequest, reply: FastifyReply): Promise<unknown> => {
     const config = store.get()
     if (!config.marketplace.installed[id] && catalog.entry(id)?.source !== 'installed') {
       return reply.code(404).send(fail('marketplace.notInstalled'))
@@ -255,6 +290,6 @@ export async function marketplaceRoutes(app: FastifyInstance, opts: MarketplaceO
       delete installed[id]
       return { ...c, marketplace: { ...c.marketplace, installed } }
     })
-    return { ok: true, id }
-  })
+    return reply.send({ ok: true, id })
+  }
 }

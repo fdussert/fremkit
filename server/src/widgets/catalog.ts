@@ -29,6 +29,15 @@ interface Root { dir: string; source: WidgetSource }
 export class WidgetCatalog {
   entries = new Map<string, CatalogEntry>()
   errors: CatalogError[] = []
+  /**
+   * Every id the built-in folder holds, whether or not its manifest could be read.
+   *
+   * The entries are not enough for "a built-in owns this id": a built-in whose manifest fails to
+   * parse lands in `errors`, has no entry, and would have let an installed widget take its name
+   * — so the next time the built-in was fixed, two folders would claim it. This is the set the
+   * installer refuses against.
+   */
+  builtinIds = new Set<string>()
 
   /**
    * The manifests alone, derived rather than stored: two maps to keep in step is one map too
@@ -57,6 +66,7 @@ export class WidgetCatalog {
   async scan(): Promise<void> {
     const entries = new Map<string, CatalogEntry>()
     const errors: CatalogError[] = []
+    const builtinIds = new Set<string>()
     for (const root of this.roots) {
       let ids: string[] = []
       try { ids = await readdir(root.dir) } catch { ids = [] }
@@ -68,6 +78,9 @@ export class WidgetCatalog {
         if (!WIDGET_ID_RE.test(id)) continue
         try {
           if (!(await stat(folder)).isDirectory()) continue
+          // Recorded before anything is parsed: the id is taken by the folder existing, not by
+          // its manifest being readable.
+          if (root.source === 'builtin') builtinIds.add(id)
           // Built-ins are read first and keep their id: a folder dropped into `data/widgets`
           // must never be able to stand in for the widget the user thinks they are running.
           // The installer refuses the same collision up front (409), so this is the second line.
@@ -86,6 +99,7 @@ export class WidgetCatalog {
       }
     }
     this.entries = entries
+    this.builtinIds = builtinIds
     this.errors = errors
   }
 }

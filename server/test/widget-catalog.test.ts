@@ -28,6 +28,14 @@ async function widget(id: string, manifest: unknown, withIndex = true) {
 const valid = (id: string) => ({ id, name: id, version: '1.0.0', minSize: [4, 2], defaultSize: [4, 2] })
 
 describe('WidgetCatalog with an installed folder', () => {
+  it('counts only the built-in folder in builtinIds', async () => {
+    await widget('clock', valid('clock'))
+    await into(installed, 'synology', valid('synology'))
+    const cat = new WidgetCatalog(dir, installed)
+    await cat.scan()
+    expect([...cat.builtinIds]).toEqual(['clock'])
+  })
+
   it('reads both folders and says which is which', async () => {
     await widget('clock', valid('clock'))
     await into(installed, 'synology', valid('synology'))
@@ -144,6 +152,19 @@ describe('WidgetCatalog', () => {
     expect(status.settingsSchema.interval.default).toBe(30)
     expect(status.settingsSchema.columns.default).toBe(2)
   })
+  it('remembers a built-in folder\'s id even when its manifest cannot be read', async () => {
+    // The id is taken by the folder existing, not by its manifest parsing — otherwise a broken
+    // built-in frees its name for an installed widget to take, and the next fix has two folders
+    // claiming it.
+    await widget('broken', '{ not json')
+    await widget('clock', valid('clock'))
+    const cat = new WidgetCatalog(dir)
+    await cat.scan()
+    expect(cat.entry('broken')).toBeUndefined()
+    expect(cat.errors.map((e) => e.id)).toEqual(['broken'])
+    expect([...cat.builtinIds].sort()).toEqual(['broken', 'clock'])
+  })
+
   it('marks every widget with the folder it came from', async () => {
     await widget('clock', valid('clock'))
     const cat = new WidgetCatalog(dir)

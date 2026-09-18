@@ -209,6 +209,24 @@ describe('POST /api/marketplace/install', () => {
     expect(res.json().errors[0]).toMatch(/built-in|intégré/)
   })
 
+  it('refuses an id a *broken* built-in owns, which has no catalogue entry at all', async () => {
+    // A built-in whose manifest fails to parse used to free its id: the installed widget took
+    // the name, and the next time the built-in was fixed two folders claimed it.
+    await app.close()
+    const zip = packageOf(MANIFEST({ id: 'broken' }))
+    await build({ zip, index: indexFor(zip, { id: 'broken' }) })
+    const folder = join(dir, 'builtins', 'broken')
+    await mkdir(folder, { recursive: true })
+    await writeFile(join(folder, 'manifest.json'), '{ not json')
+    await writeFile(join(folder, 'index.html'), '<html></html>')
+    await catalog.scan()
+    expect(catalog.entry('broken')).toBeUndefined()
+    expect(catalog.errors.map((e) => e.id)).toContain('broken')
+
+    const res = await install({ id: 'broken', consent: set() })
+    expect(res.statusCode).toBe(409)
+  })
+
   it('refuses a widget the index does not hold, and a version it no longer offers', async () => {
     expect((await install({ id: 'ghost', consent: set() })).statusCode).toBe(404)
     expect((await install({ id: 'demo', version: '0.1.0', consent: set() })).statusCode).toBe(404)
@@ -237,6 +255,48 @@ describe('POST /api/marketplace/install', () => {
       headers: { 'sec-fetch-site': 'cross-site' }, payload: { id: 'demo', consent: set() } as never,
     })
     expect(res.statusCode).toBe(403)
+  })
+
+  it('refuses a second install of the same widget while the first is running', async () => {
+    // Both would stage and both would rename, and which version survived would depend on the
+    // order two renames happened to land in.
+    await app.close()
+    let release!: () => void
+    const gate = new Promise<void>((r) => { release = r })
+    let downloading!: () => void
+    const reached = new Promise<void>((r) => { downloading = r })
+    const zip = packageOf()
+    const index = indexFor(zip)
+    dir = await mkdtemp(join(tmpdir(), 'marketplace-'))
+    installedDir = join(dir, 'widgets')
+    const builtins = join(dir, 'builtins')
+    await mkdir(builtins, { recursive: true })
+    const registry = new Registry({
+      url: INDEX_URL, isPrivate: async () => false,
+      fetch: (async (url: string) => {
+        if (url === INDEX_URL) return new Response(JSON.stringify(index))
+        downloading()
+        await gate
+        return new Response(new Uint8Array(zip))
+      }) as never,
+    })
+    store = new ConfigStore(join(dir, 'fremkit.json'))
+    await store.load()
+    catalog = new WidgetCatalog(builtins, installedDir)
+    await catalog.scan()
+    app = Fastify()
+    await app.register(marketplaceRoutes, { store, catalog, registry, installedDir })
+
+    const first = install({ id: 'demo', consent: set() })
+    // Not a tick: the lock is taken when the route body runs, which is after Fastify has
+    // routed the request. Waiting for the download to start is waiting for exactly that.
+    await reached
+    const second = await install({ id: 'demo', consent: set() })
+    expect(second.statusCode).toBe(409)
+    release()
+    expect((await first).statusCode).toBe(200)
+    // And the lock is released: a later one goes through.
+    expect((await install({ id: 'demo', consent: set() })).statusCode).toBe(200)
   })
 
   it('refuses a body it cannot read', async () => {
