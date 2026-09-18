@@ -9,13 +9,21 @@ of fields, configured once in the admin's **Connections** dialog and referenced 
 
 | Type | Fields | Used by |
 |---|---|---|
-| [Azure DevOps](#azure-devops) | organisation, project, personal access token | `ado-pipelines` |
-| [Bambu Lab](#bambu-lab) | IP address, serial number, access code, model | `bambu-job` |
-| [GitHub](#github) | API host, personal access token, repositories | `github-inbox`, `github-actions` |
-| [Homey Pro](#homey-pro) | address, API key | `homey-devices`, `homey-flows` |
+| [Azure DevOps](#azure-devops) | organisation, project, personal access token | `ado-pipelines` (on the sietch) |
+| [Bambu Lab](#bambu-lab) | IP address, serial number, access code, model | `bambu-job` (on the sietch) |
+| [GitHub](#github) | API host, personal access token, repositories | `github-inbox`, `github-actions` (on the sietch) |
+| [Homey Pro](#homey-pro) | address, API key | `homey-devices`, `homey-flows` (on the sietch) |
 | [ICS calendar](#ics-calendars) | calendar address, colour | `calendar` |
+| [Synology](#synology) | address, DSM account, password | `synology-storage`, `synology-system` (on the sietch) |
 
 Each connection has a **Test** button that does a real round trip and reports what it found.
+
+**A connection type is part of Fremkit; most of the widgets that read one are not.** The type
+holds the address and the secret, which is why it lives in the core, where a password can go to
+the keychain instead of into a page. The widget is HTML in a sandbox and is published on the
+[registry](https://github.com/fdussert/fremkit-sietch) — so creating a connection in the admin
+lists the widgets that read it, with an Install button beside the ones this machine does not
+have. Nothing else to set up.
 
 ## Where the values are kept
 
@@ -63,7 +71,7 @@ with — the widget stops working the day it expires, and the test then says the
 The token is sent as the password of an HTTP Basic pair with an empty user name, which is what
 `dev.azure.com` expects, over https. It is stored as a secret and never logged.
 
-Used by [`ado-pipelines`](widgets.md#ado-pipelines).
+Used by [`ado-pipelines`](widgets.md#ado-pipelines), on the sietch.
 
 ## Bambu Lab
 
@@ -116,7 +124,7 @@ verify against. It is worth knowing if the Fremkit machine shares a network with
 not control, in which case a printer on its own VLAN is the answer. Pinning the certificate the
 printer first presented would narrow the window to the first connection; it is not implemented.
 
-Used by [`bambu-job`](widgets.md#bambu-job).
+Used by [`bambu-job`](widgets.md#bambu-job), on the sietch.
 
 ## GitHub
 
@@ -188,7 +196,7 @@ would cost two extra calls per pull request every minute. The `github-actions` w
 state instead.
 
 Used by [`github-inbox`](widgets.md#github-inbox) and
-[`github-actions`](widgets.md#github-actions).
+[`github-actions`](widgets.md#github-actions), both on the sietch.
 
 ## Homey Pro
 
@@ -214,7 +222,7 @@ snapshot on screen, dimmed, and retries after five seconds. Advanced Flows and f
 exist on recent firmware; their absence costs a label, not the connection.
 
 Used by [`homey-devices`](widgets.md#homey-devices) and
-[`homey-flows`](widgets.md#homey-flows).
+[`homey-flows`](widgets.md#homey-flows), both on the sietch.
 
 ## Synology
 

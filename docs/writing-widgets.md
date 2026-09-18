@@ -378,8 +378,13 @@ compact rendering should still be worth looking at as a tile.
 
 Every widget in `widgets/` is a working example. In increasing order of complexity: `memory` (one
 channel, no settings), `clock` (a `list`, localised formatting, two compact widths),
-`homey-devices` (a connection, a `pick`, commands, a compact mode), `bambu-job` (a connection, an
-image stream, nested state).
+`calendar` (several connections at once, localised dates), `shortcuts` (a `list` of typed items,
+commands, suggestions read from the machine).
+
+For a connection, a `pick` and a compact mode in one widget, read
+[`homey-devices`](https://github.com/fdussert/fremkit-sietch/tree/main/widgets/homey-devices) on
+the registry; for an image stream and nested state,
+[`bambu-job`](https://github.com/fdussert/fremkit-sietch/tree/main/widgets/bambu-job).
 
 ## Publishing it
 
