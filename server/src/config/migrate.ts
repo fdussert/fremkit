@@ -1,3 +1,4 @@
+import { BUILTIN_THEME } from '../themes/theme.js'
 import { z } from 'zod'
 import { ConfigSchema, defaultLocale, WIDGET_ID_RE, type Config } from './schema.js'
 import { defaultSecretsBackend } from '../secrets/index.js'
@@ -103,6 +104,7 @@ export function migrateConfig(raw: unknown): Config {
       rows: v1.display.rows * s,
       cell: Math.max(1, Math.round(v1.display.cell / s)),
       autoCycleSeconds: v1.display.autoCycleSeconds,
+      theme: BUILTIN_THEME,
     },
     connections: [],
     secrets: { backend: defaultSecretsBackend() },

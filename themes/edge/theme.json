@@ -1,0 +1,38 @@
+{
+  "id": "edge",
+  "name": "Edge",
+  "version": "1.0.0",
+  "description": {
+    "fr": "Panneau de contrôle : graphite anodisé, sérigraphie crème, texte lisible à un bras de distance",
+    "en": "Control panel: anodised graphite, cream legends, text you can read at arm's length"
+  },
+  "tokens": {
+    "bg": "#1b2026",
+    "surface": "#13171b",
+    "surface-2": "#1f252c",
+    "surface-3": "#252c34",
+    "border": "#262d35",
+    "border-strong": "#39424d",
+    "text": "#ebe4d3",
+    "text-muted": "#8a929a",
+    "text-dim": "#6b737c",
+    "accent": "#ffae42",
+    "accent-hover": "#ffc46f",
+    "accent-2": "#c07a1e",
+    "on-accent": "#1b2026",
+    "danger": "#ff6b5e",
+    "ok": "#7ee08f",
+    "warn": "#ff8f3c",
+    "font": "'Avenir Next', -apple-system, BlinkMacSystemFont, system-ui, sans-serif",
+    "font-mono": "ui-monospace, 'SF Mono', Menlo, monospace",
+    "fs-xs": "15px",
+    "fs-sm": "17px",
+    "fs-md": "19px",
+    "fs-lg": "24px",
+    "radius-sm": "10px",
+    "radius-md": "14px",
+    "shadow": "0 10px 28px rgba(0, 0, 0, .45)",
+    "ring": "0 0 0 2px rgba(255, 174, 66, .55)",
+    "text-scale": 1.25
+  }
+}

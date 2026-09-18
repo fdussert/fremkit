@@ -49,6 +49,7 @@ const app = await buildApp({
   dataDir,
   widgetsDir: `${root}/widgets`,
   ...(registryUrl ? { registryUrl, registryDev: true } : {}),
+  themesDir: `${root}/themes`,
   uiDist: `${root}/ui/dist`,
   providers,
   logger: true,

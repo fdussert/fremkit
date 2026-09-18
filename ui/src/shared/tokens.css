@@ -18,6 +18,9 @@
   --ok: #2fb36b;
   /* Pushed towards orange: a yellow warning would read as the sand accent. */
   --warn: #f08c3c;
+  --font-mono: ui-monospace, 'SF Mono', Menlo, monospace;
+  /* Widgets size their own text from the tile; a theme scales it through this multiplier. */
+  --text-scale: 1;
   --font: -apple-system, BlinkMacSystemFont, 'Inter', system-ui, sans-serif;
   --fs-xs: 12px;
   --fs-sm: 13px;

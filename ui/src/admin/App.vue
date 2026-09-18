@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted } from 'vue'
+import { computed, onMounted, onUnmounted } from 'vue'
 import { useI18n } from '../shared/i18n'
 import { useAdminStore } from './store'
 import Sidebar from './Sidebar.vue'
@@ -12,9 +12,12 @@ import ScreenInspector from './ScreenInspector.vue'
 import ConnectionsInspector from './ConnectionsInspector.vue'
 import MarketplacePanel from './MarketplacePanel.vue'
 import { fits, moveRect, resizeRect } from './layout'
+import { useConfigTheme } from '../shared/theme'
 
 const s = useAdminStore()
 const { t } = useI18n()
+// The editor wears the theme it edits, so a tile looks here like it does on the screen.
+useConfigTheme(computed(() => s.state.config))
 
 /** True while the user is typing: shortcuts must not steal those keys. */
 function inField(target: EventTarget | null): boolean {

@@ -48,6 +48,8 @@ export interface Background { color?: string; image?: string; fit?: BackgroundFi
 export type NavHeight = 80 | 40
 export interface Display {
   cols: number; rows: number; cell: number; autoCycleSeconds: number
+  /** Id of a theme in `themes/`; an unknown id paints the built-in one. */
+  theme?: string
   /** Absent means `DEFAULT_NAV_HEIGHT`; the default is stored as a missing key. */
   navHeight?: NavHeight
   /** Opacity of the navigation bar's background, 0–1; absent means solid. */
@@ -375,6 +377,17 @@ export interface WidgetsResponse {
   /** The SDK generation this server speaks; a manifest asking for more needs a newer Fremkit. */
   sdk: number
 }
+
+/** A theme as the server serves it: its manifest, plus the custom properties it resolves to. */
+export interface ThemeInfo {
+  id: string
+  name: LocalizedText
+  version: string
+  description?: LocalizedText
+  tokens: Record<string, string | number>
+  variables: Record<string, string>
+}
+export interface ThemesResponse { themes: Record<string, ThemeInfo>; errors: { id: string; error: string }[] }
 export interface WidgetSize { w: number; h: number; px: { width: number; height: number } }
 
 export function mergeSettings(manifest: WidgetManifest | undefined, settings: Record<string, unknown>): Record<string, unknown> {
