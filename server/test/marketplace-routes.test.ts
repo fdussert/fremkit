@@ -105,6 +105,25 @@ describe('GET /api/marketplace', () => {
     expect(w.newPermissions.subscriptions).toEqual(['system'])
   })
 
+  it('names the pages a widget is placed on, installed or not', async () => {
+    // The whole point of the field: a dashboard built before a widget moved to the registry has
+    // a tile of it, painted as missing, and this is what lets the admin offer the install.
+    await store.update((config) => ({
+      ...config,
+      pages: [{ id: 'a', name: 'Accueil', widgets: [
+        { instanceId: 'x', widgetId: 'demo', x: 0, y: 0, w: 8, h: 4, showTitle: true, settings: {} },
+      ] }],
+    }))
+    const w = (await app.inject({ url: '/api/marketplace' })).json().widgets[0]
+    expect(w.installed).toBe(false)
+    expect(w.placedOn).toEqual(['Accueil'])
+  })
+
+  it('leaves it empty for a widget nothing places', async () => {
+    const w = (await app.inject({ url: '/api/marketplace' })).json().widgets[0]
+    expect(w.placedOn).toEqual([])
+  })
+
   it('says it is offline rather than answering an empty registry', async () => {
     await app.close()
     await build({ offline: true })

@@ -16,7 +16,7 @@ function widget(over: Partial<MarketplaceWidget> = {}): MarketplaceWidget {
     installed: false, installedVersion: null, updateAvailable: false,
     sdkTooNew: false, consentNeeded: false,
     newPermissions: { subscriptions: [], commands: [], network: [] },
-    shadowsBuiltin: false,
+    shadowsBuiltin: false, placedOn: [],
     ...over,
   }
 }

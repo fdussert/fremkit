@@ -29,7 +29,7 @@ function widget(over: Partial<MarketplaceWidget> = {}): MarketplaceWidget {
     installed: true, installedVersion: '1.0.0', updateAvailable: true,
     sdkTooNew: false, consentNeeded: false,
     newPermissions: { subscriptions: [], commands: [], network: [] },
-    shadowsBuiltin: false,
+    shadowsBuiltin: false, placedOn: [],
     ...over,
   }
 }

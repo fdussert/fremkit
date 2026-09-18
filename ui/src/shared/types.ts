@@ -351,6 +351,13 @@ export interface MarketplaceWidget {
   newPermissions: WidgetPermissionSet
   /** A built-in already owns this id, so it can never be installed. */
   shadowsBuiltin: boolean
+  /**
+   * The pages an instance of this widget sits on, by name. Empty for almost every row.
+   *
+   * Non-empty on a widget that is *not* installed means a tile somewhere paints as missing —
+   * which is the whole upgrade path for a dashboard built before a widget moved to the registry.
+   */
+  placedOn: string[]
 }
 
 export interface MarketplaceResponse {

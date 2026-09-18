@@ -94,6 +94,15 @@ export interface MarketplaceEntry extends IndexWidget {
   newPermissions: Permissions
   /** A built-in already owns this id, so it can never be installed. */
   shadowsBuiltin: boolean
+  /**
+   * The pages this widget is placed on, by name — empty for almost every row.
+   *
+   * A dashboard can hold an instance of a widget that is not installed: the widget moved to the
+   * registry, or the config came from another machine. The tile then paints as missing, and
+   * without this nobody could tell the admin that the thing it is missing is one click away.
+   * The same list an uninstall uses to say what it would break, computed for every row at once.
+   */
+  placedOn: string[]
 }
 
 function entryFor(widget: IndexWidget, config: Config, catalog: WidgetCatalog): MarketplaceEntry {
@@ -119,6 +128,7 @@ function entryFor(widget: IndexWidget, config: Config, catalog: WidgetCatalog): 
     consentNeeded: !isEmpty(added),
     newPermissions: added,
     shadowsBuiltin: local?.source === 'builtin',
+    placedOn: usedBy(config, widget.id),
   }
 }
 
