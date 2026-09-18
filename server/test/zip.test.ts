@@ -83,6 +83,31 @@ describe('readZip refuses a hostile archive', () => {
     expect(() => readZip(zip)).toThrow(/unsupported compression/)
   })
 
+  it('refuses a stored entry whose two sizes disagree', () => {
+    // A stored entry *is* its output, so the two sizes are one fact stated twice. Claiming to
+    // expand to nothing while carrying 50 kB is how a bomb hides from a budget kept in output
+    // bytes: two hundred such records, one payload, gigabytes allocated.
+    const raw = Buffer.alloc(50_000, 0x41)
+    const zip = handBuilt([{ name: 'a', raw, method: 0, crc: crc32(raw), size: 0 }])
+    expect(() => readZip(zip)).toThrow(/corrupt/)
+  })
+
+  it('charges a stored entry what it actually costs, not what it says it expands to', () => {
+    const raw = Buffer.alloc(2000, 0x41)
+    const zip = handBuilt([{ name: 'a', raw, method: 0, crc: crc32(raw), size: 2000 }])
+    expect(() => readZip(zip, { maxTotalBytes: 1000 })).toThrow(/too large/)
+    expect(readZip(zip, { maxTotalBytes: 4000 })[0].data.byteLength).toBe(2000)
+  })
+
+  it('refuses two directory records pointing at the same local entry', () => {
+    // Each record is charged once, so a hundred of them aimed at one payload would read and copy
+    // it a hundred times while the budget only ever saw one entry's worth.
+    const raw = Buffer.alloc(1000, 0x41)
+    const one = { name: 'a', raw, method: 0, crc: crc32(raw), size: 1000 }
+    const zip = handBuilt([one, { ...one, name: 'b', at: 0 }])
+    expect(() => readZip(zip)).toThrow(/claimed twice/)
+  })
+
   it('refuses a zip64 archive instead of misreading its offsets', () => {
     const zip = writeZip([entry('a.txt', 'hello')])
     const eocd = zip.byteLength - 22
@@ -93,7 +118,7 @@ describe('readZip refuses a hostile archive', () => {
 })
 
 /** A zip built by hand, so a test can produce entries writeZip never writes. */
-function handBuilt(items: { name: string; raw: Buffer; method: number; crc: number; size: number; flags?: number }[]): Buffer {
+function handBuilt(items: { name: string; raw: Buffer; method: number; crc: number; size: number; flags?: number; at?: number }[]): Buffer {
   const locals: Buffer[] = []
   const centrals: Buffer[] = []
   let offset = 0
@@ -120,7 +145,7 @@ function handBuilt(items: { name: string; raw: Buffer; method: number; crc: numb
     central.writeUInt32LE(item.raw.byteLength, 20)
     central.writeUInt32LE(item.size, 24)
     central.writeUInt16LE(name.byteLength, 28)
-    central.writeUInt32LE(offset, 42)
+    central.writeUInt32LE(item.at ?? offset, 42)
     centrals.push(central, name)
     offset += local.byteLength + name.byteLength + item.raw.byteLength
   }

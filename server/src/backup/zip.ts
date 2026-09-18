@@ -121,8 +121,10 @@ function findEocd(buf: Buffer): number {
  * The entries of an archive.
  *
  * `maxEntries` and `maxTotalBytes` bound what a hostile archive can make the server allocate: a
- * few hundred bytes of headers can claim gigabytes of output, which is the zip bomb. Every
- * refusal is a `ZipError` naming nothing but the reason.
+ * few hundred bytes of headers can claim gigabytes of output, which is the zip bomb. The budget is
+ * charged what an entry actually costs — a deflated entry expands to `uncompressedSize`, a stored
+ * one *is* its `compressedSize` whatever it claims to expand to — and each local entry may be
+ * charged for only once. Every refusal is a `ZipError` naming nothing but the reason.
  */
 export function readZip(buf: Buffer, limits: { maxEntries?: number; maxTotalBytes?: number } = {}): ZipEntry[] {
   const maxEntries = limits.maxEntries ?? 512
@@ -142,6 +144,14 @@ export function readZip(buf: Buffer, limits: { maxEntries?: number; maxTotalByte
   const entries: ZipEntry[] = []
   let total = 0
   let at = directoryAt
+  /**
+   * Local-header offsets already claimed.
+   *
+   * The budget below is spent once per central-directory record, but nothing stops two hundred
+   * records pointing at the *same* local entry: one 50 MB payload, read and copied once per record.
+   * An offset belongs to one entry.
+   */
+  const seen = new Set<number>()
   for (let i = 0; i < count; i++) {
     if (at + 46 > buf.byteLength || buf.readUInt32LE(at) !== CENTRAL_SIG) throw new ZipError('truncated archive')
     const flags = buf.readUInt16LE(at + 8)
@@ -159,9 +169,16 @@ export function readZip(buf: Buffer, limits: { maxEntries?: number; maxTotalByte
     // Bit 0 is "encrypted". Nothing here can decrypt, and a half-read entry is worse than none.
     if (flags & 0x1) throw new ZipError('encrypted entries are not supported')
     if (method !== METHOD_STORE && method !== METHOD_DEFLATE) throw new ZipError('unsupported compression')
-    total += uncompressedSize
+    // A stored entry is its own output: the two sizes are the same thing said twice, and a record
+    // claiming otherwise is describing an entry that cannot exist. Refusing it is also what keeps
+    // the budget honest, since a stored entry costs `compressedSize` however small it says it
+    // expands to — the accounting below says so in its own right.
+    if (method === METHOD_STORE && compressedSize !== uncompressedSize) throw new ZipError('an entry is corrupt')
+    total += method === METHOD_STORE ? compressedSize : uncompressedSize
     if (total > maxTotalBytes) throw new ZipError('archive contents too large')
 
+    if (seen.has(localAt)) throw new ZipError('an entry is claimed twice')
+    seen.add(localAt)
     if (localAt + 30 > buf.byteLength || buf.readUInt32LE(localAt) !== LOCAL_SIG) throw new ZipError('truncated archive')
     const localNameLength = buf.readUInt16LE(localAt + 26)
     const localExtraLength = buf.readUInt16LE(localAt + 28)
