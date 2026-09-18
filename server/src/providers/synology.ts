@@ -94,7 +94,6 @@ export const LOGIN_REFUSALS: Record<number, MessageKey> = {
   409: 'synology.passwordExpired',
   410: 'synology.passwordExpired',
 }
-const AUTH_FAILED = new Set([...Object.keys(LOGIN_REFUSALS).map(Number), 403, 406])
 /**
  * DSM's "a one-time code is required", which only arrives once the password was accepted.
  *
@@ -104,7 +103,23 @@ const AUTH_FAILED = new Set([...Object.keys(LOGIN_REFUSALS).map(Number), 403, 40
 export const OTP_REQUIRED = 403
 const OTP_REQUIRED_CODES = new Set([OTP_REQUIRED, 406])
 
-/** The message for a refused login, falling back to the catch-all for a code DSM added since. */
+/**
+ * Every code that means "this login was refused", derived rather than listed a second time.
+ *
+ * The two lists above are the whole set: a code in neither is not a login refusal at all, and
+ * falls through to `answer` — which is the right answer for it, because a number this file has
+ * never seen is not something to translate into advice.
+ */
+const AUTH_FAILED = new Set([...Object.keys(LOGIN_REFUSALS).map(Number), ...OTP_REQUIRED_CODES])
+
+/**
+ * The message for a refused login.
+ *
+ * Every code that reaches an `auth` error is in the table by construction — `AUTH_FAILED` is
+ * built from it — so the fallback is not a guess about DSM's numbering. It is there because the
+ * argument is a `SynologyError`'s `code`, which the type says may be null, and a total function
+ * is cheaper than a cast at the one call site.
+ */
 export function loginRefusal(code: number | null): MessageKey {
   return (code !== null && LOGIN_REFUSALS[code]) || 'synology.unauthorized'
 }

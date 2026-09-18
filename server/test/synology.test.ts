@@ -6,6 +6,7 @@ import {
   SynologyClient,
   SynologyError,
   createSynologyProvider,
+  loginRefusal,
   cpuPercent,
   parseHost,
   toSnapshot,
@@ -515,9 +516,19 @@ describe('the synology connection type', () => {
     if (result.ok) expect(result.detail).toMatch(/double authentification|two-factor/)
   })
 
-  it('falls back to the catch-all for a code DSM has added since', async () => {
+  it('does not pretend to explain a code that is not a login refusal', async () => {
+    // 405 is in neither list, so it is not an `auth` error at all: it falls through to `answer`,
+    // and "this is not a DSM" is the honest thing to say about a number this file has never seen.
     const result = await synologyType.test(fields, { password: 'pw' }, { transport: refusingLogin(405) })
     expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.error).toMatch(/pas un DSM|not a DSM/)
+  })
+
+  it('answers something for a code with no message, which is what the null case is for', () => {
+    // Unreachable through `test()` — every `auth` code is in the table by construction — but
+    // `SynologyError.code` is typed nullable, so the function has to be total.
+    expect(loginRefusal(null)).toBe('synology.unauthorized')
+    expect(loginRefusal(999)).toBe('synology.unauthorized')
   })
 
   it('says so when the account lacks a privilege, rather than blaming the password', async () => {
