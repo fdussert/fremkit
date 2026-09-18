@@ -40,7 +40,7 @@ does not validate is reported there rather than silently ignored.
 |---|---|---|
 | `id` | yes | Matches the folder name |
 | `name` | yes | Shown in the widget library and as the tile's default title |
-| `version` | yes | Any non-empty string |
+| `version` | yes | A semver number — `1.2.0`, `1.0.0-rc.1`. The marketplace orders releases by it |
 | `description` | no | One line in the widget library. Default `""` |
 | `icon` | no | A [Lucide](https://lucide.dev) icon name. Default `layout-grid` |
 | `minSize` | no | `[cols, rows]` in grid cells; the editor refuses anything smaller. Default `[4, 2]` |
@@ -50,6 +50,10 @@ does not validate is reported there rather than silently ignored.
 | `commands` | no | The channels it may send commands to. Default `[]` |
 | `permissions.network` | no | Hosts `Fremkit.fetch` may reach. Default `[]` |
 | `settingsSchema` | no | The settings the admin offers — see below. Default `{}` |
+| `sdk` | no | The bridge generation the widget needs (`Fremkit.sdk`). Default `1`; a widget asking for more than the server has is refused at install |
+| `homepage` | no | An `https` URL, shown in the admin. Never fetched, never executed |
+| `author` | no | A name, shown in the admin |
+| `license` | no | An [SPDX](https://spdx.org/licenses/) identifier — `MIT`, `Apache-2.0` |
 
 Legacy manifests may declare `sizes` instead of `minSize`; the server converts them, doubling the
 coordinates for the current grid.
@@ -165,6 +169,7 @@ Fremkit.whenReady(() => {
 
 | Name | What it is |
 |---|---|
+| `Fremkit.sdk` | The bridge generation this Fremkit speaks, as a number |
 | `Fremkit.instanceId` | This instance's id |
 | `Fremkit.settings` | The settings object, manifest defaults merged in |
 | `Fremkit.locale` | `'fr'` or `'en'` |

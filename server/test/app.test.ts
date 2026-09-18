@@ -15,7 +15,7 @@ let app: FastifyInstance
 beforeEach(async () => {
   dir = await mkdtemp(join(tmpdir(), 'fremkit-app-'))
   await mkdir(join(dir, 'widgets', 'clock'), { recursive: true })
-  await writeFile(join(dir, 'widgets', 'clock', 'manifest.json'), JSON.stringify({ id: 'clock', name: 'Clock', version: '1', minSize: [8, 4], defaultSize: [16, 4] }))
+  await writeFile(join(dir, 'widgets', 'clock', 'manifest.json'), JSON.stringify({ id: 'clock', name: 'Clock', version: '1.0.0', minSize: [8, 4], defaultSize: [16, 4] }))
   await writeFile(join(dir, 'widgets', 'clock', 'index.html'), '<!doctype html><html><head><title>c</title></head><body>hi</body></html>')
   await writeFile(join(dir, 'widgets', 'clock', 'style.css'), 'body{color:red}')
   app = await buildApp({ dataDir: join(dir, 'data'), widgetsDir: join(dir, 'widgets') })
@@ -148,7 +148,7 @@ describe('widget routes', () => {
   })
   it('POST /api/widgets/rescan picks up new widgets', async () => {
     await mkdir(join(dir, 'widgets', 'cpu'))
-    await writeFile(join(dir, 'widgets', 'cpu', 'manifest.json'), JSON.stringify({ id: 'cpu', name: 'CPU', version: '1', minSize: [8, 4], defaultSize: [8, 4] }))
+    await writeFile(join(dir, 'widgets', 'cpu', 'manifest.json'), JSON.stringify({ id: 'cpu', name: 'CPU', version: '1.0.0', minSize: [8, 4], defaultSize: [8, 4] }))
     await writeFile(join(dir, 'widgets', 'cpu', 'index.html'), '<html></html>')
     const res = await app.inject({ method: 'POST', url: '/api/widgets/rescan' })
     expect(Object.keys(res.json().widgets).sort()).toEqual(['clock', 'cpu'])

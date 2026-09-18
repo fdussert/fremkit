@@ -215,6 +215,10 @@ export interface Compact { width: number }
 
 export interface WidgetManifest {
   id: string; name: LocalizedText; version: string; description: LocalizedText; icon: string
+  /** The SDK generation the widget needs; 1 for everything written before the marketplace. */
+  sdk: number
+  /** Shown beside the widget and never executed: a link, a name, an SPDX identifier. */
+  homepage?: string; author?: string; license?: string
   minSize: [number, number]; defaultSize: [number, number]
   /** Absent when the widget is only ever drawn as a tile, never in the navigation bar. */
   compact?: Compact
@@ -301,7 +305,11 @@ export function fieldsInScope(
   return out
 }
 
-export interface WidgetsResponse { widgets: Record<string, WidgetManifest>; errors: { id: string; error: string }[] }
+export interface WidgetsResponse {
+  widgets: Record<string, WidgetManifest>; errors: { id: string; error: string }[]
+  /** The SDK generation this server speaks; a manifest asking for more needs a newer Fremkit. */
+  sdk: number
+}
 export interface WidgetSize { w: number; h: number; px: { width: number; height: number } }
 
 export function mergeSettings(manifest: WidgetManifest | undefined, settings: Record<string, unknown>): Record<string, unknown> {

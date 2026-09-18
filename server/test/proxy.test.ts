@@ -55,7 +55,7 @@ afterAll(() => upstream.close())
  */
 function app(network: string[], opts: { real?: boolean } = {}) {
   const catalog = new WidgetCatalog('/nonexistent')
-  const manifest = ManifestSchema.parse({ id: 'weather', name: 'W', version: '1', minSize: [4, 2], defaultSize: [4, 2], permissions: { network: ['api.example.com'] } })
+  const manifest = ManifestSchema.parse({ id: 'weather', name: 'W', version: '1.0.0', minSize: [4, 2], defaultSize: [4, 2], permissions: { network: ['api.example.com'] } })
   // Written past the schema on purpose: a manifest could not declare a private host (see below).
   manifest.permissions.network = network
   catalog.manifests.set('weather', manifest)
@@ -155,7 +155,7 @@ describe('proxy hardening', () => {
 
 describe('permissions.network in a manifest', () => {
   const parse = (network: string[]) =>
-    ManifestSchema.safeParse({ id: 'w', name: 'W', version: '1', minSize: [4, 2], defaultSize: [4, 2], permissions: { network } })
+    ManifestSchema.safeParse({ id: 'w', name: 'W', version: '1.0.0', minSize: [4, 2], defaultSize: [4, 2], permissions: { network } })
 
   it('refuses a private or local address', async () => {
     for (const host of ['127.0.0.1', '0.0.0.0', '10.1.2.3', '192.168.1.1',

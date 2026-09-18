@@ -5,6 +5,7 @@ import { join, normalize } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { WIDGET_ID_RE } from '../config/schema.js'
 import type { WidgetCatalog } from './catalog.js'
+import { SDK_VERSION } from '../bridge/sdk.js'
 import { tr } from '../i18n.js'
 
 const BRIDGE_PATH = fileURLToPath(new URL('../bridge/fremkit.js', import.meta.url))
@@ -54,11 +55,19 @@ export async function widgetRoutes(app: FastifyInstance, opts: { catalog: Widget
 
   app.get('/fremkit.js', async (_req, reply) => reply.type('application/javascript; charset=utf-8').send(bridge))
 
-  app.get('/api/widgets', async () => ({ widgets: Object.fromEntries(opts.catalog.manifests), errors: opts.catalog.errors }))
+  /**
+   * The catalogue, and the SDK generation it is being read against: a manifest declaring more
+   * than `sdk` needs a newer Fremkit, and saying so is the admin's job, which means the admin has
+   * to be told the number rather than guess it from the server's own version.
+   */
+  const answer = (): { widgets: Record<string, unknown>; errors: unknown[]; sdk: number } =>
+    ({ widgets: Object.fromEntries(opts.catalog.manifests), errors: opts.catalog.errors, sdk: SDK_VERSION })
+
+  app.get('/api/widgets', async () => answer())
 
   app.post('/api/widgets/rescan', async () => {
     await opts.catalog.scan()
-    return { widgets: Object.fromEntries(opts.catalog.manifests), errors: opts.catalog.errors }
+    return answer()
   })
 
   app.get<{ Params: { id: string; '*': string } }>('/widgets/:id/*', async (req, reply) => {

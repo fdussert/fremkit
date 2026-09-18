@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { readFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
+import { SDK_VERSION } from '../src/bridge/sdk.js'
 
 /**
  * The bridge is a plain browser script, injected into every widget. It is evaluated here against
@@ -8,6 +9,7 @@ import { fileURLToPath } from 'node:url'
  * widget now relies on for escaping can be exercised without a DOM.
  */
 interface Bridge {
+  sdk: number
   esc(value: unknown): string
   el(tag: string, className?: string, text?: unknown): { tagName: string; className: string; textContent: string }
   color(value: unknown, fallback?: string): string | null
@@ -58,6 +60,15 @@ async function loadBridge(): Promise<LoadResult> {
 
 const loaded = await loadBridge()
 const F = loaded.bridge
+
+describe('Fremkit.sdk', () => {
+  it('is the generation the server says it speaks', () => {
+    // The bridge is a plain browser script and cannot import the constant, so it repeats it as a
+    // literal. A bump on one side and not the other would have the server accept a manifest the
+    // bridge cannot honour, which is exactly what the number exists to prevent.
+    expect(F.sdk).toBe(SDK_VERSION)
+  })
+})
 
 describe('Fremkit.esc', () => {
   it('neutralises the markup a remote string can carry', () => {

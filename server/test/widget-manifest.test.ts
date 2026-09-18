@@ -4,6 +4,46 @@ import { ManifestSchema } from '../src/widgets/manifest.js'
 const base = { id: 'clock', name: 'Horloge', version: '1.0.0' }
 
 describe('ManifestSchema', () => {
+  it('requires a semver version, because the registry orders them', () => {
+    for (const version of ['1.0.0', '0.1.0', '2.10.3', '1.0.0-rc.1', '1.0.0+build.5']) {
+      expect(ManifestSchema.safeParse({ ...base, version }).success).toBe(true)
+    }
+    for (const version of ['1.0', 'v1.0.0', '1.0.0.0', 'latest', '01.0.0', '']) {
+      expect(ManifestSchema.safeParse({ ...base, version }).success).toBe(false)
+    }
+  })
+
+  it('defaults sdk to 1, so a manifest written before the marketplace still reads', () => {
+    expect(ManifestSchema.parse(base).sdk).toBe(1)
+    expect(ManifestSchema.parse({ ...base, sdk: 3 }).sdk).toBe(3)
+    for (const sdk of [0, -1, 1.5, '1']) {
+      expect(ManifestSchema.safeParse({ ...base, sdk }).success).toBe(false)
+    }
+  })
+
+  it('takes an https homepage and refuses anything else, including javascript:', () => {
+    expect(ManifestSchema.parse({ ...base, homepage: 'https://example.com/widget' }).homepage)
+      .toBe('https://example.com/widget')
+    for (const homepage of ['http://example.com', 'javascript:alert(1)', 'example.com', 'file:///etc/passwd']) {
+      expect(ManifestSchema.safeParse({ ...base, homepage }).success).toBe(false)
+    }
+  })
+
+  it('takes an author and an SPDX licence, and refuses a sentence for the licence', () => {
+    const m = ManifestSchema.parse({ ...base, author: 'A. Author', license: 'Apache-2.0' })
+    expect(m.author).toBe('A. Author')
+    expect(m.license).toBe('Apache-2.0')
+    expect(ManifestSchema.safeParse({ ...base, license: 'do what you like with it' }).success).toBe(false)
+    expect(ManifestSchema.safeParse({ ...base, license: '<img src=x>' }).success).toBe(false)
+  })
+
+  it('leaves the three optional fields absent rather than empty', () => {
+    const m = ManifestSchema.parse(base)
+    expect(m.homepage).toBeUndefined()
+    expect(m.author).toBeUndefined()
+    expect(m.license).toBeUndefined()
+  })
+
   it('accepts a v2 manifest and defaults the icon', () => {
     const m = ManifestSchema.parse({ ...base, minSize: [8, 4], defaultSize: [16, 4] })
     expect(m.icon).toBe('layout-grid')
@@ -129,7 +169,7 @@ describe('ManifestSchema', () => {
 })
 
 describe('channels a manifest may not ask for', () => {
-  const base = { id: 'w', name: 'W', version: '1', minSize: [4, 2], defaultSize: [4, 2] }
+  const base = { id: 'w', name: 'W', version: '1.0.0', minSize: [4, 2], defaultSize: [4, 2] }
 
   it('refuses the config channel, which carries the whole dashboard', () => {
     // Every page, every widget's settings, and the id and fields of every connection.

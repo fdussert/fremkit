@@ -4,7 +4,7 @@ import { iconSvg } from '../src/shared/icons'
 import type { WidgetManifest } from '../src/shared/types'
 
 const manifest = (over: Partial<WidgetManifest> = {}): WidgetManifest => ({
-  id: 'w', name: 'W', version: '1', description: '', icon: 'layout-grid',
+  id: 'w', name: 'W', version: '1.0.0', sdk: 1, description: '', icon: 'layout-grid',
   minSize: [4, 2], defaultSize: [4, 2],
   subscriptions: [], commands: [], settingsSchema: {}, permissions: { network: [] },
   ...over,

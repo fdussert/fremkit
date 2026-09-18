@@ -3,6 +3,23 @@ import { isPrivateLiteral } from '../net/private.js'
 import { WIDGET_ID_RE } from '../config/schema.js'
 import { tr } from '../i18n.js'
 
+/**
+ * A widget's version, in the shape the registry can order.
+ *
+ * Free text was enough while every widget shipped with the server: the number was documentation.
+ * The marketplace compares it — "is this newer than what is installed", "is this newer than the
+ * last published one" — and a comparison needs a grammar, so this is semver.org's own, kept whole
+ * including the pre-release and build parts so `1.0.0-rc.1` is sayable.
+ */
+export const SEMVER_RE = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/
+
+/**
+ * An SPDX licence identifier, by shape rather than by list: the list moves, and nothing here
+ * decides anything from the value — the admin shows it and the registry's reviewer reads it.
+ * The shape still matters, because it is rendered, and a sentence is not an identifier.
+ */
+const LICENSE_RE = /^[A-Za-z0-9][A-Za-z0-9.+-]{0,63}$/
+
 export const SizeSchema = z.tuple([z.number().int().min(1), z.number().int().min(1)])
 
 /**
@@ -138,7 +155,16 @@ const ChannelSchema = z.string().min(1).refine((channel) => {
 const RawManifestSchema = z.object({
   id: z.string().regex(WIDGET_ID_RE),
   name: LocalizedTextSchema,
-  version: z.string().min(1),
+  version: z.string().regex(SEMVER_RE, { error: () => tr(undefined, 'manifest.badVersion') }),
+  /**
+   * The SDK generation the widget needs. Absent means 1: every widget written before this
+   * existed asks for the bridge as it was, which is generation 1 by definition.
+   */
+  sdk: z.number().int().min(1).default(1),
+  /** Shown in the admin beside the widget, and nowhere else — none of these three is executed. */
+  homepage: z.url({ protocol: /^https$/, error: () => tr(undefined, 'manifest.badHomepage') }).optional(),
+  author: z.string().min(1).max(200).optional(),
+  license: z.string().regex(LICENSE_RE, { error: () => tr(undefined, 'manifest.badLicense') }).optional(),
   description: LocalizedTextSchema.default(''),
   icon: z.string().min(1).default('layout-grid'),
   sizes: z.array(SizeSchema).min(1).optional(),

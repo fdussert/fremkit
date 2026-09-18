@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { WIDE_COMPACT_WIDTH, compactWidth, type WidgetManifest } from '../src/shared/types'
 
 const manifest = (compact?: { width: number }): WidgetManifest => ({
-  id: 'clock', name: 'Clock', version: '1.0.0', description: '', icon: 'clock',
+  id: 'clock', name: 'Clock', version: '1.0.0', sdk: 1, description: '', icon: 'clock',
   minSize: [8, 4], defaultSize: [16, 4], compact,
   subscriptions: [], commands: [], settingsSchema: {}, permissions: { network: [] },
 })

@@ -90,6 +90,12 @@
 
   var F = {
     ready: false,
+    /**
+     * The SDK generation this bridge speaks. A widget may branch on it; a manifest declares the
+     * lowest generation it needs, and the server refuses to install one asking for more than it
+     * has. Kept in step with `SDK_VERSION` in ./sdk.ts by bridge.test.ts.
+     */
+    sdk: 1,
     instanceId: null,
     settings: {},
     /**

@@ -17,7 +17,7 @@ async function tick(times = 5): Promise<void> {
 }
 
 const clockManifest: WidgetManifest = {
-  id: 'clock', name: 'Horloge', version: '1.0.0', description: '', icon: 'clock',
+  id: 'clock', name: 'Horloge', version: '1.0.0', sdk: 1, description: '', icon: 'clock',
   minSize: [8, 4], defaultSize: [16, 4], subscriptions: [], commands: [],
   settingsSchema: {}, permissions: { network: [] },
 }
@@ -39,16 +39,16 @@ function config(): Config {
 const compactClock: WidgetManifest = { ...clockManifest, compact: { width: 5 } }
 const barWidgets: WidgetsResponse = {
   widgets: { clock: compactClock, cpu: { ...compactClock, id: 'cpu' }, plain: clockManifest },
-  errors: [],
+  errors: [], sdk: 1,
 }
 
 function make(apiOverrides: Partial<StoreDeps['api']> = {}) {
   const api: StoreDeps['api'] = {
     getConfig: vi.fn(async () => config()),
     getStatus: vi.fn(async () => ({ degraded: false })),
-    getWidgets: vi.fn(async (): Promise<WidgetsResponse> => ({ widgets: { clock: clockManifest }, errors: [] })),
+    getWidgets: vi.fn(async (): Promise<WidgetsResponse> => ({ widgets: { clock: clockManifest }, errors: [], sdk: 1 })),
     putConfig: vi.fn(async (c: Config) => c),
-    rescan: vi.fn(async (): Promise<WidgetsResponse> => ({ widgets: { clock: clockManifest }, errors: [] })),
+    rescan: vi.fn(async (): Promise<WidgetsResponse> => ({ widgets: { clock: clockManifest }, errors: [], sdk: 1 })),
     ...apiOverrides,
   }
   let push: ((c: Config) => void) | null = null
