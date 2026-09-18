@@ -85,10 +85,16 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   // language from this module-level copy rather than being handed a store they have no use for.
   setServerLocale(store.get().locale)
   const installedDir = installedWidgetsDir(opts.dataDir)
-  // Before the first scan, and the one moment no install can be in flight: an install killed
+  // Before the first scan, when no install of *this* process can be in flight: one killed
   // between its two renames left a widget's folder gone and its previous version in `<id>.bak`,
   // and this is where every one of those goes back. An install does the same for its own id
   // only, because installs of different widgets legitimately overlap.
+  //
+  // Not "no install anywhere": a second checkout on another `FREMKIT_PORT` sharing this
+  // `dataDir` could be mid-swap while this one boots, and its `<id>.bak` would come back under
+  // it. Two servers writing one data directory is already outside what anything here promises —
+  // the config store would be racing too — so the comment says what is true rather than the
+  // boot growing a lockfile for a case nobody is in.
   await recoverStaging(installedDir)
   const catalog = new WidgetCatalog(opts.widgetsDir, installedDir)
   await catalog.scan()
