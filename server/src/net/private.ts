@@ -64,20 +64,37 @@ export function expandIpv6(address: string): number[] | null {
 /**
  * The IPv4 an IPv6 address carries, or null when it carries none.
  *
- * Two forms do: the IPv4-mapped `::ffff:a.b.c.d` and the deprecated IPv4-compatible
- * `::a.b.c.d`, whose first six groups are zero (or `0…0:ffff`). Both reach the same IPv4 stack,
- * and `new URL()` canonicalises them to hex — `[::ffff:127.0.0.1]` becomes `[::ffff:7f00:1]` —
- * which is how a loopback address got past a check that only knew the dotted spelling.
+ * Four forms do, and every one of them reaches the IPv4 stack at the far end:
+ *
+ * - IPv4-mapped, `::ffff:a.b.c.d`, and the deprecated IPv4-compatible `::a.b.c.d`;
+ * - IPv4-translated, `::ffff:0:a.b.c.d` (RFC 2765), whose marker sits one group earlier;
+ * - the NAT64 well-known prefix, `64:ff9b::/96`, which a translator turns back into that IPv4;
+ * - 6to4, `2002:<ipv4>::/16`, whose second and third groups *are* the tunnel endpoint.
+ *
+ * Spelling is not a defence here: `new URL()` canonicalises the dotted forms to hex —
+ * `[::ffff:127.0.0.1]` becomes `[::ffff:7f00:1]` — which is how a loopback address got past a
+ * check that only knew the dotted one. So the groups are read, never the text.
  */
 export function embeddedIpv4(groups: number[]): string | null {
   if (groups.length !== 8) return null
-  if (groups.slice(0, 5).some((g) => g !== 0)) return null
+  const dotted = (a: number, b: number): string => [a >>> 8, a & 0xff, b >>> 8, b & 0xff].join('.')
+  const zero = (from: number, to: number): boolean => groups.slice(from, to).every((g) => g === 0)
+
+  // 6to4: the prefix is fixed and the IPv4 follows it immediately.
+  if (groups[0] === 0x2002) return dotted(groups[1], groups[2])
+  // NAT64, 64:ff9b::/96.
+  if (groups[0] === 0x0064 && groups[1] === 0xff9b && zero(2, 6)) return dotted(groups[6], groups[7])
+  // IPv4-translated, ::ffff:0:0/96.
+  if (zero(0, 4) && groups[4] === 0xffff && groups[5] === 0) return dotted(groups[6], groups[7])
+
+  // IPv4-mapped and IPv4-compatible, which share the same first five zero groups.
+  if (!zero(0, 5)) return null
   const marker = groups[5]
   if (marker !== 0xffff && marker !== 0) return null
   const [a, b] = [groups[6], groups[7]]
   // `::` and `::1` are not IPv4 addresses; they are handled as IPv6 in their own right.
   if (marker === 0 && (a >>> 8) === 0 && (a & 0xff) === 0) return null
-  return [a >>> 8, a & 0xff, b >>> 8, b & 0xff].join('.')
+  return dotted(a, b)
 }
 
 /** True for an IPv4 or IPv6 literal that names this machine, a LAN, or a reserved range. */
@@ -98,8 +115,10 @@ export function isPrivateAddress(address: string): boolean {
 function isPrivateIpv4(ip: string): boolean {
   const parts = ip.split('.')
   if (parts.length !== 4) return true // not an address we can judge: refuse it
+  // All four octets, not just the two the ranges below read: `1.2.3.999` is not an address at
+  // all, and letting it through as "public" judged something that does not exist.
+  if (parts.some((p) => !/^\d{1,3}$/.test(p) || Number(p) > 255)) return true
   const [a, b] = parts.map(Number)
-  if (parts.some((p) => p === '' || !/^\d{1,3}$/.test(p)) || [a, b].some((n) => n > 255)) return true
   if (a === 0) return true                                  // "this network", and 0.0.0.0
   if (a === 10) return true                                 // private
   if (a === 127) return true                                // loopback

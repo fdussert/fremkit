@@ -119,10 +119,56 @@ describe('embeddedIpv4', () => {
     expect(embeddedIpv4([0, 0, 0, 0, 0, 0, 0x7f00, 1])).toBe('127.0.0.1')
     expect(embeddedIpv4([0, 0, 0, 0, 0, 0xffff, 0xa9fe, 0xa9fe])).toBe('169.254.169.254')
   })
+  it('reads the IPv4-translated form, whose marker sits one group earlier', () => {
+    // ::ffff:0:127.0.0.1 — RFC 2765. `new URL()` writes it back as [::ffff:0:7f00:1].
+    expect(embeddedIpv4([0, 0, 0, 0, 0xffff, 0, 0x7f00, 1])).toBe('127.0.0.1')
+    expect(embeddedIpv4([0, 0, 0, 0, 0xffff, 0, 0xa9fe, 0xa9fe])).toBe('169.254.169.254')
+  })
+  it('reads the NAT64 well-known prefix', () => {
+    // 64:ff9b::127.0.0.1 — a translator hands this straight to the IPv4 stack.
+    expect(embeddedIpv4([0x0064, 0xff9b, 0, 0, 0, 0, 0x7f00, 1])).toBe('127.0.0.1')
+    expect(embeddedIpv4([0x0064, 0xff9b, 0, 0, 0, 0, 0xc0a8, 0x0101])).toBe('192.168.1.1')
+    // Not the prefix: the groups between it and the address are not zero.
+    expect(embeddedIpv4([0x0064, 0xff9b, 0, 0, 0, 1, 0x7f00, 1])).toBeNull()
+  })
+  it('reads a 6to4 address, whose second and third groups are the tunnel endpoint', () => {
+    expect(embeddedIpv4([0x2002, 0x7f00, 0x0001, 0, 0, 0, 0, 1])).toBe('127.0.0.1')
+    expect(embeddedIpv4([0x2002, 0xc0a8, 0x0101, 0, 0, 0, 0, 0])).toBe('192.168.1.1')
+  })
   it('carries none for a real IPv6 address, or for :: and ::1', () => {
     expect(embeddedIpv4([0x2001, 0xdb8, 0, 0, 0, 0, 0, 1])).toBeNull()
     expect(embeddedIpv4([0, 0, 0, 0, 0, 0, 0, 0])).toBeNull()
     expect(embeddedIpv4([0, 0, 0, 0, 0, 0, 0, 1])).toBeNull()
     expect(embeddedIpv4([0, 0, 0, 0, 1, 0xffff, 0x7f00, 1])).toBeNull()
+  })
+})
+
+describe('the forms that carry an IPv4 are judged as that IPv4', () => {
+  it('refuses every spelling of loopback and of the metadata endpoint', () => {
+    for (const address of [
+      '::ffff:127.0.0.1', '[::ffff:7f00:1]',
+      '::ffff:0:127.0.0.1', '[::ffff:0:7f00:1]',
+      '64:ff9b::127.0.0.1', '[64:ff9b::7f00:1]',
+      '2002:7f00:1::', '[2002:7f00:1::1]',
+      '::ffff:169.254.169.254', '64:ff9b::169.254.169.254', '2002:a9fe:a9fe::',
+    ]) {
+      expect(isPrivateAddress(address), address).toBe(true)
+    }
+  })
+  it('still lets a public address through, however it is carried', () => {
+    expect(isPrivateAddress('::ffff:93.184.216.34')).toBe(false)
+    expect(isPrivateAddress('64:ff9b::93.184.216.34')).toBe(false)
+    expect(isPrivateAddress('2002:5db8:d822::')).toBe(false)
+  })
+})
+
+describe('an IPv4 that is not one at all', () => {
+  it('refuses a dotted quad whose last octets are out of range', () => {
+    // Only the first two were checked, and the ranges below read only those two: `1.2.3.999`
+    // came back "public" although it is not an address.
+    for (const bad of ['1.2.3.999', '8.8.8.256', '8.8.999.8', '1.2.3.4.5', '1.2.3', '1.2.3.']) {
+      expect(isPrivateAddress(bad), bad).toBe(true)
+    }
+    expect(isPrivateAddress('8.8.8.8')).toBe(false)
   })
 })
