@@ -491,3 +491,26 @@ describe('after a series', () => {
     expect(store.shown.value).toHaveLength(0)
   })
 })
+
+describe('the kind switch', () => {
+  it('filters on the row own kind, and reads a row without one as a widget', async () => {
+    const { store } = make([
+      widget({ id: 'clock' }),
+      widget({ id: 'dark', kind: 'theme' }),
+    ])
+    await store.load()
+    expect(store.shown.value.map((w) => w.id)).toEqual(['clock'])
+    store.state.kind = 'theme'
+    expect(store.shown.value.map((w) => w.id)).toEqual(['dark'])
+  })
+
+  it('narrows the badge-bearing views too', async () => {
+    const { store } = make([
+      widget({ id: 'clock', installed: true, installedVersion: '1.0.0' }),
+      widget({ id: 'dark', kind: 'theme', installed: true, installedVersion: '1.0.0' }),
+    ])
+    await store.load()
+    store.setView('installed')
+    expect(store.shown.value.map((w) => w.id)).toEqual(['clock'])
+  })
+})

@@ -320,6 +320,13 @@ export interface WidgetPermissionSet { subscriptions: string[]; commands: string
  */
 export interface MarketplaceWidget {
   id: string
+  /**
+   * What the row is. Absent today — the server lists widgets only — and read as `widget` then.
+   *
+   * It is here so that the modal's kind filter is already the code themes will use, rather than
+   * a second list and a branch around it once the index's `themes` become installable.
+   */
+  kind?: 'widget' | 'theme'
   version: string
   sdk: number
   name: LocalizedText

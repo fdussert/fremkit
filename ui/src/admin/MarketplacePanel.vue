@@ -20,7 +20,7 @@ import BaseSegmented from '../shared/ui/BaseSegmented.vue'
 import ConsentDialog from './ConsentDialog.vue'
 import UpdateAllDialog from './UpdateAllDialog.vue'
 import { pick, useI18n } from '../shared/i18n'
-import { useMarketplaceStore, type MarketView } from './marketplace'
+import { useMarketplaceStore, type MarketKind, type MarketView } from './marketplace'
 import type { MarketplaceWidget } from '../shared/types'
 
 const store = useMarketplaceStore()
@@ -43,10 +43,10 @@ const VIEWS = computed(() => [
 ])
 
 /**
- * The kind of thing being listed. One option today.
+ * The kind of thing being listed. One option today, so the control stays hidden.
  *
- * It is here rather than added later because the index already carries themes: when they can be
- * installed this becomes a second entry and a second card, not a second panel.
+ * The filter behind it is live all the same (`kind` on the row, in the store): when themes become
+ * installable this is a second entry here, not a second panel and a second filter written then.
  */
 const KINDS = computed(() => [{ value: 'widget', label: t('admin.market.kind.widgets') }])
 
@@ -82,7 +82,7 @@ const empty = computed(() => {
     <div class="bar">
       <BaseInput v-model="store.state.search" :placeholder="t('admin.market.search')" />
       <BaseSegmented v-if="KINDS.length > 1" class="kinds" :model-value="store.state.kind" :options="KINDS"
-        @update:model-value="store.state.kind = $event as 'widget'" />
+        @update:model-value="store.state.kind = $event as MarketKind" />
       <BaseButton v-if="store.state.view === 'updates' && store.updates.value" class="bulk" :disabled="locked"
         @click="store.askUpdateAll()">
         {{ t('admin.market.updateAll') }}

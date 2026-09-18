@@ -49,10 +49,16 @@ export type MarketView = 'available' | 'installed' | 'updates'
 /**
  * What kind of thing the list is showing.
  *
- * One value today. It exists so that themes — already carried by the index — and wallpapers
- * after them are one more entry rather than a second list and a second filter.
+ * Only widgets are installable today, so the switch has one option and stays hidden; the filter
+ * below is wired all the same, against the row's own `kind`. Themes — already carried by the
+ * index — then become one more entry rather than a second list and a second filter.
  */
-export type MarketKind = 'widget'
+export type MarketKind = 'widget' | 'theme'
+
+/** A row with no `kind` came from a server that only knows widgets. */
+export function kindOf(widget: MarketplaceWidget): MarketKind {
+  return widget.kind ?? 'widget'
+}
 
 /** What the consent dialog is open about. `added` is what is new, `all` what the widget asks. */
 export interface ConsentPrompt {
@@ -162,7 +168,7 @@ export function createMarketplaceStore(deps: MarketplaceDeps = {}): MarketplaceS
 
   /** The rows one view is made of, before the search box narrows them. */
   const inView = (): MarketplaceWidget[] => {
-    const rows = state.widgets
+    const rows = state.widgets.filter((w) => kindOf(w) === state.kind)
     if (state.view === 'installed') return rows.filter((w) => w.installed)
     // A widget that has just been updated is no longer waiting, and dropping it here would take
     // its "updated to vX" line with it — the whole answer to "what did that button do" would be
