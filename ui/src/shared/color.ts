@@ -56,9 +56,17 @@ export function onAccent(hex: string): string {
   return luminance(hex) > 0.45 ? ON_ACCENT_DARK : ON_ACCENT_LIGHT
 }
 
+/**
+ * The two colours a theme paints where an instance names none. They are what the luminance rules
+ * below are judged against, so they have to be the theme in force rather than the built-in
+ * palette: on a light theme, black-on-accent and white-on-accent swap sides.
+ */
+export interface ThemeColors { accent: string; surface: string }
+export const BUILTIN_COLORS: ThemeColors = { accent: THEME_ACCENT, surface: THEME_SURFACE }
+
 /** The accent a tile actually paints with: the one it carries, or the theme's. */
-export function tileAccent(accentColor?: string): string {
-  return isHexColor(accentColor) ? accentColor : THEME_ACCENT
+export function tileAccent(accentColor?: string, theme: ThemeColors = BUILTIN_COLORS): string {
+  return isHexColor(accentColor) ? accentColor : theme.accent
 }
 
 /**
@@ -66,15 +74,17 @@ export function tileAccent(accentColor?: string): string {
  * otherwise the tile's own background colour, and the theme surface when it has none. Always a
  * literal, because the only thing asked of it is its luminance.
  */
-export function tileBody(accentMode: AccentMode | undefined, accentColor?: string, bgColor?: string): string {
-  if (accentMode === 'fill') return tileAccent(accentColor)
-  return isHexColor(bgColor) ? bgColor : THEME_SURFACE
+export function tileBody(accentMode: AccentMode | undefined, accentColor?: string, bgColor?: string,
+  theme: ThemeColors = BUILTIN_COLORS): string {
+  if (accentMode === 'fill') return tileAccent(accentColor, theme)
+  return isHexColor(bgColor) ? bgColor : theme.surface
 }
 
 /**
  * The text colour that reads on that body. The frame paints it as `--tile-text` and the bridge
  * hands the same value to the widget as `--on-surface`, so the two never disagree.
  */
-export function tileText(accentMode: AccentMode | undefined, accentColor?: string, bgColor?: string): string {
-  return onAccent(tileBody(accentMode, accentColor, bgColor))
+export function tileText(accentMode: AccentMode | undefined, accentColor?: string, bgColor?: string,
+  theme: ThemeColors = BUILTIN_COLORS): string {
+  return onAccent(tileBody(accentMode, accentColor, bgColor, theme))
 }

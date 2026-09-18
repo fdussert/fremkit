@@ -2,7 +2,7 @@ import { onMounted, onUnmounted, ref, watch, type Ref } from 'vue'
 import { useSocket } from './socket'
 import { t, useI18n } from './i18n'
 import { isHexColor, tileText } from './color'
-import { useAppliedTheme } from './theme'
+import { useAppliedTheme, useThemeColors } from './theme'
 import { channelAllowed, mergeSettings, type AccentMode, type NavSlot, type WidgetInstance, type WidgetManifest, type WidgetSize } from './types'
 import { FrameTrust, fetchTarget, nonEmptyString, stampInstance } from './widgetMessages'
 
@@ -42,6 +42,7 @@ export function useWidgetBridge(
   const socket = useSocket()
   // The tokens the host is painting, handed on so a widget wears the same theme as its frame.
   const theme = useAppliedTheme()
+  const themeColors = useThemeColors()
   const { locale } = useI18n()
   const state = ref<BridgeState>('loading')
   /** channel -> how to stop relaying it. One entry per channel, so a re-subscribe is a no-op. */
@@ -65,7 +66,7 @@ export function useWidgetBridge(
    */
   const onSurface = (): string => {
     const inst = instance()
-    return tileText(accentMode(), inst.accentColor, inst.bgColor)
+    return tileText(accentMode(), inst.accentColor, inst.bgColor, themeColors.value)
   }
   /** The chrome the host draws around the widget, as one message payload. */
   const chrome = () => ({

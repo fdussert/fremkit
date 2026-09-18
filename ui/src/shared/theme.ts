@@ -1,4 +1,5 @@
-import { ref, watch, type Ref } from 'vue'
+import { computed, ref, watch, type ComputedRef, type Ref } from 'vue'
+import { BUILTIN_COLORS, isHexColor, type ThemeColors } from './color'
 import type { Config, ThemeInfo, ThemesResponse } from './types'
 
 /** The theme every config falls back to, and the one the others are layered on. */
@@ -52,6 +53,29 @@ export function themeVariables(all: Record<string, ThemeInfo>, id: string | unde
 
 /** The properties the host is painting, for anything that has to pass them on. */
 export function useAppliedTheme(): Ref<Record<string, string>> { return applied }
+
+/**
+ * One custom property of the theme in force, as a colour. A token the theme leaves out — or one
+ * it writes transparent, which has no luminance to speak of — falls back to the value given.
+ */
+export function themeColor(variables: Record<string, string>, name: string, fallback: string): string {
+  const value = variables[name]
+  return isHexColor(value) ? value : fallback
+}
+
+/**
+ * The colours the tile luminance rules are judged against. A theme that drops the tile card
+ * leaves `--tile-surface` transparent, and what shows through is the page behind it, so the
+ * fallback walks `--tile-surface` → `--surface` → the built-in value rather than stopping
+ * at the first one it cannot read.
+ */
+export function useThemeColors(): ComputedRef<ThemeColors> {
+  return computed(() => ({
+    accent: themeColor(applied.value, '--accent', BUILTIN_COLORS.accent),
+    surface: themeColor(applied.value, '--tile-surface',
+      themeColor(applied.value, '--surface', BUILTIN_COLORS.surface)),
+  }))
+}
 
 /**
  * Writes the properties on an element and takes back the ones the previous theme had set, so

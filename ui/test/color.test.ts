@@ -94,3 +94,36 @@ describe('tileText', () => {
     expect(tileText('frame', '#ffffff')).toBe(ON_ACCENT_LIGHT)
   })
 })
+
+/**
+ * The luminance rules decide black or white text. Where an instance names no colour of its own
+ * they judge what the *theme* paints, not what the built-in palette paints: on a light theme the
+ * two answers are opposite, and the value also travels to the widget as `--on-surface`.
+ */
+describe('the colours the rules are judged against', () => {
+  const PAPIER = { accent: '#a2622a', surface: '#fbf9f4' }
+  const NUIT = { accent: '#6aa8ff', surface: '#0f1523' }
+
+  it('paints a tile with no colour of its own in the theme accent', () => {
+    expect(tileAccent(undefined, PAPIER)).toBe('#a2622a')
+    expect(tileAccent('#123456', PAPIER)).toBe('#123456')
+    expect(tileAccent(undefined)).toBe(THEME_ACCENT)
+  })
+
+  it('reads dark text on a light theme surface, and light text on a dark one', () => {
+    expect(tileText('none', undefined, undefined, PAPIER)).toBe(ON_ACCENT_DARK)
+    expect(tileText('none', undefined, undefined, NUIT)).toBe(ON_ACCENT_LIGHT)
+  })
+
+  it('judges a filled tile against the theme accent it is filled with, not the surface', () => {
+    // A pale accent on a light theme: the body is the accent, so the text has to turn dark even
+    // though both of this theme's other colours would have said otherwise.
+    expect(tileText('fill', undefined, undefined, { accent: '#f5e9c8', surface: '#fbf9f4' })).toBe(ON_ACCENT_DARK)
+    expect(tileText('fill', undefined, undefined, PAPIER)).toBe(ON_ACCENT_LIGHT)
+    expect(tileBody('fill', undefined, undefined, PAPIER)).toBe(PAPIER.accent)
+  })
+
+  it('still lets the instance colour decide when it has one', () => {
+    expect(tileText('none', undefined, '#ffffff', NUIT)).toBe(ON_ACCENT_DARK)
+  })
+})

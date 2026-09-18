@@ -17,8 +17,8 @@ import { pick, useI18n } from '../shared/i18n'
 import { surfaceOpacity } from '../shared/background'
 import { useAdminStore } from './store'
 import { fits, type Rect } from './layout'
-import { isHexColor, THEME_ACCENT, THEME_SURFACE } from '../shared/color'
-import { useAppliedTheme } from '../shared/theme'
+import { THEME_ACCENT, THEME_SURFACE } from '../shared/color'
+import { themeColor, useAppliedTheme } from '../shared/theme'
 import { fieldsInScope, type AccentMode, type WidgetBackground } from '../shared/types'
 
 const s = useAdminStore()
@@ -37,15 +37,8 @@ const asks = computed(() => (inst.value ? s.state.asks[inst.value.widgetId] : un
 const schema = computed(() => fieldsInScope(manifest.value?.settingsSchema, 'tile'))
 
 const theme = useAppliedTheme()
-/**
- * What the swatch previews when the instance carries no colour of its own: the colour the theme
- * in force actually paints, not the built-in one. A token a theme leaves out — or a transparent
- * one, which the native picker cannot show — falls back to the built-in value.
- */
-function themeColor(name: string, fallback: string): string {
-  const value = theme.value[name]
-  return isHexColor(value) ? value : fallback
-}
+/** What the swatch previews when the instance carries no colour of its own. */
+const swatch = (name: string, fallback: string): string => themeColor(theme.value, name, fallback)
 
 const ACCENT_MODES = computed(() => (['none', 'frame', 'fill'] as const).map((value) => ({
   value, label: t(`admin.inspector.widget.accentMode.${value}`),
@@ -149,7 +142,7 @@ function moveToPage(): void {
     <BaseCheckbox :model-value="showBg" :label="t('admin.inspector.widget.showBg')"
       @update:model-value="setOpacity($event ? 100 : 0)" />
     <BaseField :label="t('admin.inspector.widget.bgColor')" :hint="t('admin.inspector.widget.bgColor.hint')">
-      <BaseColor :model-value="inst.bgColor ?? ''" :fallback="themeColor('--tile-surface', THEME_SURFACE)" :reset-label="t('common.reset')"
+      <BaseColor :model-value="inst.bgColor ?? ''" :fallback="swatch('--tile-surface', THEME_SURFACE)" :reset-label="t('common.reset')"
         :aria-label="t('admin.inspector.widget.bgColor')"
         @update:model-value="setBgColor($event)" @reset="setBgColor(undefined)" />
     </BaseField>
@@ -163,7 +156,7 @@ function moveToPage(): void {
 
     <BaseSection id="widget.accent" :title="t('admin.inspector.widget.accent')">
     <BaseField :label="t('admin.inspector.widget.accentColor')" :hint="t('admin.inspector.widget.accentColor.hint')">
-      <BaseColor :model-value="inst.accentColor ?? ''" :fallback="themeColor('--accent', THEME_ACCENT)" :reset-label="t('common.reset')"
+      <BaseColor :model-value="inst.accentColor ?? ''" :fallback="swatch('--accent', THEME_ACCENT)" :reset-label="t('common.reset')"
         :aria-label="t('admin.inspector.widget.accentColor')"
         @update:model-value="setAccentColor($event)" @reset="setAccentColor(undefined)" />
     </BaseField>
