@@ -2,6 +2,7 @@
 <html lang="en"><head><meta charset="utf-8"><title>Volume</title>
 <style>
   html,body{margin:0;height:100%;background:transparent;color:#e6e8eb;font-family:-apple-system,system-ui,sans-serif;overflow:hidden}
+  [hidden]{display:none!important}
   .wrap{box-sizing:border-box;height:100%;padding:14px 18px;position:relative;display:flex;flex-direction:column;justify-content:center;gap:6px}
   .big{font-size:44px;font-weight:600;line-height:1}
   .bar{height:8px;border-radius:4px;background:#252a32;overflow:hidden}
@@ -34,12 +35,48 @@
     .slider>i{left:0;right:0;top:auto;bottom:0;width:auto;height:0}
     #lvl{text-align:center;min-width:0}
   }
-</style></head><body><div class="wrap"><div class="ctrl">
+</style>
+<style>
+  /* The knob. The dial is a square as tall as the tile lets it be, the ring is an annulus cut
+     out of a conic gradient, and the cap on top is the physical button you grab and turn. */
+  .knob{display:flex;align-items:center;justify-content:center;width:100%;height:100%}
+  .dial{position:relative;height:100%;aspect-ratio:1;max-width:100%;touch-action:none;cursor:grab}
+  .dial:active{cursor:grabbing}
+  .ring{--tw:13%;--fill:var(--accent,#d9b36a);--track:#252a32;position:absolute;inset:0;border-radius:50%;pointer-events:none;
+    background:conic-gradient(var(--fill) calc(var(--p,0) * 3.6deg), var(--track) 0);
+    -webkit-mask:radial-gradient(circle farthest-side,#0000 calc(100% - var(--tw)),#000 calc(100% - var(--tw) + 1px));
+    mask:radial-gradient(circle farthest-side,#0000 calc(100% - var(--tw)),#000 calc(100% - var(--tw) + 1px))}
+  .cap{position:absolute;inset:18%;border-radius:50%;pointer-events:none;background:#20252c;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.08),0 2px 8px rgba(0,0,0,.35);
+    display:flex;align-items:center;justify-content:center}
+  /* The whole layer turns with the value; only the notch is drawn on it, so the reading stays upright. */
+  .mark{position:absolute;inset:0;border-radius:50%}
+  .mark>i{position:absolute;left:50%;top:7%;width:7%;max-width:8px;height:17%;transform:translateX(-50%);border-radius:999px;background:var(--accent,#d9b36a)}
+  .face{display:flex;flex-direction:column;align-items:center;gap:2%;line-height:1}
+  #klvl{font-size:clamp(14px,11vmin,44px);font-weight:600}
+  #kmute{font-size:clamp(10px,4.5vmin,18px)}
+  .dial.off .ring{opacity:.3}
+  .dial.off .mark>i{opacity:.4}
+  html.on-light .ring,html.accent-fill .ring{--track:rgba(128,128,128,.35)}
+  html.accent-fill .ring{--fill:var(--on-surface,#0b0d10)}
+  html.accent-fill .mark>i{background:var(--on-surface,#0b0d10)}
+  html.on-light .cap{background:rgba(0,0,0,.10);box-shadow:inset 0 1px 0 rgba(255,255,255,.5),0 2px 8px rgba(0,0,0,.12)}
+  html.accent-fill .cap{background:rgba(0,0,0,.12)}
+</style></head><body><div class="wrap">
+<div class="ctrl" id="sliderView">
 <button id="mute">🔊</button><div class="slider" id="slider"><i id="fill"></i></div><span class="big" id="lvl">--</span>
+</div>
+<div class="knob" id="knobView" hidden><div class="dial" id="dial">
+<div class="ring" id="ring"></div>
+<div class="cap"><div class="mark" id="mark"><i></i></div><div class="face"><span id="klvl">--</span><span id="kmute" hidden>🔇</span></div></div>
 </div></div>
+</div>
 <script>
   Fremkit.whenReady(function () {
     var slider = document.getElementById('slider'), fill = document.getElementById('fill'), lvl = document.getElementById('lvl'), muteBtn = document.getElementById('mute')
+    var sliderView = document.getElementById('sliderView'), knobView = document.getElementById('knobView')
+    var dial = document.getElementById('dial'), ring = document.getElementById('ring'), mark = document.getElementById('mark')
+    var klvl = document.getElementById('klvl'), kmute = document.getElementById('kmute')
     var level = 0, muted = false, dragging = false, lastSent = 0, pending = null, timer = null
     // Same test as the "@media (orientation: portrait)" rule above: height > width means a vertical track.
     function isVertical() { return window.matchMedia('(orientation: portrait)').matches }
@@ -47,6 +84,9 @@
       lvl.textContent = Math.round(v)
       if (isVertical()) { fill.style.height = v + '%'; fill.style.width = '' }
       else { fill.style.width = v + '%'; fill.style.height = '' }
+      klvl.textContent = Math.round(v)
+      ring.style.setProperty('--p', v)
+      mark.style.transform = 'rotate(' + (v * 3.6) + 'deg)'
     }
     function levelAt(e) {
       var r = slider.getBoundingClientRect()
@@ -59,17 +99,64 @@
       lastSent = now; pending = null
       Fremkit.sendCommand('volume', 'set', { level: v })
     }
+    function toggleMute() { Fremkit.sendCommand('volume', 'mute', { muted: !muted }) }
     slider.addEventListener('pointerdown', function (e) { dragging = true; slider.setPointerCapture(e.pointerId); var v = levelAt(e); show(v); send(v) })
     slider.addEventListener('pointermove', function (e) { if (!dragging) return; var v = levelAt(e); show(v); send(v) })
     function stop(e) { if (!dragging) return; dragging = false; var v = levelAt(e); show(v); send(v, true) }
     slider.addEventListener('pointerup', stop); slider.addEventListener('pointercancel', stop)
-    muteBtn.onclick = function () { Fremkit.sendCommand('volume', 'mute', { muted: !muted }) }
+    muteBtn.onclick = toggleMute
+
+    // The knob turns like a physical one: what counts is the angle the finger sweeps around the
+    // centre, not where it lands, so a grab anywhere on the dial works and a full turn is 100 %.
+    // `pos` keeps the fractional level between moves; clamping it (not just what we show) makes
+    // the knob answer at once when you turn back from an end stop. It follows the provider's
+    // snapshots rather than being reset on each grab, so a second turn started before the echo
+    // of the first came back does not jump to a stale level.
+    var cx = 0, cy = 0, lastA = 0, pos = 0, turned = 0, downAt = 0, capR = 0, fromCap = false
+    function angleAt(e) { return Math.atan2(e.clientY - cy, e.clientX - cx) * 180 / Math.PI }
+    dial.addEventListener('pointerdown', function (e) {
+      var r = dial.getBoundingClientRect()
+      cx = r.left + r.width / 2; cy = r.top + r.height / 2
+      capR = r.width * 0.34
+      fromCap = Math.sqrt(Math.pow(e.clientX - cx, 2) + Math.pow(e.clientY - cy, 2)) <= capR
+      lastA = angleAt(e); turned = 0; downAt = Date.now()
+      dragging = true; dial.setPointerCapture(e.pointerId)
+    })
+    dial.addEventListener('pointermove', function (e) {
+      if (!dragging) return
+      var a = angleAt(e), d = a - lastA
+      // Unwrap across the ±180° seam, where the raw angle jumps a full turn in one move.
+      while (d > 180) d -= 360
+      while (d < -180) d += 360
+      lastA = a; turned += Math.abs(d)
+      pos = Math.max(0, Math.min(100, pos + d / 3.6))
+      var v = Math.round(pos); show(v); send(v)
+    })
+    function knobStop() {
+      if (!dragging) return
+      dragging = false
+      // A press on the cap that did not turn anything is a tap on the button: mute.
+      if (fromCap && turned < 6 && Date.now() - downAt < 500) { show(level); return toggleMute() }
+      send(Math.round(pos), true)
+    }
+    dial.addEventListener('pointerup', knobStop); dial.addEventListener('pointercancel', knobStop)
+
+    function applySettings(s) {
+      var knob = (s && s.display) === 'knob'
+      knobView.hidden = !knob; sliderView.hidden = knob
+      if (!dragging) show(level)
+    }
+    applySettings(Fremkit.settings)
+    Fremkit.onSettings(applySettings)
+
     Fremkit.subscribe('volume', function (d) {
       if (d.error) return
       level = d.level; muted = d.muted
-      if (!dragging) show(level)
+      if (!dragging) { pos = level; show(level) }
       muteBtn.textContent = muted ? '🔇' : '🔊'
       fill.style.opacity = muted ? '.35' : '1'
+      kmute.hidden = !muted
+      dial.classList.toggle('off', muted)
     })
     // Orientation can flip without a drag (e.g. the admin resizes the tile): re-render the fill
     // on the correct axis so it does not stay stuck on a stale width/height from before the flip.
