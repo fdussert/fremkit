@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process'
 import { assertSecretKey, type SecretStore } from './types.js'
+import { tr } from '../i18n.js'
 
 /** Keychain service under which every Fremkit secret is filed. */
 export const KEYCHAIN_SERVICE = 'fremkit'
@@ -60,7 +61,7 @@ export class KeychainSecretStore implements SecretStore {
       return stdout.replace(/\n$/, '')
     } catch (err) {
       if (isNotFound(err)) return null
-      throw new Error(`trousseau : lecture impossible (${describe(err)})`)
+      throw new Error(`${tr(undefined, 'secrets.readFailed')} (${describe(err)})`)
     }
   }
 
@@ -69,7 +70,7 @@ export class KeychainSecretStore implements SecretStore {
     try {
       await this.exec('security', ['add-generic-password', '-U', '-s', this.service, '-a', key, '-w', value])
     } catch (err) {
-      throw new Error(`trousseau : écriture impossible (${describe(err)})`)
+      throw new Error(`${tr(undefined, 'secrets.writeFailed')} (${describe(err)})`)
     }
   }
 
@@ -79,7 +80,7 @@ export class KeychainSecretStore implements SecretStore {
       await this.exec('security', ['delete-generic-password', '-s', this.service, '-a', key])
     } catch (err) {
       if (isNotFound(err)) return
-      throw new Error(`trousseau : suppression impossible (${describe(err)})`)
+      throw new Error(`${tr(undefined, 'secrets.deleteFailed')} (${describe(err)})`)
     }
   }
 }

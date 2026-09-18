@@ -22,12 +22,12 @@ export class WidgetCatalog {
       try {
         if (!(await stat(folder)).isDirectory()) continue
         await stat(join(folder, 'index.html')).catch(() => { throw new Error('index.html manquant') })
-        const raw = await readFile(join(folder, 'manifest.json'), 'utf8').catch(() => { throw new Error('manifest.json manquant') })
+        const raw = await readFile(join(folder, 'manifest.json'), 'utf8').catch(() => { throw new Error('manifest.json is missing') })
         let json: unknown
-        try { json = JSON.parse(raw) } catch { throw new Error('manifest.json invalide (JSON)') }
+        try { json = JSON.parse(raw) } catch { throw new Error('manifest.json is not valid JSON') }
         const result = ManifestSchema.safeParse(json)
-        if (!result.success) throw new Error('manifest invalide: ' + result.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; '))
-        if (result.data.id !== id) throw new Error(`id "${result.data.id}" différent du dossier "${id}"`)
+        if (!result.success) throw new Error('invalid manifest: ' + result.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; '))
+        if (result.data.id !== id) throw new Error(`id "${result.data.id}" does not match the folder "${id}"`)
         manifests.set(id, result.data)
       } catch (err) {
         errors.push({ id, error: (err as Error).message })

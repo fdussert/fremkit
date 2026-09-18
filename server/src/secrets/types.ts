@@ -12,5 +12,5 @@ export interface SecretStore {
 export const SECRET_KEY_RE = /^[A-Za-z0-9][A-Za-z0-9_-]*\/[A-Za-z0-9][A-Za-z0-9_-]*$/
 
 export function assertSecretKey(key: string): void {
-  if (!SECRET_KEY_RE.test(key)) throw new Error(`clé de secret invalide : ${key}`)
+  if (!SECRET_KEY_RE.test(key)) throw new Error(`invalid secret key: ${key}`)
 }

@@ -203,7 +203,7 @@ export async function probeOne(service: Service, probes: Probes): Promise<Servic
       }
       case 'tcp': {
         const target = splitHostPort(service.url)
-        if (!target) return { name: service.name, state: 'down', detail: 'hôte:port invalide' }
+        if (!target) return { name: service.name, state: 'down', detail: tr(undefined, 'serviceStatus.invalidHostPort') }
         await probes.tcpConnect(target.host, target.port, PROBE_TIMEOUT_MS)
         return { name: service.name, state: 'up', latencyMs: latency() }
       }

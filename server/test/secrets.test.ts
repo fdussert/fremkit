@@ -15,7 +15,7 @@ describe('assertSecretKey', () => {
 
   it('rejects a key without a field, with a traversal or with a space', () => {
     for (const bad of ['ado-x1z9', '../etc/passwd', 'ado x1z9/pat', 'ado/pat/extra', '/pat']) {
-      expect(() => assertSecretKey(bad), bad).toThrow(/clé de secret invalide/)
+      expect(() => assertSecretKey(bad), bad).toThrow(/invalid secret key/)
     }
   })
 })

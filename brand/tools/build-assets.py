@@ -113,7 +113,7 @@ def mark_mono():
 
 # ============================================== 3. menu bar glyph (template)
 def menubar_glyph(with_dune=False, fill="#000000"):
-    """18 pt. Par defaut le F seul : a 18 px la dune devient du bruit."""
+    """18 pt. The F alone by default: at 18 px the dune is just noise."""
     s, r = 5.4, 1.3
     if with_dune:
         x0, y0, W, H = 6.4, 4.2, 23.2, 18.6
