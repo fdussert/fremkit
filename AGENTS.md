@@ -56,6 +56,14 @@ Restarting the live server when the helper runs it: kill only the node process l
 Never kill `FremkitHelper` itself. A second checkout can run beside the live one with
 `FREMKIT_PORT=4301 pnpm exec tsx src/index.ts` from `server/`.
 
+**An agent asked for a feature or a review works in a worktree and leaves the current tree
+alone.** Add one — `git worktree add ../fremkit-<topic> -b <branch>`, or, to review a pull
+request, `git fetch origin pull/<n>/head:pr-<n>` and a worktree on that — so the checkout the
+work was asked from keeps its branch, its uncommitted files and its untracked ones. Several
+agents often run at once, and the main checkout is the one the helper builds from and the Edge
+shows: a `git checkout` in it moves the live dashboard under the user and can strand another
+agent's in-flight work. Say where the worktree is, and remove it once the work has landed.
+
 ## Conventions
 
 - **Repository text is English**: code, comments, commit messages, docs. User-facing strings
