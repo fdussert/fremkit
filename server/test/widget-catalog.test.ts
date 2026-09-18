@@ -114,24 +114,24 @@ describe('WidgetCatalog', () => {
     const cat = new WidgetCatalog(SHIPPED)
     await cat.scan()
     expect(cat.errors).toEqual([])
-    expect([...cat.manifests.keys()]).toEqual(expect.arrayContaining(['clock', 'homey-devices', 'homey-flows', 'shortcuts', 'clipboard', 'service-status', 'cleanshot']))
+    expect([...cat.manifests.keys()]).toEqual(expect.arrayContaining(['clock', 'spotify', 'volume', 'shortcuts', 'clipboard', 'service-status', 'weather']))
     const shortcuts = cat.get('shortcuts')!
     expect(shortcuts.commands).toEqual(['shortcuts'])
     expect(shortcuts.minSize).toEqual([8, 4])
     expect(shortcuts.defaultSize).toEqual([16, 8])
     expect(Object.keys(shortcuts.settingsSchema.buttons.itemSchema ?? {})).toEqual(['label', 'kind', 'target'])
-    const cleanshot = cat.get('cleanshot')!
-    expect(cleanshot.subscriptions).toEqual([])
-    expect(cleanshot.commands).toEqual(['cleanshot'])
-    expect(cleanshot.minSize).toEqual([8, 4])
-    expect(cleanshot.defaultSize).toEqual([12, 6])
-    expect(cleanshot.settingsSchema.columns.default).toBe(3)
+    const status = cat.get('service-status')!
+    expect(status.subscriptions).toEqual([])
+    expect(status.commands).toEqual(['service-status'])
+    expect(status.minSize).toEqual([8, 4])
+    expect(status.defaultSize).toEqual([8, 6])
+    expect(status.settingsSchema.columns.default).toBe(2)
     const clipboard = cat.get('clipboard')!
     expect(clipboard.subscriptions).toEqual(['clipboard'])
     expect(clipboard.commands).toEqual(['clipboard'])
     expect(clipboard.minSize).toEqual([8, 4])
     expect(clipboard.defaultSize).toEqual([16, 8])
-    expect([...cat.manifests.keys()]).toEqual(expect.arrayContaining(['clock', 'homey-devices', 'homey-flows', 'network', 'battery']))
+    expect([...cat.manifests.keys()]).toEqual(expect.arrayContaining(['clock', 'cpu', 'memory', 'network', 'battery']))
   })
   it('gives the system widgets the sizes and channels their providers publish on', async () => {
     const cat = new WidgetCatalog(SHIPPED)
