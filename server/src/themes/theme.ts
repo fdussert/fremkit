@@ -20,8 +20,17 @@ const COLOR = /^#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/
 const LENGTH = /^\d+(?:\.\d+)?(?:px|rem|em)$/
 /** Family stacks: names, quotes, commas. No parentheses, so no `url()` and no `var()`. */
 const FONT = /^[\w\s,'"-]{1,200}$/
-/** Offsets, a blur and a colour — the only functions allowed are the colour ones. */
-const SHADOW = /^(?:inset\s+)?[-\d\s.,()%#a-zA-Z]{1,160}$/
+/**
+ * Offsets, a blur, a spread and a colour, as many shadows as wanted — and nothing else. Spelled
+ * out rather than as a character class, which admitted any `name(arg)` a theme cared to write:
+ * `url()` and `image-set()` fetch, `element()` paints another part of the page, and a theme will
+ * arrive from a registry rather than from the user's own disk.
+ */
+const SHADOW_LENGTH = String.raw`-?(?:\d+(?:\.\d+)?|\.\d+)(?:px|rem|em)?`
+const SHADOW_COLOR = String.raw`(?:#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})`
+  + String.raw`|(?:rgb|rgba|hsl|hsla)\(\s*[-\d.,%\s]{1,60}\)|transparent|currentColor)`
+const ONE_SHADOW = String.raw`(?:inset\s+)?(?:${SHADOW_LENGTH}\s+){2,4}${SHADOW_COLOR}`
+const SHADOW = new RegExp(String.raw`^(?:none|${ONE_SHADOW}(?:\s*,\s*${ONE_SHADOW})*)$`)
 
 const value = (re: RegExp) => z.string().regex(re)
 

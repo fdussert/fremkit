@@ -113,3 +113,33 @@ describe('the built-in theme', () => {
     }
   })
 })
+
+/**
+ * The shadow tokens are the only ones whose value may carry a function, and they end up in a
+ * `style` attribute on `<html>` — in the dashboard and inside every widget frame. A theme will
+ * arrive from a registry rather than from the user's own disk, so what a function may be is
+ * spelled out rather than left to a character class.
+ */
+describe('the shadow tokens', () => {
+  const shadow = (value: string) => ThemeSchema.safeParse(theme({ shadow: value })).success
+
+  it('takes the shadows the themes in this repository actually declare', () => {
+    for (const value of ['0 8px 24px rgba(0, 0, 0, .35)', '0 0 0 2px rgba(217, 179, 106, .55)',
+      '0 0 18px rgba(57, 255, 136, .10)', 'inset 0 1px 0 #ffffff22', '0 2px 4px #000, 0 8px 16px #0008',
+      'none']) {
+      expect(shadow(value), value).toBe(true)
+    }
+  })
+
+  it('refuses every function that is not a colour', () => {
+    for (const value of ['url(https://evil.example/x)', 'image-set(a)', 'element(a)',
+      '0 0 4px url(x)', 'var(--anything)', 'attr(href)']) {
+      expect(shadow(value), value).toBe(false)
+    }
+  })
+
+  it('refuses a value that would close its own declaration', () => {
+    expect(shadow('0 0 0 2px red; background: url(x)')).toBe(false)
+    expect(shadow('0 0 0 2px #000 } body {')).toBe(false)
+  })
+})

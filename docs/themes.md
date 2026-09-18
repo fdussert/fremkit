@@ -50,7 +50,9 @@ five-line theme that moves the accent and the background is a complete theme.
 
 ## The tokens
 
-Colours are `#rgb`, `#rrggbb` or `#rrggbbaa`. Lengths are `px`, `rem` or `em`. A value that could
+Colours are `#rgb`, `#rrggbb` or `#rrggbbaa`. Lengths are `px`, `rem` or `em`. A shadow is
+offsets, a blur, a spread and a colour — `rgb()`, `rgba()`, `hsl()`, `hsla()` and nothing else,
+since these values end up in a `style` attribute inside every widget frame. A value that could
 close its declaration and start another one is refused when the folder is read, and the theme is
 listed with the reason instead of being painted.
 
@@ -67,7 +69,7 @@ listed with the reason instead of being painted.
 | `font`, `font-mono` | The two family stacks |
 | `fs-xs`, `fs-sm`, `fs-md`, `fs-lg` | The editor's and the navigation bar's type scale |
 | `radius-sm`, `radius-md` | Corner radii |
-| `shadow`, `ring` | The tile shadow, and the focus ring |
+| `shadow`, `ring` | The tile shadow, and the focus ring. `none`, or one or more shadows |
 | `text-scale` | How much bigger widgets draw their own text (0.8 to 2) |
 
 ### Why `text-scale` rather than a font size
@@ -121,6 +123,9 @@ Three kinds of colour in the widgets stay where they are:
 They read well on a dark theme and are the rough edges of a light one. Moving the first two groups
 onto `--accent` and `--bg` is a one-line change per widget, and a visible one under the built-in
 theme, so it is left as a decision rather than made here.
+
+The volume widget's knob is a third case, on purpose: its gradients are the material the knob is
+made of, not a palette.
 
 ## Keeping your own theme
 
