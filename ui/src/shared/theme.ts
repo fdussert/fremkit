@@ -1,5 +1,5 @@
 import { computed, ref, watch, type ComputedRef, type Ref } from 'vue'
-import { BUILTIN_COLORS, isHexColor, type ThemeColors } from './color'
+import { BUILTIN_COLORS, type ThemeColors } from './color'
 import type { Config, ThemeInfo, ThemesResponse } from './types'
 
 /** The theme every config falls back to, and the one the others are layered on. */
@@ -55,12 +55,43 @@ export function themeVariables(all: Record<string, ThemeInfo>, id: string | unde
 export function useAppliedTheme(): Ref<Record<string, string>> { return applied }
 
 /**
+ * A hex colour as `#rrggbb`, or null.
+ *
+ * The token schema accepts `#rgb`, `#rgba`, `#rrggbb` and `#rrggbbaa`, and everything downstream
+ * of this — `luminance`, `rgb`, `fade` — reads the six-digit form only. So a theme writing
+ * `#111` was read as "not a colour" and silently got the built-in fallback instead: the tile
+ * rules were then judged against a surface nobody was painting.
+ *
+ * The alpha is dropped rather than mixed: what these colours are used for is picking a readable
+ * foreground, and a translucent surface shows the page behind it — which is why the caller walks
+ * a chain of tokens instead. A fully transparent one is still not a colour and falls through.
+ */
+export function normalizeHex(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  const m = /^#([0-9a-fA-F]{3,8})$/.exec(value.trim())
+  if (!m) return null
+  const digits = m[1]
+  let rgb: string
+  let alpha = 'ff'
+  if (digits.length === 3 || digits.length === 4) {
+    rgb = [...digits.slice(0, 3)].map((c) => c + c).join('')
+    if (digits.length === 4) alpha = digits[3] + digits[3]
+  } else if (digits.length === 6 || digits.length === 8) {
+    rgb = digits.slice(0, 6)
+    if (digits.length === 8) alpha = digits.slice(6, 8)
+  } else return null
+  // Fully transparent has no colour to read; the caller's fallback is the honest answer.
+  if (parseInt(alpha, 16) === 0) return null
+  return `#${rgb.toLowerCase()}`
+}
+
+/**
  * One custom property of the theme in force, as a colour. A token the theme leaves out — or one
- * it writes transparent, which has no luminance to speak of — falls back to the value given.
+ * it writes fully transparent, which has no luminance to speak of — falls back to the value
+ * given.
  */
 export function themeColor(variables: Record<string, string>, name: string, fallback: string): string {
-  const value = variables[name]
-  return isHexColor(value) ? value : fallback
+  return normalizeHex(variables[name]) ?? fallback
 }
 
 /**
