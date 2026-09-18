@@ -1,8 +1,8 @@
 import { describe, expect, it, beforeEach } from 'vitest'
-import { mkdtemp, readFile, readdir, writeFile, mkdir } from 'node:fs/promises'
+import { mkdtemp, readFile, readdir, utimes, writeFile, mkdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { InstallError, LIMITS, readPackage, removePackage, safeEntryName, sha256, writePackage } from '../src/marketplace/install.js'
+import { InstallError, LIMITS, STALE_STAGING_MS, readPackage, recoverStaging, removePackage, safeEntryName, sha256, writePackage } from '../src/marketplace/install.js'
 import { writeZip } from '../src/backup/zip.js'
 import { SDK_VERSION } from '../src/bridge/sdk.js'
 
@@ -35,6 +35,17 @@ describe('safeEntryName', () => {
   it('accepts an ordinary asset path', () => {
     for (const name of ['index.html', 'manifest.json', 'assets/logo.svg', 'a/b/c.js']) {
       expect(safeEntryName(name), name).toBe(true)
+    }
+  })
+  it('caps how deep a path may go', () => {
+    expect(safeEntryName('a/b/c/d/e/f/g/h.js')).toBe(true)
+    expect(safeEntryName('a/b/c/d/e/f/g/h/i.js')).toBe(false)
+  })
+  it('refuses an archive, whatever the case of its extension', () => {
+    // A payload nothing in the chain looks inside: not the registry's validator, not readZip,
+    // not the catalogue.
+    for (const name of ['payload.zip', 'a/b.TGZ', 'x.tar', 'x.gz', 'x.7z', 'x.rar', 'x.xz', 'x.bz2']) {
+      expect(safeEntryName(name), name).toBe(false)
     }
   })
 })
@@ -171,5 +182,59 @@ describe('removePackage', () => {
     await removePackage(dir, 'demo')
     expect(await readdir(dir)).toEqual([])
     await expect(removePackage(dir, 'demo')).resolves.toBeUndefined()
+  })
+})
+
+describe('recoverStaging', () => {
+  let dir: string
+  beforeEach(async () => { dir = await mkdtemp(join(tmpdir(), 'installed-')) })
+
+  const files = [
+    { name: 'index.html', data: Buffer.from('<html>v1</html>') },
+    { name: 'manifest.json', data: Buffer.from(JSON.stringify(MANIFEST)) },
+  ]
+
+  it('puts a backup back when the widget folder is missing', async () => {
+    // The swap is `target → .bak` then `staging → target`. A crash between the two leaves the
+    // widget gone and its previous version in `.bak`.
+    await mkdir(join(dir, 'demo.bak'), { recursive: true })
+    await writeFile(join(dir, 'demo.bak', 'index.html'), 'the version that worked')
+    await recoverStaging(dir)
+    expect(await readFile(join(dir, 'demo', 'index.html'), 'utf8')).toBe('the version that worked')
+    expect(await readdir(dir)).toEqual(['demo'])
+  })
+
+  it('drops a backup sitting beside a working widget', async () => {
+    // That one is the leftover of a *successful* swap whose cleanup failed; restoring it would
+    // undo the install.
+    await writePackage(dir, 'demo', files)
+    await mkdir(join(dir, 'demo.bak'), { recursive: true })
+    await writeFile(join(dir, 'demo.bak', 'index.html'), 'the old one')
+    await recoverStaging(dir)
+    expect(await readFile(join(dir, 'demo', 'index.html'), 'utf8')).toBe('<html>v1</html>')
+    expect(await readdir(dir)).toEqual(['demo'])
+  })
+
+  it('sweeps a staging folder old enough to be dead, and leaves a fresh one alone', async () => {
+    const stale = join(dir, '.tmp-demo-old')
+    const fresh = join(dir, '.tmp-demo-new')
+    await mkdir(stale, { recursive: true })
+    await mkdir(fresh, { recursive: true })
+    const longAgo = new Date(Date.now() - STALE_STAGING_MS - 60_000)
+    await utimes(stale, longAgo, longAgo)
+    await recoverStaging(dir)
+    expect((await readdir(dir)).sort()).toEqual(['.tmp-demo-new'])
+  })
+
+  it('says nothing about a folder that does not exist', async () => {
+    await expect(recoverStaging(join(dir, 'nope'))).resolves.toBeUndefined()
+  })
+
+  it('runs on the way into an install, so a crashed one is undone first', async () => {
+    await mkdir(join(dir, 'demo.bak'), { recursive: true })
+    await writeFile(join(dir, 'demo.bak', 'index.html'), 'the version that worked')
+    await writePackage(dir, 'other', files)
+    // `demo` came back even though the install was for `other`.
+    expect(await readFile(join(dir, 'demo', 'index.html'), 'utf8')).toBe('the version that worked')
   })
 })

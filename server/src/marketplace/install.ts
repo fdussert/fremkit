@@ -11,7 +11,7 @@
  */
 
 import { createHash } from 'node:crypto'
-import { mkdir, mkdtemp, rename, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { readZip, ZipError } from '../backup/zip.js'
 import { ManifestSchema, type WidgetManifest } from '../widgets/manifest.js'
@@ -24,7 +24,30 @@ export const LIMITS = {
   maxFiles: 200,
   maxUncompressedBytes: 20 * 1024 * 1024,
   maxFileBytes: 5 * 1024 * 1024,
+  /**
+   * How deep a path inside a package may go. A widget is a page and its assets; eight levels is
+   * already more than any of the built-ins use, and an unbounded depth is a cheap way to make a
+   * filesystem — or a backup reading it back — unhappy.
+   */
+  maxPathDepth: 8,
 } as const
+
+/**
+ * A staging folder this old is not an install in progress; it is one that died.
+ *
+ * Ten minutes is far longer than writing two hundred small files takes, and short enough that
+ * the sweep happens on the next install rather than never.
+ */
+export const STALE_STAGING_MS = 10 * 60 * 1000
+
+/**
+ * Suffixes an entry may not carry.
+ *
+ * An archive inside a package is a payload nothing in the chain looks inside: not the registry's
+ * validator, not `readZip`, not the catalogue. The registry refuses these too; this is the copy
+ * that protects a user from a registry rather than an author from a mistake.
+ */
+const FORBIDDEN_SUFFIX = ['.zip', '.tar', '.tgz', '.gz', '.7z', '.rar', '.xz', '.bz2']
 
 export type InstallErrorKey =
   | 'marketplace.badPackage'
@@ -59,7 +82,10 @@ export function safeEntryName(name: string): boolean {
   // A trailing slash is a directory record; the folders are created from the file paths instead.
   if (name.endsWith('/')) return false
   const parts = name.split('/')
+  if (parts.length > LIMITS.maxPathDepth) return false
   if (parts.some((p) => p === '' || p === '.' || p === '..' || p.startsWith('.'))) return false
+  const lower = name.toLowerCase()
+  if (FORBIDDEN_SUFFIX.some((suffix) => lower.endsWith(suffix))) return false
   return true
 }
 
@@ -135,8 +161,41 @@ export function readPackage(
  * removal itself fails the install is still done, and a stale `.bak` is inert: the catalogue
  * scans `<dataDir>/widgets` and a name with a dot in it is not a widget id.
  */
+/**
+ * Undoes whatever a crash in the middle of the previous swap left behind.
+ *
+ * Two shapes are possible, because the swap is `target → .bak`, then `staging → target`. If the
+ * process died between the two, the widget's folder is *gone* and its previous version is
+ * sitting in `<id>.bak` — so it goes back. And a staging folder nobody renamed is dead weight
+ * that the catalogue ignores but the disk does not; anything older than a few minutes is swept.
+ *
+ * Both are best-effort: an install that cannot tidy up is still an install, and the mess is
+ * inert — `<id>.bak` and `.tmp-…` are not widget ids, so the catalogue never reads them.
+ */
+export async function recoverStaging(installedDir: string, now: number = Date.now()): Promise<void> {
+  let entries: string[]
+  try { entries = await readdir(installedDir) } catch { return }
+  for (const entry of entries) {
+    const full = join(installedDir, entry)
+    const backup = /^(.+)\.bak$/.exec(entry)
+    if (backup) {
+      const target = join(installedDir, backup[1])
+      // Only when the widget itself is missing: a `.bak` beside a working folder is the leftover
+      // of a *successful* swap whose cleanup failed, and restoring it would undo the install.
+      const present = await stat(target).then(() => true, () => false)
+      if (!present) await rename(full, target).catch(() => {})
+      else await rm(full, { recursive: true, force: true }).catch(() => {})
+      continue
+    }
+    if (!entry.startsWith('.tmp-')) continue
+    const age = await stat(full).then((s) => now - s.mtimeMs, () => 0)
+    if (age > STALE_STAGING_MS) await rm(full, { recursive: true, force: true }).catch(() => {})
+  }
+}
+
 export async function writePackage(installedDir: string, id: string, files: { name: string; data: Buffer }[]): Promise<void> {
   await mkdir(installedDir, { recursive: true })
+  await recoverStaging(installedDir)
   const target = join(installedDir, id)
   const backup = join(installedDir, `${id}.bak`)
   const staging = await mkdtemp(join(installedDir, `.tmp-${id}-`))
