@@ -168,6 +168,27 @@ describe('ManifestSchema', () => {
   })
 })
 
+describe('category', () => {
+  const base = { id: 'x', name: 'X', version: '1.0.0' }
+
+  it('files a manifest that names none under other', () => {
+    expect(ManifestSchema.parse(base).category).toBe('other')
+  })
+
+  it('keeps a category it declares', () => {
+    expect(ManifestSchema.parse({ ...base, category: 'system' }).category).toBe('system')
+  })
+
+  // A widget published for a newer Fremkit must still install on this one: refusing the manifest
+  // would take the whole widget out of the catalogue over the name of a shelf.
+  it('files a category it does not know under other, rather than refusing the manifest', () => {
+    const parsed = ManifestSchema.safeParse({ ...base, category: 'weather-and-tides' })
+    expect(parsed.success).toBe(true)
+    expect(parsed.success && parsed.data.category).toBe('other')
+    expect(ManifestSchema.parse({ ...base, category: 42 }).category).toBe('other')
+  })
+})
+
 describe('channels a manifest may not ask for', () => {
   const base = { id: 'w', name: 'W', version: '1.0.0', minSize: [4, 2], defaultSize: [4, 2] }
 

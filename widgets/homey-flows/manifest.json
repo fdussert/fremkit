@@ -2,6 +2,7 @@
   "name": { "fr": "Flows Homey", "en": "Homey flows" },
   "version": "1.1.0",
   "description": { "fr": "Boutons pour lancer les flows d’un Homey Pro", "en": "Buttons that run the flows of a Homey Pro" },
+  "category": "home",
   "icon": "play", "minSize": [8, 4], "defaultSize": [16, 8],
   "subscriptions": ["homey:*"], "commands": ["homey:*"],
   "settingsSchema": {

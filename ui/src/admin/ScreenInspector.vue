@@ -10,6 +10,7 @@ import BaseColor from '../shared/ui/BaseColor.vue'
 import BaseField from '../shared/ui/BaseField.vue'
 import BaseInput from '../shared/ui/BaseInput.vue'
 import BaseRange from '../shared/ui/BaseRange.vue'
+import BaseSection from '../shared/ui/BaseSection.vue'
 import BaseSegmented from '../shared/ui/BaseSegmented.vue'
 import BackgroundPicker from './BackgroundPicker.vue'
 import NavWidgetsEditor from './NavWidgetsEditor.vue'
@@ -128,6 +129,7 @@ function setBackground(patch: Partial<Background>): void {
     <BaseSegmented :model-value="locale" :options="LANGUAGES" @update:model-value="setLocale($event)" />
   </BaseField>
 
+  <BaseSection id="screen.layout" :title="t('admin.inspector.screen.layout')">
   <BaseField :label="t('admin.inspector.screen.grid')" :hint="t('admin.inspector.screen.grid.hint')">
     <p class="ro">{{ t('admin.inspector.screen.grid.value', { cols: d.cols, rows: d.rows, cell: d.cell }) }}</p>
   </BaseField>
@@ -154,9 +156,13 @@ function setBackground(patch: Partial<Background>): void {
       @update:model-value="setAutoCycle($event)" />
   </BaseField>
 
-  <NavWidgetsEditor />
+  </BaseSection>
 
-  <h3>{{ t('admin.inspector.screen.background') }}</h3>
+  <BaseSection id="screen.navWidgets" :title="t('admin.inspector.screen.navWidgets')">
+    <NavWidgetsEditor />
+  </BaseSection>
+
+  <BaseSection id="screen.background" :title="t('admin.inspector.screen.background')">
   <BaseField :label="t('admin.inspector.screen.color')" :hint="t('admin.inspector.screen.color.hint')">
     <BaseColor :model-value="bg.color ?? ''" fallback="#0b0d10" :reset-label="t('common.reset')"
       :aria-label="t('admin.inspector.screen.color.aria')"
@@ -164,12 +170,16 @@ function setBackground(patch: Partial<Background>): void {
   </BaseField>
 
   <BackgroundPicker :model-value="bg" @update="setBackground($event)" />
+  </BaseSection>
 
+  <BaseSection id="screen.kiosk" :title="t('admin.inspector.screen.kiosk')">
   <BaseField :label="t('admin.inspector.screen.kioskUrl')">
     <p class="ro mono">{{ kioskUrl }}</p>
   </BaseField>
 
-  <h3>{{ t('admin.inspector.screen.backup') }}</h3>
+  </BaseSection>
+
+  <BaseSection id="screen.backup" :title="t('admin.inspector.screen.backup')">
   <div class="row">
     <BaseButton @click="api.downloadBackup()">
       <BaseIcon name="download" :size="16" />{{ t('admin.inspector.screen.backup.download') }}
@@ -192,11 +202,14 @@ function setBackground(patch: Partial<Background>): void {
     <p v-else class="ro">{{ t('admin.inspector.screen.restore.nothingToReenter') }}</p>
   </template>
 
-  <h3>{{ t('admin.inspector.screen.privacy') }}</h3>
+  </BaseSection>
+
+  <BaseSection id="screen.privacy" :title="t('admin.inspector.screen.privacy')">
   <BaseCheckbox :model-value="privacy.claudeAccountUsage"
     :label="t('admin.inspector.screen.claudeUsage')"
     @update:model-value="setClaudeAccountUsage($event)" />
   <p class="ro">{{ t('admin.inspector.screen.claudeUsage.hint') }}</p>
+  </BaseSection>
 </template>
 
 <style scoped>

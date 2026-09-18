@@ -214,6 +214,8 @@ export function channelAllowed(allowed: string[], channel: string): boolean {
 export interface Compact { width: number }
 
 export interface WidgetManifest {
+  /** Which shelf of the library it sits on; absent in a manifest written before categories. */
+  category?: string
   id: string; name: LocalizedText; version: string; description: LocalizedText; icon: string
   /** The SDK generation the widget needs; 1 for everything written before the marketplace. */
   sdk: number

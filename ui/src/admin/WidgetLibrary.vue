@@ -26,21 +26,23 @@ function unbindDragFallback(): void {
 
 <script setup lang="ts">
 /**
- * The palette: what can be dragged onto the canvas, and nothing else.
+ * The palette: what can be dragged onto the canvas, and nothing else, on shelves by category.
  *
  * Browsing the registry used to be a tab in here, which put a shop inside a 300 px column that
  * is opened on every visit. It is a modal now (`MarketplacePanel`), and what stays behind is the
  * part that belongs to a widget already on this machine: a dot saying it came from the registry,
  * and a chip saying a newer version is waiting — which opens the modal on the Updates view.
  */
-import { onMounted, onBeforeUnmount } from 'vue'
+import { computed, onMounted, onBeforeUnmount } from 'vue'
 import BaseButton from '../shared/ui/BaseButton.vue'
 import BaseCard from '../shared/ui/BaseCard.vue'
 import BaseIcon from '../shared/ui/BaseIcon.vue'
+import BaseSection from '../shared/ui/BaseSection.vue'
 import WidgetPermissions from './WidgetPermissions.vue'
 import { pick, useI18n } from '../shared/i18n'
 import { DND_TYPE, useAdminStore } from './store'
 import { useMarketplaceStore } from './marketplace'
+import { groupByCategory } from './library'
 
 const s = useAdminStore()
 const market = useMarketplaceStore()
@@ -54,6 +56,12 @@ const { t } = useI18n()
  * quiet about failing.
  */
 onMounted(() => { void market.load() })
+
+/** One group per category that has widgets, each sorted by name in the language in force. */
+const groups = computed(() => groupByCategory(
+  Object.values(s.state.manifests),
+  (a, b) => pick(a.name).localeCompare(pick(b.name)),
+).map((g) => ({ ...g, title: t(`admin.library.category.${g.id}`) })))
 
 function onDragStart(e: DragEvent, id: string): void {
   s.setDragWidget(id)
@@ -88,26 +96,31 @@ onBeforeUnmount(unbindDragFallback)
       </BaseButton>
     </h2>
 
-    <div class="list">
-      <BaseCard v-for="m in Object.values(s.state.manifests)" :key="m.id" grab :draggable="true" @dragstart="onDragStart($event, m.id)" @dragend="s.setDragWidget(null)"
-        @click="s.addWidget(m.id)">
-        <BaseIcon :name="m.icon" :size="20" />
-        <div class="txt">
-          <strong>
-            {{ pick(m.name) }}
-            <!-- A dot in the "ok" colour: "this came from the registry, and it is here". -->
-            <span v-if="installedVersion(m.id)" class="state">
-              <i class="dot ok"></i>{{ t('admin.market.installedAt', { version: installedVersion(m.id) ?? '' }) }}
-            </span>
-            <button v-if="updateTo(m.id)" type="button" class="chip up"
-              :title="t('admin.market.openUpdates')" @click.stop="openUpdates()">
-              ↑ {{ updateTo(m.id) }}
-            </button>
-          </strong>
-          <small>{{ m.defaultSize[0] }}×{{ m.defaultSize[1] }} · {{ pick(m.description) }}</small>
-          <WidgetPermissions :manifest="m" :asks="s.state.asks[m.id]" compact />
-        </div>
-      </BaseCard>
+    <BaseSection v-for="g in groups" :key="g.id" :id="`library.${g.id}`" :title="g.title"
+      :badge="String(g.widgets.length)" default-open>
+      <div class="list">
+        <BaseCard v-for="m in g.widgets" :key="m.id" grab :draggable="true" @dragstart="onDragStart($event, m.id)" @dragend="s.setDragWidget(null)"
+          @click="s.addWidget(m.id)">
+          <BaseIcon :name="m.icon" :size="20" />
+          <div class="txt">
+            <strong>
+              {{ pick(m.name) }}
+              <!-- A dot in the "ok" colour: "this came from the registry, and it is here". -->
+              <span v-if="installedVersion(m.id)" class="state">
+                <i class="dot ok"></i>{{ t('admin.market.installedAt', { version: installedVersion(m.id) ?? '' }) }}
+              </span>
+              <button v-if="updateTo(m.id)" type="button" class="chip up"
+                :title="t('admin.market.openUpdates')" @click.stop="openUpdates()">
+                ↑ {{ updateTo(m.id) }}
+              </button>
+            </strong>
+            <small>{{ m.defaultSize[0] }}×{{ m.defaultSize[1] }} · {{ pick(m.description) }}</small>
+            <WidgetPermissions :manifest="m" :asks="s.state.asks[m.id]" compact />
+          </div>
+        </BaseCard>
+      </div>
+    </BaseSection>
+    <div v-if="s.state.catalogErrors.length" class="list errors">
       <BaseCard v-for="e in s.state.catalogErrors" :key="'err-' + e.id" class="err">
         <BaseIcon name="alert-triangle" :size="20" />
         <div class="txt"><strong>{{ e.id }}</strong><small>{{ e.error }}</small></div>
@@ -120,6 +133,7 @@ onBeforeUnmount(unbindDragFallback)
 section { margin-top: var(--space-4); }
 h2 { display: flex; align-items: center; justify-content: space-between; font-size: var(--fs-xs);
   text-transform: uppercase; letter-spacing: .08em; color: var(--text-muted); margin: 0 0 var(--space-2); }
+.errors { margin-top: var(--space-3); }
 .list { display: flex; flex-direction: column; gap: var(--space-2); }
 .txt { display: flex; flex-direction: column; min-width: 0; }
 .txt strong { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; font-size: var(--fs-sm); font-weight: 600; }

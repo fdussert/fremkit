@@ -1,5 +1,6 @@
 { "id": "spotify", "name": "Spotify", "version": "1.0.0",
   "description": { "fr": "Contrôle Spotify", "en": "Spotify controls" },
+  "category": "media",
   "icon": "music", "minSize": [16, 4], "defaultSize": [16, 4], "subscriptions": ["spotify"], "commands": ["spotify"],
   "settingsSchema": {
     "longPressOpensApp": { "type": "boolean", "default": false,

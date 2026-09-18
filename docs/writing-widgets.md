@@ -50,6 +50,7 @@ dropped in by hand is reported as an error while the built-in keeps the id.
 | `version` | yes | A semver number — `1.2.0`, `1.0.0-rc.1`. The marketplace orders releases by it |
 | `description` | no | One line in the widget library. Default `""` |
 | `icon` | no | A [Lucide](https://lucide.dev) icon name. Default `layout-grid` |
+| `category` | no | Which shelf of the library it sits on — see [Categories](#categories). Default `other` |
 | `minSize` | no | `[cols, rows]` in grid cells; the editor refuses anything smaller. Default `[4, 2]` |
 | `defaultSize` | no | `[cols, rows]` the widget is dropped at. Defaults to `minSize`, and must be ≥ it |
 | `compact` | no | `{ "width": n }`, 2 to 16 cells — see [Compact widgets](#compact-widgets) |
@@ -64,6 +65,23 @@ dropped in by hand is reported as an error while the built-in keeps the id.
 
 Legacy manifests may declare `sizes` instead of `minSize`; the server converts them, doubling the
 coordinates for the current grid.
+
+### Categories
+
+One shelf of the widget library, and one line in the registry index. Pick the one a person would
+look under, not the one the code belongs to; a name this version does not know — a widget
+published for a newer Fremkit — is filed under `other` rather than refused.
+
+| Category | What it is for |
+|---|---|
+| `ai` | Assistants and models: sessions, quotas, spend |
+| `dev` | What the code is doing elsewhere: builds, pull requests, service health |
+| `system` | This machine: processor, memory, disks, network, battery, volume |
+| `productivity` | The day's own work: agenda, timers, the pasteboard, shortcuts, notifications, captures |
+| `media` | What is playing |
+| `info` | The world outside the machine: the time, the weather |
+| `home` | The devices around you: home automation, a printer, a NAS |
+| `other` | Anything that fits nowhere else — the default |
 
 ### Localised text
 

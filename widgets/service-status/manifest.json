@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": { "fr": "Pastille verte, orange ou rouge par service, avec la latence et l’historique",
                    "en": "A green, amber or red dot per service, with latency and history" },
+  "category": "dev",
   "icon": "activity", "minSize": [8, 4], "defaultSize": [8, 6],
   "compact": { "width": 4 },
   "commands": ["service-status"],

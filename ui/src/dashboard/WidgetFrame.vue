@@ -11,6 +11,12 @@ const iframe = ref<HTMLIFrameElement>()
 const { state } = useWidgetBridge(iframe, () => props.instance, () => props.manifest, () => props.cell)
 
 const mode = computed<AccentMode>(() => props.instance.accentMode ?? 'none')
+/**
+ * How opaque the tile's own background is. Everything the tile paints under the widget fades
+ * with it — surface, border, title bar and the instance's image — so 0 really is a widget with
+ * no background at all, which is what the editor's checkbox promises.
+ */
+const alpha = computed(() => surfaceOpacity(props.instance.opacity))
 
 const style = computed<Record<string, string>>(() => {
   const inst = props.instance
@@ -27,12 +33,11 @@ const style = computed<Record<string, string>>(() => {
   // A custom accent is a literal hex; the theme accent is only a variable to the browser, so it
   // stays written as one and `fade()` mixes it with color-mix instead of rgba().
   const accentCss = isHexColor(inst.accentColor) ? inst.accentColor : 'var(--accent)'
-  // Opacity fades the whole tile, border included: 0 is genuinely see-through.
-  const alpha = surfaceOpacity(inst.opacity)
+  const a = alpha.value
   const body = mode.value === 'fill' ? accentCss : (isHexColor(inst.bgColor) ? inst.bgColor : 'var(--surface)')
-  s['--tile-bg'] = fade(body, alpha)
-  s['--tile-border'] = fade(mode.value === 'none' ? 'var(--border)' : accentCss, alpha)
-  s['--tile-title-bg'] = fade(accentCss, alpha)
+  s['--tile-bg'] = fade(body, a)
+  s['--tile-border'] = fade(mode.value === 'none' ? 'var(--border)' : accentCss, a)
+  s['--tile-title-bg'] = fade(accentCss, a)
   // Both text colours are literals: they come from the luminance of a real colour, never a var.
   s['--tile-text'] = isHexColor(inst.bgColor) || mode.value === 'fill'
     ? tileText(mode.value, inst.accentColor, inst.bgColor)
@@ -49,7 +54,7 @@ const title = computed(() => props.instance.title?.trim() || pick(props.manifest
  */
 const imageStyle = computed<Record<string, string> | null>(() => {
   const style = widgetBackgroundStyle(props.instance.background)
-  return Object.keys(style).length ? style : null
+  return Object.keys(style).length ? { ...style, opacity: String(alpha.value) } : null
 })
 const dimStyle = computed(() => ({ opacity: String(widgetDim(props.instance.background)) }))
 </script>

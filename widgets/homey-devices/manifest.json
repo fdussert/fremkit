@@ -2,6 +2,7 @@
   "name": { "fr": "Appareils Homey", "en": "Homey devices" },
   "version": "1.1.0",
   "description": { "fr": "Lampes, prises et capteurs d’un Homey Pro", "en": "Lights, plugs and sensors of a Homey Pro" },
+  "category": "home",
   "icon": "layout-grid", "minSize": [8, 4], "defaultSize": [24, 8],
   "compact": { "width": 6 },
   "subscriptions": ["homey:*"], "commands": ["homey:*"],

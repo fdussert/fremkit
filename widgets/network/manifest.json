@@ -2,6 +2,7 @@
   "name": { "fr": "Réseau", "en": "Network" },
   "version": "2.0.0",
   "description": { "fr": "Débit réseau en direct", "en": "Live network throughput" },
+  "category": "system",
   "icon": "network",
   "minSize": [8, 4],
   "defaultSize": [12, 4],
