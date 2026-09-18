@@ -12,9 +12,9 @@
  *  - `SYNO.API.Auth` v1, `method=logout` — ends a session. Used by the provider when its channel
  *    goes quiet and by anything that fails, so a session does not linger on the NAS.
  *  - `SYNO.Core.System.Utilization` v1, `method=get` — CPU, memory and network counters.
- *  - `SYNO.Core.System` v1, `method=info` — `model`, `firmware_ver` and `up_time`. This is where
- *    the uptime really comes from; `SYNO.Core.System.Utilization` may carry a `time.uptime`, but
- *    the field is undocumented and absent on some DSM versions, so it is only a fallback.
+ *  - `SYNO.Core.System` v1, `method=info` — `model`, `firmware_ver` and `up_time`, the only
+ *    source of the uptime (checked against a DS918+ on DSM 7.1.1: `up_time` is `"106:42:43"`,
+ *    hours first, and the utilization answer's `time` is an epoch, not an uptime).
  *  - `SYNO.Storage.CGI.Storage` v1, `method=load_info` — volumes and disks: size, used, status,
  *    model, temperature, SMART verdict.
  *
@@ -131,7 +131,7 @@ export interface SynologySnapshot {
   memory: { usedPercent: number | null; totalBytes: number | null }
   /** Bytes per second, summed over the interfaces DSM reports. */
   network: { rx: number | null; tx: number | null }
-  /** From `SYNO.Core.System` `info.up_time`; the utilization `time.uptime` is a fallback. */
+  /** From `SYNO.Core.System` `info.up_time`; null until that call has answered once. */
   uptimeSeconds: number | null
   /** `SYNO.Core.System` `info.model`, e.g. `DS923+`. Null until that call has answered once. */
   model: string | null
@@ -169,8 +169,9 @@ export const UtilizationSchema = z.object({
   cpu: z.object({ user_load: num.optional(), system_load: num.optional(), other_load: num.optional() }).optional(),
   memory: z.object({ real_usage: num.optional(), memory_size: num.optional() }).optional(),
   network: z.array(z.object({ device: z.string().optional(), rx: num.optional(), tx: num.optional() })).optional(),
-  /** Undocumented and absent on some DSM versions; `SYNO.Core.System` is the real source. */
-  time: z.object({ uptime: num.optional() }).optional(),
+  // No `time` here: DSM 7.1 answers `time: <epoch seconds>`, a number, and a schema that read
+  // it as `{ uptime }` refused the whole answer as "not a DSM". The uptime comes from
+  // `SYNO.Core.System` alone.
 })
 
 /**
@@ -458,8 +459,7 @@ export function toSnapshot(
       totalBytes: typeof util.memory?.memory_size === 'number' ? util.memory.memory_size * 1024 : null,
     },
     network: { rx: sum('rx'), tx: sum('tx') },
-    // `SYNO.Core.System` first; the utilization field is undocumented and only a fallback.
-    uptimeSeconds: upTimeSeconds(info.up_time) ?? (typeof util.time?.uptime === 'number' ? util.time.uptime : null),
+    uptimeSeconds: upTimeSeconds(info.up_time),
     model: info.model?.trim() || null,
     dsmVersion: info.firmware_ver?.trim() || null,
     volumes: (storage.volumes ?? []).map((v) => ({

@@ -32,7 +32,9 @@ const UTIL = {
     { device: 'eth0', rx: 1200, tx: 340 },
     { device: 'eth1', rx: 100, tx: 60 },
   ],
-  time: { uptime: 864000 },
+  // What a DS918+ on DSM 7.1.1 actually sends: an epoch, not an uptime. It must be ignored,
+  // not refused — reading it as `{ uptime }` once turned every real NAS into "not a DSM".
+  time: 1789745232,
 }
 
 const STORAGE = {
