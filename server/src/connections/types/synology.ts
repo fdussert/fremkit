@@ -15,10 +15,11 @@ export interface SynologyTestDeps { transport?: SynologyTransport }
 /**
  * A Synology NAS, through a DSM account.
  *
- * Advise a dedicated account: DSM lets you create a user with no shared-folder rights at all,
- * and the two APIs this reads — system utilisation and storage information — need nothing more.
- * A password that also opens the file shares is a password on a dashboard, which is a strictly
- * worse trade than five minutes in Control Panel → User.
+ * Advise a dedicated account in the `administrators` group: on DSM 7 the system and storage
+ * APIs answer administrators only (code 105 otherwise), and a user denied the DSM application
+ * cannot even log in (code 402). Administrator does not mean the files — with no shared folder
+ * granted, the password on the dashboard opens nothing else. The first real user followed the
+ * earlier "read-only, deny every application" advice and hit both walls in turn.
  *
  * `otp` is asked for once. DSM refuses a one-time code it has already seen, so a two-factor
  * account would need a fresh six digits at every restart; `enable_device_token=yes` makes the
