@@ -19,6 +19,7 @@ import BaseSection from '../shared/ui/BaseSection.vue'
 import BaseSegmented from '../shared/ui/BaseSegmented.vue'
 import ConsentDialog from './ConsentDialog.vue'
 import MarketplaceRow from './MarketplaceRow.vue'
+import MarketplaceThemeRow from './MarketplaceThemeRow.vue'
 import UpdateAllDialog from './UpdateAllDialog.vue'
 import { pick, useI18n } from '../shared/i18n'
 import { groupByCategory } from './library'
@@ -44,12 +45,17 @@ const VIEWS = computed(() => [
 ])
 
 /**
- * The kind of thing being listed. One option today, so the control stays hidden.
+ * Widgets or themes. The switch the panel was built around from the start, now with both.
  *
- * The filter behind it is live all the same (`kind` on the row, in the store): when themes become
- * installable this is a second entry here, not a second panel and a second filter written then.
+ * One panel rather than two, because it is one index and one install path: a theme is a package
+ * that happens to be safer. What changes with the switch is the card — a widget's permissions
+ * against a theme's swatches — and nothing else.
  */
-const KINDS = computed(() => [{ value: 'widget', label: t('admin.market.kind.widgets') }])
+const KINDS = computed(() => [
+  { value: 'widget', label: t('admin.market.kind.widgets') },
+  { value: 'theme', label: t('admin.market.kind.themes') },
+])
+const showingThemes = computed(() => store.state.kind === 'theme')
 
 /** Every button is disabled while anything is in flight; only the working row says so. */
 const locked = computed(() => store.state.busy !== null || store.state.updatingAll)
@@ -67,8 +73,12 @@ const shelves = computed(() => {
     .map((g) => ({ id: g.id, title: t(`admin.library.category.${g.id}`), widgets: g.widgets }))
 })
 
+/** How many rows the panel is about to draw, whichever kind is showing. */
+const rowCount = computed(() => (showingThemes.value ? store.shownThemes.value.length : store.shown.value.length))
+
 const empty = computed(() => {
   if (store.state.search) return t('admin.market.noMatch')
+  if (showingThemes.value) return t('admin.market.noTheme')
   if (store.state.view === 'installed') return t('admin.market.noneInstalled')
   if (store.state.view === 'updates') return t('admin.market.noneWaiting')
   return t('admin.market.empty')
@@ -81,10 +91,11 @@ const empty = computed(() => {
       @update:model-value="store.setView($event as MarketView)" />
 
     <div class="bar">
-      <BaseInput v-model="store.state.search" :placeholder="t('admin.market.search')" />
-      <BaseSegmented v-if="KINDS.length > 1" class="kinds" :model-value="store.state.kind" :options="KINDS"
+      <BaseInput v-model="store.state.search"
+        :placeholder="showingThemes ? t('admin.market.searchTheme') : t('admin.market.search')" />
+      <BaseSegmented class="kinds" :model-value="store.state.kind" :options="KINDS"
         @update:model-value="store.state.kind = $event as MarketKind" />
-      <BaseButton v-if="store.state.view === 'updates' && store.updates.value" class="bulk" :disabled="locked"
+      <BaseButton v-if="!showingThemes && store.state.view === 'updates' && store.updates.value" class="bulk" :disabled="locked"
         @click="store.askUpdateAll()">
         {{ t('admin.market.updateAll') }}
       </BaseButton>
@@ -97,7 +108,7 @@ const empty = computed(() => {
     <!-- A dashboard built before a widget moved to the registry has its tiles and not its
          folders. That is the one state worth interrupting the list for: it is the reason the
          panel was opened, and it is fixed in one press. -->
-    <div v-if="store.missing.value.length" class="placed">
+    <div v-if="!showingThemes && store.missing.value.length" class="placed">
       <span>{{ t('admin.market.placedMissing', { n: store.missing.value.length }) }}</span>
       <BaseButton variant="primary" :disabled="locked" @click="store.askInstallMissing()">
         {{ t('admin.market.installMissing') }}
@@ -107,12 +118,16 @@ const empty = computed(() => {
     <p v-if="store.state.offline" class="note warn">{{ t('admin.market.offline') }}</p>
     <p v-else-if="store.state.error" class="note warn">{{ store.state.error }}</p>
     <p v-if="store.state.loading && !store.state.loaded" class="note">{{ t('admin.market.loading') }}</p>
-    <p v-else-if="store.state.loaded && !store.state.offline && !store.shown.value.length" class="note">{{ empty }}</p>
+    <p v-else-if="store.state.loaded && !store.state.offline && !rowCount" class="note">{{ empty }}</p>
+
+    <div v-if="showingThemes" class="list">
+      <MarketplaceThemeRow v-for="th in store.shownThemes.value" :key="th.id" :theme="th" />
+    </div>
 
     <!-- Available is shelved, because it is a shop: ten widgets of four kinds read as a list
          of ten unless the shelves say what they are. Installed and Updates stay flat — they are
          short by definition, and a shelf around one row is noise. -->
-    <template v-for="shelf in shelves" :key="shelf.id">
+    <template v-for="shelf in (showingThemes ? [] : shelves)" :key="shelf.id">
       <BaseSection v-if="shelf.title" :id="`market.${shelf.id}`" :title="shelf.title"
         :badge="String(shelf.widgets.length)" default-open>
         <div class="list">

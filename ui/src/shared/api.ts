@@ -62,10 +62,13 @@ export const api = {
    * `consent` says the permission dialog was answered, not that something is allowed: the
    * server recomputes the difference from the package it downloads and refuses either way.
    */
-  installWidget: async (id: string, opts: { consent?: WidgetPermissionSet | false; version?: string; update?: boolean } = {}) => {
+  installWidget: async (id: string, opts: { consent?: WidgetPermissionSet | false; version?: string; update?: boolean; kind?: 'widget' | 'theme' } = {}) => {
     const res = await fetch(`/api/marketplace/${opts.update ? 'update' : 'install'}`, {
       method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ id, consent: opts.consent ?? false, ...(opts.version ? { version: opts.version } : {}) }),
+      body: JSON.stringify({
+        id, kind: opts.kind ?? 'widget', consent: opts.consent ?? false,
+        ...(opts.version ? { version: opts.version } : {}),
+      }),
     })
     if (res.status === 409) {
       const body = await res.json().catch(() => null) as { errors?: string[]; newPermissions?: WidgetPermissionSet } | null
@@ -75,9 +78,9 @@ export const api = {
     }
     return json<{ ok: true; id: string; version: string }>(res)
   },
-  uninstallWidget: (id: string) =>
+  uninstallWidget: (id: string, kind: 'widget' | 'theme' = 'widget') =>
     fetch('/api/marketplace/uninstall', {
-      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id }),
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id, kind }),
     }).then((r) => json<{ ok: true; id: string }>(r)),
   /**
    * Updates every waiting widget at once. Answers 200 with one result per widget even when some

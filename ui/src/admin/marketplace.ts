@@ -13,13 +13,14 @@ import { computed, reactive, type ComputedRef } from 'vue'
 import { ConsentRequiredError, api as realApi } from '../shared/api'
 import { pick, t } from '../shared/i18n'
 import { useAdminStore } from './store'
-import type { MarketplaceResponse, MarketplaceWidget, WidgetPermissionSet } from '../shared/types'
+import { useThemes } from '../shared/theme'
+import type { MarketplaceResponse, MarketplaceTheme, MarketplaceWidget, WidgetPermissionSet } from '../shared/types'
 
 export interface MarketplaceApi {
   getMarketplace(): Promise<MarketplaceResponse>
   refreshMarketplace(): Promise<MarketplaceResponse>
-  installWidget(id: string, opts?: { consent?: WidgetPermissionSet | false; version?: string; update?: boolean }): Promise<{ ok: true; id: string; version: string }>
-  uninstallWidget(id: string): Promise<{ ok: true; id: string }>
+  installWidget(id: string, opts?: { consent?: WidgetPermissionSet | false; version?: string; update?: boolean; kind?: MarketKind }): Promise<{ ok: true; id: string; version: string }>
+  uninstallWidget(id: string, kind?: MarketKind): Promise<{ ok: true; id: string }>
   updateAllWidgets(consent: Record<string, WidgetPermissionSet | false>): Promise<{ results: ({ id: string } & UpdateResult)[] }>
   installMissingWidgets(consent: Record<string, WidgetPermissionSet | false>): Promise<{ results: ({ id: string } & UpdateResult)[] }>
 }
@@ -77,6 +78,8 @@ export interface ConsentPrompt {
 
 export interface MarketplaceState {
   widgets: MarketplaceWidget[]
+  /** The themes of the same index. A separate list because a theme is not a widget with no code. */
+  themes: MarketplaceTheme[]
   registry: string | null
   /** Never loaded yet; distinct from "loaded and empty", which is a registry with no widgets. */
   loaded: boolean
@@ -127,6 +130,8 @@ export interface MarketplaceStore {
   state: MarketplaceState
   /** The rows of the view that is showing, filtered by the search box. */
   shown: ComputedRef<MarketplaceWidget[]>
+  /** The same, for themes: the kind switch decides which of the two the panel draws. */
+  shownThemes: ComputedRef<MarketplaceTheme[]>
   /** Every installed widget with something newer waiting, whatever the view. */
   waiting: ComputedRef<MarketplaceWidget[]>
   /**
@@ -161,12 +166,23 @@ export interface MarketplaceStore {
   accept(): Promise<void>
   cancel(): void
   uninstall(id: string): Promise<void>
+  /** Installs or updates a theme. No dialog: there is nothing in a file of tokens to consent to. */
+  installTheme(theme: MarketplaceTheme, update?: boolean): Promise<void>
+  uninstallTheme(id: string): Promise<void>
 }
 
 export interface MarketplaceDeps {
   api?: MarketplaceApi
   /** Called after anything that changes what is installed, so the library picks it up. */
   onChanged?: () => void | Promise<void>
+}
+
+/** The same, for a theme: it has no connections and no id-in-the-card beyond its own. */
+export function matchesTheme(theme: MarketplaceTheme, query: string): boolean {
+  const q = query.trim().toLowerCase()
+  if (!q) return true
+  const haystack = [theme.id, pick(theme.name), pick(theme.description), theme.author ?? ''].join(' ').toLowerCase()
+  return q.split(/\s+/).every((word) => haystack.includes(word))
 }
 
 /** Matches a search box against what a person can actually see on the card. */
@@ -183,7 +199,7 @@ export function matches(widget: MarketplaceWidget, query: string): boolean {
 export function createMarketplaceStore(deps: MarketplaceDeps = {}): MarketplaceStore {
   const api = deps.api ?? realApi
   const state = reactive<MarketplaceState>({
-    widgets: [], registry: null, loaded: false, loading: false, offline: false,
+    widgets: [], themes: [], registry: null, loaded: false, loading: false, offline: false,
     busy: null, error: '', search: '', view: 'available', kind: 'widget',
     consent: null, results: {}, resultsAre: 'update', updatingAll: false, updateAllOpen: false,
     installMissingOpen: false,
@@ -206,6 +222,7 @@ export function createMarketplaceStore(deps: MarketplaceDeps = {}): MarketplaceS
 
   const take = (answer: MarketplaceResponse): void => {
     state.widgets = answer.widgets
+    state.themes = answer.themes ?? []
     state.registry = answer.registry
     state.offline = answer.offline
     state.loaded = true
@@ -254,6 +271,12 @@ export function createMarketplaceStore(deps: MarketplaceDeps = {}): MarketplaceS
   const store: MarketplaceStore = {
     state,
     shown: computed(() => inView().filter((w) => matches(w, state.search))),
+    shownThemes: computed(() => {
+      const rows = state.view === 'installed' ? state.themes.filter((t) => t.installed)
+        : state.view === 'updates' ? state.themes.filter((t) => t.updateAvailable)
+        : state.themes
+      return rows.filter((t) => matchesTheme(t, state.search))
+    }),
     waiting: computed(() => state.widgets.filter((w) => w.updateAvailable)),
     missing: computed(() => state.widgets.filter(isMissing)),
     installMissingPrompt: computed(() => state.widgets
@@ -432,6 +455,22 @@ export function createMarketplaceStore(deps: MarketplaceDeps = {}): MarketplaceS
     async uninstall(id: string): Promise<void> {
       await run(id, () => api.uninstallWidget(id))
     },
+
+    /**
+     * Installs or updates a theme, straight away.
+     *
+     * No consent path at all, and that is the point rather than a shortcut: a theme declares no
+     * channels, no commands and no hosts, so the dialog would list nothing. The server holds the
+     * package to `ThemeSchema` all the same — the trust is in the validation, not in a click.
+     */
+    async installTheme(theme: MarketplaceTheme, update = false): Promise<void> {
+      if (theme.shadowsBuiltin) return
+      await run(theme.id, () => api.installWidget(theme.id, { kind: 'theme', update }))
+    },
+
+    async uninstallTheme(id: string): Promise<void> {
+      await run(id, () => api.uninstallWidget(id, 'theme'))
+    },
   }
   return store
 }
@@ -449,8 +488,14 @@ let singleton: MarketplaceStore | null = null
 export function useMarketplaceStore(): MarketplaceStore {
   if (!singleton) {
     // Installing writes files on the server; the widget library is what reads them, so a rescan
-    // is how an installed widget appears in the column without a reload.
-    singleton = createMarketplaceStore({ onChanged: () => useAdminStore().rescan() })
+    // is how an installed widget appears in the column without a reload. The theme catalog is a
+    // second one: an installed theme has to show up in Screen → Theme the same way.
+    singleton = createMarketplaceStore({
+      onChanged: async () => {
+        await useAdminStore().rescan()
+        await useThemes().rescan()
+      },
+    })
   }
   return singleton
 }

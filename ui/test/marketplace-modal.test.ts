@@ -17,7 +17,7 @@ import UpdateAllDialog from '../src/admin/UpdateAllDialog.vue'
 import TopBar from '../src/admin/TopBar.vue'
 import { useAdminStore } from '../src/admin/store'
 import { useMarketplaceStore } from '../src/admin/marketplace'
-import type { Config, MarketplaceResponse, MarketplaceWidget, WidgetManifest } from '../src/shared/types'
+import type { Config, MarketplaceResponse, MarketplaceTheme, MarketplaceWidget, WidgetManifest } from '../src/shared/types'
 
 function widget(over: Partial<MarketplaceWidget> = {}): MarketplaceWidget {
   return {
@@ -35,7 +35,7 @@ function widget(over: Partial<MarketplaceWidget> = {}): MarketplaceWidget {
 }
 
 const answer = (widgets: MarketplaceWidget[], over: Partial<MarketplaceResponse> = {}): MarketplaceResponse =>
-  ({ registry: 'fremkit-sietch', generatedAt: '2026-09-18T12:00:00.000Z', widgets, offline: false, sdk: 1, ...over })
+  ({ registry: 'fremkit-sietch', generatedAt: '2026-09-18T12:00:00.000Z', widgets, themes: [], offline: false, sdk: 1, ...over })
 
 /** Only `/api/marketplace` is answered: mounting these two on their own asks for nothing else. */
 function serve(body: MarketplaceResponse): { calls: string[] } {
@@ -89,6 +89,7 @@ function reset(): void {
   m.state.updatingAll = false
   m.state.busy = null
   m.state.kind = 'widget'
+  m.state.themes = []
   m.state.installMissingOpen = false
   m.state.resultsAre = 'update'
   m.setView('available')
@@ -264,9 +265,10 @@ describe('the panel itself', () => {
     wrapper.unmount()
   })
 
-  it('keeps the kind switch out of the way while there is one kind', async () => {
+  it('offers the kind switch, now that there are two', async () => {
     const wrapper = await panel([widget()])
-    expect(wrapper.find('.kinds').exists()).toBe(false)
+    expect(wrapper.find('.kinds').exists()).toBe(true)
+    expect(wrapper.find('.kinds').findAll('button')).toHaveLength(2)
     wrapper.unmount()
   })
 
@@ -451,6 +453,98 @@ describe('the Available view, on shelves', () => {
     await wrapper.vm.$nextTick()
     expect(wrapper.findAll('details.section')).toHaveLength(0)
     expect(listed(wrapper)).toHaveLength(2)
+    wrapper.unmount()
+  })
+})
+
+describe('themes in the panel', () => {
+  function theme(over: Partial<MarketplaceTheme> = {}): MarketplaceTheme {
+    return {
+      id: 'nuit', version: '1.0.0',
+      name: { fr: 'Nuit', en: 'Night' }, description: { fr: 'Sombre', en: 'Dark' },
+      author: 'someone', license: 'MIT',
+      tokens: { accent: '#58a6ff', bg: '#0d1117', surface: '#161b22', text: '#e6edf3' },
+      size: 900, publishedAt: '2026-09-18T12:00:00.000Z',
+      installed: false, installedVersion: null, updateAvailable: false,
+      shadowsBuiltin: false, inUse: false,
+      ...over,
+    }
+  }
+
+  async function panel(themes: MarketplaceTheme[]): Promise<ReturnType<typeof mount>> {
+    serve(answer([], { themes }))
+    const wrapper = mount(MarketplacePanel, { attachTo: document.body })
+    await settle()
+    useMarketplaceStore().state.kind = 'theme'
+    await wrapper.vm.$nextTick()
+    return wrapper
+  }
+
+  it('draws the four tokens as swatches rather than asking for a preview image', async () => {
+    const wrapper = await panel([theme()])
+    const row = wrapper.find('[data-theme="nuit"]')
+    expect(row.exists()).toBe(true)
+    const swatches = row.findAll('.sw')
+    expect(swatches).toHaveLength(4)
+    // bg, surface, accent, text — the order the strip reads in, not the order the object has.
+    expect(swatches[0].attributes('title')).toBe('bg')
+    expect(swatches[2].attributes('title')).toBe('accent')
+    wrapper.unmount()
+  })
+
+  it('writes nothing into the style attribute that is not the shape of a colour', async () => {
+    // The server validates every token; this is the copy that does not depend on that.
+    const wrapper = await panel([theme({ tokens: { accent: 'red; content: url(x)', bg: '#0d1117', surface: '#161b22', text: '#e6edf3' } })])
+    const swatches = wrapper.findAll('[data-theme="nuit"] .sw')
+    expect(swatches).toHaveLength(3)
+    expect(wrapper.html()).not.toContain('url(x)')
+    wrapper.unmount()
+  })
+
+  it('offers no consent dialog at all, because there is nothing to list', async () => {
+    const wrapper = await panel([theme()])
+    await wrapper.find('[data-theme="nuit"] .act button').trigger('click')
+    await wrapper.vm.$nextTick()
+    expect(useMarketplaceStore().state.consent).toBeNull()
+    wrapper.unmount()
+  })
+
+  it('will not remove the theme the screen is painted with', async () => {
+    const wrapper = await panel([theme({ installed: true, installedVersion: '1.0.0', inUse: true })])
+    const remove = wrapper.find('[data-theme="nuit"] button.danger')
+    expect(remove.exists()).toBe(true)
+    expect(remove.attributes('disabled')).toBeDefined()
+    expect(wrapper.find('[data-theme="nuit"]').text()).toMatch(/utilisé|in use/)
+    wrapper.unmount()
+  })
+
+  it('says so when a built-in already owns the id', async () => {
+    const wrapper = await panel([theme({ id: 'fremkit', shadowsBuiltin: true })])
+    expect(wrapper.find('[data-theme="fremkit"] button').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('keeps the widget shelves and the placed-widget banner out of the theme list', async () => {
+    serve(answer(
+      [widget({ id: 'stale', placedOn: ['Home'], installed: false, updateAvailable: false })],
+      { themes: [theme()] },
+    ))
+    const wrapper = mount(MarketplacePanel, { attachTo: document.body })
+    await settle()
+    await wrapper.vm.$nextTick()
+    expect(wrapper.find('.placed').exists()).toBe(true)
+    useMarketplaceStore().state.kind = 'theme'
+    await wrapper.vm.$nextTick()
+    // A banner about missing widgets has nothing to say on the Themes list.
+    expect(wrapper.find('.placed').exists()).toBe(false)
+    expect(wrapper.findAll('details.section')).toHaveLength(0)
+    expect(wrapper.findAll('[data-theme]')).toHaveLength(1)
+    wrapper.unmount()
+  })
+
+  it('says the registry has no theme rather than showing the widget message', async () => {
+    const wrapper = await panel([])
+    expect(wrapper.find('.note').text()).toMatch(/thème publié|theme published/)
     wrapper.unmount()
   })
 })

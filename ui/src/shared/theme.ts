@@ -121,11 +121,26 @@ export function applyTheme(root: HTMLElement, variables: Record<string, string>)
   if (root === document.documentElement) applied.value = variables
 }
 
+/**
+ * Ids this page has already gone back to the server for.
+ *
+ * The catalog is read once per page, and a theme can appear after that: installed from the
+ * registry in another tab, restored with a backup, or dropped into the folder by hand. Without
+ * this the screen would paint the built-in theme until somebody reloaded it. Once per id, so an
+ * id that genuinely does not exist costs one request rather than one per repaint.
+ */
+const asked = new Set<string>()
+
 /** Paints the theme a config names, and repaints when either the config or the catalog changes. */
 export function useConfigTheme(config: Ref<Config | null>): void {
-  const { themes: all } = useThemes()
+  const { themes: all, reload } = useThemes()
   const paint = (): void => {
-    applyTheme(document.documentElement, themeVariables(all.value, config.value?.display.theme))
+    const id = config.value?.display.theme
+    applyTheme(document.documentElement, themeVariables(all.value, id))
+    if (id && !all.value[id] && !asked.has(id)) {
+      asked.add(id)
+      void reload().catch(() => { /* offline: the built-in theme's own values stand */ })
+    }
   }
   watch([all, () => config.value?.display.theme], paint, { immediate: true })
 }

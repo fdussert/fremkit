@@ -369,10 +369,38 @@ export interface MarketplaceWidget {
   placedOn: string[]
 }
 
+/**
+ * One theme of the registry, and what this machine makes of it.
+ *
+ * No permissions, no SDK and no consent: a theme is validated JSON that runs nothing. What it
+ * carries instead is `tokens` — the four the card paints as a swatch strip, so a theme needs no
+ * preview image and a card needs no second request.
+ */
+export interface MarketplaceTheme {
+  id: string
+  version: string
+  name: LocalizedText
+  description: LocalizedText
+  author?: string
+  license?: string
+  homepage?: string
+  tokens: { accent: string; bg: string; surface: string; text: string }
+  size: number
+  publishedAt: string
+  installed: boolean
+  installedVersion: string | null
+  updateAvailable: boolean
+  /** A built-in already owns this id, so it can never be installed. */
+  shadowsBuiltin: boolean
+  /** The screen is painted with it; removing it is refused until another is chosen. */
+  inUse: boolean
+}
+
 export interface MarketplaceResponse {
   registry: string | null
   generatedAt: string | null
   widgets: MarketplaceWidget[]
+  themes: MarketplaceTheme[]
   /** The index could not be read; `widgets` is the last one seen, or empty. */
   offline: boolean
   sdk: number
