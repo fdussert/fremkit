@@ -96,7 +96,7 @@ onUnmounted(() => {
       <Inspector />
     </main>
     <BaseModal v-if="s.state.modal === 'screen'" :title="t('admin.tabs.screen')"
-      :close-label="t('common.close')" @close="s.closeModal()">
+      :height="920" :close-label="t('common.close')" @close="s.closeModal()">
       <ScreenInspector />
     </BaseModal>
     <BaseModal v-else-if="s.state.modal === 'connections'" :title="t('admin.tabs.connections')"
