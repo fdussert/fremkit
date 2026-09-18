@@ -178,6 +178,16 @@ export function createClipboardProvider(pasteboard: Pasteboard = pbPasteboard, n
   let entries: ClipboardEntry[] = []
   const hashes = new Map<string, string>() // hash -> entry id
   let lastHash: string | null = null
+  /**
+   * The last concealed text seen, kept apart from `lastHash`.
+   *
+   * A concealed reading is deliberately *not* remembered as seen: copy the same text again from
+   * somewhere that does not conceal it and that copy is the user's to keep. But "not seen" also
+   * meant "ask again", so `osascript` was forked once a second for the whole time a password sat
+   * on the pasteboard — the one case the throttle existed for. Remembered here instead: the same
+   * concealed text is not re-queried, and a new one still is.
+   */
+  let lastConcealedHash: string | null = null
   let nextId = 1
 
   const publicEntries = (): PublicEntry[] =>
@@ -226,7 +236,7 @@ export function createClipboardProvider(pasteboard: Pasteboard = pbPasteboard, n
       // Nothing new on the pasteboard: no need to ask what its types are. That question forks
       // `osascript -l JavaScript` with an AppKit import, which is 100–200 ms of CPU — once a
       // second, for ever, on a dashboard that is always on.
-      if (key !== null && key !== lastHash) {
+      if (key !== null && key !== lastHash && key !== lastConcealedHash) {
         // Asked before the text is recorded: what a password manager copies is marked concealed,
         // and the point is not to hold it at all, not to hold it masked. A pasteboard that cannot
         // be asked — no `types`, or one that throws — is treated as ordinary, which is the
@@ -234,9 +244,12 @@ export function createClipboardProvider(pasteboard: Pasteboard = pbPasteboard, n
         const types = await Promise.resolve(pasteboard.types?.() ?? []).catch(() => [])
         if (isPrivatePasteboard(types)) {
           // Not recorded, and not remembered as "seen" either: if the user copies the same text
-          // again from somewhere that does not conceal it, that copy is theirs to keep.
+          // again from somewhere that does not conceal it, that copy is theirs to keep. Only that
+          // it was *asked about* is remembered, so the next poll does not fork osascript again.
+          lastConcealedHash = key
           return { entries: publicEntries() }
         }
+        lastConcealedHash = null
         record(raw)
       }
       return { entries: publicEntries() }
@@ -246,6 +259,7 @@ export function createClipboardProvider(pasteboard: Pasteboard = pbPasteboard, n
       entries = []
       hashes.clear()
       lastHash = null
+      lastConcealedHash = null
     },
     commands: {
       copy: async (payload, ctx?: CommandContext) => {
@@ -265,9 +279,17 @@ export function createClipboardProvider(pasteboard: Pasteboard = pbPasteboard, n
         lastHash = hash(entry.text)
         return { ok: true }
       },
-      clear: async () => {
+      clear: async (_payload, ctx?: CommandContext) => {
+        // Emptying the history is acting on what the user's Mac has copied, exactly as `copy` is:
+        // same gate, for the same reason.
+        if (!ctx?.loopback) return { ok: false, error: tr(undefined, 'provider.localOnly') }
         entries = []
         hashes.clear()
+        // `lastHash` deliberately survives: it is what keeps the text still sitting on the
+        // pasteboard from being recorded straight back a second later, which would make Clear look
+        // like it did nothing. Copy anything else and the next copy of that text is recorded
+        // again. `lastConcealedHash` is only a throttle, so it goes.
+        lastConcealedHash = null
         return { ok: true, entries: [] as PublicEntry[] }
       },
     },

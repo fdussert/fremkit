@@ -119,8 +119,38 @@ describe('clipboard commands', () => {
     const { pasteboard } = fake('one')
     const p = createClipboardProvider(pasteboard, now)
     await p.poll!()
-    expect(await p.commands!.clear(null)).toEqual({ ok: true, entries: [] })
+    expect(await p.commands!.clear(null, LOCAL)).toEqual({ ok: true, entries: [] })
     expect(((await p.poll!()) as ClipboardSnapshot).entries).toEqual([])
+  })
+  it('refuses a clear that did not come from this machine', async () => {
+    // Emptying the history is acting on what the user's Mac has copied, exactly as `copy` is.
+    const { pasteboard } = fake('one')
+    const p = createClipboardProvider(pasteboard, now)
+    await p.poll!()
+    expect(await p.commands!.clear(null, { loopback: false })).toMatchObject({ ok: false })
+    expect(((await p.poll!()) as ClipboardSnapshot).entries.map((e) => e.preview)).toEqual(['one'])
+  })
+  it('asks the pasteboard for its types once while the same concealed text sits on it', async () => {
+    // `osascript -l JavaScript` with an AppKit import is 100–200 ms of CPU. A concealed reading is
+    // not remembered as seen — a later, unconcealed copy of the same text is the user's to keep —
+    // so without a throttle of its own the question was asked every second for as long as a
+    // password manager left a password on the pasteboard: the very case it was written for.
+    const { pasteboard } = fake('Tr0ub4dor&3')
+    let asked = 0
+    pasteboard.types = async () => { asked++; return ['org.nspasteboard.ConcealedType'] }
+    const p = createClipboardProvider(pasteboard, now)
+    expect(((await p.poll!()) as ClipboardSnapshot).entries).toEqual([])
+    expect(((await p.poll!()) as ClipboardSnapshot).entries).toEqual([])
+    expect(asked).toBe(1)
+  })
+  it('asks again once another concealed text replaces it', async () => {
+    const { pasteboard, set } = fake('Tr0ub4dor&3')
+    let asked = 0
+    pasteboard.types = async () => { asked++; return ['org.nspasteboard.ConcealedType'] }
+    const p = createClipboardProvider(pasteboard, now)
+    await p.poll!()
+    set('hunter2!A'); await p.poll!()
+    expect(asked).toBe(2)
   })
   it('drops everything when the last subscriber leaves', async () => {
     const { pasteboard } = fake('one')
