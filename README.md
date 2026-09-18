@@ -53,12 +53,13 @@ The name is the Fremen survival kit from *Dune*.
    ```sh
    git clone https://github.com/fdussert/fremkit.git
    cd fremkit
-   pnpm setup
+   pnpm run setup
    ```
 
-   `pnpm setup` checks the prerequisites, installs dependencies, builds the UI and the server,
+   `pnpm run setup` checks the prerequisites, installs dependencies, builds the UI and the server,
    offers to create the code-signing identity, then builds and installs the helper into
-   `~/Applications` and points it at your checkout. `pnpm setup --check` runs the checks only.
+   `~/Applications` and points it at your checkout. `pnpm run setup --check` runs the checks only.
+   `pnpm setup` on its own is pnpm’s own command, which is why the script is called by name.
 
 2. **Say yes to the signing identity** when it asks. The helper is signed ad hoc unless a stable
    code-signing identity exists, and macOS ties Input Monitoring and Accessibility grants to the
