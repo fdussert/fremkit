@@ -35,6 +35,7 @@ import { helperRoutes } from './helper/routes.js'
 import { createDockProvider } from './dock/provider.js'
 import { bambuCameras } from './bambu/cameras.js'
 import { sweepStaleCameraDirs } from './providers/bambu-rtsp.js'
+import { seedDefaultBackground } from './backgrounds/seed.js'
 import { bambuRoutes } from './bambu/routes.js'
 import { createShortcutsProvider } from './providers/shortcuts.js'
 import { createServiceStatusProvider } from './providers/service-status.js'
@@ -80,6 +81,11 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   // A camera stream writes a one-line concat list into its own temp directory and removes it on
   // stop; a server that was killed never got there. Cleared once, at boot.
   sweepStaleCameraDirs()
+
+  // The shipped wallpaper, copied into the user's background library as an ordinary file so it
+  // can be picked and deleted like any upload. Before the store loads, so a fresh install's
+  // default config already has the image it names.
+  await seedDefaultBackground(opts.dataDir)
 
   const dock = new DockState({ iconsDir: join(opts.dataDir, 'icons') })
   await dock.loadIcons()

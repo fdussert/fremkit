@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2560" height="720" viewBox="0 0 2560 720">
+  <rect width="2560" height="720" fill="#0b0d10"/>
+  <path d="M 0 668 C 320 664 500 640 720 630 C 900 622 1080 634 1280 652 C 1520 674 1800 686 2560 688 L 2560 720 L 0 720 Z" fill="#131820"/>
+  <path d="M 0 686 C 400 682 720 668 940 646 C 1120 628 1232 602 1380 594 C 1468 589 1544 602 1624 620 C 1820 664 2160 684 2560 686 L 2560 720 L 0 720 Z" fill="#1a2028"/>
+  <path d="M 0 686 C 400 682 720 668 940 646 C 1120 628 1232 602 1380 594 C 1468 589 1544 602 1624 620 C 1820 664 2160 684 2560 686" fill="none" stroke="#d9b36a" stroke-opacity="0.30" stroke-width="3" stroke-linecap="round"/>
+  <g transform="translate(2364,486) scale(0.136719)" opacity="0.1">
+    <rect x="100" y="100" width="824" height="824" rx="185.4" ry="185.4" fill="#14171c"/>
+    <clipPath id="sqwp"><rect x="100" y="100" width="824" height="824" rx="185.4" ry="185.4"/></clipPath>
+    <g clip-path="url(#sqwp)">
+      <path d="M 100 878 C 190 872 250 840 320 826 C 380 814 440 822 510 842 C 600 868 700 886 780 892 C 840 896 890 898 924 898 L 924 1024 L 100 1024 Z" fill="#9a7540"/>
+      <path d="M 100 906 C 268 902 410 882 500 848 C 566 823 600 782 660 770 C 690 776 730 800 760 830 C 812 878 872 890 924 888 L 924 1024 L 100 1024 Z" fill="#d9b36a"/>
+    </g>
+    <rect x="240" y="262" width="430" height="92" rx="12" fill="#d9b36a"/>
+<rect x="658" y="262" width="126" height="92" rx="12" fill="#9a7540"/>
+<rect x="240" y="410" width="372" height="92" rx="12" fill="#eef2f8"/>
+<rect x="240" y="262" width="92" height="376" rx="12" fill="#eef2f8"/>
+  </g>
+</svg>

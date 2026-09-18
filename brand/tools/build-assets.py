@@ -6,7 +6,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 ROOT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 FONTS = os.environ.get("FREMKIT_FONTS", "fonts")
-for sub in ("icon/png", "icon/Fremkit.iconset", "menubar", "favicon", "social", "variants/png"):
+for sub in ("icon/png", "icon/Fremkit.iconset", "menubar", "favicon", "social", "variants/png", "wallpaper"):
     os.makedirs(f"{ROOT}/{sub}", exist_ok=True)
 
 # ------------------------------------------------------------------ palette
@@ -265,5 +265,42 @@ social_svg = f'''<svg xmlns="http://www.w3.org/2000/svg" width="{SW}" height="{S
 </svg>
 '''
 open(f"{ROOT}/social/fremkit-social.svg", "w").write(social_svg)
+
+# ============================================== fond d'ecran 2560x720
+# Le fond de l'Edge : la meme langue graphique que l'image sociale, sans aucun texte — il passe
+# derriere des widgets. Les vagues sont celles de l'image sociale, x2 en largeur et decalees vers
+# le bas de 80 px (640 -> 720), et la marque est posee petite et discrete dans le coin.
+WPW, WPH = 2560, 720
+WP_MARK_PX, WP_MARK_X, WP_MARK_Y = 140, 2364, 486
+WP_MARK_OPACITY = 0.10
+
+WP_BACK = ("M 0 668 C 320 664 500 640 720 630 C 900 622 1080 634 1280 652 "
+           "C 1520 674 1800 686 2560 688 L 2560 720 L 0 720 Z")
+WP_FRONT = ("M 0 686 C 400 682 720 668 940 646 C 1120 628 1232 602 1380 594 "
+            "C 1468 589 1544 602 1624 620 C 1820 664 2160 684 2560 686 L 2560 720 L 0 720 Z")
+WP_CREST = ("M 0 686 C 400 682 720 668 940 646 C 1120 628 1232 602 1380 594 "
+            "C 1468 589 1544 602 1624 620 C 1820 664 2160 684 2560 686")
+
+k_wp = WP_MARK_PX / 1024
+wallpaper_svg = f'''<svg xmlns="http://www.w3.org/2000/svg" width="{WPW}" height="{WPH}" viewBox="0 0 {WPW} {WPH}">
+  <rect width="{WPW}" height="{WPH}" fill="{BG_DEEP}"/>
+  <path d="{WP_BACK}" fill="#131820"/>
+  <path d="{WP_FRONT}" fill="#1a2028"/>
+  <path d="{WP_CREST}" fill="none" stroke="{SAND}" stroke-opacity="0.30" stroke-width="3" stroke-linecap="round"/>
+  <g transform="translate({WP_MARK_X},{WP_MARK_Y}) scale({k_wp:.6f})" opacity="{WP_MARK_OPACITY}">
+    <rect x="{SQ_X}" y="{SQ_Y}" width="{SQ_W}" height="{SQ_W}" rx="{SQ_R}" ry="{SQ_R}" fill="{BG}"/>
+    <clipPath id="sqwp"><rect x="{SQ_X}" y="{SQ_Y}" width="{SQ_W}" height="{SQ_W}" rx="{SQ_R}" ry="{SQ_R}"/></clipPath>
+    <g clip-path="url(#sqwp)">
+      <path d="{DUNE_BACK}" fill="{SAND_BK}"/>
+      <path d="{DUNE_FRONT}" fill="{SAND}"/>
+    </g>
+    {f_bars()}
+  </g>
+</svg>
+'''
+open(f"{ROOT}/wallpaper/fremkit-wallpaper.svg", "w").write(wallpaper_svg)
+cairosvg.svg2png(url=f"{ROOT}/wallpaper/fremkit-wallpaper.svg",
+                 write_to=f"{ROOT}/wallpaper/fremkit-wallpaper.png",
+                 output_width=WPW, output_height=WPH)
 
 print("build ok")

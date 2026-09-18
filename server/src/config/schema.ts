@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { defaultSecretsBackend } from '../secrets/index.js'
 import { tr } from '../i18n.js'
+import { DEFAULT_BACKGROUND } from '../backgrounds/seed.js'
 
 export const WIDGET_ID_RE = /^[a-z0-9_-]+$/
 /** Colours are stored as `#rrggbb` only: no short form, no alpha, no named colour. */
@@ -224,7 +225,13 @@ export type NavWidget = z.infer<typeof NavWidgetSchema>
 
 export const DEFAULT_CONFIG: Config = {
   version: 2,
-  display: { cols: 64, rows: 16, cell: 40, autoCycleSeconds: 0 },
+  display: {
+    cols: 64, rows: 16, cell: 40, autoCycleSeconds: 0,
+    // The shipped wallpaper, seeded into the background library at start. Referenced like any
+    // other image, so the Screen inspector shows it selected and "remove" leaves no background
+    // at all rather than putting a hardcoded one back.
+    background: { image: DEFAULT_BACKGROUND, fit: 'cover' },
+  },
   connections: [],
   secrets: { backend: defaultSecretsBackend() },
   locale: defaultLocale(),

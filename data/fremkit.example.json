@@ -4,7 +4,11 @@
     "cols": 64,
     "rows": 16,
     "cell": 40,
-    "autoCycleSeconds": 0
+    "autoCycleSeconds": 0,
+    "background": {
+      "image": "fremkit-wallpaper.png",
+      "fit": "cover"
+    }
   },
   "connections": [],
   "secrets": {

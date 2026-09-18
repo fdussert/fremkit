@@ -1,5 +1,15 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { mkdtemp, mkdir, readdir, readFile, writeFile, rm } from 'node:fs/promises'
+import { DEFAULT_BACKGROUND } from '../src/backgrounds/seed.js'
+
+/**
+ * The background library without the wallpaper the server seeds into it at start.
+ *
+ * That file is an ordinary upload as far as everything here is concerned — which is the point of
+ * shipping it that way — so these tests simply look past it.
+ */
+const uploaded = async (path: string): Promise<string[]> =>
+  (await readdir(path).catch(() => [])).filter((n) => n !== DEFAULT_BACKGROUND)
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { FastifyInstance } from 'fastify'
@@ -83,7 +93,7 @@ describe('POST /api/backgrounds', () => {
     expect(res.statusCode).toBe(201)
     const { name } = res.json()
     expect(name).toMatch(/^\d+-photo\.png$/)
-    expect(await readdir(join(dir, 'data', 'backgrounds'))).toEqual([name])
+    expect(await uploaded(join(dir, 'data', 'backgrounds'))).toEqual([name])
     expect(await readFile(join(dir, 'data', 'backgrounds', name))).toEqual(PNG)
   })
   it('names the file from the magic bytes, not from what the client claimed', async () => {
@@ -102,12 +112,12 @@ describe('POST /api/backgrounds', () => {
     const big = Buffer.concat([PNG, Buffer.alloc(MAX_BACKGROUND_BYTES)])
     const res = await upload('big.png', big)
     expect(res.statusCode).toBe(413)
-    expect(await readdir(join(dir, 'data', 'backgrounds')).catch(() => [])).toEqual([])
+    expect(await uploaded(join(dir, 'data', 'backgrounds'))).toEqual([])
   })
   it('does not let a crafted name escape the directory', async () => {
     const { name } = (await upload('../../../escaped.png', PNG)).json()
     expect(name.includes('/')).toBe(false)
-    expect(await readdir(join(dir, 'data', 'backgrounds'))).toEqual([name])
+    expect(await uploaded(join(dir, 'data', 'backgrounds'))).toEqual([name])
   })
 })
 
@@ -136,7 +146,7 @@ describe('DELETE /api/backgrounds/:name', () => {
   it('removes the file', async () => {
     const { name } = (await upload('photo.png', PNG)).json()
     expect((await app.inject({ method: 'DELETE', url: `/api/backgrounds/${name}` })).statusCode).toBe(200)
-    expect(await readdir(join(dir, 'data', 'backgrounds'))).toEqual([])
+    expect(await uploaded(join(dir, 'data', 'backgrounds'))).toEqual([])
   })
   it('404s on an unknown name and on traversal', async () => {
     expect((await app.inject({ method: 'DELETE', url: '/api/backgrounds/1-nope.png' })).statusCode).toBe(404)
