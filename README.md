@@ -309,6 +309,21 @@ Working on Fremkit itself — the helper build, the configuration files:
 Working on it with a coding agent — layout, conventions, the gotchas: **[AGENTS.md](AGENTS.md)**.
 Feeding the Claude Code widgets: **[docs/claude-code.md](docs/claude-code.md)**.
 
+## Security
+
+The threat model, what a widget can and cannot do, what the helper's permissions mean, the known
+limits, and how to report a problem: **[SECURITY.md](SECURITY.md)**.
+
+## Credits and trademarks
+
+The icons are a subset of [Lucide](https://lucide.dev) (ISC licence, © Lucide Contributors),
+inlined in `ui/src/shared/icons.ts` so the interface takes no runtime icon dependency.
+
+Corsair and Xeneon are trademarks of Corsair Gaming, Inc. Bambu Lab, Homey, Spotify, GitHub,
+Azure DevOps and Claude are trademarks of their respective owners. Fremkit is an independent
+project and is not affiliated with, endorsed by or sponsored by any of them; the names are used
+only to say what it talks to.
+
 ## License
 
 MIT — see [LICENSE](LICENSE).

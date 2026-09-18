@@ -21,3 +21,19 @@ data/fremkit.json
 # Working notes of the coding agents: local only
 docs/superpowers/
 .superpowers/
+
+# Anything that would be a secret or a key if it existed. None of these belong in the tree, and a
+# stray one is easier to ignore here than to remove from history later.
+.env
+.env.*
+*.log
+*.p12
+*.pem
+*.cer
+*.keychain
+*.keychain-db
+
+# Editor and tool state
+.claude/
+.idea/
+.vscode/
