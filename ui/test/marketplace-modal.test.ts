@@ -518,6 +518,21 @@ describe('themes in the panel', () => {
     wrapper.unmount()
   })
 
+  it('follows the theme actually chosen, not the one the index was fetched with', async () => {
+    // `inUse` comes with the entry, and the entry is fetched when the panel opens. Choosing this
+    // theme in Screen → Theme afterwards left the card offering a Remove the server answers 409
+    // to — found by doing exactly that on a bench server.
+    const s = useAdminStore()
+    s.state.config = config()
+    const wrapper = await panel([theme({ installed: true, installedVersion: '1.0.0', inUse: false })])
+    expect(wrapper.find('[data-theme="nuit"] button.danger').attributes('disabled')).toBeUndefined()
+
+    s.state.config = { ...config(), display: { ...config().display, theme: 'nuit' } } as Config
+    await wrapper.vm.$nextTick()
+    expect(wrapper.find('[data-theme="nuit"] button.danger').attributes('disabled')).toBeDefined()
+    wrapper.unmount()
+  })
+
   it('says so when a built-in already owns the id', async () => {
     const wrapper = await panel([theme({ id: 'fremkit', shadowsBuiltin: true })])
     expect(wrapper.find('[data-theme="fremkit"] button').exists()).toBe(false)

@@ -16,6 +16,7 @@ import BaseButton from '../shared/ui/BaseButton.vue'
 import BaseCard from '../shared/ui/BaseCard.vue'
 import { pick, useI18n } from '../shared/i18n'
 import { useMarketplaceStore } from './marketplace'
+import { useAdminStore } from './store'
 import type { MarketplaceTheme } from '../shared/types'
 
 const props = defineProps<{ theme: MarketplaceTheme }>()
@@ -35,6 +36,20 @@ const meta = computed(() => {
   return [props.theme.author, props.theme.license, `v${props.theme.version}`, `${kb} kB`].filter(Boolean).join(' · ')
 })
 
+/**
+ * Whether the screen is painted with it — read from the config the admin holds live, not from
+ * the index snapshot.
+ *
+ * `inUse` arrives with the entry, and the entry is fetched when the panel opens. Choosing this
+ * theme in Screen → Theme afterwards does not touch that copy, so the card went on offering a
+ * Remove the server answers 409 to. The config is the authority on which theme is in use and the
+ * admin already has it; the server's answer is the fallback for a page that has not loaded one.
+ */
+const inUse = computed(() => {
+  const chosen = useAdminStore().state.config?.display.theme
+  return chosen === undefined ? props.theme.inUse : chosen === props.theme.id
+})
+
 const busy = computed(() => store.state.busy === props.theme.id)
 const locked = computed(() => store.state.busy !== null || store.state.updatingAll)
 </script>
@@ -49,7 +64,7 @@ const locked = computed(() => store.state.busy !== null || store.state.updatingA
         {{ pick(theme.name) }}
         <span v-if="theme.installed" class="state"><i class="dot ok"></i>{{ t('admin.market.installedAt', { version: theme.installedVersion ?? '' }) }}</span>
         <span v-if="theme.updateAvailable" class="chip up">{{ t('admin.market.updateTo', { version: theme.version }) }}</span>
-        <span v-if="theme.inUse" class="chip">{{ t('admin.market.themeInUse') }}</span>
+        <span v-if="inUse" class="chip">{{ t('admin.market.themeInUse') }}</span>
       </strong>
       <small>{{ pick(theme.description) }}</small>
       <small class="meta">{{ meta }}</small>
@@ -68,8 +83,8 @@ const locked = computed(() => store.state.busy !== null || store.state.updatingA
         </BaseButton>
         <!-- Removing the theme the screen is painted with is refused by the server; saying so
              here saves the trip, and the chip above already explains why. -->
-        <BaseButton v-if="theme.installed" variant="danger" :disabled="locked || theme.inUse"
-          :title="theme.inUse ? t('admin.market.themeInUse') : undefined"
+        <BaseButton v-if="theme.installed" variant="danger" :disabled="locked || inUse"
+          :title="inUse ? t('admin.market.themeInUse') : undefined"
           @click="store.uninstallTheme(theme.id)">
           {{ t('admin.market.uninstall') }}
         </BaseButton>
