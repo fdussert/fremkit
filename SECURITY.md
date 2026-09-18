@@ -58,6 +58,34 @@ every settable device on your Homey, and one that declares `shortcuts` can press
 configured on *its own* tile. The admin shows what each widget asks for — under the widget in the
 library, and in full in its inspector — so read that before installing one from elsewhere.
 
+### An installed widget
+
+A widget from the [registry](https://github.com/fdussert/fremkit-widgets) is the same untrusted
+code as any other, in the same sandbox, under the same CSP. Two things are different.
+
+It is held to **what you accepted**, not to what it asks for. Installing it records the three
+permission lists as they were shown to you; the manifest on disk is only the ask, and everything
+downstream — the channels the host relays, the hosts the proxy fetches — is handed the
+intersection of the two. A channel the manifest declares and your record does not is refused
+exactly like one that was never declared. That is what makes "an update whose permissions grew
+asks again" a property of the server rather than a promise the dialog makes: an update that
+quietly widened its own manifest would gain nothing by it. An installed widget with no record at
+all — a folder dropped into `data/widgets` by hand — gets nothing.
+
+And it is checked on the way in. The index is fetched over https from one host, every URL it
+names must be on that host, a redirect is refused, and the package's sha256 is verified **before
+a single zip entry is read**. Then the package rules run again on this side — no dotfile, no
+symlink, no climbing path, no nested archive, size ceilings, a manifest that validates, an `sdk`
+this build speaks, an `id` that is the one you asked for and is not a built-in's, and no private
+host in `permissions.network`. The registry applies the same rules at pull-request time; neither
+side trusts the other. The whole chain is described in
+[docs/marketplace.md](docs/marketplace.md#what-the-installer-checks).
+
+What none of that protects you from is a widget that does exactly what it said and is simply
+malicious about it. The registry is curated by pull request and the review reads what a widget
+does with the permissions it asks for — but the thing to read before pressing Install is the
+list in the dialog.
+
 ### Remote data rendered by a widget
 
 Calendar titles, volume names, printer fields, pull request titles: none of it is yours, all of it
@@ -111,6 +139,15 @@ These are real and not fixed. They are here so you can decide whether they matte
   [docs/connections.md](docs/connections.md#what-the-tls-does-and-does-not-prove).
 - **A same-user process is out of scope.** It can read your keychain, your config and your
   clipboard without going through Fremkit at all.
+- **The registry is trusted to be curated, not to be safe.** An installed widget can do
+  everything you granted it, and a permission list that looks reasonable can still be used
+  badly — there is no sandbox that tells "shows my calendar" from "sends my calendar somewhere".
+  The index carries no signature: the trust is in GitHub Pages serving what the workflow built,
+  and in the hash and the https host, which stop the bytes changing on the way rather than
+  proving who wrote them.
+- **A Synology on the LAN has no certificate to verify either.** `allowSelfSigned` exists for
+  exactly that, off by default and per connection; turned on, the traffic is encrypted but the
+  peer is not authenticated. See [docs/connections.md](docs/connections.md#synology).
 - **The Claude usage endpoint is undocumented.** `api.anthropic.com/api/oauth/usage` is not a
   published API and may change or disappear.
 - **DNS rebinding has a race no application can win.** The proxy resolves a host and judges the

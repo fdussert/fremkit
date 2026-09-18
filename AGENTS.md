@@ -29,7 +29,13 @@ Fremkit turns a Corsair Xeneon Edge (a 2560 × 720 touch strip) into a widget da
 - `scripts/` — setup, dev, build/install/test of the helper, signing identity.
 - `data/` — runtime state, git-ignored except `fremkit.example.json`. **Never edit
   `data/fremkit.json` by hand**: it is the user's live dashboard, the admin writes it, and the
-  server migrates it on load.
+  server migrates it on load. `data/widgets/` holds the widgets installed from the marketplace,
+  written by `server/src/marketplace/` and by nothing else.
+- The **widget registry** is a second repository, `fdussert/fremkit-widgets`. It holds the
+  widgets that are not built in, packs them and publishes an index on GitHub Pages;
+  `tools/vendor/` there is a byte-for-byte copy of this repository's manifest schema, address
+  rules and zip writer, checked against upstream by its CI. Change them here, then copy them
+  over there in their own commit. See [docs/marketplace.md](docs/marketplace.md).
 - `docs/superpowers/`, `.superpowers/` — an agent's working specs and plans. Git-ignored: they
   stay on the machine that wrote them and are never published.
 
@@ -112,7 +118,8 @@ Never kill `FremkitHelper` itself. A second checkout can run beside the live one
 
 | I want to… | Start at |
 |---|---|
-| add a widget | `docs/writing-widgets.md`, then copy `widgets/clock` or `widgets/calendar` |
+| add a widget | `docs/writing-widgets.md`, then copy `widgets/clock` or `widgets/calendar`. A new one goes to the registry repository, not to `widgets/` |
+| change the marketplace | `server/src/marketplace/` (registry client, installer, consent), `ui/src/admin/marketplace.ts` and `BrowseLibrary.vue`, `docs/marketplace.md` |
 | add a connection type | `server/src/connections/types/ics.ts` (simplest) or `github.ts` (fullest), register in `types/index.ts`, document in `docs/connections.md` |
 | add a provider | `server/src/providers/calendar.ts` (polling) or `shortcuts.ts` (commands only), register in `providers/index.ts` |
 | change the admin | `ui/src/admin/store.ts` (state), `Canvas.vue`/`EditOverlay.vue` (editing), `SettingsForm.vue` (setting types), `ScreenInspector.vue`, `ConnectionsInspector.vue` |

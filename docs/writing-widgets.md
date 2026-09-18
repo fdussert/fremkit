@@ -20,8 +20,8 @@ does not validate is reported there rather than silently ignored.
 
 Fremkit reads widgets from two folders. `widgets/` in the checkout holds the ones that ship with
 the server: this is where you develop, and they are the reason a fresh install works with no
-network. `data/widgets/` holds the ones installed from the marketplace, and is written by the
-admin and by nothing else — it is git-ignored, it moves with `FREMKIT_DATA_DIR`, and a widget
+network. `data/widgets/` holds the ones installed from the
+[marketplace](marketplace.md), and is written by the admin and by nothing else — it is git-ignored, it moves with `FREMKIT_DATA_DIR`, and a widget
 there can never take the id of a built-in: the installer refuses the collision, and a folder
 dropped in by hand is reported as an error while the built-in keeps the id.
 
@@ -362,3 +362,17 @@ Every widget in `widgets/` is a working example. In increasing order of complexi
 channel, no settings), `clock` (a `list`, localised formatting, two compact widths),
 `homey-devices` (a connection, a `pick`, commands, a compact mode), `bambu-job` (a connection, an
 image stream, nested state).
+
+## Publishing it
+
+A widget that works is a pull request on the
+[registry](https://github.com/fdussert/fremkit-widgets): one folder under `widgets/<id>/`, and
+its CONTRIBUTING is the whole procedure. The CI applies the package rules — no dotfile, no
+symlink, no off-package script, size ceilings, a manifest that validates, a `version` that goes
+up — and the merge publishes a zip and an index entry that every Fremkit can install from.
+
+What a user sees before installing is the manifest: the bilingual name and description, the
+`author`, the `license`, the `sdk`, the connection types the settings ask for, and the three
+permission lists. Those lists are what the widget is *granted*, and a later version asking for
+more asks the user again — so declare what you need and nothing else, and they will not be
+interrupted for a patch release. [docs/marketplace.md](marketplace.md) has the rest.

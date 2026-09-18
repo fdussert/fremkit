@@ -33,6 +33,8 @@ The name is the Fremen survival kit from *Dune*.
 - **A native helper** — a menu bar app that drives the Edge's touch panel with its own HID
   driver, fences the mouse out of the display, shows the dashboard in a kiosk window and
   supervises the server.
+- **A widget marketplace** — *Browse* in the admin installs widgets from a curated registry,
+  showing what each one will be allowed to do and asking again when an update wants more.
 - **Backup and restore** of the whole dashboard, as a zip that never carries a secret.
 - **Two languages** — the whole interface is French or English, switched in the admin.
 - **A widget SDK** that is a folder, a JSON file and an HTML page.
@@ -239,6 +241,11 @@ above state lines such as "Server: running" and "Touch: active".
 Every setting of every widget is listed in **[docs/widgets.md](docs/widgets.md)**. To write your
 own, see **[docs/writing-widgets.md](docs/writing-widgets.md)**.
 
+More are published to the [widget registry](https://github.com/fdussert/fremkit-widgets) rather
+than shipped here, and installed from *Browse* in the admin's widget column — including
+`synology-storage` and `synology-system`. What the installer checks, what a consent record is and
+how an update asks again: **[docs/marketplace.md](docs/marketplace.md)**.
+
 ## Connections
 
 | Type | Needs | Used by |
@@ -248,6 +255,7 @@ own, see **[docs/writing-widgets.md](docs/writing-widgets.md)**.
 | GitHub | a personal access token — classic for the notifications, fine-grained enough for reviews, pull requests and Actions — optionally an Enterprise API host | `github-inbox`, `github-actions` |
 | Homey Pro | the Homey's address, an API key with Devices and Flows in read and control | `homey-devices`, `homey-flows` |
 | ICS calendar | the published calendar address, a colour | `calendar` |
+| Synology | the NAS address, a dedicated read-only DSM account and its password | `synology-storage`, `synology-system` (from the registry) |
 ![The Connections dialog](docs/images/admin-connections.png)
 
 How to obtain each credential, what is stored where, and what is never logged:
