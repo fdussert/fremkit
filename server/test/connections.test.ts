@@ -442,6 +442,8 @@ describe('the real connection types bind their secrets', () => {
       github: ['host'],
       homey: ['host'],
       bambu: ['host', 'serial'],
+      // The password, the one-time code and the device token are issued for one NAS.
+      synology: ['host'],
       // dev.azure.com is hardcoded, and an ICS calendar's URL *is* its secret.
       'azure-devops': [],
       ics: [],

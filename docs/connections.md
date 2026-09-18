@@ -215,6 +215,45 @@ exist on recent firmware; their absence costs a label, not the connection.
 Used by [`homey-devices`](widgets.md#homey-devices) and
 [`homey-flows`](widgets.md#homey-flows).
 
+## Synology
+
+| Field | Secret | What it is |
+|---|---|---|
+| `host` | no | The NAS address, with the DSM HTTPS port if it is not `5001` |
+| `account` | no | A DSM account |
+| `password` | **yes** | Its password |
+| `otp` | **yes** | A verification code, only for the first login of a two-factor account |
+| `deviceId` | **yes** | Written by Fremkit after a two-factor login — leave it empty |
+| `allowSelfSigned` | no | Accept the certificate a NAS on the LAN serves |
+
+**Use a dedicated account.** Control Panel → User → create one, give it no access to any shared
+folder, and deny it every application. The two APIs Fremkit reads —
+`SYNO.Core.System.Utilization` and `SYNO.Storage.CGI.Storage` — need nothing more. A password
+that also opens the file shares is a password on a dashboard, which is a strictly worse trade
+than the five minutes it takes.
+
+**Two-factor accounts.** Fill `otp` with a fresh six-digit code the first time and save. DSM
+refuses a code it has already seen, so Fremkit asks it to issue a *device token* at the same
+time and stores that token as another secret of the connection; every later login uses the token
+and the code is never needed again. Clear `otp` afterwards if you like — nothing reads it once
+the token exists.
+
+**The certificate.** Fremkit only ever talks HTTPS to the NAS. A Synology on the local network
+almost always serves a certificate no authority signed, so `allowSelfSigned` exists; turn it on
+only for a local address you know. It is off by default and applies to this connection alone —
+never to anything else the server talks to.
+
+Every thirty seconds Fremkit reads CPU, memory and network counters, then the volumes and disks:
+size, used, status, and each disk's model, temperature and SMART verdict. A poll that fails keeps
+the last snapshot on screen with an `offline` or `unauthorized` marker and retries after ten
+seconds. The session id lives in memory only; a session DSM has forgotten is re-established
+without the widget noticing. The password, the code, the token and the session id are never
+logged, never echoed back by the API and never quoted in an error — not even the network error's
+own message, which carries the address.
+
+Used by the `synology-storage` and `synology-system` widgets, published on
+[the registry](https://github.com/fdussert/fremkit-widgets) rather than shipped with Fremkit.
+
 ## ICS calendars
 
 | Field | Secret | What it is |

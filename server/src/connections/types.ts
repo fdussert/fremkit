@@ -33,6 +33,19 @@ export interface ConnectionProviderContext {
   channel: string
   fields: Record<string, string>
   secrets: Record<string, string>
+  /**
+   * Stores a secret of this connection, for the rare case where the *remote service* issues one.
+   *
+   * Only Synology needs it so far: DSM refuses a one-time code it has already seen, and hands
+   * back a device token on the first two-factor login that stands in for the code from then on.
+   * Without somewhere to put that token the user would type six fresh digits at every restart.
+   *
+   * It writes to the same store the connections API writes to, under the same
+   * `<connectionId>/<fieldKey>` key, so the value is a secret in every sense the rest of the
+   * project already means: never returned by the API, never logged, never in a backup. A type
+   * that has no such case simply never calls it.
+   */
+  saveSecret?(fieldKey: string, value: string): Promise<void>
 }
 
 /**

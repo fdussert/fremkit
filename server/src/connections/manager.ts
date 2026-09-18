@@ -92,7 +92,15 @@ export class ConnectionManager {
       const secrets = await this.secretsFor(connection)
       const signature = this.signature(connection, secrets)
       if (this.active.get(channel) === signature) continue
-      this.deps.registry.register(type.createProvider({ id: connection.id, channel, fields: connection.fields, secrets }))
+      this.deps.registry.register(type.createProvider({
+        id: connection.id, channel, fields: connection.fields, secrets,
+        // Bound to this connection's id, so a provider can only ever write its own secrets —
+        // and only under a key its own type declares.
+        saveSecret: async (fieldKey, value) => {
+          if (!this.deps.types.secretKeys(type).includes(fieldKey)) return
+          await this.deps.secrets.set(`${connection.id}/${fieldKey}`, value)
+        },
+      }))
       this.active.set(channel, signature)
     }
     for (const channel of [...this.active.keys()]) {
