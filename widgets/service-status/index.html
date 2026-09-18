@@ -1,9 +1,9 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>Service status</title>
 <style>
-  html,body{margin:0;height:100%;background:transparent;color:#e6e8eb;font-family:-apple-system,system-ui,sans-serif;overflow:hidden}
+  html,body{margin:0;height:100%;background:transparent;color:var(--text, #e6e8eb);font-family:var(--font, -apple-system,system-ui,sans-serif);overflow:hidden}
   .wrap{box-sizing:border-box;height:100%;padding:12px 16px;display:flex;flex-direction:column;gap:8px}
-  .note{font-size:13px;color:#8b93a0;letter-spacing:.04em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .note{font-size:calc(13px * var(--text-scale, 1));color:var(--text-muted, #8b93a0);letter-spacing:.04em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   [hidden]{display:none!important}
   html.on-light body{color:var(--on-surface,#0b0d10)}
   html.on-light .note{color:var(--on-surface,#0b0d10);opacity:.7}
@@ -21,15 +21,15 @@
   .dot{flex:0 0 auto;width:var(--dot,11px);height:var(--dot,11px);border-radius:50%;background:var(--state)}
   /* `min-width` rather than 0: the name is what the row is *for*, so it keeps a floor and the
      latency gives way first. */
-  .name{flex:1;min-width:4ch;font-size:var(--body,14px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .name{flex:1;min-width:4ch;font-size:calc(var(--body,14px) * var(--text-scale, 1));white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   /* Allowed to shrink, unlike the dot and the strip: when a row is tight the latency is the
      first thing that can go, and the name is the last. */
-  .lat{flex:0 1 auto;min-width:0;overflow:hidden;font-size:calc(var(--body,14px) * .82);opacity:.68;font-variant-numeric:tabular-nums}
+  .lat{flex:0 1 auto;min-width:0;overflow:hidden;font-size:calc(calc(var(--body,14px) * .82) * var(--text-scale, 1));opacity:.68;font-variant-numeric:tabular-nums}
   /* Twenty probes as twenty slivers: not a chart, just a shape you read in a glance. */
   .strip{flex:0 0 auto;display:flex;gap:1px;align-items:flex-end;height:var(--strip,12px)}
   .strip i{width:2px;height:100%;border-radius:1px;background:var(--state);opacity:.85}
   .strip i.unknown{opacity:.25}
-  .summary{flex:0 0 auto;display:flex;align-items:center;gap:8px;font-size:calc(var(--body,14px) * .92);opacity:.85}
+  .summary{flex:0 0 auto;display:flex;align-items:center;gap:8px;font-size:calc(calc(var(--body,14px) * .92) * var(--text-scale, 1));opacity:.85}
 
   /* Compact: one dot in the worst colour, and how many of them are up. */
   html.compact .grid,html.compact .summary{display:none}
@@ -37,7 +37,7 @@
   html.compact .cwrap{display:flex;align-items:center;gap:calc(var(--h,80px) * .09)}
   html.compact.slot-right .cwrap{justify-content:flex-end}
   html.compact .cdot{width:calc(var(--h,80px) * .15);height:calc(var(--h,80px) * .15);border-radius:50%;background:var(--state)}
-  html.compact .ccount{font-size:calc(var(--h,80px) * .3);font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
+  html.compact .ccount{font-size:calc(calc(var(--h,80px) * .3) * var(--text-scale, 1));font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
 </style></head>
 <body><div class="wrap">
   <div class="grid" id="grid"></div>

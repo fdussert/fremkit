@@ -1,14 +1,14 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>Impression Bambu</title>
 <style>
-  html,body{margin:0;height:100%;background:transparent;color:#e6e8eb;font-family:-apple-system,system-ui,sans-serif;overflow:hidden}
+  html,body{margin:0;height:100%;background:transparent;color:var(--text, #e6e8eb);font-family:var(--font, -apple-system,system-ui,sans-serif);overflow:hidden}
   .wrap{box-sizing:border-box;height:100%;padding:14px 18px;position:relative;display:flex;flex-direction:column;justify-content:center;gap:6px}
-  .big{font-size:44px;font-weight:600;line-height:1}
-  .bar{height:8px;border-radius:4px;background:#252a32;overflow:hidden}
+  .big{font-size:calc(44px * var(--text-scale, 1));font-weight:600;line-height:1}
+  .bar{height:8px;border-radius:4px;background:var(--surface-3, #252a32);overflow:hidden}
   .bar>i{display:block;height:100%;background:var(--accent, #d9b36a);width:0;transition:width .4s}
-  .row{display:flex;justify-content:space-between;font-size:15px}
-  .muted{color:#8b93a0}
-  .note{font-size:13px;color:#8b93a0;letter-spacing:.06em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .row{display:flex;justify-content:space-between;font-size:calc(15px * var(--text-scale, 1))}
+  .muted{color:var(--text-muted, #8b93a0)}
+  .note{font-size:calc(13px * var(--text-scale, 1));color:var(--text-muted, #8b93a0);letter-spacing:.06em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   [hidden]{display:none!important}
   /* The host says which way round the tile is: on-light means dark text on a light body. */
   html.on-light body{color:var(--on-surface,#0b0d10)}
@@ -18,27 +18,27 @@
   html.accent-fill .bar>i{background:var(--on-surface,#0b0d10)}
 </style>
 <style>
-  .file{font-size:18px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .pct{font-size:34px;font-weight:600;line-height:1;font-variant-numeric:tabular-nums}
+  .file{font-size:calc(18px * var(--text-scale, 1));font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .pct{font-size:calc(34px * var(--text-scale, 1));font-weight:600;line-height:1;font-variant-numeric:tabular-nums}
   .head{display:flex;align-items:baseline;gap:10px}
   .head .pct{margin-left:auto}
   .bar.paused>i{background:#f0a020}
-  .bar.failed>i{background:#d9463f}
-  .bar.finished>i{background:#2fb36b}
-  .err{color:#d9463f;font-size:14px}
+  .bar.failed>i{background:var(--danger, #d9463f)}
+  .bar.finished>i{background:var(--ok, #2fb36b)}
+  .err{color:var(--danger, #d9463f);font-size:calc(14px * var(--text-scale, 1))}
   .offline{opacity:.5}
   /* One row per AMS: a small label, then that unit's slots. Rows wrap on a narrow tile, and the
      whole block scrolls rather than pushing the job off the tile when there are many units. */
   .ams{display:flex;flex-direction:column;gap:4px;margin-top:2px;min-height:0;overflow:hidden}
   .unit{display:flex;align-items:center;gap:6px;min-width:0}
-  .unitlabel{flex:0 0 auto;font-size:10px;line-height:1.1;color:#8b93a0;white-space:nowrap;min-width:34px}
-  .unitlabel b{display:block;font-size:11px;font-weight:600;color:#e6e8eb}
+  .unitlabel{flex:0 0 auto;font-size:calc(10px * var(--text-scale, 1));line-height:1.1;color:var(--text-muted, #8b93a0);white-space:nowrap;min-width:34px}
+  .unitlabel b{display:block;font-size:calc(11px * var(--text-scale, 1));font-weight:600;color:var(--text, #e6e8eb)}
   html.on-light .unitlabel b{color:var(--on-surface,#0b0d10)}
   .slots{flex:1;display:flex;gap:6px;min-width:0}
-  .tray{flex:1;min-width:0;height:22px;border-radius:6px;background:#252a32;border:1px solid #3a404a;position:relative;overflow:hidden}
+  .tray{flex:1;min-width:0;height:22px;border-radius:6px;background:var(--surface-3, #252a32);border:1px solid var(--border-strong, #3a404a);position:relative;overflow:hidden}
   .tray.active{border-color:var(--accent,#d9b36a);box-shadow:0 0 0 1px var(--accent,#d9b36a)}
   .tray>i{position:absolute;left:0;right:0;bottom:0;display:block}
-  .tray>span{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:10px;color:#e6e8eb;text-shadow:0 1px 2px rgba(0,0,0,.6)}
+  .tray>span{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:calc(10px * var(--text-scale, 1));color:var(--text, #e6e8eb);text-shadow:0 1px 2px rgba(0,0,0,.6)}
   /* A single-slot unit (AMS HT, the external spool) must not stretch to a whole row's width. */
   .slots.one .tray{flex:0 0 auto;width:46px}
   /* Below 12 cells the tile is short as well as narrow: drop the per-unit labels to one letter. */
@@ -48,10 +48,10 @@
   .stats{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:center;gap:6px}
   /* A fixed 4:3 box: the picture is cropped to it, never the other way round, so a frame of any
      size leaves the stats exactly where they were. Capped so it cannot outgrow the tile's height. */
-  .cam{flex:0 0 auto;position:relative;width:min(40vw,calc((100vh - 28px) * 4 / 3),320px);aspect-ratio:4/3;border-radius:10px;overflow:hidden;background:#14171c}
+  .cam{flex:0 0 auto;position:relative;width:min(40vw,calc((100vh - 28px) * 4 / 3),320px);aspect-ratio:4/3;border-radius:10px;overflow:hidden;background:var(--surface, #14171c)}
   .cam img{display:block;width:100%;height:100%;object-fit:cover}
   .cam img.off{visibility:hidden}
-  .camoff{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:0 8px;text-align:center;font-size:12px;color:#8b93a0;background:#14171c}
+  .camoff{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:0 8px;text-align:center;font-size:calc(12px * var(--text-scale, 1));color:var(--text-muted, #8b93a0);background:var(--surface, #14171c)}
   /* Below 12 cells (480px) there is no room for a picture beside the job: put it on top instead. */
   @media (max-width:480px){
     .wrap{flex-direction:column;align-items:stretch;gap:8px;justify-content:center}

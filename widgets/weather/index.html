@@ -1,9 +1,9 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>Weather</title>
 <style>
-  html,body{margin:0;height:100%;background:transparent;color:#e6e8eb;font-family:-apple-system,system-ui,sans-serif;overflow:hidden}
+  html,body{margin:0;height:100%;background:transparent;color:var(--text, #e6e8eb);font-family:var(--font, -apple-system,system-ui,sans-serif);overflow:hidden}
   .wrap{box-sizing:border-box;height:100%;padding:12px 16px;position:relative;display:flex;flex-direction:column;gap:10px}
-  .muted{color:#8b93a0}
+  .muted{color:var(--text-muted, #8b93a0)}
   /* The host says which way round the tile is: on-light means dark text on a light body. */
   html.on-light body{color:var(--on-surface,#0b0d10)}
   html.on-light .muted{color:var(--on-surface,#0b0d10);opacity:.7}
@@ -12,28 +12,28 @@
   .now{display:flex;align-items:center;gap:14px;flex:0 0 auto;min-width:0}
   .now .glyph{flex:0 0 auto;display:flex;color:var(--accent,#d9b36a)}
   html.accent-fill .now .glyph{color:var(--on-surface,#0b0d10)}
-  .now .temp{font-size:calc(var(--s,64px) * .58);font-weight:600;line-height:1;letter-spacing:-.02em}
+  .now .temp{font-size:calc(calc(var(--s,64px) * .58) * var(--text-scale, 1));font-weight:600;line-height:1;letter-spacing:-.02em}
   .now .txt{min-width:0;display:flex;flex-direction:column;gap:2px}
-  .now .cond{font-size:calc(var(--s,64px) * .21);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .now .meta{font-size:calc(var(--s,64px) * .17);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .city{margin-left:auto;text-align:right;font-size:calc(var(--s,64px) * .19);text-transform:uppercase;
+  .now .cond{font-size:calc(calc(var(--s,64px) * .21) * var(--text-scale, 1));white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .now .meta{font-size:calc(calc(var(--s,64px) * .17) * var(--text-scale, 1));white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .city{margin-left:auto;text-align:right;font-size:calc(calc(var(--s,64px) * .19) * var(--text-scale, 1));text-transform:uppercase;
     letter-spacing:.06em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:40%}
 
   /* Row 2 and 3: the hours, then the days. Both are flex rows that simply lose their last items. */
   .hours{display:flex;gap:2px;flex:1 1 auto;min-height:0;align-items:stretch}
   .hours .h{flex:1 1 0;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px}
-  .hours .hh{font-size:12px;letter-spacing:.04em}
-  .hours .ht{font-size:15px;font-weight:600}
-  .hours .hp{font-size:11px;color:#6f93c0;min-height:13px}
+  .hours .hh{font-size:calc(12px * var(--text-scale, 1));letter-spacing:.04em}
+  .hours .ht{font-size:calc(15px * var(--text-scale, 1));font-weight:600}
+  .hours .hp{font-size:calc(11px * var(--text-scale, 1));color:#6f93c0;min-height:13px}
   html.on-light .hours .hp{color:var(--on-surface,#0b0d10);opacity:.6}
   /* The attribution sits in the bottom-right corner, so the day row stops short of it. */
-  .days{display:flex;gap:14px;flex:0 0 auto;font-size:13px;padding-right:74px;overflow:hidden}
+  .days{display:flex;gap:14px;flex:0 0 auto;font-size:calc(13px * var(--text-scale, 1));padding-right:74px;overflow:hidden}
   .days .d{display:flex;gap:6px;align-items:center;white-space:nowrap}
   .days .dn{text-transform:uppercase;letter-spacing:.06em;opacity:.7}
   .days .dmin{opacity:.6}
 
   /* The attribution their terms ask for, and the mark shown while the last fetch failed. */
-  .foot{position:absolute;right:8px;bottom:4px;font-size:10px;letter-spacing:.04em;opacity:.45}
+  .foot{position:absolute;right:8px;bottom:4px;font-size:calc(10px * var(--text-scale, 1));letter-spacing:.04em;opacity:.45}
   .off{position:absolute;right:8px;top:6px;width:7px;height:7px;border-radius:50%;background:#c8804a;opacity:.85}
   .hidden{display:none}
 
@@ -45,9 +45,9 @@
     gap:calc(var(--h,80px) * .10);padding:0 calc(var(--h,80px) * .10)}
   html.compact .cglyph{flex:0 0 auto;display:flex;color:var(--accent,#d9b36a)}
   html.compact.accent-fill .cglyph{color:var(--on-surface,#0b0d10)}
-  html.compact .cline{min-width:0;font-size:clamp(13px, calc(var(--h,80px) * .30), 26px);
+  html.compact .cline{min-width:0;font-size:calc(clamp(13px, calc(var(--h,80px) * .30), 26px) * var(--text-scale, 1));
     font-weight:600;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  html.compact .cmuted{font-weight:400;color:#8b93a0}
+  html.compact .cmuted{font-weight:400;color:var(--text-muted, #8b93a0)}
   html.compact .cmuted:not(:empty)::before{content:'·';margin:0 calc(var(--h,80px) * .10)}
   /* Right cluster: the bar pushes the iframe against the dots, so its content hugs that edge too. */
   html.compact.slot-right .cwrap{justify-content:flex-end;text-align:right}

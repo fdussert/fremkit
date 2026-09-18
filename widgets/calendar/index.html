@@ -1,32 +1,32 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>Next events</title>
 <style>
-  html,body{margin:0;height:100%;background:transparent;color:#e6e8eb;font-family:-apple-system,system-ui,sans-serif;overflow:hidden}
+  html,body{margin:0;height:100%;background:transparent;color:var(--text, #e6e8eb);font-family:var(--font, -apple-system,system-ui,sans-serif);overflow:hidden}
   .wrap{box-sizing:border-box;height:100%;padding:14px 18px;position:relative;display:flex;flex-direction:column;gap:6px}
-  .muted{color:#8b93a0}
-  .note{font-size:13px;color:#8b93a0;letter-spacing:.06em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .muted{color:var(--text-muted, #8b93a0)}
+  .note{font-size:calc(13px * var(--text-scale, 1));color:var(--text-muted, #8b93a0);letter-spacing:.06em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   [hidden]{display:none!important}
   /* The host says which way round the tile is: on-light means dark text on a light body. */
   html.on-light body{color:var(--on-surface,#0b0d10)}
   html.on-light .muted,html.on-light .note{color:var(--on-surface,#0b0d10);opacity:.75}
 </style>
 <style>
-  .banner{flex:0 0 auto;font-size:12px;letter-spacing:.06em;color:#f0a020;background:rgba(240,160,32,.12);border-radius:8px;padding:4px 8px}
+  .banner{flex:0 0 auto;font-size:calc(12px * var(--text-scale, 1));letter-spacing:.06em;color:#f0a020;background:rgba(240,160,32,.12);border-radius:8px;padding:4px 8px}
   .scroll{flex:1;min-height:0;overflow-y:auto;touch-action:pan-y;-webkit-overflow-scrolling:touch;
     display:flex;flex-direction:column;gap:var(--gap,10px)}
   .stale{opacity:.55}
   .day{display:flex;flex-direction:column;gap:3px}
-  .day>h2{margin:0;font-size:var(--head,12px);font-weight:600;letter-spacing:.08em;text-transform:uppercase;
-    color:#8b93a0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .day>h2{margin:0;font-size:calc(var(--head,12px) * var(--text-scale, 1));font-weight:600;letter-spacing:.08em;text-transform:uppercase;
+    color:var(--text-muted, #8b93a0);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   html.on-light .day>h2{color:var(--on-surface,#0b0d10);opacity:.7}
   .ev{display:flex;align-items:baseline;gap:8px;min-width:0;padding:2px 0}
   /* Today's events that are already over stay listed, out of the way. */
   .ev.past{opacity:.45}
-  .dot{flex:0 0 auto;align-self:center;width:9px;height:9px;border-radius:5px;background:#5f6771}
-  .when{flex:0 0 auto;font-size:var(--body,15px);font-variant-numeric:tabular-nums;color:#8b93a0}
+  .dot{flex:0 0 auto;align-self:center;width:9px;height:9px;border-radius:5px;background:var(--text-dim, #5f6771)}
+  .when{flex:0 0 auto;font-size:calc(var(--body,15px) * var(--text-scale, 1));font-variant-numeric:tabular-nums;color:var(--text-muted, #8b93a0)}
   html.on-light .when{color:var(--on-surface,#0b0d10);opacity:.75}
-  .what{flex:1;min-width:0;font-size:var(--body,15px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .where{font-size:calc(var(--body,15px) * .8);color:#8b93a0}
+  .what{flex:1;min-width:0;font-size:calc(var(--body,15px) * var(--text-scale, 1));white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .where{font-size:calc(calc(var(--body,15px) * .8) * var(--text-scale, 1));color:var(--text-muted, #8b93a0)}
   html.on-light .where{color:var(--on-surface,#0b0d10);opacity:.6}
   /* Narrow tiles drop the day headings' spacing and the location, handled in the script. */
   html.tight .scroll{--gap:6px}
@@ -40,11 +40,11 @@
   html.compact .cwrap{display:flex;box-sizing:border-box;height:100%;width:100%;align-items:center;
     padding:0 calc(var(--h,80px) * .10)}
   html.compact .cline{min-width:0;display:flex;align-items:center;gap:calc(var(--h,80px) * .08);
-    font-size:clamp(13px, calc(var(--h,80px) * .30), 26px);font-weight:600;line-height:1.1;
+    font-size:calc(clamp(13px, calc(var(--h,80px) * .30), 26px) * var(--text-scale, 1));font-weight:600;line-height:1.1;
     white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   html.compact .cdot{flex:0 0 auto;width:calc(var(--h,80px) * .12);height:calc(var(--h,80px) * .12);
     max-width:12px;max-height:12px;border-radius:50%}
-  html.compact .ctime{font-variant-numeric:tabular-nums;color:#8b93a0}
+  html.compact .ctime{font-variant-numeric:tabular-nums;color:var(--text-muted, #8b93a0)}
   html.compact .ctitle{min-width:0;overflow:hidden;text-overflow:ellipsis}
   /* Right cluster: the bar pushes the iframe against the dots, so its content hugs that edge too. */
   html.compact.slot-right .cwrap{justify-content:flex-end;text-align:right}

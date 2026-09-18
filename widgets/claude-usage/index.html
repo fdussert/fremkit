@@ -1,16 +1,16 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>Quotas Claude</title>
 <style>
-  html,body{margin:0;height:100%;background:transparent;color:#e6e8eb;font-family:-apple-system,system-ui,sans-serif;overflow:hidden}
+  html,body{margin:0;height:100%;background:transparent;color:var(--text, #e6e8eb);font-family:var(--font, -apple-system,system-ui,sans-serif);overflow:hidden}
   .wrap{box-sizing:border-box;height:100%;padding:14px 18px;position:relative;display:flex;flex-direction:column;justify-content:center;gap:6px}
-  .big{font-size:44px;font-weight:600;line-height:1}
-  .bar{height:8px;border-radius:4px;background:#252a32;overflow:hidden}
+  .big{font-size:calc(44px * var(--text-scale, 1));font-weight:600;line-height:1}
+  .bar{height:8px;border-radius:4px;background:var(--surface-3, #252a32);overflow:hidden}
   .bar>i{display:block;height:100%;background:var(--accent, #d9b36a);width:0;transition:width .4s}
-  .row{display:flex;justify-content:space-between;font-size:15px}
-  .muted{color:#8b93a0}
-  button{font:inherit;border:0;border-radius:10px;background:#252a32;color:#e6e8eb;padding:10px 14px;font-size:18px}
+  .row{display:flex;justify-content:space-between;font-size:calc(15px * var(--text-scale, 1))}
+  .muted{color:var(--text-muted, #8b93a0)}
+  button{font:inherit;border:0;border-radius:10px;background:var(--surface-3, #252a32);color:var(--text, #e6e8eb);padding:10px 14px;font-size:calc(18px * var(--text-scale, 1))}
   button:active{background:var(--accent, #d9b36a)}
-  .note{font-size:13px;color:#8b93a0;letter-spacing:.06em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .note{font-size:calc(13px * var(--text-scale, 1));color:var(--text-muted, #8b93a0);letter-spacing:.06em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   /* The host says which way round the tile is: on-light means dark text on a light body. */
   html.on-light body{color:var(--on-surface,#0b0d10)}
   html.on-light .muted,html.on-light .note{color:var(--on-surface,#0b0d10);opacity:.75}
@@ -22,12 +22,12 @@
   .gauges{display:flex;gap:18px;flex-wrap:wrap}
   .g{flex:1 1 160px;display:flex;flex-direction:column;gap:4px}
   .g .row{align-items:baseline}
-  .g .pct{font-size:32px;font-weight:600;line-height:1}
+  .g .pct{font-size:calc(32px * var(--text-scale, 1));font-weight:600;line-height:1}
   .g .bar{height:10px;border-radius:5px}
-  .ok>i{background:#2fb36b}.warn>i{background:#f0a020}.hot>i{background:#d9463f}
+  .ok>i{background:var(--ok, #2fb36b)}.warn>i{background:#f0a020}.hot>i{background:var(--danger, #d9463f)}
   .stale .g{opacity:.45}
-  .foot{font-size:14px;color:#c3c8d0}
-  .hist{display:flex;align-items:flex-end;gap:2px;height:40px;margin-top:6px}.hist>i{flex:1;background:#3a404a;border-radius:2px 2px 0 0;min-height:1px}.hist>i.now{background:var(--accent, #d9b36a)}.histrow{display:flex;gap:12px;align-items:flex-end}.histlbl{font-size:12px;color:#8b93a0;white-space:nowrap}
+  .foot{font-size:calc(14px * var(--text-scale, 1));color:#c3c8d0}
+  .hist{display:flex;align-items:flex-end;gap:2px;height:40px;margin-top:6px}.hist>i{flex:1;background:var(--border-strong, #3a404a);border-radius:2px 2px 0 0;min-height:1px}.hist>i.now{background:var(--accent, #d9b36a)}.histrow{display:flex;gap:12px;align-items:flex-end}.histlbl{font-size:calc(12px * var(--text-scale, 1));color:var(--text-muted, #8b93a0);white-space:nowrap}
   [hidden]{display:none!important}
   /* Compact: the navigation bar shows the three limits on one line, sized from the bar height (--h). */
   html.compact,html.compact body{overflow:hidden}
@@ -35,15 +35,15 @@
   .cwrap{display:none}
   html.compact .cwrap{display:flex;box-sizing:border-box;height:100%;width:100%;align-items:center;
     gap:calc(var(--h,80px) * .16);padding:0 calc(var(--h,80px) * .10)}
-  html.compact .clabel{flex:0 0 auto;font-size:clamp(11px, calc(var(--h,80px) * .20), 18px);font-weight:600;
-    letter-spacing:.08em;text-transform:uppercase;color:#8b93a0;align-self:center}
+  html.compact .clabel{flex:0 0 auto;font-size:calc(clamp(11px, calc(var(--h,80px) * .20), 18px) * var(--text-scale, 1));font-weight:600;
+    letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted, #8b93a0);align-self:center}
   html.compact .cg{flex:1;min-width:0;display:flex;flex-direction:column;gap:calc(var(--h,80px) * .06)}
   html.compact .cline{display:flex;justify-content:space-between;align-items:baseline;gap:6px;
-    font-size:clamp(12px, calc(var(--h,80px) * .26), 24px);font-weight:600;line-height:1.1;white-space:nowrap}
-  html.compact .cline .n{color:#8b93a0;font-weight:500;overflow:hidden;text-overflow:ellipsis}
-  html.compact .cbar{height:max(2px, calc(var(--h,80px) * .045));border-radius:999px;background:#252a32;overflow:hidden}
+    font-size:calc(clamp(12px, calc(var(--h,80px) * .26), 24px) * var(--text-scale, 1));font-weight:600;line-height:1.1;white-space:nowrap}
+  html.compact .cline .n{color:var(--text-muted, #8b93a0);font-weight:500;overflow:hidden;text-overflow:ellipsis}
+  html.compact .cbar{height:max(2px, calc(var(--h,80px) * .045));border-radius:999px;background:var(--surface-3, #252a32);overflow:hidden}
   html.compact .cbar>i{display:block;height:100%;width:0;background:var(--accent, #d9b36a);transition:width .4s}
-  html.compact .cbar.ok>i{background:#2fb36b}html.compact .cbar.warn>i{background:#f0a020}html.compact .cbar.hot>i{background:#d9463f}
+  html.compact .cbar.ok>i{background:var(--ok, #2fb36b)}html.compact .cbar.warn>i{background:#f0a020}html.compact .cbar.hot>i{background:var(--danger, #d9463f)}
   /* Right cluster: the bar pushes the iframe against the dots, so its content hugs that edge too. */
   html.compact.slot-right .cwrap{justify-content:flex-end;text-align:right}
 </style>

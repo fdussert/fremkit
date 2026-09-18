@@ -1,15 +1,15 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>Homey devices</title>
 <style>
-  html,body{margin:0;height:100%;background:transparent;color:#e6e8eb;font-family:-apple-system,system-ui,sans-serif;overflow:hidden}
+  html,body{margin:0;height:100%;background:transparent;color:var(--text, #e6e8eb);font-family:var(--font, -apple-system,system-ui,sans-serif);overflow:hidden}
   .wrap{box-sizing:border-box;height:100%;padding:14px 18px;display:flex;flex-direction:column;gap:8px}
-  .note{font-size:13px;color:#8b93a0;letter-spacing:.06em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .note{font-size:calc(13px * var(--text-scale, 1));color:var(--text-muted, #8b93a0);letter-spacing:.06em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   [hidden]{display:none!important}
   html.on-light body{color:var(--on-surface,#0b0d10)}
   html.on-light .note{color:var(--on-surface,#0b0d10);opacity:.75}
 </style>
 <style>
-  .banner{flex:0 0 auto;font-size:12px;letter-spacing:.06em;color:#f0a020;background:rgba(240,160,32,.12);border-radius:8px;padding:4px 8px}
+  .banner{flex:0 0 auto;font-size:calc(12px * var(--text-scale, 1));letter-spacing:.06em;color:#f0a020;background:rgba(240,160,32,.12);border-radius:8px;padding:4px 8px}
   .grid{flex:1;min-height:0;overflow-y:auto;touch-action:pan-y;-webkit-overflow-scrolling:touch;
     display:grid;grid-template-columns:repeat(auto-fill,minmax(var(--col,150px),1fr));gap:10px;align-content:start}
   .stale{opacity:.55}
@@ -17,19 +17,19 @@
     background:rgba(128,128,128,.14);min-height:44px}
   .dev.off{opacity:.4}
   .head{min-width:0;display:flex;flex-direction:column;gap:1px}
-  .name{font-size:var(--body,15px);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .zone{font-size:calc(var(--body,15px) * .78);color:#8b93a0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .name{font-size:calc(var(--body,15px) * var(--text-scale, 1));font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .zone{font-size:calc(calc(var(--body,15px) * .78) * var(--text-scale, 1));color:var(--text-muted, #8b93a0);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   html.on-light .zone{color:var(--on-surface,#0b0d10);opacity:.65}
   /* The reading a sensor tile is really about: big, so it reads across the room. */
-  .value{font-size:calc(var(--body,15px) * 1.6);font-weight:600;font-variant-numeric:tabular-nums;line-height:1.05}
-  .unit{font-size:calc(var(--body,15px) * .8);font-weight:400;opacity:.7;margin-left:2px}
+  .value{font-size:calc(calc(var(--body,15px) * 1.6) * var(--text-scale, 1));font-weight:600;font-variant-numeric:tabular-nums;line-height:1.05}
+  .unit{font-size:calc(calc(var(--body,15px) * .8) * var(--text-scale, 1));font-weight:400;opacity:.7;margin-left:2px}
   .alarms{display:flex;flex-wrap:wrap;gap:4px}
-  .alarm{font-size:calc(var(--body,15px) * .7);padding:1px 6px;border-radius:6px;background:#b3261e;color:#fff;white-space:nowrap}
+  .alarm{font-size:calc(calc(var(--body,15px) * .7) * var(--text-scale, 1));padding:1px 6px;border-radius:6px;background:#b3261e;color:#fff;white-space:nowrap}
   /* A toggle wide enough for a finger, whatever the tile does to the type scale. */
   .toggle{font:inherit;border:0;border-radius:10px;min-height:44px;padding:6px 10px;
-    background:rgba(128,128,128,.25);color:inherit;font-size:var(--body,15px);font-weight:600;text-align:left;
+    background:rgba(128,128,128,.25);color:inherit;font-size:calc(var(--body,15px) * var(--text-scale, 1));font-weight:600;text-align:left;
     display:flex;align-items:center;gap:8px;cursor:pointer}
-  .toggle .pip{flex:0 0 auto;width:14px;height:14px;border-radius:50%;background:#5f6771}
+  .toggle .pip{flex:0 0 auto;width:14px;height:14px;border-radius:50%;background:var(--text-dim, #5f6771)}
   .toggle.on{background:var(--accent, #d9b36a);color:var(--on-accent,#0b0d10)}
   .toggle.on .pip{background:currentColor}
   .toggle:disabled{cursor:default}
@@ -49,9 +49,9 @@
   html.compact .cwrap{display:flex;box-sizing:border-box;height:100%;width:100%;align-items:center;
     padding:0 calc(var(--h,80px) * .10)}
   html.compact .cline{min-width:0;display:flex;align-items:baseline;gap:calc(var(--h,80px) * .10);
-    font-size:clamp(13px, calc(var(--h,80px) * .30), 26px);font-weight:600;line-height:1.1;
+    font-size:calc(clamp(13px, calc(var(--h,80px) * .30), 26px) * var(--text-scale, 1));font-weight:600;line-height:1.1;
     white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  html.compact .clabel{font-size:.7em;font-weight:400;color:#8b93a0;text-transform:uppercase;letter-spacing:.06em}
+  html.compact .clabel{font-size:calc(.7em * var(--text-scale, 1));font-weight:400;color:var(--text-muted, #8b93a0);text-transform:uppercase;letter-spacing:.06em}
   html.on-light.compact .clabel{color:var(--on-surface,#0b0d10);opacity:.7}
   html.compact.slot-right .cwrap{justify-content:flex-end;text-align:right}
 </style></head>

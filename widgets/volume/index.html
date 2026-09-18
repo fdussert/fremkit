@@ -1,17 +1,17 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>Volume</title>
 <style>
-  html,body{margin:0;height:100%;background:transparent;color:#e6e8eb;font-family:-apple-system,system-ui,sans-serif;overflow:hidden}
+  html,body{margin:0;height:100%;background:transparent;color:var(--text, #e6e8eb);font-family:var(--font, -apple-system,system-ui,sans-serif);overflow:hidden}
   [hidden]{display:none!important}
   .wrap{box-sizing:border-box;height:100%;padding:14px 18px;position:relative;display:flex;flex-direction:column;justify-content:center;gap:6px}
-  .big{font-size:44px;font-weight:600;line-height:1}
-  .bar{height:8px;border-radius:4px;background:#252a32;overflow:hidden}
+  .big{font-size:calc(44px * var(--text-scale, 1));font-weight:600;line-height:1}
+  .bar{height:8px;border-radius:4px;background:var(--surface-3, #252a32);overflow:hidden}
   .bar>i{display:block;height:100%;background:var(--accent, #d9b36a);width:0;transition:width .4s}
-  .row{display:flex;justify-content:space-between;font-size:15px}
-  .muted{color:#8b93a0}
-  button{font:inherit;border:0;border-radius:10px;background:#252a32;color:#e6e8eb;padding:10px 14px;font-size:18px}
+  .row{display:flex;justify-content:space-between;font-size:calc(15px * var(--text-scale, 1))}
+  .muted{color:var(--text-muted, #8b93a0)}
+  button{font:inherit;border:0;border-radius:10px;background:var(--surface-3, #252a32);color:var(--text, #e6e8eb);padding:10px 14px;font-size:calc(18px * var(--text-scale, 1))}
   button:active{background:var(--accent, #d9b36a)}
-  .note{font-size:13px;color:#8b93a0;letter-spacing:.06em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .note{font-size:calc(13px * var(--text-scale, 1));color:var(--text-muted, #8b93a0);letter-spacing:.06em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   /* The host says which way round the tile is: on-light means dark text on a light body. */
   html.on-light body{color:var(--on-surface,#0b0d10)}
   html.on-light .muted,html.on-light .note{color:var(--on-surface,#0b0d10);opacity:.75}
@@ -25,10 +25,10 @@
      script uses via matchMedia so the track direction and the drag math always agree. */
   .wrap{padding:clamp(10px,3vh,18px) clamp(12px,3vw,20px)}
   .ctrl{display:flex;flex-direction:row;align-items:center;justify-content:center;gap:clamp(10px,3vmin,20px);width:100%;height:100%}
-  #mute{flex:0 0 auto;width:clamp(32px,12vmin,60px);height:clamp(32px,12vmin,60px);border-radius:50%;font-size:clamp(14px,6vmin,26px);padding:0}
-  .slider{--thick:clamp(18px,10vmin,48px);position:relative;flex:1;height:var(--thick);border-radius:999px;background:#252a32;overflow:hidden;touch-action:none;cursor:pointer}
+  #mute{flex:0 0 auto;width:clamp(32px,12vmin,60px);height:clamp(32px,12vmin,60px);border-radius:50%;font-size:calc(clamp(14px,6vmin,26px) * var(--text-scale, 1));padding:0}
+  .slider{--thick:clamp(18px,10vmin,48px);position:relative;flex:1;height:var(--thick);border-radius:999px;background:var(--surface-3, #252a32);overflow:hidden;touch-action:none;cursor:pointer}
   .slider>i{position:absolute;left:0;top:0;bottom:0;width:0;background:var(--accent, #d9b36a)}
-  #lvl{flex:0 0 auto;font-size:clamp(16px,8vmin,32px);min-width:clamp(40px,10vmin,70px);text-align:right}
+  #lvl{flex:0 0 auto;font-size:calc(clamp(16px,8vmin,32px) * var(--text-scale, 1));min-width:clamp(40px,10vmin,70px);text-align:right}
   @media (orientation:portrait){
     .ctrl{flex-direction:column}
     .slider{flex:1;height:auto;width:var(--thick);align-self:center}

@@ -1,20 +1,20 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>CleanShot X</title>
 <style>
-  html,body{margin:0;height:100%;background:transparent;color:#e6e8eb;font-family:-apple-system,system-ui,sans-serif;overflow:hidden}
+  html,body{margin:0;height:100%;background:transparent;color:var(--text, #e6e8eb);font-family:var(--font, -apple-system,system-ui,sans-serif);overflow:hidden}
   .wrap{box-sizing:border-box;height:100%;padding:10px;display:grid;gap:8px;align-content:stretch}
-  button{font:inherit;border:0;border-radius:12px;background:#252a32;color:inherit;
+  button{font:inherit;border:0;border-radius:12px;background:var(--surface-3, #252a32);color:inherit;
          min-height:56px;padding:6px 4px;display:flex;flex-direction:column;align-items:center;
          justify-content:center;gap:4px;line-height:1.1;cursor:pointer}
   button:active{background:var(--accent, #d9b36a);color:var(--on-accent, #0b0d10)}
-  .glyph{font-size:clamp(20px,5vh,30px)}
-  .label{font-size:clamp(11px,2.2vh,15px);text-align:center;overflow:hidden;text-overflow:ellipsis;
+  .glyph{font-size:calc(clamp(20px,5vh,30px) * var(--text-scale, 1))}
+  .label{font-size:calc(clamp(11px,2.2vh,15px) * var(--text-scale, 1));text-align:center;overflow:hidden;text-overflow:ellipsis;
          display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
   /* A press answers with a brief tick or cross drawn over the glyph. */
   button.busy{opacity:.6}
   button.ok .glyph::after{content:' ✓';color:#3ddc84}
   button.fail .glyph::after{content:' ✗';color:#ff6b6b}
-  .empty{font-size:14px;opacity:.7;align-self:center;justify-self:center;text-align:center;padding:0 12px}
+  .empty{font-size:calc(14px * var(--text-scale, 1));opacity:.7;align-self:center;justify-self:center;text-align:center;padding:0 12px}
   /* The host says which way round the tile is: on-light means dark text on a light body. */
   html.on-light body{color:var(--on-surface,#0b0d10)}
   html.on-light button{background:rgba(128,128,128,.2)}

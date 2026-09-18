@@ -1,16 +1,16 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>Clock</title>
 <style>
-  html,body{margin:0;height:100%;background:transparent;color:#e6e8eb;font-family:-apple-system,system-ui,sans-serif;overflow:hidden}
+  html,body{margin:0;height:100%;background:transparent;color:var(--text, #e6e8eb);font-family:var(--font, -apple-system,system-ui,sans-serif);overflow:hidden}
   .wrap{box-sizing:border-box;height:100%;padding:14px 18px;position:relative;display:flex;flex-direction:column;justify-content:center;gap:6px}
-  .big{font-size:44px;font-weight:600;line-height:1}
-  .bar{height:8px;border-radius:4px;background:#252a32;overflow:hidden}
+  .big{font-size:calc(44px * var(--text-scale, 1));font-weight:600;line-height:1}
+  .bar{height:8px;border-radius:4px;background:var(--surface-3, #252a32);overflow:hidden}
   .bar>i{display:block;height:100%;background:var(--accent, #d9b36a);width:0;transition:width .4s}
-  .row{display:flex;justify-content:space-between;font-size:15px}
-  .muted{color:#8b93a0}
-  button{font:inherit;border:0;border-radius:10px;background:#252a32;color:#e6e8eb;padding:10px 14px;font-size:18px}
+  .row{display:flex;justify-content:space-between;font-size:calc(15px * var(--text-scale, 1))}
+  .muted{color:var(--text-muted, #8b93a0)}
+  button{font:inherit;border:0;border-radius:10px;background:var(--surface-3, #252a32);color:var(--text, #e6e8eb);padding:10px 14px;font-size:calc(18px * var(--text-scale, 1))}
   button:active{background:var(--accent, #d9b36a)}
-  .note{font-size:13px;color:#8b93a0;letter-spacing:.06em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .note{font-size:calc(13px * var(--text-scale, 1));color:var(--text-muted, #8b93a0);letter-spacing:.06em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   /* The host says which way round the tile is: on-light means dark text on a light body. */
   html.on-light body{color:var(--on-surface,#0b0d10)}
   html.on-light .muted,html.on-light .note{color:var(--on-surface,#0b0d10);opacity:.75}
@@ -23,9 +23,9 @@
   .main{display:flex;flex-direction:column;gap:6px;flex:0 0 auto}
   .cities{display:flex;gap:18px;flex:1;justify-content:flex-end;overflow:hidden}
   .city{display:flex;flex-direction:column;align-items:center;gap:2px;min-width:90px}
-  .city .t{font-size:28px;font-weight:600;line-height:1}
-  .city .n{font-size:12px;color:#8b93a0;text-transform:uppercase;letter-spacing:.06em}
-  .city .d{font-size:11px;color:#5f6771}
+  .city .t{font-size:calc(28px * var(--text-scale, 1));font-weight:600;line-height:1}
+  .city .n{font-size:calc(12px * var(--text-scale, 1));color:var(--text-muted, #8b93a0);text-transform:uppercase;letter-spacing:.06em}
+  .city .d{font-size:calc(11px * var(--text-scale, 1));color:var(--text-dim, #5f6771)}
 </style>
 <style>
   /* Compact: the navigation bar draws the clock as one line, no title and no surface of its
@@ -37,10 +37,10 @@
     padding:0 calc(var(--h,80px) * .10)}
   /* One run of inline text rather than a flex row: only that way does the ellipsis land on the
      line as a whole when the bar runs out of room, instead of on each span separately. */
-  html.compact .cline{min-width:0;font-size:clamp(13px, calc(var(--h,80px) * .30), 26px);
+  html.compact .cline{min-width:0;font-size:calc(clamp(13px, calc(var(--h,80px) * .30), 26px) * var(--text-scale, 1));
     font-weight:600;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   /* The date and the cities read at the time's own size, set apart by their weight and colour. */
-  html.compact .cmuted{font-weight:400;color:#8b93a0}
+  html.compact .cmuted{font-weight:400;color:var(--text-muted, #8b93a0)}
   html.compact .cmuted:not(:empty)::before{content:'·';margin:0 calc(var(--h,80px) * .10)}
   /* Right cluster: the bar pushes the iframe against the dots, so its content hugs that edge too. */
   html.compact.slot-right .cwrap{justify-content:flex-end;text-align:right}

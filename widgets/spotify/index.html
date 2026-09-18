@@ -1,16 +1,16 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>Spotify</title>
 <style>
-  html,body{margin:0;height:100%;background:transparent;color:#e6e8eb;font-family:-apple-system,system-ui,sans-serif;overflow:hidden}
+  html,body{margin:0;height:100%;background:transparent;color:var(--text, #e6e8eb);font-family:var(--font, -apple-system,system-ui,sans-serif);overflow:hidden}
   .wrap{box-sizing:border-box;height:100%;padding:14px 18px;position:relative;display:flex;flex-direction:column;justify-content:center;gap:6px}
-  .big{font-size:44px;font-weight:600;line-height:1}
-  .bar{height:8px;border-radius:4px;background:#252a32;overflow:hidden}
+  .big{font-size:calc(44px * var(--text-scale, 1));font-weight:600;line-height:1}
+  .bar{height:8px;border-radius:4px;background:var(--surface-3, #252a32);overflow:hidden}
   .bar>i{display:block;height:100%;background:var(--accent, #d9b36a);width:0;transition:width .4s}
-  .row{display:flex;justify-content:space-between;font-size:15px}
-  .muted{color:#8b93a0}
-  button{font:inherit;border:0;border-radius:10px;background:#252a32;color:#e6e8eb;padding:10px 14px;font-size:18px}
+  .row{display:flex;justify-content:space-between;font-size:calc(15px * var(--text-scale, 1))}
+  .muted{color:var(--text-muted, #8b93a0)}
+  button{font:inherit;border:0;border-radius:10px;background:var(--surface-3, #252a32);color:var(--text, #e6e8eb);padding:10px 14px;font-size:calc(18px * var(--text-scale, 1))}
   button:active{background:var(--accent, #d9b36a)}
-  .note{font-size:13px;color:#8b93a0;letter-spacing:.06em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .note{font-size:calc(13px * var(--text-scale, 1));color:var(--text-muted, #8b93a0);letter-spacing:.06em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   /* The host says which way round the tile is: on-light means dark text on a light body. */
   html.on-light body{color:var(--on-surface,#0b0d10)}
   html.on-light .muted,html.on-light .note{color:var(--on-surface,#0b0d10);opacity:.75}
@@ -22,14 +22,14 @@
   /* The iframe's own viewport is exactly the tile, so vw/vh/vmin track the tile size directly. */
   .wrap{flex-direction:row;align-items:center;justify-content:center;gap:clamp(10px,3vw,20px);padding:clamp(10px,3vh,18px) clamp(12px,3vw,20px)}
   /* Cover: grows with tile height but never wider than ~40% of the tile, capped so it stays sane on huge tiles. */
-  #art{flex:0 0 auto;width:min(40vw,calc(100vh - 28px),300px);height:min(40vw,calc(100vh - 28px),300px);border-radius:10px;background:#252a32;object-fit:cover}
+  #art{flex:0 0 auto;width:min(40vw,calc(100vh - 28px),300px);height:min(40vw,calc(100vh - 28px),300px);border-radius:10px;background:var(--surface-3, #252a32);object-fit:cover}
   .info{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:center;gap:clamp(2px,1vh,6px)}
-  #title{font-size:clamp(14px,5vh,26px);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  #artist{font-size:clamp(11px,3vh,16px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #title{font-size:calc(clamp(14px,5vh,26px) * var(--text-scale, 1));font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #artist{font-size:calc(clamp(11px,3vh,16px) * var(--text-scale, 1));white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .info .bar{height:clamp(4px,1.4vh,8px);border-radius:4px;margin-top:clamp(4px,1vh,8px)}
   /* Transport under the song: wide, tall buttons that a finger can hit without aiming. */
   .controls{display:flex;gap:clamp(8px,1.5vw,14px);margin-top:clamp(4px,1.2vh,10px)}
-  .controls button{flex:1;min-height:44px;font-size:clamp(20px,6vh,34px);line-height:1;padding:clamp(8px,2vh,16px) 0;border-radius:clamp(8px,1.8vh,14px)}
+  .controls button{flex:1;min-height:44px;font-size:calc(clamp(20px,6vh,34px) * var(--text-scale, 1));line-height:1;padding:clamp(8px,2vh,16px) 0;border-radius:clamp(8px,1.8vh,14px)}
   /* Below 12 cells (480px) wide there is no room for cover + text + buttons side by side: stack them. */
   @media (max-width:480px){
     .wrap{flex-direction:column;text-align:center}

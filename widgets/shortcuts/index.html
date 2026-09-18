@@ -1,9 +1,9 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>Shortcuts</title>
 <style>
-  html,body{margin:0;height:100%;background:transparent;color:#e6e8eb;font-family:-apple-system,system-ui,sans-serif;overflow:hidden}
+  html,body{margin:0;height:100%;background:transparent;color:var(--text, #e6e8eb);font-family:var(--font, -apple-system,system-ui,sans-serif);overflow:hidden}
   .wrap{box-sizing:border-box;height:100%;padding:14px 18px;display:flex;flex-direction:column;gap:8px}
-  .note{font-size:13px;color:#8b93a0;letter-spacing:.06em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .note{font-size:calc(13px * var(--text-scale, 1));color:var(--text-muted, #8b93a0);letter-spacing:.06em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   [hidden]{display:none!important}
   html.on-light body{color:var(--on-surface,#0b0d10)}
   html.on-light .note{color:var(--on-surface,#0b0d10);opacity:.75}
@@ -19,9 +19,9 @@
   .btn img.art{border-radius:8px;object-fit:contain}
   .btn .glyph{width:var(--art,34px);height:var(--art,34px);border-radius:50%;background:var(--accent,#d9b36a);
     color:var(--on-accent,#0b0d10);display:flex;align-items:center;justify-content:center;
-    font-size:calc(var(--art,34px) * .5);line-height:1}
+    font-size:calc(calc(var(--art,34px) * .5) * var(--text-scale, 1));line-height:1}
   html.accent-fill .btn .glyph{background:var(--on-surface,#0b0d10);color:var(--accent,#d9b36a)}
-  .btn .name{max-width:100%;font-size:var(--body,15px);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .btn .name{max-width:100%;font-size:calc(var(--body,15px) * var(--text-scale, 1));font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .btn.pressed{background:var(--accent,#d9b36a);color:var(--on-accent,#0b0d10)}
   .btn.pressed .glyph{background:currentColor;color:var(--accent,#d9b36a)}
   .btn.ok{background:rgba(52,152,86,.38)}

@@ -33,6 +33,6 @@
     "radius-md": "14px",
     "shadow": "0 10px 28px rgba(0, 0, 0, .45)",
     "ring": "0 0 0 2px rgba(255, 174, 66, .55)",
-    "text-scale": 1.25
+    "text-scale": 1.15
   }
 }

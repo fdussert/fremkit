@@ -1,15 +1,15 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>Homey flows</title>
 <style>
-  html,body{margin:0;height:100%;background:transparent;color:#e6e8eb;font-family:-apple-system,system-ui,sans-serif;overflow:hidden}
+  html,body{margin:0;height:100%;background:transparent;color:var(--text, #e6e8eb);font-family:var(--font, -apple-system,system-ui,sans-serif);overflow:hidden}
   .wrap{box-sizing:border-box;height:100%;padding:14px 18px;display:flex;flex-direction:column;gap:8px}
-  .note{font-size:13px;color:#8b93a0;letter-spacing:.06em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .note{font-size:calc(13px * var(--text-scale, 1));color:var(--text-muted, #8b93a0);letter-spacing:.06em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   [hidden]{display:none!important}
   html.on-light body{color:var(--on-surface,#0b0d10)}
   html.on-light .note{color:var(--on-surface,#0b0d10);opacity:.75}
 </style>
 <style>
-  .banner{flex:0 0 auto;font-size:12px;letter-spacing:.06em;color:#f0a020;background:rgba(240,160,32,.12);border-radius:8px;padding:4px 8px}
+  .banner{flex:0 0 auto;font-size:calc(12px * var(--text-scale, 1));letter-spacing:.06em;color:#f0a020;background:rgba(240,160,32,.12);border-radius:8px;padding:4px 8px}
   .grid{flex:1;min-height:0;overflow-y:auto;touch-action:pan-y;-webkit-overflow-scrolling:touch;
     display:grid;grid-template-columns:repeat(auto-fill,minmax(var(--col,170px),1fr));gap:10px;align-content:start}
   .stale{opacity:.55}
@@ -17,11 +17,11 @@
   .flow{box-sizing:border-box;font:inherit;border:0;border-radius:12px;min-height:56px;padding:10px 12px;
     background:rgba(128,128,128,.18);color:inherit;display:flex;align-items:center;gap:10px;text-align:left;cursor:pointer}
   .flow .glyph{flex:0 0 auto;width:28px;height:28px;border-radius:50%;background:var(--accent, #d9b36a);
-    color:var(--on-accent,#0b0d10);display:flex;align-items:center;justify-content:center;font-size:13px;line-height:1}
+    color:var(--on-accent,#0b0d10);display:flex;align-items:center;justify-content:center;font-size:calc(13px * var(--text-scale, 1));line-height:1}
   html.accent-fill .flow .glyph{background:var(--on-surface,#0b0d10);color:var(--accent, #d9b36a)}
   .flow .label{min-width:0;display:flex;flex-direction:column;gap:1px}
-  .flow .name{font-size:var(--body,16px);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .flow .folder{font-size:calc(var(--body,16px) * .75);color:#8b93a0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .flow .name{font-size:calc(var(--body,16px) * var(--text-scale, 1));font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .flow .folder{font-size:calc(calc(var(--body,16px) * .75) * var(--text-scale, 1));color:var(--text-muted, #8b93a0);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   html.on-light .flow .folder{color:var(--on-surface,#0b0d10);opacity:.65}
   /* A flow switched off in the Homey app stays listed, out of the way, and refuses the tap. */
   .flow.disabled{opacity:.4;cursor:default}

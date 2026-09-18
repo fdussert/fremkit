@@ -1,49 +1,49 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>GitHub inbox</title>
 <style>
-  html,body{margin:0;height:100%;background:transparent;color:#e6e8eb;font-family:-apple-system,system-ui,sans-serif;overflow:hidden}
+  html,body{margin:0;height:100%;background:transparent;color:var(--text, #e6e8eb);font-family:var(--font, -apple-system,system-ui,sans-serif);overflow:hidden}
   .wrap{box-sizing:border-box;height:100%;padding:12px 16px;display:flex;flex-direction:column;gap:6px}
-  .muted{color:#8b93a0}
-  .note{font-size:13px;color:#8b93a0;letter-spacing:.06em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .muted{color:var(--text-muted, #8b93a0)}
+  .note{font-size:calc(13px * var(--text-scale, 1));color:var(--text-muted, #8b93a0);letter-spacing:.06em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   [hidden]{display:none!important}
   html.on-light body{color:var(--on-surface,#0b0d10)}
   html.on-light .muted,html.on-light .note{color:var(--on-surface,#0b0d10);opacity:.75}
 
-  .banner{flex:0 0 auto;font-size:12px;letter-spacing:.06em;color:#f0a020;background:rgba(240,160,32,.12);border-radius:8px;padding:4px 8px}
-  .banner.bad{color:#d9463f;background:rgba(217,70,63,.12)}
+  .banner{flex:0 0 auto;font-size:calc(12px * var(--text-scale, 1));letter-spacing:.06em;color:#f0a020;background:rgba(240,160,32,.12);border-radius:8px;padding:4px 8px}
+  .banner.bad{color:var(--danger, #d9463f);background:rgba(217,70,63,.12)}
   .head{flex:0 0 auto;display:flex;align-items:center;gap:10px}
-  .head .counts{flex:1;font-size:12px;color:#8b93a0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .head .counts{flex:1;font-size:calc(12px * var(--text-scale, 1));color:var(--text-muted, #8b93a0);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   /* Finger-sized: the button is a touch target, not a link. */
-  .head button{min-height:32px;padding:0 12px;border:0;border-radius:8px;font:inherit;font-size:13px;
+  .head button{min-height:32px;padding:0 12px;border:0;border-radius:8px;font:inherit;font-size:calc(13px * var(--text-scale, 1));
     color:inherit;background:rgba(128,128,128,.16)}
   .head button:active{background:rgba(128,128,128,.32)}
   .scroll{flex:1;min-height:0;overflow-y:auto;touch-action:pan-y;-webkit-overflow-scrolling:touch;
     display:flex;flex-direction:column;gap:4px;padding-right:4px}
   .stale{opacity:.55}
-  .sect{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#8b93a0;margin:6px 2px 2px}
+  .sect{font-size:calc(11px * var(--text-scale, 1));letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted, #8b93a0);margin:6px 2px 2px}
   /* One source unavailable is one line, not a blank tile. */
-  .serr{font-size:12px;color:#8b93a0;padding:2px 8px 4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .serr{font-size:calc(12px * var(--text-scale, 1));color:var(--text-muted, #8b93a0);padding:2px 8px 4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   html.on-light .serr{color:var(--on-surface,#0b0d10);opacity:.7}
   .row{display:flex;align-items:center;gap:10px;min-height:40px;padding:6px 8px;border-radius:8px;
     background:rgba(128,128,128,.08)}
   .row:active{background:rgba(128,128,128,.22)}
   .row.done{opacity:.4}
-  .glyph{flex:0 0 auto;width:22px;text-align:center;font-size:14px;font-weight:700;color:#8b93a0}
-  .glyph.pr{color:#2fb36b}.glyph.issue{color:#8ab4f8}.glyph.release{color:#c08af0}
-  .glyph.ci{color:#f0a020}.glyph.commit{color:#8b93a0}.glyph.discussion{color:#58b9c9}
-  .glyph.draft{color:#5f6771}
+  .glyph{flex:0 0 auto;width:22px;text-align:center;font-size:calc(14px * var(--text-scale, 1));font-weight:700;color:var(--text-muted, #8b93a0)}
+  .glyph.pr{color:var(--ok, #2fb36b)}.glyph.issue{color:#8ab4f8}.glyph.release{color:#c08af0}
+  .glyph.ci{color:#f0a020}.glyph.commit{color:var(--text-muted, #8b93a0)}.glyph.discussion{color:#58b9c9}
+  .glyph.draft{color:var(--text-dim, #5f6771)}
   .body{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
-  .title{font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .sub{font-size:11px;color:#8b93a0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .when{flex:0 0 auto;font-size:11px;color:#8b93a0;font-variant-numeric:tabular-nums}
+  .title{font-size:calc(14px * var(--text-scale, 1));white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .sub{font-size:calc(11px * var(--text-scale, 1));color:var(--text-muted, #8b93a0);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .when{flex:0 0 auto;font-size:calc(11px * var(--text-scale, 1));color:var(--text-muted, #8b93a0);font-variant-numeric:tabular-nums}
 
   html.compact .wrap{padding:0 calc(var(--h,80px) * .12);justify-content:center;gap:0}
   html.compact .head,html.compact .scroll,html.compact .banner{display:none!important}
   .cwrap{display:none;align-items:center;gap:calc(var(--h,80px) * .1)}
   html.compact .cwrap{display:flex}
   html.compact.slot-right .cwrap{justify-content:flex-end}
-  .clabel{font-size:calc(var(--h,80px) * .18);letter-spacing:.08em;color:#8b93a0}
-  .cnum{font-size:calc(var(--h,80px) * .34);font-weight:600;font-variant-numeric:tabular-nums}
+  .clabel{font-size:calc(calc(var(--h,80px) * .18) * var(--text-scale, 1));letter-spacing:.08em;color:var(--text-muted, #8b93a0)}
+  .cnum{font-size:calc(calc(var(--h,80px) * .34) * var(--text-scale, 1));font-weight:600;font-variant-numeric:tabular-nums}
   .cnum.rev{color:var(--accent,#d9b36a)}
   html.accent-fill .cnum.rev{color:var(--on-surface)}
 </style></head>
