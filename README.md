@@ -178,7 +178,7 @@ is the default.
 **Compact widgets.** Widgets can live *in* the bar, in a left or a right cluster, in the order
 you set, as many as fit beside the page dots. A compact rendering is one readable line, as wide
 as the widget's manifest asks for and as tall as the bar; the bar is its surface, so it has no
-title and no tile of its own. Nine of the built-ins have one: `clock`, `weather`, `pomodoro`,
+title and no tile of its own. Ten of the built-ins have one: `clock`, `weather`, `pomodoro`,
 `cpu`, `memory`, `network`, `battery`, `calendar`, `claude-usage` and `service-status`. Registry
 widgets bring their own — `github-inbox`, `homey-devices` and the two Synology ones have one too.
 
@@ -193,8 +193,8 @@ on a page change, or after fifteen seconds.
 **Connections.** A widget that talks to an outside service — Azure DevOps, GitHub, a Bambu
 printer, a Homey, a NAS, a published calendar — reads its credentials from a named *connection*,
 configured once in the admin and referenced by the widget. The connection types are part of
-Fremkit; the widgets for these live on the registry, which is why creating one lists them. Several widgets can share one, and one service can have
-several. Non-secret fields live in `data/fremkit.json`; secrets go to the macOS **keychain**
+Fremkit; the widgets for these live on the registry, which is why creating one lists them.
+Several widgets can share one, and one service can have several. Non-secret fields live in `data/fremkit.json`; secrets go to the macOS **keychain**
 (or, with the `file` backend, to a mode-600 `data/secrets.json`) and are never returned by the
 API, logged, written to the config or sent on the WebSocket.
 
