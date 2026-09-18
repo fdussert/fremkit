@@ -57,7 +57,12 @@ describe('WidgetCatalog with an installed folder', () => {
     await cat.scan()
     expect(cat.get('clock')!.name).toBe('clock')
     expect(cat.entry('clock')!.source).toBe('builtin')
-    expect(cat.errors).toEqual([{ id: 'clock', error: 'id "clock" is already a built-in widget' }])
+    // The sentence is the repository's own and comes out in the process's language; what matters
+    // is that the refusal names the id and says it is a built-in.
+    expect(cat.errors).toHaveLength(1)
+    expect(cat.errors[0].id).toBe('clock')
+    expect(cat.errors[0].error).toMatch(/clock/)
+    expect(cat.errors[0].error).toMatch(/intégré|built-in/)
   })
 
   it('tolerates an installed folder that does not exist yet', async () => {

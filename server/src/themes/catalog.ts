@@ -1,6 +1,7 @@
 import { readdir, readFile, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { BUILTIN_THEME, ThemeSchema, cssVariables, type Theme } from './theme.js'
+import { tr } from '../i18n.js'
 
 export interface ThemeError { id: string; error: string }
 
@@ -32,12 +33,12 @@ export class ThemeCatalog {
       const folder = join(this.dir, id)
       try {
         if (!(await stat(folder)).isDirectory()) continue
-        const raw = await readFile(join(folder, 'theme.json'), 'utf8').catch(() => { throw new Error('theme.json manquant') })
+        const raw = await readFile(join(folder, 'theme.json'), 'utf8').catch(() => { throw new Error(tr(undefined, 'catalog.themeMissing')) })
         let json: unknown
-        try { json = JSON.parse(raw) } catch { throw new Error('theme.json invalide (JSON)') }
+        try { json = JSON.parse(raw) } catch { throw new Error(tr(undefined, 'catalog.themeNotJson')) }
         const result = ThemeSchema.safeParse(json)
-        if (!result.success) throw new Error('thème invalide: ' + result.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; '))
-        if (result.data.id !== id) throw new Error(`id "${result.data.id}" différent du dossier "${id}"`)
+        if (!result.success) throw new Error(tr(undefined, 'catalog.invalidTheme', { issues: result.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ') }))
+        if (result.data.id !== id) throw new Error(tr(undefined, 'catalog.folderMismatch', { id: result.data.id, folder: id }))
         themes.set(id, result.data)
       } catch (err) {
         errors.push({ id, error: (err as Error).message })

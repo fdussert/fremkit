@@ -2,6 +2,7 @@ import { readdir, readFile, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { ManifestSchema, type WidgetManifest } from './manifest.js'
 import { WIDGET_ID_RE } from '../config/schema.js'
+import { tr } from '../i18n.js'
 
 export interface CatalogError { id: string; error: string }
 
@@ -84,14 +85,14 @@ export class WidgetCatalog {
           // Built-ins are read first and keep their id: a folder dropped into `data/widgets`
           // must never be able to stand in for the widget the user thinks they are running.
           // The installer refuses the same collision up front (409), so this is the second line.
-          if (entries.has(id)) throw new Error(`id "${id}" is already a built-in widget`)
-          await stat(join(folder, 'index.html')).catch(() => { throw new Error('index.html manquant') })
-          const raw = await readFile(join(folder, 'manifest.json'), 'utf8').catch(() => { throw new Error('manifest.json is missing') })
+          if (entries.has(id)) throw new Error(tr(undefined, 'catalog.builtinId', { id }))
+          await stat(join(folder, 'index.html')).catch(() => { throw new Error(tr(undefined, 'catalog.indexMissing')) })
+          const raw = await readFile(join(folder, 'manifest.json'), 'utf8').catch(() => { throw new Error(tr(undefined, 'catalog.manifestMissing')) })
           let json: unknown
-          try { json = JSON.parse(raw) } catch { throw new Error('manifest.json is not valid JSON') }
+          try { json = JSON.parse(raw) } catch { throw new Error(tr(undefined, 'catalog.manifestNotJson')) }
           const result = ManifestSchema.safeParse(json)
-          if (!result.success) throw new Error('invalid manifest: ' + result.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; '))
-          if (result.data.id !== id) throw new Error(`id "${result.data.id}" does not match the folder "${id}"`)
+          if (!result.success) throw new Error(tr(undefined, 'catalog.invalidManifest', { issues: result.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ') }))
+          if (result.data.id !== id) throw new Error(tr(undefined, 'catalog.folderMismatch', { id: result.data.id, folder: id }))
           entries.set(id, { manifest: result.data, source: root.source, folder })
         } catch (err) {
           errors.push({ id, error: (err as Error).message })
