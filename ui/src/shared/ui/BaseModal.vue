@@ -2,7 +2,12 @@
 import { onMounted, onUnmounted, ref } from 'vue'
 import BaseIcon from './BaseIcon.vue'
 
-withDefaults(defineProps<{ title: string; width?: number; closeLabel?: string }>(), { width: 560, closeLabel: 'Close' })
+/**
+ * `height`, when given, is the panel's height whatever it holds — capped by the viewport. A
+ * panel whose views differ in length (a list, then an empty "all up to date") otherwise
+ * changes size at every tab, which reads as the dialog shrinking rather than the list.
+ */
+withDefaults(defineProps<{ title: string; width?: number; height?: number; closeLabel?: string }>(), { width: 560, closeLabel: 'Close' })
 const emit = defineEmits<{ close: [] }>()
 
 const panel = ref<HTMLElement | null>(null)
@@ -30,7 +35,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeyDown, true))
   <!-- A click on the backdrop closes; one inside the panel must not, hence the .self modifier. -->
   <div class="overlay" @click.self="emit('close')">
     <section ref="panel" class="panel" role="dialog" aria-modal="true" :aria-label="title"
-      tabindex="-1" :style="{ width: width + 'px' }">
+      tabindex="-1" :style="{ width: width + 'px', height: height ? `min(${height}px, 85vh)` : undefined }">
       <header>
         <h2>{{ title }}</h2>
         <button type="button" class="x" :title="closeLabel" :aria-label="closeLabel" @click="emit('close')">
