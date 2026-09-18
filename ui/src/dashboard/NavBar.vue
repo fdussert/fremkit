@@ -4,7 +4,6 @@ import { DEFAULT_ADMIN_GESTURE, type AdminGesture } from '../shared/types'
 import { computed, onBeforeUnmount, ref } from 'vue'
 import { DEFAULT_NAV_HEIGHT, type NavSlot, type NavWidget, type Page, type WidgetManifest } from '../shared/types'
 import { fade, surfaceOpacity } from '../shared/background'
-import { rgba } from '../shared/color'
 import { useSwipe } from './useSwipe'
 import CompactWidgetFrame from './CompactWidgetFrame.vue'
 
