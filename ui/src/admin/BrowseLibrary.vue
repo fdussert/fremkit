@@ -25,6 +25,11 @@ const { t } = useI18n()
 
 onMounted(() => { void props.store.load() })
 
+/** True while *this* row is the one working, so the other rows stay usable. */
+function busy(id: string): boolean { return props.store.state.busy === id }
+/** Every button is disabled while anything is in flight; only the working row says so. */
+function locked(): boolean { return props.store.state.busy !== null }
+
 /** The one line under the description: author, licence, version and size. */
 function meta(w: MarketplaceWidget): string {
   const kb = Math.max(1, Math.round(w.size / 1024))
@@ -79,14 +84,17 @@ function meta(w: MarketplaceWidget): string {
         <div class="act">
           <span v-if="w.shadowsBuiltin" class="why">{{ t('admin.market.builtin') }}</span>
           <span v-else-if="w.sdkTooNew" class="why">{{ t('admin.market.sdkTooNew') }}</span>
+          <template v-else-if="busy(w.id)">
+            <span class="why working">{{ t('admin.market.working') }}</span>
+          </template>
           <template v-else>
-            <BaseButton v-if="w.updateAvailable" :disabled="store.state.busy !== null" @click="store.start(w, true)">
+            <BaseButton v-if="w.updateAvailable" :disabled="locked()" @click="store.start(w, true)">
               {{ t('admin.market.update') }}
             </BaseButton>
-            <BaseButton v-else-if="!w.installed" :disabled="store.state.busy !== null" @click="store.start(w)">
+            <BaseButton v-else-if="!w.installed" :disabled="locked()" @click="store.start(w)">
               {{ t('admin.market.install') }}
             </BaseButton>
-            <BaseButton v-if="w.installed" variant="secondary" :disabled="store.state.busy !== null" @click="store.uninstall(w.id)">
+            <BaseButton v-if="w.installed" variant="secondary" :disabled="locked()" @click="store.uninstall(w.id)">
               {{ t('admin.market.uninstall') }}
             </BaseButton>
           </template>
@@ -115,6 +123,7 @@ function meta(w: MarketplaceWidget): string {
 .chip.up { color: var(--on-accent); background: var(--accent); border-color: var(--accent); }
 .act { display: flex; flex-direction: column; align-items: flex-end; gap: var(--space-1); flex: 0 0 auto; }
 .why { font-size: var(--fs-xs); color: var(--text-dim); text-align: right; max-width: 10rem; }
+.why.working { color: var(--accent); }
 .note { margin: 0; font-size: var(--fs-xs); color: var(--text-dim); }
 .note.warn { color: var(--danger); }
 </style>

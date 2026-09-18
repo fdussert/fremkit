@@ -57,7 +57,12 @@ export interface MarketplaceState {
   loaded: boolean
   loading: boolean
   offline: boolean
-  /** The id of the widget whose button is working, so only that one spins. */
+  /**
+   * The id of the widget being worked on, or null.
+   *
+   * One at a time on purpose — an install writes files and re-reads the index — but only that
+   * row says so; the others are simply disabled, which is a different message from "waiting".
+   */
   busy: string | null
   error: string
   search: string
@@ -151,6 +156,13 @@ export function createMarketplaceStore(deps: MarketplaceDeps = {}): MarketplaceS
     shown: computed(() => state.widgets.filter((w) => matches(w, state.search))),
     updates: computed(() => state.widgets.filter((w) => w.updateAvailable).length),
 
+    /**
+     * Reads the index once, and again only when asked.
+     *
+     * `force` is what the caller uses to retry: a first load that failed leaves `loaded` true
+     * and `offline` true, and without it that failure would be permanent for the life of the
+     * page — the Browse tab would keep showing an error nobody could clear.
+     */
     async load(force = false): Promise<void> {
       if (state.loading || (state.loaded && !force)) return
       state.loading = true

@@ -254,3 +254,40 @@ describe('refresh', () => {
     expect(store.shown.value).toHaveLength(1)
   })
 })
+
+describe('one row at a time', () => {
+  it('names the row that is working, so the others are only disabled', async () => {
+    let release!: () => void
+    const gate = new Promise<void>((r) => { release = r })
+    const { store } = make([widget({ id: 'a' }), widget({ id: 'b' })], {
+      installWidget: vi.fn(async (id: string) => { await gate; return { ok: true as const, id, version: '1.0.0' } }),
+    })
+    await store.load()
+    const running = store.start(store.state.widgets[0])
+    expect(store.state.busy).toBe('a')
+    release()
+    await running
+    expect(store.state.busy).toBeNull()
+  })
+
+  it('can be told to read again after a load that failed', async () => {
+    // Without the force, `loaded` stays true and `offline` stays true for the life of the page:
+    // the Browse tab would keep showing an error nobody could clear.
+    let down = true
+    const { api, store } = make([widget()], {
+      getMarketplace: vi.fn(async () => {
+        if (down) throw new Error('offline')
+        return answer([widget()])
+      }),
+    })
+    await store.load()
+    expect(store.state.offline).toBe(true)
+    await store.load()
+    expect(api.getMarketplace).toHaveBeenCalledTimes(1)
+
+    down = false
+    await store.load(true)
+    expect(store.state.offline).toBe(false)
+    expect(store.shown.value).toHaveLength(1)
+  })
+})
