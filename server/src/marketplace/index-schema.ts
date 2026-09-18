@@ -70,6 +70,16 @@ export const IndexWidgetSchema = z.object({
 export type IndexWidget = z.infer<typeof IndexWidgetSchema>
 
 /**
+ * A colour as a token holds it, held to the shape a colour has rather than to any string.
+ *
+ * The same expression the registry's `tools/theme.ts` refuses a package with, deliberately: the
+ * four swatch tokens end up in a `style` attribute on a card, and a value that reached one
+ * unchecked could close the attribute. It is not a CSS parser — Fremkit's `TokensSchema` is the
+ * authority on what a token may be, and this is what must not travel that far.
+ */
+const ColorSchema = z.string().min(1).max(64).regex(/^[#a-zA-Z0-9(),.%\s/-]+$/)
+
+/**
  * A theme, as the index lists it.
  *
  * No `sdk`, no `permissions`, no `connections`: a theme is a JSON file of colour tokens, it runs
@@ -80,16 +90,6 @@ export type IndexWidget = z.infer<typeof IndexWidgetSchema>
  * Nothing reads this yet. It is here so an index that already lists themes parses on a Fremkit
  * that cannot install them, rather than being refused whole.
  */
-/**
- * A colour as a token holds it, held to the shape a colour has rather than to any string.
- *
- * The same expression the registry's `tools/theme.ts` refuses a package with, deliberately: the
- * four swatch tokens end up in a `style` attribute on a card, and a value that reached one
- * unchecked could close the attribute. It is not a CSS parser — Fremkit's `TokensSchema` is the
- * authority on what a token may be, and this is what must not travel that far.
- */
-const ColorSchema = z.string().min(1).max(64).regex(/^[#a-zA-Z0-9(),.%\s/-]+$/)
-
 export const IndexThemeSchema = z.object({
   id: z.string().regex(WIDGET_ID_RE),
   version: z.string().regex(SEMVER_RE),
