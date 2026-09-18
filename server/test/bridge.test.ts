@@ -46,6 +46,9 @@ async function loadBridge(): Promise<LoadResult> {
     documentElement: { lang: '', classList: { add: () => {}, remove: () => {} }, style: { setProperty: () => {}, removeProperty: () => {} } },
     head,
     createElement: element,
+    // The kiosk guard asks whether its stylesheet is already there. Nothing is, in a fresh
+    // document, which is what makes the one call below do its work.
+    querySelector: () => null,
     addEventListener: (type: string) => { listeners.push(type) },
     dispatchEvent: () => {},
   }

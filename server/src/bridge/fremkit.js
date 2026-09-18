@@ -260,6 +260,9 @@
    * docs/writing-widgets.md.
    */
   function applyKioskBehaviour() {
+    // The marker guards the whole function: the two listeners below are anonymous, so a second
+    // call would add a second pair that nothing can ever take off again.
+    if (document.querySelector('style[data-fremkit="kiosk"]')) return
     document.addEventListener('contextmenu', function (e) { e.preventDefault() })
     document.addEventListener('dragstart', function (e) { e.preventDefault() })
     var css = 'html{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;'

@@ -25,9 +25,12 @@ export const KIOSK_CSS = [
 const MARKER = 'data-fremkit-kiosk'
 
 export function applyKioskBehaviour(doc: Document): void {
+  // The marker first: it guards the whole function, not just the stylesheet. Returning after the
+  // listeners were registered meant a second call added a second pair of them, and the pair is
+  // anonymous — nothing can ever take them off again.
+  if (doc.querySelector(`style[${MARKER}]`)) return
   doc.addEventListener('contextmenu', (e) => e.preventDefault())
   doc.addEventListener('dragstart', (e) => e.preventDefault())
-  if (doc.querySelector(`style[${MARKER}]`)) return
   const style = doc.createElement('style')
   style.setAttribute(MARKER, '')
   style.textContent = KIOSK_CSS
