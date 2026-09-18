@@ -89,8 +89,25 @@
       holdAt = null
     }
 
+    /*
+     * The long press as the Edge's touch driver delivers it: a press held past its threshold
+     * becomes a right click, so what reaches the page is a `contextmenu` event and never a held
+     * button. The bridge prevents that event's default (no menu on the panel) but does not stop
+     * it propagating, so this listener still runs.
+     *
+     * The pointer timer below stays for a real mouse and for the plain-Chrome kiosk path.
+     */
+    document.addEventListener('contextmenu', function () {
+      if (Fremkit.settings.longPressOpensApp !== true) return
+      holdCancel()
+      suppressClick = true
+      Fremkit.sendCommand('spotify', 'activate')
+    })
+
     document.addEventListener('pointerdown', function (e) {
       if (Fremkit.settings.longPressOpensApp !== true) return
+      // The driver's long press arrives as a right button; it would only cancel its own hold.
+      if (e.button !== 0) return
       holdAt = { x: e.clientX, y: e.clientY }
       suppressClick = false
       holdTimer = window.setTimeout(function () {

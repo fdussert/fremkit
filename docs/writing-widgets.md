@@ -290,6 +290,23 @@ pull request title, a printer field — and any of it can contain `<img src=x on
   it;
 - a number written into a `style` attribute is clamped to a range first.
 
+**A long press reaches a widget as a `contextmenu` event.** The Edge's touch driver turns a press
+held past its threshold into a right click, so the page never sees a held button — a timer started
+on `pointerdown` is cancelled by the `pointerup` that follows milliseconds later. A widget that
+wants a long press listens for `contextmenu`:
+
+```js
+document.addEventListener('contextmenu', function () {
+  // The bridge has already prevented the default (no menu on the panel) and does not stop the
+  // event propagating, so this still runs.
+  doTheLongPressThing()
+})
+```
+
+Keep a pointer timer alongside it if you like: that is what a real mouse, and the plain-Chrome
+kiosk path, produce. Ignore a `pointerdown` whose `button` is not `0` there — the driver's long
+press arrives as the right button and would only cancel its own hold.
+
 **A widget must not navigate or reload itself.** Setting `location`, or calling
 `location.reload()`, gives the frame a new document behind the same `contentWindow` — so the host
 drops the widget's subscriptions and stops answering it, for good. Re-render from the data you

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { cancelsHold, startsHold } from './longPress'
 import { computed, onBeforeUnmount, ref } from 'vue'
 import { DEFAULT_NAV_HEIGHT, type NavSlot, type NavWidget, type Page, type WidgetManifest } from '../shared/types'
 import { surfaceOpacity } from '../shared/background'
@@ -38,14 +39,38 @@ const emit = defineEmits<{
  * press.
  */
 const HOLD_MS = 1500
-const HOLD_SLOP = 10
 const holding = ref(false)
 let holdTimer: number | undefined
 let holdStart: { x: number; y: number } | null = null
 /** Set when a press completed, so the click the same gesture may still produce is not a tap. */
 let suppressClick = false
 
+/**
+ * The long press as the Edge's touch driver actually delivers it.
+ *
+ * A press held past the driver's threshold is turned into a **right click** —
+ * `rightMouseDown` and `rightMouseUp` back to back (see `GestureEngine.endPress`). The page
+ * never sees a held button, so the timer below never completes on the panel: `pointerup` arrives
+ * milliseconds after `pointerdown`.
+ *
+ * It used to work by accident. WebKit opened its context menu on the right mouse down and
+ * swallowed the matching up while the menu tracked the mouse, so the timer ran to completion
+ * behind it — which is also why the menu and the admin used to appear together. Removing that
+ * menu removed the accident.
+ *
+ * So the `contextmenu` event *is* the signal. The timer stays for a real mouse and for a held
+ * left button, which is what the plain-Chrome kiosk path produces.
+ */
+function holdContextMenu(e: Event): void {
+  e.preventDefault()
+  e.stopPropagation()
+  endHold()
+  suppressClick = true
+  emit('admin')
+}
+
 function holdDown(e: PointerEvent): void {
+  if (!startsHold(e.button)) return
   holdStart = { x: e.clientX, y: e.clientY }
   holding.value = true
   suppressClick = false
@@ -62,7 +87,7 @@ function holdDown(e: PointerEvent): void {
 }
 function holdMove(e: PointerEvent): void {
   if (!holdStart) return
-  if (Math.hypot(e.clientX - holdStart.x, e.clientY - holdStart.y) > HOLD_SLOP) endHold()
+  if (cancelsHold(holdStart, { x: e.clientX, y: e.clientY })) endHold()
 }
 function holdUp(): void {
   window.removeEventListener('pointercancel', holdCancel, true)
@@ -138,7 +163,8 @@ const style = computed<Record<string, string | number>>(() => {
         @tap="emit('tap', w, $event)"
       />
     </div>
-    <div class="dots" :class="{ holding }" @pointerdown="holdDown" @click.capture="dotsClick">
+    <div class="dots" :class="{ holding }" @pointerdown="holdDown" @contextmenu="holdContextMenu"
+      @click.capture="dotsClick">
       <button v-for="(p, i) in pages" :key="p.id" class="dot" :class="{ active: i === active }" :aria-label="p.name" @click="$emit('select', i)" />
     </div>
   </nav>
