@@ -10,6 +10,10 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# A fork's pull request gets a read-only token: nothing here writes to the repository.
+permissions:
+  contents: read
+
 jobs:
   check:
     name: typecheck, test, build
