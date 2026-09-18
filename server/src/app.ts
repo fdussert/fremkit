@@ -20,6 +20,7 @@ import { Registry } from './marketplace/registry.js'
 import { marketplaceRoutes } from './marketplace/routes.js'
 import { recoverStaging } from './marketplace/install.js'
 import { ThemeCatalog } from './themes/catalog.js'
+import { installedThemesDir } from './themes/installed.js'
 import { themeRoutes } from './themes/routes.js'
 import { widgetRoutes } from './widgets/routes.js'
 import { ProviderRegistry } from './providers/registry.js'
@@ -103,7 +104,10 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   await recoverStaging(installedDir)
   const catalog = new WidgetCatalog(opts.widgetsDir, installedDir)
   await catalog.scan()
-  const themes = new ThemeCatalog(opts.themesDir ?? fileURLToPath(new URL('../../themes', import.meta.url)))
+  const themes = new ThemeCatalog(
+    opts.themesDir ?? fileURLToPath(new URL('../../themes', import.meta.url)),
+    installedThemesDir(opts.dataDir),
+  )
   await themes.scan()
 
   // A camera stream writes a one-line concat list into its own temp directory and removes it on

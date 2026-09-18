@@ -200,3 +200,48 @@ describe('what a theme carries for the registry', () => {
     }
   })
 })
+
+describe('ThemeCatalog with an installed folder', () => {
+  it('reads both roots and says where each theme came from', async () => {
+    const builtin = await folder({ fremkit: body({ bg: '#0b0d10' }) })
+    const installed = await folder({ nuit: body({ bg: '#0d1117' }) })
+    const catalog = new ThemeCatalog(builtin, installed)
+    await catalog.scan()
+    expect([...catalog.themes.keys()].sort()).toEqual(['fremkit', 'nuit'])
+    expect(catalog.entry('fremkit')?.source).toBe('builtin')
+    expect(catalog.entry('nuit')?.source).toBe('installed')
+  })
+
+  it('never lets an installed folder stand in for a built-in of the same id', async () => {
+    // The theme painted everywhere is the one a user believes they chose; a folder dropped into
+    // the data directory must not be able to take that name.
+    const builtin = await folder({ fremkit: body({ bg: '#0b0d10' }) })
+    const installed = await folder({ fremkit: body({ bg: '#ff0000' }) })
+    const catalog = new ThemeCatalog(builtin, installed)
+    await catalog.scan()
+    expect(catalog.get('fremkit')?.tokens.bg).toBe('#0b0d10')
+    expect(catalog.entry('fremkit')?.source).toBe('builtin')
+    expect(catalog.errors.map((e) => e.id)).toEqual(['fremkit'])
+  })
+
+  it('counts a built-in id as taken even when its own theme.json does not parse', async () => {
+    // The id is claimed by the folder existing, not by it parsing — which is what the installer
+    // refuses against, so the day the built-in is fixed two folders cannot claim the same name.
+    // Same rule, and the same division of labour, as the widget catalogue.
+    const builtin = await folder({ fremkit: '{ not json' })
+    const installed = await folder({ fremkit: body({ bg: '#ff0000' }) })
+    const catalog = new ThemeCatalog(builtin, installed)
+    await catalog.scan()
+    expect(catalog.builtinIds.has('fremkit')).toBe(true)
+    expect(catalog.errors.map((e) => e.id)).toEqual(['fremkit'])
+  })
+
+  it('walks past the installer leftovers rather than reporting them', async () => {
+    const builtin = await folder({})
+    const installed = await folder({ 'nuit.bak': body({}), '.tmp-nuit-ab12': body({}), nuit: body({ bg: '#0d1117' }) })
+    const catalog = new ThemeCatalog(builtin, installed)
+    await catalog.scan()
+    expect([...catalog.themes.keys()]).toEqual(['nuit'])
+    expect(catalog.errors).toEqual([])
+  })
+})
