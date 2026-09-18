@@ -20,11 +20,12 @@ The name is the Fremen survival kit from *Dune*.
   auto-rotation.
 - **A live editor** at `/admin`: the real page rendered with real widgets, drag and resize with
   snapping, overlap refused, keyboard nudges, undo/redo and autosave.
-- **Twenty-six widgets** out of the box — clock, weather, a pomodoro timer, CPU, memory, disks,
-  network throughput, batteries, processes, volume, Spotify, meeting controls,
-  Dock badges, a clipboard history, shortcut buttons, CleanShot X actions, service status checks,
-  Claude Code sessions and limits, Azure DevOps builds, GitHub notifications and Actions, a Bambu
-  Lab printer, published calendars, Homey devices and flows.
+- **Twenty-eight widgets** — clock, weather, a pomodoro timer, CPU, memory, disks, network
+  throughput, batteries, processes, volume, Spotify, Dock badges, a clipboard history, shortcut
+  buttons, service status checks, published calendars, Claude Code sessions and limits; and,
+  *from the registry*, meeting controls, CleanShot X actions, Azure DevOps builds, GitHub
+  notifications and Actions, a Bambu Lab printer, Homey devices and flows, a Synology NAS.
+  Eighteen ship with Fremkit; the rest are one press away in the admin.
 - **Compact widgets** in the navigation bar, with a full-size popover on touch.
 - **Per-tile appearance** — background colour, opacity, background image, accent colour and how
   much of the tile the accent paints.
@@ -177,9 +178,9 @@ is the default.
 **Compact widgets.** Widgets can live *in* the bar, in a left or a right cluster, in the order
 you set, as many as fit beside the page dots. A compact rendering is one readable line, as wide
 as the widget's manifest asks for and as tall as the bar; the bar is its surface, so it has no
-title and no tile of its own. Twelve widgets ship with one: `clock`, `weather`, `pomodoro`,
-`cpu`, `memory`, `network`, `battery`, `calendar`, `claude-usage`, `github-inbox`,
-`homey-devices` and `service-status`.
+title and no tile of its own. Nine of the built-ins have one: `clock`, `weather`, `pomodoro`,
+`cpu`, `memory`, `network`, `battery`, `calendar`, `claude-usage` and `service-status`. Registry
+widgets bring their own — `github-inbox`, `homey-devices` and the two Synology ones have one too.
 
 **Full widget on touch.** A bar widget can be marked for a popover: touching it opens the same
 widget at its full default size above the bar. It closes on a second touch, on a touch outside it,
@@ -190,8 +191,9 @@ on a page change, or after fifteen seconds.
 ![The Screen dialog: language, bar height and opacity, and the widgets in the bar](docs/images/admin-screen.png)
 
 **Connections.** A widget that talks to an outside service — Azure DevOps, GitHub, a Bambu
-printer, a Homey, a published calendar — reads its credentials from a named *connection*, configured once in
-the admin and referenced by the widget. Several widgets can share one, and one service can have
+printer, a Homey, a NAS, a published calendar — reads its credentials from a named *connection*,
+configured once in the admin and referenced by the widget. The connection types are part of
+Fremkit; the widgets for these live on the registry, which is why creating one lists them. Several widgets can share one, and one service can have
 several. Non-secret fields live in `data/fremkit.json`; secrets go to the macOS **keychain**
 (or, with the `file` backend, to a mode-600 `data/secrets.json`) and are never returned by the
 API, logged, written to the config or sent on the WebSocket.
@@ -211,23 +213,15 @@ above state lines such as "Server: running" and "Touch: active".
 
 | Widget | Shows | Connection | Compact |
 |---|---|---|---|
-| `ado-pipelines` | Azure DevOps runs in progress and recent history | Azure DevOps | — |
-| `bambu-job` | A printer's current job, AMS and chamber camera | Bambu Lab | — |
 | `battery` | The Mac's battery and its Bluetooth peripherals | — | ● |
 | `calendar` | The next events of one or more published calendars | ICS calendar | ● |
 | `claude-sessions` | Live Claude Code sessions | — | — |
 | `claude-usage` | Claude 5 h / 7 day limits and today's tokens | — | ● |
-| `cleanshot` | Big touch buttons for captures, needs [CleanShot X](https://cleanshot.com) with its URL scheme API allowed | — | — |
 | `clipboard` | Recent clipboard entries, tap to copy back | — | — |
 | `clock` | Time, date and other cities | — | ● |
 | `cpu` | CPU load and temperature | — | ● |
 | `disk` | Disk usage | — | — |
-| `github-actions` | Running and finished GitHub Actions workflows | GitHub | — |
-| `github-inbox` | GitHub notifications, review requests and pull requests | GitHub | ● |
-| `homey-devices` | Lights, plugs and sensors of a Homey Pro | Homey Pro | ● |
-| `homey-flows` | Buttons that run a Homey Pro's flows | Homey Pro | — |
 | `memory` | Memory usage | — | ● |
-| `mutedeck` | Meeting controls through MuteDeck | — | — |
 | `network` | Live network throughput, with a sparkline | — | ● |
 | `notifications` | Unread badges read from the Dock | — | — |
 | `pomodoro` | A work and break timer, driven by touch | — | ● |
@@ -238,22 +232,41 @@ above state lines such as "Server: running" and "Touch: active".
 | `volume` | System volume | — | — |
 | `weather` | Current weather and forecast, from Open-Meteo | — | ● |
 
+### On the sietch
+
+Published on the [widget registry](https://github.com/fdussert/fremkit-sietch) rather than
+shipped, because each one only does anything with a printer, a hub, a NAS or an account behind
+it. Install them from **Sietch** in the admin’s top bar; the provider or connection type each
+one reads is already part of Fremkit, so there is nothing else to set up. A tile placed on a
+screen whose widget is not installed offers the install where it stands.
+
+| Widget | Shows | Connection | Compact |
+|---|---|---|---|
+| `ado-pipelines` | Azure DevOps runs in progress and recent history | Azure DevOps | — |
+| `bambu-job` | A printer's current job, AMS and chamber camera | Bambu Lab | — |
+| `cleanshot` | Big touch buttons for captures, needs [CleanShot X](https://cleanshot.com) with its URL scheme API allowed | — | — |
+| `github-actions` | Running and finished GitHub Actions workflows | GitHub | — |
+| `github-inbox` | GitHub notifications, review requests and pull requests | GitHub | ● |
+| `homey-devices` | Lights, plugs and sensors of a Homey Pro | Homey Pro | ● |
+| `homey-flows` | Buttons that run a Homey Pro's flows | Homey Pro | — |
+| `mutedeck` | Meeting controls through MuteDeck | — | — |
+| `synology-storage` | Volumes, disk health and temperature of a NAS | Synology | ● |
+| `synology-system` | CPU, memory, network and uptime of a NAS | Synology | ● |
+
 Every setting of every widget is listed in **[docs/widgets.md](docs/widgets.md)**. To write your
 own, see **[docs/writing-widgets.md](docs/writing-widgets.md)**.
 
-More are published to the [widget registry](https://github.com/fdussert/fremkit-sietch) rather
-than shipped here, and installed from *Sietch* in the admin's top bar — including
-`synology-storage` and `synology-system`. What the installer checks, what a consent record is and
-how an update asks again: **[docs/marketplace.md](docs/marketplace.md)**.
+What the installer checks, what a consent record is and how an update asks again:
+**[docs/marketplace.md](docs/marketplace.md)**.
 
 ## Connections
 
 | Type | Needs | Used by |
 |---|---|---|
-| Azure DevOps | organisation, project, a personal access token with Build (read) | `ado-pipelines` |
-| Bambu Lab | IP address, serial number, LAN access code | `bambu-job` |
-| GitHub | a personal access token — classic for the notifications, fine-grained enough for reviews, pull requests and Actions — optionally an Enterprise API host | `github-inbox`, `github-actions` |
-| Homey Pro | the Homey's address, an API key with Devices and Flows in read and control | `homey-devices`, `homey-flows` |
+| Azure DevOps | organisation, project, a personal access token with Build (read) | `ado-pipelines` (from the registry) |
+| Bambu Lab | IP address, serial number, LAN access code | `bambu-job` (from the registry) |
+| GitHub | a personal access token — classic for the notifications, fine-grained enough for reviews, pull requests and Actions — optionally an Enterprise API host | `github-inbox`, `github-actions` (from the registry) |
+| Homey Pro | the Homey's address, an API key with Devices and Flows in read and control | `homey-devices`, `homey-flows` (from the registry) |
 | ICS calendar | the published calendar address, a colour | `calendar` |
 | Synology | the NAS address, a dedicated DSM account in the administrators group (no shared folder, DSM application only) and its password | `synology-storage`, `synology-system` (from the registry) |
 ![The Connections dialog](docs/images/admin-connections.png)
