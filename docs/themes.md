@@ -55,6 +55,7 @@ listed with the reason instead of being painted.
 | `bg` | The page behind the tiles |
 | `surface`, `surface-2`, `surface-3` | Tiles, and the two shades above them (fields, keys) |
 | `border`, `border-strong` | Separators, and the ones that need to be seen |
+| `tile-surface`, `tile-outline` | The card a tile is drawn on. Either may be transparent (`#00000000`): `edge` keeps a surface and drops the outline |
 | `text`, `text-muted`, `text-dim` | Body text, secondary text, and the faintest labels |
 | `accent`, `accent-hover`, `accent-2` | The accent, its hover, and a quieter second one |
 | `on-accent` | Text drawn on the accent |
@@ -93,6 +94,16 @@ Two properties still belong to the tile rather than to the theme, and are painte
 `--accent`, when the tile carries an accent colour of its own, and `--on-surface`, the text colour
 the host computed for the body it painted. A colour chosen in the editor therefore wins over the
 theme, which is what the person setting up that tile expects.
+
+## Tiles without a card
+
+A tile is a card: `tile-surface` painted inside `tile-outline`. A theme that sets both to
+`#00000000` draws neither, and its widgets sit straight on the page, separated by the grid gaps
+alone. Either one alone works as well — `edge` paints a surface and no outline.
+
+It stays a per-tile decision too: **Background** → **Opacity** in the editor fades one tile,
+border included, whatever the theme says, and a background colour set there gives a card back to
+a single tile on an otherwise flat screen.
 
 ## Keeping your own theme
 

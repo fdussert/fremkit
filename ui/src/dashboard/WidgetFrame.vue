@@ -34,9 +34,9 @@ const style = computed<Record<string, string>>(() => {
   // stays written as one and `fade()` mixes it with color-mix instead of rgba().
   const accentCss = isHexColor(inst.accentColor) ? inst.accentColor : 'var(--accent)'
   const a = alpha.value
-  const body = mode.value === 'fill' ? accentCss : (isHexColor(inst.bgColor) ? inst.bgColor : 'var(--surface)')
+  const body = mode.value === 'fill' ? accentCss : (isHexColor(inst.bgColor) ? inst.bgColor : 'var(--tile-surface)')
   s['--tile-bg'] = fade(body, a)
-  s['--tile-border'] = fade(mode.value === 'none' ? 'var(--border)' : accentCss, a)
+  s['--tile-border'] = fade(mode.value === 'none' ? 'var(--tile-outline)' : accentCss, a)
   s['--tile-title-bg'] = fade(accentCss, a)
   // Both text colours are literals: they come from the luminance of a real colour, never a var.
   s['--tile-text'] = isHexColor(inst.bgColor) || mode.value === 'fill'

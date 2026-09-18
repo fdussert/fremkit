@@ -12,6 +12,8 @@
     "surface-2": "#1f252c",
     "surface-3": "#252c34",
     "border": "#262d35",
+    "tile-surface": "#13171b",
+    "tile-outline": "#00000000",
     "border-strong": "#39424d",
     "text": "#ebe4d3",
     "text-muted": "#8a929a",

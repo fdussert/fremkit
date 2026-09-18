@@ -34,6 +34,8 @@ describe('ThemeSchema', () => {
     for (const bad of ['red; background: url(http://x)', 'var(--bg)', '#00ff0', 'rgb(0,0,0)']) {
       expect(ThemeSchema.safeParse(theme({ bg: bad })).success, bad).toBe(false)
     }
+    // Eight digits carry the alpha, which is how a theme asks for no tile card at all.
+    expect(ThemeSchema.safeParse(theme({ 'tile-surface': '#00000000' })).success).toBe(true)
     expect(ThemeSchema.safeParse(theme({ font: 'Inter, sans-serif' })).success).toBe(true)
     expect(ThemeSchema.safeParse(theme({ font: 'url(evil.woff)' })).success).toBe(false)
     expect(ThemeSchema.safeParse(theme({ shadow: '0 8px 24px rgba(0, 0, 0, .35)' })).success).toBe(true)

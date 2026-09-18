@@ -31,6 +31,9 @@ export const TOKENS = {
   'surface-2': COLOR,
   'surface-3': COLOR,
   border: COLOR,
+  /** The tile's own card: a theme that sets both to #00000000 draws no card at all. */
+  'tile-surface': COLOR,
+  'tile-outline': COLOR,
   'border-strong': COLOR,
   text: COLOR,
   'text-muted': COLOR,
