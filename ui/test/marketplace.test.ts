@@ -422,3 +422,72 @@ describe('one row at a time', () => {
     expect(store.shown.value).toHaveLength(1)
   })
 })
+
+describe('after a series', () => {
+  const waiting = (over: Partial<MarketplaceWidget> = {}) =>
+    widget({ installed: true, installedVersion: '1.0.0', version: '2.0.0', updateAvailable: true, ...over })
+  const done = (id: string) => widget({ id, installed: true, installedVersion: '2.0.0', version: '2.0.0' })
+
+  /** The index the server gives back once both widgets have been updated: nothing waits any more. */
+  const updated = (ids: string[], results: { id: string; ok: boolean; version?: string; newPermissions?: WidgetPermissionSet }[]) => {
+    let calls = 0
+    const api: Partial<MarketplaceApi> = {
+      getMarketplace: vi.fn(async () => {
+        calls += 1
+        return answer(calls === 1
+          ? ids.map((id) => waiting({ id }))
+          : ids.map((id) => (results.find((r) => r.id === id)?.ok ? done(id) : waiting({ id }))))
+      }),
+      updateAllWidgets: vi.fn(async () => ({ results })),
+    }
+    return api
+  }
+
+  it('keeps a widget it just updated in the Updates view, with its result', async () => {
+    const { store } = make([], updated(['a', 'b'], [
+      { id: 'a', ok: true, version: '2.0.0' },
+      { id: 'b', ok: true, version: '2.0.0' },
+    ]))
+    await store.load()
+    store.setView('updates')
+    await store.updateAll()
+    // Without this the view is empty: both succeeded, so neither is waiting, and the only thing
+    // the button would have left behind is the rows that failed.
+    expect(store.shown.value.map((w) => w.id).sort()).toEqual(['a', 'b'])
+    expect(store.state.results.a.ok).toBe(true)
+    store.setView('installed')
+    store.setView('updates')
+    expect(store.shown.value).toHaveLength(0)
+  })
+
+  it('hands a consent refusal back to the single dialog, on the set the server named', async () => {
+    const added = set({ subscriptions: ['system'] })
+    const { store } = make([], updated(['a'], [{ id: 'a', ok: false, newPermissions: added }]))
+    await store.load()
+    await store.updateAll()
+    store.state.widgets[0].permissions = set({ commands: ['shortcuts.run'] })
+    store.review(store.state.widgets[0])
+    expect(store.state.consent?.update).toBe(true)
+    expect(store.state.consent?.added).toEqual(added)
+    // What is sent is the whole ask: what the entry advertised plus what the server said was new.
+    expect(store.state.consent?.send).toEqual(set({ subscriptions: ['system'], commands: ['shortcuts.run'] }))
+  })
+
+  it('has nothing to review when the failure was not about consent', async () => {
+    const { store } = make([], updated(['a'], [{ id: 'a', ok: false }]))
+    await store.load()
+    await store.updateAll()
+    store.review(store.state.widgets[0])
+    expect(store.state.consent).toBeNull()
+  })
+
+  it('forgets the results when the panel closes', async () => {
+    const { store } = make([], updated(['a'], [{ id: 'a', ok: true, version: '2.0.0' }]))
+    await store.load()
+    store.setView('updates')
+    await store.updateAll()
+    store.clearResults()
+    expect(store.state.results).toEqual({})
+    expect(store.shown.value).toHaveLength(0)
+  })
+})

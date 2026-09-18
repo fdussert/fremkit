@@ -124,6 +124,10 @@ export interface MarketplaceStore {
   askUpdateAll(): void
   cancelUpdateAll(): void
   updateAll(): Promise<void>
+  /** Reopens the single-update dialog for a widget the series refused on consent. */
+  review(widget: MarketplaceWidget): void
+  /** Forgets what the last series came to; the panel closing ends that run's story. */
+  clearResults(): void
   /** Opens the dialog when something new is being asked for, installs straight away otherwise. */
   start(widget: MarketplaceWidget, update?: boolean): Promise<void>
   accept(): Promise<void>
@@ -158,9 +162,13 @@ export function createMarketplaceStore(deps: MarketplaceDeps = {}): MarketplaceS
 
   /** The rows one view is made of, before the search box narrows them. */
   const inView = (): MarketplaceWidget[] => {
-    if (state.view === 'installed') return state.widgets.filter((w) => w.installed)
-    if (state.view === 'updates') return state.widgets.filter((w) => w.updateAvailable)
-    return state.widgets
+    const rows = state.widgets
+    if (state.view === 'installed') return rows.filter((w) => w.installed)
+    // A widget that has just been updated is no longer waiting, and dropping it here would take
+    // its "updated to vX" line with it — the whole answer to "what did that button do" would be
+    // the failures. So the rows a finished run reported stay until the view changes.
+    if (state.view === 'updates') return rows.filter((w) => w.updateAvailable || state.results[w.id])
+    return rows
   }
 
   const take = (answer: MarketplaceResponse): void => {
@@ -320,6 +328,24 @@ export function createMarketplaceStore(deps: MarketplaceDeps = {}): MarketplaceS
         state.updatingAll = false
       }
     },
+
+    /**
+     * Picks one refusal out of the series and asks about it properly.
+     *
+     * A widget the server refused for consent is the one case a bulk run cannot finish by itself:
+     * it asks for something the dialog never listed. Without this the row is a sentence with no
+     * button — the user is told what went wrong and given nowhere to go. The set offered is what
+     * the server reported as missing, on top of what the entry advertises, which is exactly what
+     * the single-update dialog would have shown.
+     */
+    review(widget: MarketplaceWidget): void {
+      const added = state.results[widget.id]?.newPermissions
+      if (!added || empty(added)) return
+      const all = union(widget.permissions, added)
+      state.consent = { widget, update: true, added, all, send: all }
+    },
+
+    clearResults(): void { state.results = {} },
 
     async uninstall(id: string): Promise<void> {
       await run(id, () => api.uninstallWidget(id))

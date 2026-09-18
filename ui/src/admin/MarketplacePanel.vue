@@ -11,7 +11,7 @@
  * is what this machine has, **Updates** is the short list somebody came here to act on — and
  * the one the top bar's badge sends you to.
  */
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, onUnmounted } from 'vue'
 import BaseButton from '../shared/ui/BaseButton.vue'
 import BaseCard from '../shared/ui/BaseCard.vue'
 import BaseIcon from '../shared/ui/BaseIcon.vue'
@@ -28,6 +28,8 @@ const { t } = useI18n()
 
 /** Opening the panel is the moment to try again after a registry that could not be reached. */
 onMounted(() => { void store.load(store.state.offline) })
+/** The results belong to the run that produced them, and closing the panel ends it. */
+onUnmounted(() => { store.clearResults() })
 
 const VIEWS = computed(() => [
   { value: 'available', label: t('admin.market.view.available') },
@@ -58,6 +60,12 @@ function busy(id: string): boolean { return store.state.busy === id }
 /** Every button is disabled while anything is in flight; only the working row says so. */
 const locked = computed(() => store.state.busy !== null || store.state.updatingAll)
 
+/** The series stopped on this widget because it asks for something the dialog never showed. */
+function asksMore(id: string): boolean {
+  const p = store.state.results[id]?.newPermissions
+  return Boolean(p && (p.subscriptions.length || p.commands.length || p.network.length))
+}
+
 const empty = computed(() => {
   if (store.state.search) return t('admin.market.noMatch')
   if (store.state.view === 'installed') return t('admin.market.noneInstalled')
@@ -75,7 +83,7 @@ const empty = computed(() => {
       <BaseInput v-model="store.state.search" :placeholder="t('admin.market.search')" />
       <BaseSegmented v-if="KINDS.length > 1" class="kinds" :model-value="store.state.kind" :options="KINDS"
         @update:model-value="store.state.kind = $event as 'widget'" />
-      <BaseButton v-if="store.state.view === 'updates' && store.updates.value" :disabled="locked"
+      <BaseButton v-if="store.state.view === 'updates' && store.updates.value" class="bulk" :disabled="locked"
         @click="store.askUpdateAll()">
         {{ t('admin.market.updateAll') }}
       </BaseButton>
@@ -119,6 +127,10 @@ const empty = computed(() => {
             {{ store.state.results[w.id].ok
               ? t('admin.market.updatedTo', { version: store.state.results[w.id].version ?? '' })
               : store.state.results[w.id].error }}
+            <!-- A refusal on consent is the one failure the user can answer: the series could not
+                 grant what it never listed, so this hands that widget to the single dialog. -->
+            <button v-if="asksMore(w.id)" class="review" type="button" :disabled="locked"
+              @click="store.review(w)">{{ t('admin.market.reviewAsk') }}</button>
           </p>
         </div>
         <div class="act">
@@ -175,4 +187,7 @@ const empty = computed(() => {
 .note { margin: 0; font-size: var(--fs-xs); color: var(--text-dim); }
 .note.warn { color: var(--danger); }
 .note.ok { color: var(--ok); }
+.review { font: inherit; color: var(--accent); background: none; border: 0; padding: 0 0 0 var(--space-1);
+  cursor: pointer; text-decoration: underline; }
+.review:disabled { color: var(--text-dim); cursor: default; }
 </style>
