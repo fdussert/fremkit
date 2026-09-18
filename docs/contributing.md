@@ -155,6 +155,24 @@ extracted from installed application bundles in `data/icons/apps/`, site favicon
 to `~/Library/Logs/Fremkit/server.log`, opened by the menu's *Log…*. It is never rotated, so
 delete it by hand if it grows.
 
+## Pull requests
+
+Fork, branch, and open the pull request against `main`. Every pull request runs
+`.github/workflows/ci.yml` on Ubuntu with Node 22: `pnpm install --frozen-lockfile`, then
+`pnpm typecheck`, `pnpm test` and `pnpm build`. The widget catalogue test reads the real
+`widgets/` folder, so a broken manifest fails the run.
+
+The CI cannot see two of the conventions, and `.github/pull_request_template.md` asks about them
+instead: a user-facing string exists in French *and* English, and nothing personal — hostname, IP,
+organisation, serial number, e-mail address, token — is anywhere in the diff, tests and fixtures
+included.
+
+The Swift helper is not built by the CI: `pnpm helper:build` and `pnpm helper:test` need macOS, the
+self-signed identity and the local TCC grants. Run them yourself when you touch `native/` and say
+so in the pull request.
+
+Commits are small, one concern each, with an imperative subject and a body saying why.
+
 ## Coding agents
 
 [AGENTS.md](../AGENTS.md) at the repository root is written for coding agents (and is what
