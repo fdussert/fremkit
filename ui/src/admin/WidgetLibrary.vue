@@ -107,7 +107,7 @@ onBeforeUnmount(unbindDragFallback)
             <span v-if="hasUpdate(m.id)" class="chip up">{{ t('admin.market.updateChip') }}</span>
           </strong>
           <small>{{ m.defaultSize[0] }}×{{ m.defaultSize[1] }} · {{ pick(m.description) }}</small>
-          <WidgetPermissions :manifest="m" compact />
+          <WidgetPermissions :manifest="m" :asks="s.state.asks[m.id]" compact />
         </div>
       </BaseCard>
       <BaseCard v-for="e in s.state.catalogErrors" :key="'err-' + e.id" class="err">

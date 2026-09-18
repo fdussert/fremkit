@@ -23,6 +23,14 @@ const s = useAdminStore()
 const { t } = useI18n()
 const inst = computed(() => s.selected.value)
 const manifest = computed(() => (inst.value ? s.state.manifests[inst.value.widgetId] : undefined))
+/**
+ * What the widget's manifest asks for, beside what it may do.
+ *
+ * `manifest` is the *granted* one — narrowed to the consent record for an installed widget — so
+ * without this the inspector could not tell a widget that is quietly missing a permission from
+ * one that never wanted it. Undefined for a built-in, which has no record to differ from.
+ */
+const asks = computed(() => (inst.value ? s.state.asks[inst.value.widgetId] : undefined))
 /** Only the tile's own settings; the bar's are edited in the Screen tab. */
 const schema = computed(() => fieldsInScope(manifest.value?.settingsSchema, 'tile'))
 
@@ -149,7 +157,7 @@ function moveToPage(): void {
       @copy="s.updateInstance(inst!.instanceId, { settings: $event })" />
     <SettingsForm v-if="manifest" :schema="manifest.settingsSchema" scope="tile" :values="inst.settings" @change="onSetting" />
 
-    <WidgetPermissions :manifest="manifest" />
+    <WidgetPermissions :manifest="manifest" :asks="asks" />
 
     <h3>{{ t('admin.inspector.widget.geometry') }}</h3>
     <div class="grid4">
