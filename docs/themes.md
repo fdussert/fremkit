@@ -41,7 +41,7 @@ folder, exactly like the widget library's.
 |---|---|---|
 | `id` | yes | Matches the folder name, `[a-z0-9_-]+` |
 | `name` | yes | Shown in the theme list; one string, or a `{ fr, en }` pair |
-| `version` | yes | Any non-empty string |
+| `version` | yes | Semver, `1.0.0` |
 | `description` | no | One line under the list |
 | `tokens` | no | The values this theme changes; everything else keeps the built-in theme's |
 
@@ -126,6 +126,25 @@ theme, so it is left as a decision rather than made here.
 
 The volume widget's knob is a third case, on purpose: its gradients are the material the knob is
 made of, not a palette.
+
+## What a theme carries for the registry
+
+`version` is semver, so one release can be told from the next. `author`, `homepage` and `license`
+are optional and the dashboard paints none of them — they travel with a theme published beside
+the widgets, so it keeps its credit and its terms. `homepage` is https, as the registry index
+asks of it:
+
+```json
+{
+  "id": "nuit",
+  "name": { "fr": "Nuit", "en": "Night" },
+  "version": "1.0.0",
+  "author": "Someone",
+  "homepage": "https://example.com/nuit",
+  "license": "MIT",
+  "tokens": { }
+}
+```
 
 ## Keeping your own theme
 

@@ -143,3 +143,30 @@ describe('the shadow tokens', () => {
     expect(shadow('0 0 0 2px #000 } body {')).toBe(false)
   })
 })
+
+describe('what a theme carries for the registry', () => {
+  it('asks for a semver version, since a registry compares one release to the next', () => {
+    expect(ThemeSchema.safeParse({ ...theme({}), version: '1.0.0' }).success).toBe(true)
+    expect(ThemeSchema.safeParse({ ...theme({}), version: '1.2.3-beta.1' }).success).toBe(true)
+    for (const bad of ['1', '1.0', 'v1.0.0', 'latest', '']) {
+      expect(ThemeSchema.safeParse({ ...theme({}), version: bad }).success, bad).toBe(false)
+    }
+  })
+
+  it('keeps the credit and the licence when they are given, and does not ask for them', () => {
+    const parsed = ThemeSchema.parse({
+      ...theme({}), author: 'Someone', homepage: 'https://example.com/theme', license: 'MIT',
+    })
+    expect(parsed.author).toBe('Someone')
+    expect(parsed.homepage).toBe('https://example.com/theme')
+    expect(parsed.license).toBe('MIT')
+    expect(ThemeSchema.parse(theme({})).author).toBeUndefined()
+  })
+
+  // The registry index holds a theme's homepage to https, so the theme itself is held to it too.
+  it('refuses a homepage that is not an https address', () => {
+    for (const bad of ['javascript:alert(1)', 'file:///etc/passwd', 'not a url', 'http://example.com']) {
+      expect(ThemeSchema.safeParse({ ...theme({}), homepage: bad }).success, bad).toBe(false)
+    }
+  })
+})

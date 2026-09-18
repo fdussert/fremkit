@@ -84,11 +84,21 @@ export const TokensSchema = z.strictObject({
   [TEXT_SCALE]: z.number().min(TEXT_SCALE_RANGE.min).max(TEXT_SCALE_RANGE.max).optional(),
 } as { [K in TokenName]: z.ZodOptional<z.ZodString> } & { [TEXT_SCALE]: z.ZodOptional<z.ZodNumber> })
 
+/** Semver, so the registry can tell one version of a theme from the next. */
+const SEMVER = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/
+
 export const ThemeSchema = z.object({
   id: z.string().regex(/^[a-z0-9_-]+$/),
   name: LocalizedTextSchema,
-  version: z.string().min(1),
+  version: z.string().regex(SEMVER),
   description: LocalizedTextSchema.optional(),
+  /**
+   * Who made it and under what terms. The dashboard paints none of this; it is carried so a
+   * theme published in the registry keeps its credit and its licence with it.
+   */
+  author: z.string().min(1).max(120).optional(),
+  homepage: z.url({ protocol: /^https$/ }).max(300).optional(),
+  license: z.string().min(1).max(60).optional(),
   /** Only the tokens this theme changes; the rest keep the values of the built-in one. */
   tokens: TokensSchema.default({}),
 })
