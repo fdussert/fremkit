@@ -2,6 +2,7 @@
 <html lang="en"><head><meta charset="utf-8"><title>Volume</title>
 <style>
   html,body{margin:0;height:100%;background:transparent;color:#e6e8eb;font-family:-apple-system,system-ui,sans-serif;overflow:hidden}
+  [hidden]{display:none!important}
   .wrap{box-sizing:border-box;height:100%;padding:14px 18px;position:relative;display:flex;flex-direction:column;justify-content:center;gap:6px}
   .big{font-size:44px;font-weight:600;line-height:1}
   .bar{height:8px;border-radius:4px;background:#252a32;overflow:hidden}
@@ -34,12 +35,72 @@
     .slider>i{left:0;right:0;top:auto;bottom:0;width:auto;height:0}
     #lvl{text-align:center;min-width:0}
   }
-</style></head><body><div class="wrap"><div class="ctrl">
+</style>
+<style>
+  /* The knob, drawn after a real one: a graduated scale around a body you turn, with a coloured
+     pointer on it. The scale is a 270° arc open at the bottom — the ends are the stops — and the
+     ticks up to the level are lit. Only the body turns; the reading stays upright above it. */
+  .knob{display:flex;align-items:center;justify-content:center;width:100%;height:100%}
+  .dial{position:relative;height:100%;aspect-ratio:1;max-width:100%;touch-action:none;cursor:grab}
+  .dial:active{cursor:grabbing}
+  #ticks{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
+  #ticks line{stroke:currentColor;stroke-width:1.5;stroke-linecap:round;opacity:.22}
+  #ticks line.on{stroke:var(--accent,#d9b36a);opacity:1}
+  .body{position:absolute;inset:13%;border-radius:50%;pointer-events:none;
+    background:radial-gradient(circle at 34% 26%,#454e5c 0%,#2b323c 46%,#191e26 100%);
+    box-shadow:0 .6vmin 1.6vmin rgba(0,0,0,.5),inset 0 .2vmin .3vmin rgba(255,255,255,.14),inset 0 -1vmin 2vmin rgba(0,0,0,.4)}
+  /* The pointer is a dimple pressed into the body, between its centre and its rim, like the
+     moulded one on the real thing: the shadow falls inside its top edge and the light catches
+     the bottom, which is what reads as a hollow rather than a stud. */
+  .pin{position:absolute;left:50%;top:8%;width:17%;height:17%;transform:translateX(-50%);border-radius:50%;
+    background:linear-gradient(180deg,rgba(0,0,0,.62) 0%,rgba(0,0,0,.12) 55%,rgba(255,255,255,.26) 100%),#333b47;
+    box-shadow:inset 0 .5vmin .8vmin rgba(0,0,0,.8),inset 0 -.3vmin .5vmin rgba(255,255,255,.28),
+      0 .25vmin .3vmin rgba(255,255,255,.12)}
+  .face{position:absolute;inset:13%;border-radius:50%;pointer-events:none;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2%;line-height:1}
+  #klvl{font-size:clamp(14px,10vmin,40px);font-weight:600;text-shadow:0 1px 2px rgba(0,0,0,.45)}
+  #kmute{font-size:clamp(10px,4.5vmin,18px)}
+  .dial.off #ticks line.on{opacity:.3}
+  .dial.off .pin{opacity:.35}
+  /* A pointer painted in the accent vanishes when the tile *is* the accent, so both flip to the
+     text colour, and the body lightens so an engraved reading stays legible on a light tile. */
+  html.accent-fill #ticks line.on{stroke:var(--on-surface,#0b0d10)}
+  /* A hollow in white plastic is a pale grey shade, not the near-black one a dark body wants. */
+  html.on-light .pin,html.accent-fill .pin{
+    background:linear-gradient(180deg,rgba(0,0,0,.34) 0%,rgba(0,0,0,.03) 55%,rgba(255,255,255,.5) 100%),#c6ccd4;
+    box-shadow:inset 0 .5vmin .8vmin rgba(0,0,0,.35),inset 0 -.3vmin .5vmin rgba(255,255,255,.5),
+      0 .25vmin .3vmin rgba(255,255,255,.9)}
+  html.on-light .body,html.accent-fill .body{
+    background:radial-gradient(circle at 34% 26%,#fff 0%,#e7e9ec 48%,#c9ced6 100%);
+    box-shadow:0 .6vmin 1.6vmin rgba(0,0,0,.22),inset 0 .2vmin .3vmin rgba(255,255,255,.9),inset 0 -1vmin 2vmin rgba(0,0,0,.10)}
+  html.on-light #klvl,html.accent-fill #klvl{color:#0b0d10;text-shadow:none}
+</style></head><body><div class="wrap">
+<div class="ctrl" id="sliderView">
 <button id="mute">🔊</button><div class="slider" id="slider"><i id="fill"></i></div><span class="big" id="lvl">--</span>
+</div>
+<div class="knob" id="knobView" hidden><div class="dial" id="dial">
+<svg id="ticks" viewBox="0 0 100 100" aria-hidden="true"></svg>
+<div class="body" id="body"><i class="pin"></i></div>
+<div class="face"><span id="klvl">--</span><span id="kmute" hidden>🔇</span></div>
 </div></div>
+</div>
 <script>
   Fremkit.whenReady(function () {
     var slider = document.getElementById('slider'), fill = document.getElementById('fill'), lvl = document.getElementById('lvl'), muteBtn = document.getElementById('mute')
+    var sliderView = document.getElementById('sliderView'), knobView = document.getElementById('knobView')
+    var dial = document.getElementById('dial'), body = document.getElementById('body'), ticks = document.getElementById('ticks')
+    // The scale is a 270° arc open at the bottom, so a full range is 270° of finger travel.
+    var SWEEP = 270, TICKS = 40, marks = []
+    ;(function () {
+      var NS = 'http://www.w3.org/2000/svg'
+      for (var i = 0; i <= TICKS; i++) {
+        var a = (i / TICKS * SWEEP - SWEEP / 2) * Math.PI / 180, l = document.createElementNS(NS, 'line')
+        l.setAttribute('x1', (50 + 47 * Math.sin(a)).toFixed(2)); l.setAttribute('y1', (50 - 47 * Math.cos(a)).toFixed(2))
+        l.setAttribute('x2', (50 + 40 * Math.sin(a)).toFixed(2)); l.setAttribute('y2', (50 - 40 * Math.cos(a)).toFixed(2))
+        ticks.appendChild(l); marks.push(l)
+      }
+    })()
+    var klvl = document.getElementById('klvl'), kmute = document.getElementById('kmute')
     var level = 0, muted = false, dragging = false, lastSent = 0, pending = null, timer = null
     // Same test as the "@media (orientation: portrait)" rule above: height > width means a vertical track.
     function isVertical() { return window.matchMedia('(orientation: portrait)').matches }
@@ -47,6 +108,9 @@
       lvl.textContent = Math.round(v)
       if (isVertical()) { fill.style.height = v + '%'; fill.style.width = '' }
       else { fill.style.width = v + '%'; fill.style.height = '' }
+      klvl.textContent = Math.round(v)
+      body.style.transform = 'rotate(' + (v / 100 * SWEEP - SWEEP / 2) + 'deg)'
+      for (var i = 0; i < marks.length; i++) marks[i].classList.toggle('on', i / TICKS * 100 <= v)
     }
     function levelAt(e) {
       var r = slider.getBoundingClientRect()
@@ -59,17 +123,94 @@
       lastSent = now; pending = null
       Fremkit.sendCommand('volume', 'set', { level: v })
     }
+    function toggleMute() { Fremkit.sendCommand('volume', 'mute', { muted: !muted }) }
     slider.addEventListener('pointerdown', function (e) { dragging = true; slider.setPointerCapture(e.pointerId); var v = levelAt(e); show(v); send(v) })
     slider.addEventListener('pointermove', function (e) { if (!dragging) return; var v = levelAt(e); show(v); send(v) })
     function stop(e) { if (!dragging) return; dragging = false; var v = levelAt(e); show(v); send(v, true) }
     slider.addEventListener('pointerup', stop); slider.addEventListener('pointercancel', stop)
-    muteBtn.onclick = function () { Fremkit.sendCommand('volume', 'mute', { muted: !muted }) }
+    muteBtn.onclick = toggleMute
+
+    // The knob turns like a physical one: what counts is the angle the finger sweeps around the
+    // centre, not where it lands, so a grab anywhere on the dial works and the 270° of the scale
+    // cover the whole range.
+    //
+    // Reading that gesture takes two paths, because the Edge's touch driver decides what a finger
+    // is doing before the page sees anything: a drag that starts within a third of a second is a
+    // *scroll*, posted as wheel events at the finger's position with no pointer event at all, and
+    // only a press held still first becomes a pointer drag. The wheel events still carry the
+    // finger's coordinates, so the same angle maths reads them — and swallowing them here is what
+    // keeps the stage from taking the very same gesture for a swipe between pages.
+    //
+    // `pos` keeps the fractional level between samples; clamping it (not just what we paint) makes
+    // the knob answer at once when you turn back from a stop. It follows the provider's snapshots
+    // rather than being reset on each grab, so a turn started before the echo of the previous one
+    // came back does not jump to a stale level.
+    var cx = 0, cy = 0, lastA = 0, pos = 0, turned = 0, downAt = 0, capR = 0, fromCap = false
+    function centre() {
+      var r = dial.getBoundingClientRect()
+      cx = r.left + r.width / 2; cy = r.top + r.height / 2; capR = r.width * 0.34
+      return r
+    }
+    function angleAt(x, y) { return Math.atan2(y - cy, x - cx) * 180 / Math.PI }
+    /** Applies a sweep of `d` degrees, painting and sending the level it lands on. */
+    function turn(d) {
+      // Unwrap across the ±180° seam, where the raw angle jumps a full turn in one sample.
+      while (d > 180) d -= 360
+      while (d < -180) d += 360
+      turned += Math.abs(d)
+      pos = Math.max(0, Math.min(100, pos + d / SWEEP * 100))
+      var v = Math.round(pos); show(v); send(v)
+    }
+    dial.addEventListener('pointerdown', function (e) {
+      centre()
+      fromCap = Math.sqrt(Math.pow(e.clientX - cx, 2) + Math.pow(e.clientY - cy, 2)) <= capR
+      lastA = angleAt(e.clientX, e.clientY); turned = 0; downAt = Date.now()
+      dragging = true; dial.setPointerCapture(e.pointerId)
+    })
+    dial.addEventListener('pointermove', function (e) {
+      if (!dragging) return
+      var a = angleAt(e.clientX, e.clientY); turn(a - lastA); lastA = a
+    })
+    function knobStop() {
+      if (!dragging) return
+      dragging = false
+      // A press on the body that did not turn anything is a tap on the button: mute.
+      if (fromCap && turned < 6 && Date.now() - downAt < 500) { show(level); return toggleMute() }
+      send(Math.round(pos), true)
+    }
+    dial.addEventListener('pointerup', knobStop); dial.addEventListener('pointercancel', knobStop)
+
+    // The wheel path. A finger drag moves the cursor between samples, which gives an angle; a real
+    // mouse wheel does not move at all, so its notches are read as a step of volume instead. The
+    // gesture has no end of its own — the driver just stops sending — so a short idle closes it.
+    var wheelAt = null, wheelIdle = null
+    dial.addEventListener('wheel', function (e) {
+      e.preventDefault()
+      var x = e.clientX, y = e.clientY
+      if (!wheelAt) { centre(); turned = 0; dragging = true }
+      else if (Math.abs(x - wheelAt.x) > 0.5 || Math.abs(y - wheelAt.y) > 0.5) turn(angleAt(x, y) - angleAt(wheelAt.x, wheelAt.y))
+      else turn(-(e.deltaY + e.deltaX) / 20 * SWEEP / 100)
+      wheelAt = { x: x, y: y }
+      clearTimeout(wheelIdle)
+      wheelIdle = setTimeout(function () { wheelAt = null; dragging = false; send(Math.round(pos), true) }, 200)
+    }, { passive: false })
+
+    function applySettings(s) {
+      var knob = (s && s.display) === 'knob'
+      knobView.hidden = !knob; sliderView.hidden = knob
+      if (!dragging) show(level)
+    }
+    applySettings(Fremkit.settings)
+    Fremkit.onSettings(applySettings)
+
     Fremkit.subscribe('volume', function (d) {
       if (d.error) return
       level = d.level; muted = d.muted
-      if (!dragging) show(level)
+      if (!dragging) { pos = level; show(level) }
       muteBtn.textContent = muted ? '🔇' : '🔊'
       fill.style.opacity = muted ? '.35' : '1'
+      kmute.hidden = !muted
+      dial.classList.toggle('off', muted)
     })
     // Orientation can flip without a drag (e.g. the admin resizes the tile): re-render the fill
     // on the correct axis so it does not stay stuck on a stale width/height from before the flip.
