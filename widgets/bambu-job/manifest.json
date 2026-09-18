@@ -2,6 +2,7 @@
   "name": { "fr": "Impression Bambu", "en": "Bambu print" },
   "version": "1.0.0",
   "description": { "fr": "Job en cours de l’imprimante", "en": "The printer’s current job" },
+  "category": "home",
   "icon": "hard-drive", "minSize": [12, 4], "defaultSize": [16, 6],
   "subscriptions": ["bambu:*"], "commands": [],
   "settingsSchema": {

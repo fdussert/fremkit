@@ -2,5 +2,6 @@
   "name": { "fr": "Quotas Claude", "en": "Claude limits" },
   "version": "1.1.0",
   "description": { "fr": "Quotas 5 h / 7 jours et tokens du jour", "en": "5 h / 7 day limits and today’s tokens" },
+  "category": "claude",
   "icon": "gauge", "minSize": [16, 4], "defaultSize": [16, 4], "compact": { "width": 9 },
   "subscriptions": ["claude-usage", "claude-account"] }

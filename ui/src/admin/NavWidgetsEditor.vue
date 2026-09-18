@@ -62,7 +62,6 @@ function onSetting(instanceId: string, key: string, value: unknown): void {
 </script>
 
 <template>
-  <h3>{{ t('admin.inspector.screen.navWidgets') }}</h3>
   <p class="hint">{{ t('admin.inspector.screen.navWidgets.hint') }}</p>
   <p v-if="!navWidgets.length" class="hint">{{ t('admin.inspector.screen.navWidgets.empty') }}</p>
   <ul v-else class="list">

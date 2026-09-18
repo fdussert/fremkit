@@ -214,6 +214,8 @@ export function channelAllowed(allowed: string[], channel: string): boolean {
 export interface Compact { width: number }
 
 export interface WidgetManifest {
+  /** Which shelf of the library it sits on; absent in a manifest written before categories. */
+  category?: string
   id: string; name: LocalizedText; version: string; description: LocalizedText; icon: string
   minSize: [number, number]; defaultSize: [number, number]
   /** Absent when the widget is only ever drawn as a tile, never in the navigation bar. */

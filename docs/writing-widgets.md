@@ -43,6 +43,7 @@ does not validate is reported there rather than silently ignored.
 | `version` | yes | Any non-empty string |
 | `description` | no | One line in the widget library. Default `""` |
 | `icon` | no | A [Lucide](https://lucide.dev) icon name. Default `layout-grid` |
+| `category` | no | Which shelf of the library it sits on: `claude`, `dev`, `system`, `mac`, `media`, `info`, `home`. Default `other` |
 | `minSize` | no | `[cols, rows]` in grid cells; the editor refuses anything smaller. Default `[4, 2]` |
 | `defaultSize` | no | `[cols, rows]` the widget is dropped at. Defaults to `minSize`, and must be ≥ it |
 | `compact` | no | `{ "width": n }`, 2 to 16 cells — see [Compact widgets](#compact-widgets) |

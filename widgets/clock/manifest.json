@@ -2,6 +2,7 @@
   "name": { "fr": "Horloge", "en": "Clock" },
   "version": "1.2.0",
   "description": { "fr": "Heure et date", "en": "Time and date" },
+  "category": "info",
   "icon": "clock", "minSize": [8, 4], "defaultSize": [16, 4],
   "compact": { "width": 5 },
   "settingsSchema": {

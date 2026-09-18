@@ -7,6 +7,7 @@ import BaseField from '../shared/ui/BaseField.vue'
 import BaseIcon from '../shared/ui/BaseIcon.vue'
 import BaseInput from '../shared/ui/BaseInput.vue'
 import BaseRange from '../shared/ui/BaseRange.vue'
+import BaseSection from '../shared/ui/BaseSection.vue'
 import BaseSegmented from '../shared/ui/BaseSegmented.vue'
 import BackgroundPicker from './BackgroundPicker.vue'
 import CopySettingsFrom from './CopySettingsFrom.vue'
@@ -118,7 +119,7 @@ function moveToPage(): void {
     <BaseCheckbox :model-value="inst.showTitle" :label="t('admin.inspector.widget.showTitle')"
       @update:model-value="s.updateInstance(inst!.instanceId, { showTitle: $event })" />
 
-    <h3>{{ t('admin.inspector.widget.background') }}</h3>
+    <BaseSection id="widget.background" :title="t('admin.inspector.widget.background')">
     <BaseField :label="t('admin.inspector.widget.bgColor')" :hint="t('admin.inspector.widget.bgColor.hint')">
       <BaseColor :model-value="inst.bgColor ?? ''" :fallback="THEME_SURFACE" :reset-label="t('common.reset')"
         :aria-label="t('admin.inspector.widget.bgColor')"
@@ -130,8 +131,9 @@ function moveToPage(): void {
         :aria-label="t('admin.inspector.widget.opacity.aria')" @change="setOpacity" />
     </BaseField>
     <BackgroundPicker :model-value="inst.background ?? {}" show-dim @update="setBackground($event)" />
+    </BaseSection>
 
-    <h3>{{ t('admin.inspector.widget.accent') }}</h3>
+    <BaseSection id="widget.accent" :title="t('admin.inspector.widget.accent')">
     <BaseField :label="t('admin.inspector.widget.accentColor')" :hint="t('admin.inspector.widget.accentColor.hint')">
       <BaseColor :model-value="inst.accentColor ?? ''" :fallback="THEME_ACCENT" :reset-label="t('common.reset')"
         :aria-label="t('admin.inspector.widget.accentColor')"
@@ -143,15 +145,19 @@ function moveToPage(): void {
       <BaseSegmented :model-value="inst.accentMode ?? 'none'" :options="ACCENT_MODES"
         @update:model-value="setAccentMode($event)" />
     </BaseField>
+    </BaseSection>
 
-    <h3 v-if="Object.keys(schema).length">{{ t('admin.inspector.widget.settings') }}</h3>
-    <CopySettingsFrom v-if="manifest" :widget-id="inst.widgetId" :instance-id="inst.instanceId"
-      @copy="s.updateInstance(inst!.instanceId, { settings: $event })" />
-    <SettingsForm v-if="manifest" :schema="manifest.settingsSchema" scope="tile" :values="inst.settings" @change="onSetting" />
+    <!-- The one section that opens by itself: a widget is selected to be set up. -->
+    <BaseSection v-if="manifest && Object.keys(schema).length" id="widget.settings"
+      :title="t('admin.inspector.widget.settings')" default-open>
+      <CopySettingsFrom :widget-id="inst.widgetId" :instance-id="inst.instanceId"
+        @copy="s.updateInstance(inst!.instanceId, { settings: $event })" />
+      <SettingsForm :schema="manifest.settingsSchema" scope="tile" :values="inst.settings" @change="onSetting" />
+    </BaseSection>
 
     <WidgetPermissions :manifest="manifest" />
 
-    <h3>{{ t('admin.inspector.widget.geometry') }}</h3>
+    <BaseSection id="widget.geometry" :title="t('admin.inspector.widget.geometry')">
     <div class="grid4">
       <BaseField :label="t('admin.inspector.widget.x')"><BaseInput type="number" :min="0" :invalid="!geomOk" :model-value="geom.x" @update:model-value="geom.x = Number($event); commitGeom()" /></BaseField>
       <BaseField :label="t('admin.inspector.widget.y')"><BaseInput type="number" :min="0" :invalid="!geomOk" :model-value="geom.y" @update:model-value="geom.y = Number($event); commitGeom()" /></BaseField>
@@ -172,6 +178,7 @@ function moveToPage(): void {
         </BaseButton>
       </div>
     </BaseField>
+    </BaseSection>
 
     <div class="actions">
       <BaseButton @click="s.duplicateWidget(inst!.instanceId)"><BaseIcon name="copy" :size="16" />{{ t('common.duplicate') }}</BaseButton>

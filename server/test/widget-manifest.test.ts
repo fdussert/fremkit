@@ -128,6 +128,19 @@ describe('ManifestSchema', () => {
   })
 })
 
+describe('category', () => {
+  const base = { id: 'x', name: 'X', version: '1.0.0' }
+
+  it('files a manifest that names none under other', () => {
+    expect(ManifestSchema.parse(base).category).toBe('other')
+  })
+
+  it('keeps a category it declares, and refuses one it does not know', () => {
+    expect(ManifestSchema.parse({ ...base, category: 'system' }).category).toBe('system')
+    expect(ManifestSchema.safeParse({ ...base, category: 'weather-and-tides' }).success).toBe(false)
+  })
+})
+
 describe('channels a manifest may not ask for', () => {
   const base = { id: 'w', name: 'W', version: '1', minSize: [4, 2], defaultSize: [4, 2] }
 

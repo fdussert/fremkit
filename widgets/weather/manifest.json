@@ -2,6 +2,7 @@
   "name": { "fr": "Météo", "en": "Weather" },
   "version": "1.0.0",
   "description": { "fr": "Météo et prévisions, sans compte (Open-Meteo)", "en": "Weather and forecast, no account (Open-Meteo)" },
+  "category": "info",
   "icon": "cloud-sun", "minSize": [8, 4], "defaultSize": [16, 6],
   "compact": { "width": 5 },
   "permissions": { "network": ["geocoding-api.open-meteo.com", "api.open-meteo.com"] },

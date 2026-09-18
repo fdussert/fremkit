@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": { "fr": "Gros boutons tactiles pour les captures CleanShot X (activer Réglages → Avancé → API → Allow URL scheme API)",
                    "en": "Big touch buttons for CleanShot X captures (turn on Settings → Advanced → API → Allow URL scheme API)" },
+  "category": "mac",
   "icon": "camera", "minSize": [8, 4], "defaultSize": [12, 6],
   "commands": ["cleanshot"],
   "settingsSchema": {

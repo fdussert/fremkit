@@ -116,6 +116,13 @@ const DEFAULT_MIN_SIZE: [number, number] = [4, 2]
  * line, no title and no surface of its own. `width` is how many grid cells wide the bar allots
  * it; its height is always the bar's. Absent means the widget is only ever drawn as a tile.
  */
+/**
+ * The shelf of the library a widget sits on. A manifest that names none lands in `other`, which
+ * is where a widget written before this existed still shows up.
+ */
+export const WIDGET_CATEGORIES = ['claude', 'dev', 'system', 'mac', 'media', 'info', 'home', 'other'] as const
+export type WidgetCategory = (typeof WIDGET_CATEGORIES)[number]
+
 export const CompactSchema = z.object({ width: z.number().int().min(2).max(16) })
 export type Compact = z.infer<typeof CompactSchema>
 
@@ -141,6 +148,7 @@ const RawManifestSchema = z.object({
   version: z.string().min(1),
   description: LocalizedTextSchema.default(''),
   icon: z.string().min(1).default('layout-grid'),
+  category: z.enum(WIDGET_CATEGORIES).default('other'),
   sizes: z.array(SizeSchema).min(1).optional(),
   minSize: SizeSchema.optional(),
   defaultSize: SizeSchema.optional(),

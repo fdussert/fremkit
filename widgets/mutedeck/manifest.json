@@ -1,5 +1,6 @@
 { "id": "mutedeck", "name": "MuteDeck", "version": "1.1.0",
   "description": { "fr": "Contrôle réunion", "en": "Meeting controls" },
+  "category": "mac",
   "icon": "video", "minSize": [8, 4], "defaultSize": [8, 4], "subscriptions": ["mutedeck"], "commands": ["mutedeck"],
   "settingsSchema": {
     "showMute": { "type": "boolean", "label": { "fr": "Bouton micro", "en": "Mute button" }, "default": true },

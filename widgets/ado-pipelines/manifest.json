@@ -2,6 +2,7 @@
   "name": { "fr": "Pipelines Azure DevOps", "en": "Azure DevOps pipelines" },
   "version": "1.0.0",
   "description": { "fr": "Runs en cours et historique", "en": "Running builds and history" },
+  "category": "dev",
   "icon": "layout-grid", "minSize": [16, 6], "defaultSize": [24, 10],
   "subscriptions": ["azure-devops:*"], "commands": ["azure-devops:*"],
   "settingsSchema": {

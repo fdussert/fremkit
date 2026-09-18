@@ -2,6 +2,7 @@
   "name": { "fr": "Boîte GitHub", "en": "GitHub inbox" },
   "version": "1.1.0",
   "description": { "fr": "Notifications, revues demandées et pull requests", "en": "Notifications, review requests and pull requests" },
+  "category": "dev",
   "icon": "github", "minSize": [12, 5], "defaultSize": [20, 10],
   "compact": { "width": 5 },
   "subscriptions": ["github:*"], "commands": ["github:*"],

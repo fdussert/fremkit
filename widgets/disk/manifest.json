@@ -2,4 +2,5 @@
   "name": { "fr": "Disques", "en": "Disks" },
   "version": "1.0.0",
   "description": { "fr": "Utilisation des disques", "en": "Disk usage" },
+  "category": "system",
   "icon": "hard-drive", "minSize": [8, 4], "defaultSize": [16, 4], "subscriptions": ["system"] }

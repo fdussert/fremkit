@@ -25,16 +25,24 @@ function unbindDragFallback(): void {
 </script>
 
 <script setup lang="ts">
-import { onMounted, onBeforeUnmount } from 'vue'
+import { computed, onMounted, onBeforeUnmount } from 'vue'
 import BaseButton from '../shared/ui/BaseButton.vue'
 import BaseCard from '../shared/ui/BaseCard.vue'
 import BaseIcon from '../shared/ui/BaseIcon.vue'
+import BaseSection from '../shared/ui/BaseSection.vue'
 import WidgetPermissions from './WidgetPermissions.vue'
 import { pick, useI18n } from '../shared/i18n'
 import { DND_TYPE, useAdminStore } from './store'
+import { groupByCategory } from './library'
 
 const s = useAdminStore()
 const { t } = useI18n()
+
+/** One group per category that has widgets, each sorted by name in the language in force. */
+const groups = computed(() => groupByCategory(
+  Object.values(s.state.manifests),
+  (a, b) => pick(a.name).localeCompare(pick(b.name)),
+).map((g) => ({ ...g, title: t(`admin.library.category.${g.id}`) })))
 
 function onDragStart(e: DragEvent, id: string): void {
   s.setDragWidget(id)
@@ -49,16 +57,21 @@ onBeforeUnmount(unbindDragFallback)
 <template>
   <section>
     <h2>{{ t('admin.library.title') }} <BaseButton variant="icon" :title="t('admin.library.rescan')" @click="s.rescan()"><BaseIcon name="redo-2" :size="16" /></BaseButton></h2>
-    <div class="list">
-      <BaseCard v-for="m in Object.values(s.state.manifests)" :key="m.id" grab :draggable="true" @dragstart="onDragStart($event, m.id)" @dragend="s.setDragWidget(null)"
-        @click="s.addWidget(m.id)">
-        <BaseIcon :name="m.icon" :size="20" />
-        <div class="txt">
-          <strong>{{ pick(m.name) }}</strong>
-          <small>{{ m.defaultSize[0] }}×{{ m.defaultSize[1] }} · {{ pick(m.description) }}</small>
-          <WidgetPermissions :manifest="m" compact />
-        </div>
-      </BaseCard>
+    <BaseSection v-for="g in groups" :key="g.id" :id="`library.${g.id}`" :title="g.title"
+      :badge="String(g.widgets.length)" default-open>
+      <div class="list">
+        <BaseCard v-for="m in g.widgets" :key="m.id" grab :draggable="true" @dragstart="onDragStart($event, m.id)" @dragend="s.setDragWidget(null)"
+          @click="s.addWidget(m.id)">
+          <BaseIcon :name="m.icon" :size="20" />
+          <div class="txt">
+            <strong>{{ pick(m.name) }}</strong>
+            <small>{{ m.defaultSize[0] }}×{{ m.defaultSize[1] }} · {{ pick(m.description) }}</small>
+            <WidgetPermissions :manifest="m" compact />
+          </div>
+        </BaseCard>
+      </div>
+    </BaseSection>
+    <div v-if="s.state.catalogErrors.length" class="list errors">
       <BaseCard v-for="e in s.state.catalogErrors" :key="'err-' + e.id" class="err">
         <BaseIcon name="alert-triangle" :size="20" />
         <div class="txt"><strong>{{ e.id }}</strong><small>{{ e.error }}</small></div>
@@ -71,6 +84,7 @@ onBeforeUnmount(unbindDragFallback)
 section { margin-top: var(--space-4); }
 h2 { display: flex; align-items: center; justify-content: space-between; font-size: var(--fs-xs);
   text-transform: uppercase; letter-spacing: .08em; color: var(--text-muted); margin: 0 0 var(--space-2); }
+.errors { margin-top: var(--space-3); }
 .list { display: flex; flex-direction: column; gap: var(--space-2); }
 .txt { display: flex; flex-direction: column; min-width: 0; }
 .txt strong { font-size: var(--fs-sm); font-weight: 600; }
