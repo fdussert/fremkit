@@ -12,6 +12,7 @@ const manifest = (over: Record<string, unknown> = {}): WidgetManifest => Manifes
 })
 
 const consent = (over: Partial<WidgetConsent['consentedPermissions']> = {}): WidgetConsent => ({
+  kind: 'widget',
   version: '1.0.0',
   registry: 'fremkit-sietch',
   installedAt: '2026-09-18T12:00:00.000Z',

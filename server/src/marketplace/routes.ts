@@ -16,22 +16,29 @@ import { z } from 'zod'
 import { WIDGET_ID_RE, type Config, type WidgetConsent } from '../config/schema.js'
 import type { ConfigStore } from '../config/store.js'
 import type { WidgetCatalog } from '../widgets/catalog.js'
+import type { ThemeCatalog } from '../themes/catalog.js'
 import { isCrossSiteFetch } from '../http/guard.js'
 import { SDK_VERSION } from '../bridge/sdk.js'
 import { tr, type MessageKey } from '../i18n.js'
 import { Registry, RegistryError, releaseOf } from './registry.js'
-import { InstallError, readPackage, removePackage, writePackage } from './install.js'
+import { InstallError, readPackage, removePackage, writePackage, type PackageKind, type ReadPackageResult } from './install.js'
 import { NO_PERMISSIONS, addedPermissions, isEmpty, permissionsOf, unionPermissions, type Permissions } from './consent.js'
-import type { IndexWidget, RegistryIndex } from './index-schema.js'
+import type { IndexTheme, IndexWidget, RegistryIndex } from './index-schema.js'
 import { compareSemver } from './semver.js'
 
 export interface MarketplaceOptions {
   store: ConfigStore
   catalog: WidgetCatalog
+  themes: ThemeCatalog
   registry: Registry
-  /** `<dataDir>/widgets`; the only folder anything here writes to. */
+  /** `<dataDir>/widgets`; the only folder the widget path writes to. */
   installedDir: string
+  /** `<dataDir>/themes`; the only folder the theme path writes to. */
+  installedThemesDir: string
 }
+
+/** One route's outcome, as a status and a body rather than as an HTTP answer. */
+type Answer = { status: number; body: Record<string, unknown> }
 
 const PermissionSetSchema = z.object({
   subscriptions: z.array(z.string().max(200)).max(200).default([]),
@@ -39,8 +46,15 @@ const PermissionSetSchema = z.object({
   network: z.array(z.string().max(253)).max(200).default([]),
 })
 
+/**
+ * What is being installed. Absent means `widget`, which is what every client sent before themes
+ * could be installed and what the great majority of calls still mean.
+ */
+const KindSchema = z.enum(['widget', 'theme']).default('widget')
+
 const InstallBody = z.object({
   id: z.string().regex(WIDGET_ID_RE),
+  kind: KindSchema,
   version: z.string().min(1).max(64).optional(),
   /**
    * **What the dialog listed**, not "a dialog was answered".
@@ -58,7 +72,7 @@ const InstallBody = z.object({
   consent: z.union([z.literal(false), PermissionSetSchema]).default(false),
 })
 
-const UninstallBody = z.object({ id: z.string().regex(WIDGET_ID_RE) })
+const UninstallBody = z.object({ id: z.string().regex(WIDGET_ID_RE), kind: KindSchema })
 
 /**
  * "Update everything waiting", with the consent for each one.
@@ -105,6 +119,36 @@ export interface MarketplaceEntry extends IndexWidget {
   placedOn: string[]
 }
 
+/**
+ * One theme as the admin shows it. No `permissions`, no `consentNeeded`, no `sdkTooNew`: there is
+ * nothing in a file of colour tokens to consent to and nothing in it that a newer Fremkit would
+ * be needed to run. What it carries instead is `tokens`, the four the card paints as a swatch
+ * strip — so a theme needs no preview image and a card needs no second request.
+ */
+export interface MarketplaceThemeEntry extends IndexTheme {
+  installed: boolean
+  installedVersion: string | null
+  updateAvailable: boolean
+  /** A built-in already owns this id, so it can never be installed. */
+  shadowsBuiltin: boolean
+  /** True while the screen is painted with it: removing it is refused until another is chosen. */
+  inUse: boolean
+}
+
+function themeEntryFor(theme: IndexTheme, config: Config, themes: ThemeCatalog): MarketplaceThemeEntry {
+  const record = config.marketplace.installed[theme.id]
+  const local = themes.entry(theme.id)
+  const installed = Boolean(record) && local?.source === 'installed'
+  return {
+    ...theme,
+    installed,
+    installedVersion: installed ? record.version : null,
+    updateAvailable: installed && compareSemver(theme.version, record.version) > 0,
+    shadowsBuiltin: local?.source === 'builtin',
+    inUse: config.display.theme === theme.id,
+  }
+}
+
 function entryFor(widget: IndexWidget, config: Config, catalog: WidgetCatalog): MarketplaceEntry {
   const record = config.marketplace.installed[widget.id]
   const local = catalog.entry(widget.id)
@@ -145,7 +189,7 @@ export function usedBy(config: Config, id: string): string[] {
 }
 
 export async function marketplaceRoutes(app: FastifyInstance, opts: MarketplaceOptions): Promise<void> {
-  const { store, catalog, registry, installedDir } = opts
+  const { store, catalog, themes, registry, installedDir, installedThemesDir } = opts
   const locale = (): Config['locale'] => store.get().locale
   const fail = (key: MessageKey): { errors: string[] } => ({ errors: [tr(locale(), key)] })
 
@@ -174,7 +218,7 @@ export async function marketplaceRoutes(app: FastifyInstance, opts: MarketplaceO
   }
 
   /** The index, plus what this machine makes of every row. `offline` when it could not be read. */
-  const view = async (force = false): Promise<{ registry: string | null; generatedAt: string | null; widgets: MarketplaceEntry[]; offline: boolean; sdk: number }> => {
+  const view = async (force = false): Promise<{ registry: string | null; generatedAt: string | null; widgets: MarketplaceEntry[]; themes: MarketplaceThemeEntry[]; offline: boolean; sdk: number }> => {
     let index: RegistryIndex | null = null
     let offline = false
     try { index = await registry.index(force) } catch { offline = true; index = registry.last }
@@ -183,6 +227,7 @@ export async function marketplaceRoutes(app: FastifyInstance, opts: MarketplaceO
       registry: index?.registry ?? null,
       generatedAt: index?.generatedAt ?? null,
       widgets: (index?.widgets ?? []).map((w) => entryFor(w, config, catalog)),
+      themes: (index?.themes ?? []).map((t) => themeEntryFor(t, config, themes)),
       offline,
       sdk: SDK_VERSION,
     }
@@ -213,7 +258,7 @@ export async function marketplaceRoutes(app: FastifyInstance, opts: MarketplaceO
   const installOne = async (
     args: { id: string; version?: string; consent: Permissions | false; mode: 'install' | 'update' },
     log: FastifyRequest['log'],
-  ): Promise<{ status: number; body: Record<string, unknown> }> => {
+  ): Promise<Answer> => {
     const { id, version, consent, mode } = args
 
     // The *folder* names, not the entries: a built-in whose manifest fails to parse is an error
@@ -242,7 +287,8 @@ export async function marketplaceRoutes(app: FastifyInstance, opts: MarketplaceO
     // The version in the package must be the one the index sent us to. A zip at the `1.0.0` URL
     // claiming `9.9.9` would otherwise be recorded as 9.9.9, and `updateAvailable` would be
     // false for the rest of that install's life.
-    if (pkg.manifest.version !== release.version) return { status: 422, body: fail('marketplace.badManifest') }
+    if (pkg.kind !== 'widget') return { status: 422, body: fail('marketplace.badPackage') }
+    if (pkg.version !== release.version) return { status: 422, body: fail('marketplace.badManifest') }
 
     // What the widget asks comes from the manifest *inside* the package, never from the index
     // entry that advertised it: the entry is a shop window, and only one of the two was hashed.
@@ -271,7 +317,8 @@ export async function marketplaceRoutes(app: FastifyInstance, opts: MarketplaceO
     await catalog.scan()
 
     const consented: WidgetConsent = {
-      version: pkg.manifest.version,
+      kind: 'widget',
+      version: pkg.version,
       registry: index.registry,
       // What was *shown*, which is what the package asks for — not the union with an older
       // grant, so uninstalling a permission by publishing a narrower version actually narrows it.
@@ -290,7 +337,72 @@ export async function marketplaceRoutes(app: FastifyInstance, opts: MarketplaceO
       return { status: 500, body: fail('marketplace.writeFailed') }
     }
 
-    return { status: 200, body: { ok: true, id, version: pkg.manifest.version, consentedPermissions: asked } }
+    return { status: 200, body: { ok: true, id, version: pkg.version, consentedPermissions: asked } }
+  }
+
+  /**
+   * The same journey for a theme, which is short enough to be worth writing out rather than
+   * threading a kind through every line above.
+   *
+   * There is no SDK to check and no consent to ask for: a theme is a JSON file of colour tokens
+   * that runs nothing, reaches nothing and subscribes to nothing, so a dialog would be asking
+   * the user to approve an empty list. Everything that is *not* different stays identical —
+   * the hash before anything is parsed, the id deciding the folder, the version in the package
+   * matching the release, the staged-and-renamed write, the record in the config.
+   */
+  const installTheme = async (
+    args: { id: string; version?: string; mode: 'install' | 'update' },
+    log: FastifyRequest['log'],
+  ): Promise<Answer> => {
+    const { id, version, mode } = args
+
+    if (themes.builtinIds.has(id)) return { status: 409, body: fail('marketplace.builtinThemeId') }
+    if (mode === 'update' && !store.get().marketplace.installed[id]) {
+      return { status: 409, body: fail('marketplace.themeNotInstalled') }
+    }
+
+    let index: RegistryIndex
+    try { index = await registry.index() } catch { return { status: 503, body: fail('marketplace.unreachable') } }
+    const entry = index.themes.find((t) => t.id === id)
+    if (!entry) return { status: 404, body: fail('marketplace.unknownTheme') }
+    const release = releaseOf(entry, version)
+    if (!release) return { status: 404, body: fail('marketplace.unknownVersion') }
+
+    let zip: Buffer
+    try { zip = await registry.download(release) }
+    catch (err) { return { status: 502, body: fail(err instanceof RegistryError ? err.key : 'marketplace.unreachable') } }
+
+    let pkg: ReadPackageResult
+    try { pkg = readPackage(zip, { id, sha256: release.sha256, size: release.size, kind: 'theme' }, locale()) }
+    catch (err) { return { status: 422, body: fail(err instanceof InstallError ? err.key : 'marketplace.badPackage') } }
+    if (pkg.kind !== 'theme') return { status: 422, body: fail('marketplace.badPackage') }
+    if (pkg.version !== release.version) return { status: 422, body: fail('marketplace.badTheme') }
+
+    try { await writePackage(installedThemesDir, id, pkg.files) }
+    catch (err) { log.warn({ err }, 'marketplace install could not write the theme'); return { status: 500, body: fail('marketplace.writeFailed') } }
+
+    await themes.scan()
+
+    const record: WidgetConsent = {
+      kind: 'theme',
+      version: pkg.version,
+      registry: index.registry,
+      // Nothing to consent to, and an empty set says exactly that — rather than a missing key
+      // that would read as "not recorded yet".
+      consentedPermissions: NO_PERMISSIONS,
+      installedAt: new Date().toISOString(),
+    }
+    try {
+      await store.update((config) => ({
+        ...config,
+        marketplace: { ...config.marketplace, installed: { ...config.marketplace.installed, [id]: record } },
+      }))
+    } catch (err) {
+      log.warn({ err }, 'marketplace install could not record the theme')
+      return { status: 500, body: fail('marketplace.writeFailed') }
+    }
+
+    return { status: 200, body: { ok: true, id, kind: 'theme', version: pkg.version } }
   }
 
   const doInstall = async (req: FastifyRequest, reply: FastifyReply, mode: 'install' | 'update'): Promise<unknown> => {
@@ -299,8 +411,10 @@ export async function marketplaceRoutes(app: FastifyInstance, opts: MarketplaceO
     if (isCrossSiteFetch(req.headers)) return reply.code(403).send({ errors: [tr(locale(), 'http.originNotAllowed')] })
     const parsed = InstallBody.safeParse(req.body)
     if (!parsed.success) return reply.code(400).send(fail('marketplace.badRequest'))
-    const { id, version, consent } = parsed.data
-    const out = await installOne({ id, version, consent, mode }, req.log)
+    const { id, kind, version, consent } = parsed.data
+    const out = kind === 'theme'
+      ? await installTheme({ id, version, mode }, req.log)
+      : await installOne({ id, version, consent, mode }, req.log)
     return reply.code(out.status).send(out.body)
   }
 
@@ -410,12 +524,13 @@ export async function marketplaceRoutes(app: FastifyInstance, opts: MarketplaceO
   app.post('/api/marketplace/uninstall', async (req, reply) => {
     const parsed = UninstallBody.safeParse(req.body)
     if (!parsed.success) return reply.code(400).send(fail('marketplace.badRequest'))
-    const { id } = parsed.data
-    return exclusive(id, reply, () => doUninstall(id, req, reply))
+    const { id, kind } = parsed.data
+    return exclusive(id, reply, () => doUninstall(id, kind, req, reply))
   })
 
-  const doUninstall = async (id: string, req: FastifyRequest, reply: FastifyReply): Promise<unknown> => {
+  const doUninstall = async (id: string, kind: PackageKind, req: FastifyRequest, reply: FastifyReply): Promise<unknown> => {
     const config = store.get()
+    if (kind === 'theme') return uninstallTheme(id, req, reply)
     if (!config.marketplace.installed[id] && catalog.entry(id)?.source !== 'installed') {
       return reply.code(404).send(fail('marketplace.notInstalled'))
     }
@@ -435,5 +550,31 @@ export async function marketplaceRoutes(app: FastifyInstance, opts: MarketplaceO
       return { ...c, marketplace: { ...c.marketplace, installed } }
     })
     return reply.send({ ok: true, id })
+  }
+
+  /**
+   * Removing an installed theme.
+   *
+   * The refusal is the same idea as a widget's, for a different reason: a placed widget would
+   * leave a hole in a page, and a theme in use would leave the screen repainting itself in
+   * something the user never chose. Both are the user's decision to make first, and both name
+   * what is in the way rather than cascading.
+   */
+  const uninstallTheme = async (id: string, req: FastifyRequest, reply: FastifyReply): Promise<unknown> => {
+    const config = store.get()
+    if (!config.marketplace.installed[id] && themes.entry(id)?.source !== 'installed') {
+      return reply.code(404).send(fail('marketplace.themeNotInstalled'))
+    }
+    if (config.display.theme === id) return reply.code(409).send(fail('marketplace.themeInUse'))
+
+    try { await removePackage(installedThemesDir, id) }
+    catch (err) { req.log.warn({ err }, 'marketplace uninstall could not remove the theme'); return reply.code(500).send(fail('marketplace.writeFailed')) }
+    await themes.scan()
+    await store.update((c) => {
+      const installed = { ...c.marketplace.installed }
+      delete installed[id]
+      return { ...c, marketplace: { ...c.marketplace, installed } }
+    })
+    return reply.send({ ok: true, id, kind: 'theme' })
   }
 }

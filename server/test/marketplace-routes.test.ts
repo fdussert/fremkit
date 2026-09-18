@@ -8,6 +8,7 @@ import { Registry } from '../src/marketplace/registry.js'
 import { sha256 } from '../src/marketplace/install.js'
 import { writeZip } from '../src/backup/zip.js'
 import { WidgetCatalog } from '../src/widgets/catalog.js'
+import { ThemeCatalog } from '../src/themes/catalog.js'
 import { ConfigStore } from '../src/config/store.js'
 import { DEFAULT_CONFIG } from '../src/config/schema.js'
 import { SDK_VERSION } from '../src/bridge/sdk.js'
@@ -45,10 +46,13 @@ let dir: string
 let app: FastifyInstance
 let store: ConfigStore
 let catalog: WidgetCatalog
+let themes: ThemeCatalog
+let builtinThemesDir: string
+let installedThemesDir: string
 let installedDir: string
 let requested: string[]
 
-interface Setup { zip?: Buffer; index?: Record<string, unknown>; offline?: boolean }
+interface Setup { zip?: Buffer; index?: Record<string, unknown>; offline?: boolean; themeZip?: Buffer }
 
 async function build(setup: Setup = {}): Promise<void> {
   dir = await mkdtemp(join(tmpdir(), 'marketplace-'))
@@ -68,6 +72,7 @@ async function build(setup: Setup = {}): Promise<void> {
       requested.push(url)
       if (setup.offline) throw new Error('offline')
       if (url === INDEX_URL) return new Response(JSON.stringify(index))
+      if (setup.themeZip && url.includes('/themes/')) return new Response(new Uint8Array(setup.themeZip))
       return new Response(new Uint8Array(zip))
     }) as never,
   })
@@ -75,9 +80,15 @@ async function build(setup: Setup = {}): Promise<void> {
   store = new ConfigStore(join(dir, 'fremkit.json'))
   await store.load()
   catalog = new WidgetCatalog(builtins, installedDir)
+  builtinThemesDir = join(dir, 'builtin-themes')
+  installedThemesDir = join(dir, 'themes')
+  await mkdir(join(builtinThemesDir, 'fremkit'), { recursive: true })
+  await writeFile(join(builtinThemesDir, 'fremkit', 'theme.json'), JSON.stringify({ id: 'fremkit', name: 'Fremkit', version: '1.0.0', tokens: {} }))
+  themes = new ThemeCatalog(builtinThemesDir, installedThemesDir)
+  await themes.scan()
   await catalog.scan()
   app = Fastify()
-  await app.register(marketplaceRoutes, { store, catalog, registry, installedDir })
+  await app.register(marketplaceRoutes, { store, catalog, themes, registry, installedDir, installedThemesDir })
 }
 
 beforeEach(() => build())
@@ -191,7 +202,7 @@ describe('POST /api/marketplace/refresh', () => {
       }) as never,
     })
     const one = Fastify()
-    await one.register(marketplaceRoutes, { store, catalog, registry, installedDir })
+    await one.register(marketplaceRoutes, { store, catalog, themes, registry, installedDir, installedThemesDir })
     expect((await one.inject({ url: '/api/marketplace' })).json().widgets).toHaveLength(1)
 
     down = true
@@ -311,9 +322,15 @@ describe('POST /api/marketplace/install', () => {
     store = new ConfigStore(join(dir, 'fremkit.json'))
     await store.load()
     catalog = new WidgetCatalog(builtins, installedDir)
+  builtinThemesDir = join(dir, 'builtin-themes')
+  installedThemesDir = join(dir, 'themes')
+  await mkdir(join(builtinThemesDir, 'fremkit'), { recursive: true })
+  await writeFile(join(builtinThemesDir, 'fremkit', 'theme.json'), JSON.stringify({ id: 'fremkit', name: 'Fremkit', version: '1.0.0', tokens: {} }))
+  themes = new ThemeCatalog(builtinThemesDir, installedThemesDir)
+  await themes.scan()
     await catalog.scan()
     app = Fastify()
-    await app.register(marketplaceRoutes, { store, catalog, registry, installedDir })
+    await app.register(marketplaceRoutes, { store, catalog, themes, registry, installedDir, installedThemesDir })
 
     const first = install({ id: 'demo', consent: set() })
     // Not a tick: the lock is taken when the route body runs, which is after Fastify has
@@ -545,9 +562,15 @@ describe('POST /api/marketplace/update-all', () => {
     store = new ConfigStore(join(dir, 'fremkit.json'))
     await store.load()
     catalog = new WidgetCatalog(builtins, installedDir)
+  builtinThemesDir = join(dir, 'builtin-themes')
+  installedThemesDir = join(dir, 'themes')
+  await mkdir(join(builtinThemesDir, 'fremkit'), { recursive: true })
+  await writeFile(join(builtinThemesDir, 'fremkit', 'theme.json'), JSON.stringify({ id: 'fremkit', name: 'Fremkit', version: '1.0.0', tokens: {} }))
+  themes = new ThemeCatalog(builtinThemesDir, installedThemesDir)
+  await themes.scan()
     await catalog.scan()
     app = Fastify()
-    await app.register(marketplaceRoutes, { store, catalog, registry, installedDir })
+    await app.register(marketplaceRoutes, { store, catalog, themes, registry, installedDir, installedThemesDir })
 
     for (const id of ['good', 'liar', 'greedy']) {
       const res = await app.inject({ method: 'POST', url: '/api/marketplace/install', payload: { id, consent: set() } as never })
@@ -688,5 +711,141 @@ describe('POST /api/marketplace/install-missing', () => {
     await app.close()
     await build({ offline: true })
     expect((await installMissing()).statusCode).toBe(503)
+  })
+})
+
+describe('themes', () => {
+  const THEME = (over: Record<string, unknown> = {}): Record<string, unknown> => ({
+    id: 'nuit', name: { fr: 'Nuit', en: 'Night' }, version: '1.0.0',
+    description: { fr: 'Sombre', en: 'Dark' }, tokens: { bg: '#0d1117', accent: '#58a6ff' }, ...over,
+  })
+
+  const themeZip = (theme: Record<string, unknown> = THEME(), extra: { name: string; data: Buffer }[] = []): Buffer =>
+    writeZip([
+      { name: 'theme.json', data: Buffer.from(JSON.stringify(theme)) },
+      ...extra,
+    ], new Date(Date.UTC(1980, 0, 1)))
+
+  const themeEntry = (zip: Buffer, over: Record<string, unknown> = {}): Record<string, unknown> => ({
+    id: 'nuit', version: '1.0.0', name: { fr: 'Nuit', en: 'Night' }, description: { fr: 'Sombre', en: 'Dark' },
+    tokens: { accent: '#58a6ff', bg: '#0d1117', surface: '#161b22', text: '#e6edf3' },
+    size: zip.byteLength, sha256: sha256(zip), url: `https://${HOST}/themes/nuit-1.0.0.zip`,
+    publishedAt: '2026-09-18T12:00:00.000Z', previous: [], ...over,
+  })
+
+  /** A registry serving one widget and one theme, the theme's zip being whatever is passed. */
+  async function withTheme(zip: Buffer, entry?: Record<string, unknown>): Promise<void> {
+    await app.close()
+    const widgetZip = packageOf()
+    await build({
+      zip: widgetZip,
+      index: { ...indexFor(widgetZip), themes: [entry ?? themeEntry(zip)] },
+      themeZip: zip,
+    })
+  }
+
+  const installTheme = (over: Record<string, unknown> = {}) =>
+    app.inject({ method: 'POST', url: '/api/marketplace/install', payload: { id: 'nuit', kind: 'theme', ...over } as never })
+
+  it('lists the themes of the index beside the widgets', async () => {
+    const zip = themeZip()
+    await withTheme(zip)
+    const body = (await app.inject({ url: '/api/marketplace' })).json()
+    expect(body.themes).toHaveLength(1)
+    expect(body.themes[0]).toMatchObject({ id: 'nuit', installed: false, updateAvailable: false, inUse: false })
+    // Nothing to consent to and nothing that a newer Fremkit would be needed to run.
+    expect(body.themes[0].consentNeeded).toBeUndefined()
+    expect(body.themes[0].sdkTooNew).toBeUndefined()
+    expect(body.themes[0].tokens.accent).toBe('#58a6ff')
+  })
+
+  it('installs one, with no dialog and an empty grant', async () => {
+    const zip = themeZip()
+    await withTheme(zip)
+    const res = await installTheme()
+    expect(res.statusCode).toBe(200)
+    expect(res.json()).toMatchObject({ ok: true, id: 'nuit', kind: 'theme', version: '1.0.0' })
+    expect(JSON.parse(await readFile(join(installedThemesDir, 'nuit', 'theme.json'), 'utf8')).id).toBe('nuit')
+    const record = store.get().marketplace.installed.nuit
+    expect(record.kind).toBe('theme')
+    expect(record.consentedPermissions).toEqual({ subscriptions: [], commands: [], network: [] })
+    // And the screen can now choose it without a reload of the server.
+    expect(themes.get('nuit')?.tokens.bg).toBe('#0d1117')
+  })
+
+  it('accepts a README beside the theme and nothing else', async () => {
+    await withTheme(themeZip(THEME(), [{ name: 'README.md', data: Buffer.from('# Nuit') }]))
+    expect((await installTheme()).statusCode).toBe(200)
+
+    await withTheme(themeZip(THEME(), [{ name: 'index.html', data: Buffer.from('<html>') }]))
+    const refused = await installTheme()
+    expect(refused.statusCode).toBe(422)
+  })
+
+  it('refuses a theme whose id is not the one asked for', async () => {
+    await withTheme(themeZip(THEME({ id: 'autre' })))
+    expect((await installTheme()).statusCode).toBe(422)
+  })
+
+  it('refuses an id a built-in theme already owns', async () => {
+    const zip = themeZip(THEME({ id: 'fremkit' }))
+    await withTheme(zip, themeEntry(zip, { id: 'fremkit' }))
+    const res = await app.inject({ method: 'POST', url: '/api/marketplace/install', payload: { id: 'fremkit', kind: 'theme' } as never })
+    expect(res.statusCode).toBe(409)
+  })
+
+  it('refuses a theme.json the schema does not accept', async () => {
+    // These values end up in a `style` attribute on `<html>` and inside every widget frame.
+    await withTheme(themeZip(THEME({ tokens: { bg: 'red; background-image: url(https://evil.example.net/x)' } })))
+    expect((await installTheme()).statusCode).toBe(422)
+  })
+
+  it('refuses a package whose version is not the release it came from', async () => {
+    const zip = themeZip(THEME({ version: '9.9.9' }))
+    await withTheme(zip)
+    expect((await installTheme()).statusCode).toBe(422)
+  })
+
+  it('removes one, and refuses while the screen is painted with it', async () => {
+    const zip = themeZip()
+    await withTheme(zip)
+    await installTheme()
+
+    await store.update((c) => ({ ...c, display: { ...c.display, theme: 'nuit' } }))
+    const inUse = await app.inject({ method: 'POST', url: '/api/marketplace/uninstall', payload: { id: 'nuit', kind: 'theme' } as never })
+    expect(inUse.statusCode).toBe(409)
+    expect((await app.inject({ url: '/api/marketplace' })).json().themes[0].inUse).toBe(true)
+
+    await store.update((c) => ({ ...c, display: { ...c.display, theme: 'fremkit' } }))
+    const gone = await app.inject({ method: 'POST', url: '/api/marketplace/uninstall', payload: { id: 'nuit', kind: 'theme' } as never })
+    expect(gone.statusCode).toBe(200)
+    expect(store.get().marketplace.installed.nuit).toBeUndefined()
+    expect(themes.get('nuit')).toBeUndefined()
+  })
+
+  it('updates one, and refuses an update of something not installed', async () => {
+    const zip = themeZip()
+    await withTheme(zip)
+    const notYet = await app.inject({ method: 'POST', url: '/api/marketplace/update', payload: { id: 'nuit', kind: 'theme' } as never })
+    expect(notYet.statusCode).toBe(409)
+
+    await installTheme()
+    const newer = themeZip(THEME({ version: '2.0.0', tokens: { bg: '#000000' } }))
+    await app.close()
+    const widgetZip = packageOf()
+    await build({
+      zip: widgetZip,
+      index: { ...indexFor(widgetZip), themes: [themeEntry(newer, { version: '2.0.0', url: `https://${HOST}/themes/nuit-2.0.0.zip` })] },
+      themeZip: newer,
+    })
+    // `build` gives a fresh store, so the record has to be put back before the update is asked for.
+    await store.update((c) => ({ ...c, marketplace: { installed: { nuit: {
+      kind: 'theme' as const, version: '1.0.0', registry: 'fremkit-sietch',
+      consentedPermissions: { subscriptions: [], commands: [], network: [] },
+      installedAt: '2026-09-18T12:00:00.000Z',
+    } } } }))
+    const res = await app.inject({ method: 'POST', url: '/api/marketplace/update', payload: { id: 'nuit', kind: 'theme' } as never })
+    expect(res.statusCode).toBe(200)
+    expect(store.get().marketplace.installed.nuit.version).toBe('2.0.0')
   })
 })

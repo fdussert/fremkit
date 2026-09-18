@@ -243,6 +243,14 @@ const PrivacySchema = z.object({
  * `registry` is stored so a record says which index the widget came from, not just that one did.
  */
 export const ConsentSchema = z.object({
+  /**
+   * What was installed, which decides the folder it lives in and the rules it was held to.
+   *
+   * Absent in every record written before themes could be installed, and read as `'widget'`
+   * there — the only thing that existed then. A theme's record carries no permissions and never
+   * came from a dialog: there is nothing in validated JSON to consent to.
+   */
+  kind: z.enum(['widget', 'theme']).default('widget'),
   version: z.string().min(1),
   registry: z.string().min(1).max(64),
   consentedPermissions: z.object({

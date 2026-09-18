@@ -54,7 +54,10 @@ describe('readPackage', () => {
   it('opens a well-formed package', () => {
     const zip = packageOf()
     const pkg = readPackage(zip, expected(zip))
+    expect(pkg.kind).toBe('widget')
+    if (pkg.kind !== 'widget') throw new Error('unreachable')
     expect(pkg.manifest.id).toBe('demo')
+    expect(pkg.version).toBe('1.0.0')
     expect(pkg.files.map((f) => f.name).sort()).toEqual(['index.html', 'manifest.json'])
   })
 
@@ -271,5 +274,80 @@ describe('recoverStaging', () => {
     await writePackage(dir, 'demo', files)
     expect(await readFile(join(dir, 'demo', 'index.html'), 'utf8')).toBe('<html>v1</html>')
     expect(await readdir(dir)).toEqual(['demo'])
+  })
+})
+
+describe('readPackage for a theme', () => {
+  const THEME = { id: 'nuit', name: { fr: 'Nuit', en: 'Night' }, version: '1.0.0', tokens: { bg: '#0d1117' } }
+  const themeZip = (theme: Record<string, unknown> = THEME, extra: { name: string; data: Buffer }[] = []): Buffer =>
+    zipOf([{ name: 'theme.json', data: Buffer.from(JSON.stringify(theme)) }, ...extra])
+  const asTheme = (zip: Buffer, id = 'nuit') => ({ id, sha256: sha256(zip), size: zip.byteLength, kind: 'theme' as const })
+
+  it('opens one, and says what kind it is holding', () => {
+    const zip = themeZip()
+    const pkg = readPackage(zip, asTheme(zip))
+    expect(pkg.kind).toBe('theme')
+    if (pkg.kind !== 'theme') throw new Error('unreachable')
+    expect(pkg.theme.tokens.bg).toBe('#0d1117')
+    expect(pkg.version).toBe('1.0.0')
+  })
+
+  it('takes a README beside it and refuses everything else', () => {
+    // A theme *is* one file: no assets, no code, nothing to serve. Anything else in the archive
+    // is either a mistake or a payload, and both are refused rather than sorted out.
+    const withReadme = themeZip(THEME, [{ name: 'README.md', data: Buffer.from('# Nuit') }])
+    expect(readPackage(withReadme, asTheme(withReadme)).kind).toBe('theme')
+
+    for (const extra of [
+      { name: 'index.html', data: Buffer.from('<html>') },
+      { name: 'assets/logo.svg', data: Buffer.from('<svg/>') },
+      { name: 'theme.js', data: Buffer.from('alert(1)') },
+    ]) {
+      const zip = themeZip(THEME, [extra])
+      expect(() => readPackage(zip, asTheme(zip)), extra.name).toThrow(InstallError)
+    }
+  })
+
+  it('refuses an archive with no theme.json at all', () => {
+    const zip = zipOf([{ name: 'README.md', data: Buffer.from('# nothing') }])
+    expect(() => readPackage(zip, asTheme(zip))).toThrow(InstallError)
+  })
+
+  it('holds every token to the shape its CSS property accepts', () => {
+    // These end up in a `style` attribute on `<html>` and inside every widget frame, so a theme
+    // that arrived over the network is validated exactly as hard as one on disk.
+    for (const tokens of [
+      { bg: 'red; background-image: url(https://evil.example.net/x)' },
+      { shadow: '0 0 0 red, url(https://evil.example.net/x)' },
+      { font: 'url(https://evil.example.net/f.woff)' },
+      { 'text-scale': 99 },
+      { unknownToken: '#fff' },
+    ]) {
+      const zip = themeZip({ ...THEME, tokens })
+      expect(() => readPackage(zip, asTheme(zip)), JSON.stringify(tokens)).toThrow(InstallError)
+    }
+  })
+
+  it('refuses a theme whose id is not the one that was asked for', () => {
+    // The id decides the folder: a theme landing under a name the user never saw is a theme they
+    // never chose.
+    const zip = themeZip({ ...THEME, id: 'autre' })
+    expect(() => readPackage(zip, asTheme(zip))).toThrow(InstallError)
+  })
+
+  it('refuses a package larger than a theme has any business being', () => {
+    const big = themeZip({ ...THEME, name: 'x'.repeat(100 * 1024) })
+    expect(() => readPackage(big, asTheme(big))).toThrow(InstallError)
+  })
+
+  it('still checks the hash first, before parsing anything', () => {
+    const zip = themeZip()
+    expect(() => readPackage(zip, { ...asTheme(zip), sha256: 'a'.repeat(64) }))
+      .toThrow(expect.objectContaining({ key: 'marketplace.hashMismatch' }))
+  })
+
+  it('reads a widget package by default, as every caller before themes did', () => {
+    const zip = packageOf()
+    expect(readPackage(zip, expected(zip)).kind).toBe('widget')
   })
 })

@@ -207,10 +207,19 @@ export class Registry {
   }
 }
 
-/** The entry for a version, current or older, or undefined when the index does not hold it. */
-export function releaseOf(widget: IndexWidget, version?: string): { version: string; url: string; sha256: string; size: number } | undefined {
-  if (!version || version === widget.version) {
-    return { version: widget.version, url: widget.url, sha256: widget.sha256, size: widget.size }
+/**
+ * The entry for a version, current or older, or undefined when the index does not hold it.
+ *
+ * Takes the four fields a download needs rather than an `IndexWidget`, because a theme entry
+ * carries the same four and nothing else about it matters here — the alternative was the same
+ * six lines written twice, once per kind.
+ */
+export function releaseOf(
+  entry: { version: string; url: string; sha256: string; size: number; previous: { version: string; url: string; sha256: string; size: number }[] },
+  version?: string,
+): { version: string; url: string; sha256: string; size: number } | undefined {
+  if (!version || version === entry.version) {
+    return { version: entry.version, url: entry.url, sha256: entry.sha256, size: entry.size }
   }
-  return widget.previous.find((p) => p.version === version)
+  return entry.previous.find((p) => p.version === version)
 }

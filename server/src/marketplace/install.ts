@@ -15,6 +15,7 @@ import { mkdir, mkdtemp, readdir, rename, rm, stat, writeFile } from 'node:fs/pr
 import { dirname, join } from 'node:path'
 import { readZip, ZipError } from '../backup/zip.js'
 import { ManifestSchema, type WidgetManifest } from '../widgets/manifest.js'
+import { ThemeSchema, type Theme } from '../themes/theme.js'
 import { SDK_VERSION } from '../bridge/sdk.js'
 import { isPrivateLiteral } from '../net/private.js'
 import { tr } from '../i18n.js'
@@ -31,6 +32,32 @@ export const LIMITS = {
    */
   maxPathDepth: 8,
 } as const
+
+/**
+ * What a theme package may be.
+ *
+ * Far tighter than a widget's, because a theme *is* one file: `theme.json`, and at most a
+ * `README.md` beside it for whoever reads the folder. No assets, no code, nothing to serve — so
+ * anything else in the archive is either a mistake or a payload, and both are refused. 64 KB is
+ * already an order of magnitude more than the largest theme in the repository.
+ */
+export const THEME_LIMITS = {
+  maxFiles: 2,
+  maxUncompressedBytes: 64 * 1024,
+  maxFileBytes: 64 * 1024,
+  maxPathDepth: 1,
+} as const
+
+export const THEME_ENTRY = 'theme.json'
+/** The one other name a theme package may carry. */
+const THEME_README = 'README.md'
+
+/** What is being installed: it decides the folder, the limits and the rules. */
+export type PackageKind = 'widget' | 'theme'
+
+export function limitsOf(kind: PackageKind): { maxFiles: number; maxUncompressedBytes: number; maxFileBytes: number; maxPathDepth: number } {
+  return kind === 'theme' ? THEME_LIMITS : LIMITS
+}
 
 /**
  * A staging folder this old is not an install in progress; it is one that died.
@@ -52,6 +79,7 @@ const FORBIDDEN_SUFFIX = ['.zip', '.tar', '.tgz', '.gz', '.7z', '.rar', '.xz', '
 export type InstallErrorKey =
   | 'marketplace.badPackage'
   | 'marketplace.badManifest'
+  | 'marketplace.badTheme'
   | 'marketplace.idMismatch'
   | 'marketplace.sdkTooNew'
   | 'marketplace.hashMismatch'
@@ -75,24 +103,30 @@ export function sha256(data: Buffer): string {
  * sit on the disk, and a backslash is the same escape spelled for a filesystem this is not on.
  * Everything is judged before a single byte is written.
  */
-export function safeEntryName(name: string): boolean {
+export function safeEntryName(name: string, kind: PackageKind = 'widget'): boolean {
   if (name === '' || name.length > 255 * 4) return false
   if (name.startsWith('/') || /^[A-Za-z]:/.test(name)) return false
   if (name.includes('\\') || name.includes('\0')) return false
   // A trailing slash is a directory record; the folders are created from the file paths instead.
   if (name.endsWith('/')) return false
   const parts = name.split('/')
-  if (parts.length > LIMITS.maxPathDepth) return false
+  if (parts.length > limitsOf(kind).maxPathDepth) return false
   if (parts.some((p) => p === '' || p === '.' || p === '..' || p.startsWith('.'))) return false
   const lower = name.toLowerCase()
   if (FORBIDDEN_SUFFIX.some((suffix) => lower.endsWith(suffix))) return false
   return true
 }
 
-export interface ReadPackageResult {
-  manifest: WidgetManifest
-  files: { name: string; data: Buffer }[]
-}
+/**
+ * What came out of a package, by kind.
+ *
+ * `version` is lifted out of both so the caller can check it against the release it asked for
+ * without knowing which kind it is holding — that check is the same rule for both, and the one
+ * that stops a zip at the `1.0.0` URL from being recorded as `9.9.9`.
+ */
+export type ReadPackageResult =
+  | { kind: 'widget'; version: string; manifest: WidgetManifest; files: { name: string; data: Buffer }[] }
+  | { kind: 'theme'; version: string; theme: Theme; files: { name: string; data: Buffer }[] }
 
 /**
  * Opens a package and holds it to every rule, without writing anything.
@@ -103,16 +137,18 @@ export interface ReadPackageResult {
  */
 export function readPackage(
   zip: Buffer,
-  expected: { id: string; sha256: string; size: number },
+  expected: { id: string; sha256: string; size: number; kind?: PackageKind },
   locale?: Locale,
 ): ReadPackageResult {
   if (zip.byteLength !== expected.size || sha256(zip) !== expected.sha256) {
     throw new InstallError('marketplace.hashMismatch', locale)
   }
+  const kind: PackageKind = expected.kind ?? 'widget'
+  const limits = limitsOf(kind)
 
   let entries: { name: string; data: Buffer }[]
   try {
-    entries = readZip(zip, { maxEntries: LIMITS.maxFiles, maxTotalBytes: LIMITS.maxUncompressedBytes })
+    entries = readZip(zip, { maxEntries: limits.maxFiles, maxTotalBytes: limits.maxUncompressedBytes })
   } catch (err) {
     if (err instanceof ZipError) throw new InstallError('marketplace.badPackage', locale)
     throw err
@@ -120,14 +156,16 @@ export function readPackage(
 
   const seen = new Set<string>()
   for (const entry of entries) {
-    if (!safeEntryName(entry.name)) throw new InstallError('marketplace.badPackage', locale)
-    if (entry.data.byteLength > LIMITS.maxFileBytes) throw new InstallError('marketplace.badPackage', locale)
+    if (!safeEntryName(entry.name, kind)) throw new InstallError('marketplace.badPackage', locale)
+    if (entry.data.byteLength > limits.maxFileBytes) throw new InstallError('marketplace.badPackage', locale)
     // Two entries of the same name: which one ends up on disk would depend on the write order,
     // which is exactly the kind of question an archive should not get to ask.
     const key = entry.name.toLowerCase()
     if (seen.has(key)) throw new InstallError('marketplace.badPackage', locale)
     seen.add(key)
   }
+
+  if (kind === 'theme') return readTheme(entries, expected.id, locale)
 
   const manifestEntry = entries.find((e) => e.name === 'manifest.json')
   if (!manifestEntry) throw new InstallError('marketplace.badPackage', locale)
@@ -149,7 +187,35 @@ export function readPackage(
     throw new InstallError('marketplace.badManifest', locale)
   }
 
-  return { manifest, files: entries }
+  return { kind: 'widget', version: manifest.version, manifest, files: entries }
+}
+
+/**
+ * A theme package: `theme.json`, at most a `README.md`, and nothing else at all.
+ *
+ * The allow-list is by name rather than by rule, which is the whole reason a theme is the safest
+ * thing the registry can carry: there is nothing to serve, nothing to execute, and no asset a
+ * theme could want. `ThemeSchema` then holds every token to the shape its CSS property accepts —
+ * these values end up in a `style` attribute on `<html>` and inside every widget frame, so a
+ * theme that arrived over the network is validated exactly as hard as one on disk.
+ */
+function readTheme(entries: { name: string; data: Buffer }[], id: string, locale?: Locale): ReadPackageResult {
+  const allowed = new Set([THEME_ENTRY, THEME_README])
+  if (entries.some((e) => !allowed.has(e.name))) throw new InstallError('marketplace.badPackage', locale)
+  const themeEntry = entries.find((e) => e.name === THEME_ENTRY)
+  if (!themeEntry) throw new InstallError('marketplace.badPackage', locale)
+
+  let json: unknown
+  try { json = JSON.parse(themeEntry.data.toString('utf8')) } catch { throw new InstallError('marketplace.badTheme', locale) }
+  const parsed = ThemeSchema.safeParse(json)
+  if (!parsed.success) throw new InstallError('marketplace.badTheme', locale)
+  const theme = parsed.data
+
+  // Same rule as a widget's: the id decides the folder, so it has to be the one that was asked
+  // for — a theme landing under a name the user never saw is a theme they never chose.
+  if (theme.id !== id) throw new InstallError('marketplace.idMismatch', locale)
+
+  return { kind: 'theme', version: theme.version, theme, files: entries }
 }
 
 /**

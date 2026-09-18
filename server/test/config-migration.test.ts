@@ -187,7 +187,22 @@ describe('marketplace consent', () => {
       version: 2, pages: [{ id: 'p', name: 'P', widgets: [] }],
       marketplace: { installed: { 'synology-storage': record } },
     })
-    expect(kept.marketplace.installed['synology-storage']).toEqual(record)
+    // `kind` is the one thing added: a record written before themes could be installed can only
+    // ever have been a widget, and reading it as one is the whole of that migration.
+    expect(kept.marketplace.installed['synology-storage']).toEqual({ ...record, kind: 'widget' })
+  })
+
+  it('reads a record written before themes could be installed as a widget', () => {
+    const config = migrateConfig({
+      version: 2, pages: [{ id: 'p', name: 'P', widgets: [] }],
+      marketplace: { installed: {
+        clock: { version: '1.0.0', registry: 'r', installedAt: 'x', consentedPermissions: { subscriptions: [], commands: [], network: [] } },
+        nuit: { kind: 'theme', version: '1.0.0', registry: 'r', installedAt: 'x', consentedPermissions: { subscriptions: [], commands: [], network: [] } },
+      } },
+    })
+    expect(config.marketplace.installed.clock.kind).toBe('widget')
+    // And one that says what it is keeps saying it.
+    expect(config.marketplace.installed.nuit.kind).toBe('theme')
   })
 
   it('is empty after a v1 migration, which predates the marketplace', () => {

@@ -212,7 +212,10 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     ...(opts.registryUrl ? { url: opts.registryUrl } : {}),
     ...(opts.registryDev ? { dev: true } : {}),
   })
-  await app.register(marketplaceRoutes, { store, catalog, registry: marketplaceRegistry, installedDir })
+  await app.register(marketplaceRoutes, {
+    store, catalog, themes, registry: marketplaceRegistry,
+    installedDir, installedThemesDir: installedThemesDir(opts.dataDir),
+  })
   await app.register(backgroundRoutes, { dataDir: opts.dataDir })
   await app.register(backupRoutes, {
     store,
