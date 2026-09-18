@@ -79,6 +79,14 @@ export const api = {
     fetch('/api/marketplace/uninstall', {
       method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id }),
     }).then((r) => json<{ ok: true; id: string }>(r)),
+  /**
+   * Updates every waiting widget at once. Answers 200 with one result per widget even when some
+   * failed, so the caller paints them per row rather than showing the first error.
+   */
+  updateAllWidgets: (consent: Record<string, WidgetPermissionSet | false>) =>
+    fetch('/api/marketplace/update-all', {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ consent }),
+    }).then((r) => json<{ results: { id: string; ok: boolean; version?: string; error?: string; newPermissions?: WidgetPermissionSet }[] }>(r)),
 
   /** The applications installed on this machine, for the fields a manifest marks `suggest: apps`. */
   getInstalledApps: () => fetch('/api/apps/installed').then((r) => json<InstalledAppInfo[]>(r)),
