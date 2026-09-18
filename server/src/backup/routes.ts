@@ -10,6 +10,7 @@ import { FREMKIT_VERSION } from '../version.js'
 import type { ConnectionTypeRegistry } from '../connections/registry.js'
 import type { SecretStore } from '../secrets/index.js'
 import { readZip, writeZip, ZipError } from './zip.js'
+import { applyRestoreSecretPlan, restoreSecretPlan } from './secrets.js'
 import { tr } from '../i18n.js'
 
 /**
@@ -17,10 +18,13 @@ import { tr } from '../i18n.js'
  *
  * What travels: the live config as the store has migrated it, and the background library. What
  * never travels: the secrets. They live in the macOS keychain, keyed by connection id, and the
- * whole point of putting them there is that a file copied to a USB stick does not carry them. A
- * restored connection therefore comes back with its host, its organisation, its repository list
- * — and nothing to authenticate with, which the answer says plainly so the admin can list what
- * has to be re-entered.
+ * whole point of putting them there is that a file copied to a USB stick does not carry them.
+ *
+ * Keyed by connection id, though — and a restore keeps the ids. So on the same Mac the items are
+ * still there and the connections work straight away, which is why the answer asks the store which
+ * secrets are genuinely absent instead of naming them all. The price of that convenience is that
+ * the archive chooses the *fields*, a host among them; `backup/secrets.ts` is what keeps a stored
+ * secret from following a connection to a host the archive picked.
  */
 
 /** Where things sit inside the archive. */
@@ -215,6 +219,18 @@ export async function backupRoutes(
       return reply.code(500).send({ errors: [tr(store.get().locale, 'backup.writeFailed')] })
     }
 
+    // Before the save, and before anything can poll with the restored fields: a stored secret is
+    // tied to the host it was issued for, and the archive chooses the hosts. See backup/secrets.ts.
+    const plan = restoreSecretPlan(store.get().connections, read.config.connections, opts.types)
+    if (plan.rebound.length || plan.removed.length) {
+      try {
+        await applyRestoreSecretPlan(plan, opts.types, opts.secrets)
+      } catch (err) {
+        req.log.warn({ err }, 'restore could not drop the secrets the archive rebinds')
+        return reply.code(500).send({ errors: [tr(store.get().locale, 'backup.writeFailed')] })
+      }
+    }
+
     // Through the store, which keeps its own `.bak` of what was there and validates on the way in.
     let saved: Config
     try {
@@ -229,7 +245,8 @@ export async function backupRoutes(
     await opts.onRestored?.(saved)
 
     // Only the connections whose secret is actually absent: on the same Mac the keychain items
-    // are keyed by the ids the archive carries, so most restores need nothing typed in.
+    // are keyed by the ids the archive carries, so most restores need nothing typed in. The ones
+    // the plan above just stripped are absent now, so they are named here without a second list.
     return reply.send({
       ok: true,
       pages: saved.pages.length,

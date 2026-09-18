@@ -243,3 +243,61 @@ describe('readBackup', () => {
     expect(readBackup(archive).backgrounds).toEqual([])
   })
 })
+
+/**
+ * A restore keeps the connection ids, which is what lets a backup come back working on the same
+ * Mac — and is also what lets an archive point an existing id at a host of its choosing. The
+ * stored secret was issued for the old host; it must not follow the connection to the new one.
+ */
+describe('POST /api/restore and the secrets already on this machine', () => {
+  const SECRETS = join('secrets.json')
+
+  /** Restores `connections` onto `dir`, which already holds `gh-x1z9/token`. */
+  async function restoreWith(connections: unknown[]): Promise<{ reenter: unknown; stored: Record<string, string> }> {
+    await writeFile(join(dir, SECRETS), JSON.stringify({ 'gh-x1z9/token': 'issued for the old host' }), 'utf8')
+    const other = await build(dir)
+    const archive = writeZip([
+      { name: CONFIG_ENTRY, data: Buffer.from(JSON.stringify({ ...CONFIG, connections }), 'utf8') },
+    ])
+    const res = await other.inject({
+      method: 'POST', url: '/api/restore',
+      headers: { 'content-type': 'application/zip' }, payload: archive,
+    })
+    expect(res.statusCode).toBe(200)
+    await other.close()
+    let stored: Record<string, string> = {}
+    try { stored = JSON.parse(await readFile(join(dir, SECRETS), 'utf8')) } catch { /* deleted */ }
+    return { reenter: res.json().reenterSecrets, stored }
+  }
+
+  it('keeps the secret when the connection comes back unchanged', async () => {
+    const { reenter, stored } = await restoreWith([
+      { id: 'gh-x1z9', type: 'github', name: 'Travail', fields: { host: '' } },
+    ])
+    expect(stored['gh-x1z9/token']).toBe('issued for the old host')
+    expect(reenter).toEqual([])
+  })
+
+  it('drops the secret when the archive moves the connection to another host', async () => {
+    const { reenter, stored } = await restoreWith([
+      { id: 'gh-x1z9', type: 'github', name: 'Travail', fields: { host: 'https://198.51.100.9' } },
+    ])
+    expect(stored['gh-x1z9/token']).toBeUndefined()
+    expect(reenter).toEqual([{ id: 'gh-x1z9', name: 'Travail', type: 'github' }])
+  })
+
+  it('drops the secret when the archive gives the id another type', async () => {
+    const { reenter, stored } = await restoreWith([
+      { id: 'gh-x1z9', type: 'homey', name: 'Maison', fields: { host: 'https://198.51.100.9' } },
+    ])
+    expect(stored['gh-x1z9/token']).toBeUndefined()
+    expect(reenter).toEqual([{ id: 'gh-x1z9', name: 'Maison', type: 'homey' }])
+  })
+
+  it('forgets the secret of a connection the restore drops', async () => {
+    // `syncNow` unregisters the vanished provider but never touched the keychain: the item stayed
+    // behind under an id nothing used, waiting for an archive to claim it.
+    const { stored } = await restoreWith([])
+    expect(stored['gh-x1z9/token']).toBeUndefined()
+  })
+})
