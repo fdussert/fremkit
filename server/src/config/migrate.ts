@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { ConfigSchema, defaultLocale, WIDGET_ID_RE, type Config } from './schema.js'
 import { defaultSecretsBackend } from '../secrets/index.js'
+import { tr } from '../i18n.js'
 
 /** v1 used a 32x8 grid of 80px cells; v2 halves the cell and doubles every coordinate. */
 export const MIGRATION_SCALE = 2
@@ -29,6 +30,37 @@ const V1Schema = z.object({
     widgets: z.array(V1InstanceSchema).default([]),
   })).min(1),
 })
+
+/**
+ * Stored values that were renamed, by connection type and field.
+ *
+ * The Bambu model list held `autre` — a French word written into the user's file, where every
+ * other stored value is English. `other` means exactly the same thing to `cameraTransport()`, so
+ * the rename is invisible; this keeps a config that already holds the old spelling from losing
+ * its selection the next time the form is opened.
+ */
+const RENAMED_FIELD_VALUES: Record<string, Record<string, Record<string, string>>> = {
+  bambu: { model: { autre: 'other' } },
+}
+
+/** Applies those renames in place. Nothing else touches a connection's fields. */
+function renameFieldValues(config: Config): Config {
+  return {
+    ...config,
+    connections: config.connections.map((connection) => {
+      const byField = RENAMED_FIELD_VALUES[connection.type]
+      if (!byField) return connection
+      let fields = connection.fields
+      for (const [key, values] of Object.entries(byField)) {
+        const current = fields[key]
+        if (current !== undefined && Object.hasOwn(values, current)) {
+          fields = { ...fields, [key]: values[current] }
+        }
+      }
+      return fields === connection.fields ? connection : { ...connection, fields }
+    }),
+  }
+}
 
 /** The widget whose gauges come from the Claude account usage the `privacy` opt-in covers. */
 const CLAUDE_USAGE_WIDGET = 'claude-usage'
@@ -60,8 +92,8 @@ function adoptPrivacy(config: Config, raw: unknown): Config {
  */
 export function migrateConfig(raw: unknown): Config {
   const version = (raw as { version?: unknown } | null)?.version
-  if (version === 2) return adoptPrivacy(ConfigSchema.parse(raw), raw)
-  if (version !== undefined && version !== 1) throw new Error(`version de config inconnue: ${String(version)}`)
+  if (version === 2) return renameFieldValues(adoptPrivacy(ConfigSchema.parse(raw), raw))
+  if (version !== undefined && version !== 1) throw new Error(tr(undefined, 'config.unknownVersion', { version: String(version) }))
   const v1 = V1Schema.parse(raw)
   const s = MIGRATION_SCALE
   const migrated: Config = {
@@ -88,5 +120,5 @@ export function migrateConfig(raw: unknown): Config {
       })),
     })),
   }
-  return adoptPrivacy(migrated, raw)
+  return renameFieldValues(adoptPrivacy(migrated, raw))
 }

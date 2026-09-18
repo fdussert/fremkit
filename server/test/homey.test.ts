@@ -51,16 +51,16 @@ const HAPPY: Record<string, () => Response> = {
 
 describe('isValidHomeyHost / homeyBaseUrl', () => {
   it('accepts an IP and a .local name, refuses a URL or credentials', () => {
-    expect(isValidHomeyHost('192.168.1.50')).toBe(true)
+    expect(isValidHomeyHost('192.0.2.50')).toBe(true)
     expect(isValidHomeyHost('homey-abcd.local')).toBe(true)
     expect(isValidHomeyHost('[2001:db8::1]')).toBe(true)
-    expect(isValidHomeyHost('http://192.168.1.50')).toBe(false)
-    expect(isValidHomeyHost('192.168.1.50:80')).toBe(false)
-    expect(isValidHomeyHost('user:pass@192.168.1.50')).toBe(false)
+    expect(isValidHomeyHost('http://192.0.2.50')).toBe(false)
+    expect(isValidHomeyHost('192.0.2.50:80')).toBe(false)
+    expect(isValidHomeyHost('user:pass@192.0.2.50')).toBe(false)
     expect(isValidHomeyHost('')).toBe(false)
   })
   it('builds a plain http base, as the Homey serves locally', () => {
-    expect(homeyBaseUrl('192.168.1.50')).toBe('http://192.168.1.50')
+    expect(homeyBaseUrl('192.0.2.50')).toBe('http://192.0.2.50')
   })
 })
 

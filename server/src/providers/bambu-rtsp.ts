@@ -3,6 +3,7 @@ import { accessSync, constants, mkdtempSync, readdirSync, rmSync, writeFileSync 
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { BambuCamera, BambuCameraState, BambuFrame } from './bambu-camera.js'
+import { tr } from '../i18n.js'
 
 /**
  * The chamber camera of an X1 or H2 printer, in LAN mode.
@@ -155,7 +156,7 @@ export function ffmpegArgs(mode: BambuRtspInputMode, input: string): string[] {
  * escape for it, and no legitimate URL carries one.
  */
 export function concatListLine(url: string): string {
-  if (/[\r\n]/.test(url)) throw new Error('url invalide')
+  if (/[\r\n]/.test(url)) throw new Error(tr(undefined, 'bambu.invalidUrl'))
   return `file '${url.replace(/'/g, "'\\''")}'\n`
 }
 

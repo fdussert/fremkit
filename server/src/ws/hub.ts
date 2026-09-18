@@ -1,5 +1,6 @@
 import type { ProviderRegistry } from '../providers/registry.js'
 import type { CommandContext } from '../providers/types.js'
+import { tr } from '../i18n.js'
 
 /**
  * Largest message a socket may send.
@@ -81,7 +82,7 @@ export class Hub {
         if (!channels.has(msg.channel)) {
           // Each subscription starts a provider polling, so the list is bounded.
           if (channels.size >= MAX_CHANNELS_PER_SOCKET) {
-            return this.safeSend(socket, JSON.stringify({ type: 'error', error: 'trop de canaux' }))
+            return this.safeSend(socket, JSON.stringify({ type: 'error', error: tr(undefined, 'ws.tooManyChannels') }))
           }
           channels.add(msg.channel)
           this.registry.addSubscriber(msg.channel)

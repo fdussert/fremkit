@@ -17,6 +17,10 @@ export const locale = ref<Locale>('fr')
 
 export function setLocale(next: Locale | undefined): void {
   locale.value = next === 'en' ? 'en' : 'fr'
+  // The document's own language, so a screen reader and the browser's own text handling agree
+  // with what is on screen. The HTML files ship a placeholder; this is the real value, and it
+  // follows the config for the life of the page.
+  if (typeof document !== 'undefined') document.documentElement.lang = locale.value
 }
 
 const warned = new Set<string>()

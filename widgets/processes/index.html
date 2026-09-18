@@ -23,7 +23,8 @@
     Fremkit.subscribe('processes', function (d) {
       if (d.error) return
       document.getElementById('rows').innerHTML = d.processes.slice(0, Fremkit.settings.count).map(function (p) {
-        return '<div class="row"><span>' + p.name.replace(/</g, '&lt;') + '</span><span class="muted">' + p.cpu + '% · ' + p.mem + '%</span></div>'
+        return '<div class="row"><span>' + Fremkit.esc(p.name) + '</span><span class="muted">'
+          + Fremkit.esc(p.cpu) + '% · ' + Fremkit.esc(p.mem) + '%</span></div>'
       }).join('')
     })
   })

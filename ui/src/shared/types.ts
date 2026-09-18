@@ -58,7 +58,7 @@ export interface Display {
 }
 export interface Connection { id: string; type: string; name: string; fields: Record<string, string> }
 export type SecretsBackend = 'keychain' | 'file'
-/** Mirrors the server schema; absent only in a file written before the setting existed. */
+
 /**
  * What Fremkit is allowed to read on this Mac beyond its own files. Everything is off until the
  * user ticks it in the admin's Screen panel, which is the only place it is turned on.

@@ -240,11 +240,11 @@ export function createAzureDevOpsProvider(ctx: ConnectionProviderContext, deps: 
         try {
           parsed = new URL(raw)
         } catch {
-          throw new Error('URL refusée')
+          throw new Error(tr(undefined, 'provider.refusedUrl'))
         }
         // `startsWith` would also accept `https://dev.azure.com.evil.com/…` or
         // `https://dev.azure.com@evil.com/…`; only the parsed origin is trustworthy.
-        if (parsed.protocol !== 'https:' || parsed.origin !== 'https://dev.azure.com') throw new Error('URL refusée')
+        if (parsed.protocol !== 'https:' || parsed.origin !== 'https://dev.azure.com') throw new Error(tr(undefined, 'provider.refusedUrl'))
         await open(raw)
         return { opened: true }
       },

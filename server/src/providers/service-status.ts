@@ -35,7 +35,7 @@ const HostSchema = z
   .trim()
   .min(1)
   .max(255)
-  .refine((v) => HOST_RE.test(v) && !v.startsWith('-'), { message: 'hôte invalide' })
+  .refine((v) => HOST_RE.test(v) && !v.startsWith('-'), { error: () => tr(undefined, 'serviceStatus.invalidHost') })
 
 /** `host:port`; the port is split off at the last colon so an IPv6 literal still parses. */
 const HostPortSchema = z
@@ -43,7 +43,7 @@ const HostPortSchema = z
   .trim()
   .min(3)
   .max(MAX_TARGET)
-  .refine((v) => splitHostPort(v) !== null, { message: 'hôte:port invalide' })
+  .refine((v) => splitHostPort(v) !== null, { error: () => tr(undefined, 'serviceStatus.invalidHostPort') })
 
 const HttpUrlSchema = z
   .string()
@@ -54,7 +54,7 @@ const HttpUrlSchema = z
     let url: URL
     try { url = new URL(v) } catch { return false }
     return ALLOWED_PROTOCOLS.has(url.protocol)
-  }, { message: 'URL refusée' })
+  }, { error: () => tr(undefined, 'provider.refusedUrl') })
 
 export const ServiceSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('http'), name: NameSchema, url: HttpUrlSchema }),
@@ -241,7 +241,7 @@ export function createServiceStatusProvider(
         if (!ctx?.loopback) return { ok: false, error: tr(undefined, 'provider.localOnly') }
         const request = ProbeRequestSchema.safeParse(payload)
         if (!request.success) {
-          return { ok: false, error: request.error.issues[0]?.message ?? 'charge utile invalide' }
+          return { ok: false, error: request.error.issues[0]?.message ?? tr(undefined, 'provider.invalidPayload') }
         }
         // The targets come from the user's saved settings, never from the message.
         const resolved = resolveServices(instances, request.data.instanceId)

@@ -133,15 +133,17 @@
     if (u.temp != null && u.temp > 0) parts.push(Fremkit.t(L.amsTemp, { t: Math.round(u.temp) }))
     return parts.join(' · ')
   }
+  /** The grey an empty or unreadable tray is drawn in. One value, used once. */
+  var EMPTY_TRAY = '#3a404a'
+
   function trayHtml(t) {
     var height = t.remain == null ? 100 : Math.max(4, t.remain)
-    var color = t.color || '#3a404a'
     var title = t.type || Fremkit.t(L.emptyTray)
     if (t.remain != null) title += ' · ' + Fremkit.t(L.trayRemain, { n: Math.round(t.remain) })
     return '<span class="tray' + (t.active ? ' active' : '') + '" title="' + Fremkit.esc(title) + '">' +
       // A filament colour comes from the printer: only a #rrggbb reaches a style attribute,
       // or `red; background: url(…)` would be two declarations rather than one bad colour.
-      '<i style="height:' + height + '%;background:' + Fremkit.color(color, '#5f6771') + '"></i>' +
+      '<i style="height:' + height + '%;background:' + Fremkit.color(t.color, EMPTY_TRAY) + '"></i>' +
       '<span>' + Fremkit.esc(t.type || '') + '</span></span>'
   }
   /** One row per AMS, in the order the printer lists them, then the external spool if loaded. */

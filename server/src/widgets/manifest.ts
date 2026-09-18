@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { isPrivateLiteral } from '../net/private.js'
 import { WIDGET_ID_RE } from '../config/schema.js'
+import { tr } from '../i18n.js'
 
 export const SizeSchema = z.tuple([z.number().int().min(1), z.number().int().min(1)])
 
@@ -55,7 +56,7 @@ export const ListItemFieldSchema = z.object({
     message: 'suggest ne vaut que pour un champ de type string',
   })
   .refine((f) => f.suggestWhen === undefined || f.suggest !== undefined, {
-    message: 'suggestWhen ne vaut que pour un champ qui déclare suggest',
+    error: () => tr(undefined, 'manifest.suggestWhenWithoutSuggest'),
   })
 export type ListItemField = z.infer<typeof ListItemFieldSchema>
 
@@ -92,16 +93,16 @@ export const SettingFieldSchema = z.object({
   max: z.number().int().min(1).optional(),
 })
   .refine((f) => (f.type !== 'connection' && f.type !== 'connections') || typeof f.connectionType === 'string', {
-    message: 'un réglage de type connection doit déclarer connectionType',
+    error: () => tr(undefined, 'manifest.connectionNeedsType'),
   })
   .refine((f) => f.type !== 'pick' || (typeof f.connection === 'string' && f.connection !== ''), {
-    message: 'un réglage de type pick doit déclarer connection',
+    error: () => tr(undefined, 'manifest.pickNeedsConnection'),
   })
   .refine((f) => f.type !== 'pick' || (typeof f.source === 'string' && f.source !== ''), {
-    message: 'un réglage de type pick doit déclarer source',
+    error: () => tr(undefined, 'manifest.pickNeedsSource'),
   })
   .refine((f) => f.type !== 'list' || Object.keys(f.itemSchema ?? {}).length > 0, {
-    message: 'un réglage de type list doit déclarer itemSchema',
+    error: () => tr(undefined, 'manifest.listNeedsItemSchema'),
   })
 
 /** v1 manifests described a 32x16 grid with fixed `sizes`; the v2 grid has twice the cells. */
@@ -132,7 +133,7 @@ const ChannelSchema = z.string().min(1).refine((channel) => {
   // `azure-devops:*` covers every connection of a type, so the family is what matters here.
   const family = channel.split(':')[0]
   return !RESERVED_CHANNELS.has(family) && !RESERVED_CHANNELS.has(channel)
-}, { message: 'canal réservé à l’hôte' })
+}, { error: () => tr(undefined, 'manifest.reservedChannel') })
 
 const RawManifestSchema = z.object({
   id: z.string().regex(WIDGET_ID_RE),
@@ -155,7 +156,7 @@ const RawManifestSchema = z.object({
      * merely resolves to one is caught at request time instead (see net/private.ts).
      */
     network: z.array(z.string().refine((host) => !isPrivateLiteral(host), {
-      message: 'hôte privé ou local interdit dans permissions.network',
+      error: () => tr(undefined, 'manifest.privateNetworkHost'),
     })).default([]),
   }).prefault({}),
 })
@@ -173,7 +174,7 @@ export const ManifestSchema = RawManifestSchema.transform((m, ctx) => {
   if (!minSize) minSize = DEFAULT_MIN_SIZE
   if (!defaultSize) defaultSize = minSize
   if (defaultSize[0] < minSize[0] || defaultSize[1] < minSize[1]) {
-    ctx.addIssue({ code: 'custom', message: 'defaultSize doit être supérieur ou égal à minSize', path: ['defaultSize'] })
+    ctx.addIssue({ code: 'custom', message: tr(undefined, 'manifest.defaultSizeTooSmall'), path: ['defaultSize'] })
     return z.NEVER
   }
   return { ...rest, minSize, defaultSize }

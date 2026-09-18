@@ -125,7 +125,7 @@ export function createCleanshotProvider(run: Runner = runProgram): Provider {
         if (!ctx?.loopback) return { ok: false, error: tr(undefined, 'provider.localOnly') }
         const parsed = RunPayloadSchema.safeParse(payload)
         if (!parsed.success) {
-          return { ok: false, error: parsed.error.issues[0]?.message ?? 'charge utile invalide' }
+          return { ok: false, error: parsed.error.issues[0]?.message ?? tr(undefined, 'provider.invalidPayload') }
         }
         try {
           await run('open', await openArgs(urlFor(parsed.data), run))

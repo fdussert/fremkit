@@ -43,7 +43,7 @@ const UrlSchema = z
     let url: URL
     try { url = new URL(v) } catch { return false }
     return ALLOWED_PROTOCOLS.has(url.protocol)
-  }, { message: 'URL refusée' })
+  }, { error: () => tr(undefined, 'provider.refusedUrl') })
 
 /**
  * A button as the user saved it in the admin.
@@ -143,7 +143,7 @@ export function createShortcutsProvider(
         if (!ctx?.loopback) return { ok: false, error: tr(undefined, 'provider.localOnly') }
         const request = OpenRequestSchema.safeParse(payload)
         if (!request.success) {
-          return { ok: false, error: request.error.issues[0]?.message ?? 'charge utile invalide' }
+          return { ok: false, error: request.error.issues[0]?.message ?? tr(undefined, 'provider.invalidPayload') }
         }
         // The target comes from the user's saved settings, never from the message.
         const resolved = resolveButton(instances, request.data)

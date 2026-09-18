@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach, vi } from 'vitest'
+import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest'
 import { DICTIONARIES, locale, setLocale, t, translate } from '../src/shared/i18n'
 import { fr } from '../src/shared/locales/fr'
 import { en } from '../src/shared/locales/en'
@@ -67,5 +67,28 @@ describe('locale', () => {
     expect(t('admin.tabs.screen')).toBe('Screen')
     setLocale(undefined)
     expect(locale.value).toBe('fr')
+  })
+})
+
+describe('the document language', () => {
+  // These tests run without a DOM, so one is put in place for this block only: the point is that
+  // setLocale writes the attribute, not that a browser exists.
+  const element = { lang: '' }
+  beforeEach(() => { (globalThis as { document?: unknown }).document = { documentElement: element } })
+  afterEach(() => { delete (globalThis as { document?: unknown }).document })
+
+  it('follows setLocale, so the page agrees with what is on screen', () => {
+    // The HTML files ship a placeholder; this is where the real value comes from.
+    setLocale('en')
+    expect(element.lang).toBe('en')
+    setLocale('fr')
+    expect(element.lang).toBe('fr')
+    setLocale(undefined)
+    expect(element.lang).toBe('fr')
+  })
+
+  it('does nothing at all where there is no document', () => {
+    delete (globalThis as { document?: unknown }).document
+    expect(() => setLocale('en')).not.toThrow()
   })
 })

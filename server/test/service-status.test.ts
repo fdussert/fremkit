@@ -52,7 +52,7 @@ describe('service-status payload validation', () => {
       { kind: 'http', name: 'Site', url: 'https://example.com' },
       { kind: 'http', name: 'Plain', url: 'http://example.com:8080/health' },
       { kind: 'tcp', name: 'DB', url: 'db.local:5432' },
-      { kind: 'ping', name: 'Gateway', url: '192.168.1.1' },
+      { kind: 'ping', name: 'Gateway', url: '192.0.2.1' },
     ] }).success).toBe(true)
   })
   it('refuses a url that is not http or https', () => {
@@ -203,7 +203,7 @@ describe('service-status tcp and ping probes', () => {
     expect(up[0]).toMatchObject({ name: 'GW', state: 'up', latencyMs: 0 })
 
     const ping = vi.fn(async () => { throw new Error('Request timeout for icmp_seq 0') })
-    const down = results(await probe({ services: [{ kind: 'ping', name: 'GW', url: '10.0.0.9' }] }, { ping }))
+    const down = results(await probe({ services: [{ kind: 'ping', name: 'GW', url: '192.0.2.9' }] }, { ping }))
     expect(down[0]).toMatchObject({ name: 'GW', state: 'down' })
   })
   it('hands ping the validated host and the five second budget', async () => {

@@ -32,7 +32,8 @@ describe('migrateConfig', () => {
     expect(migrateConfig(c2)).toEqual(c2)
   })
   it('rejects an unknown version with a clear message', () => {
-    expect(() => migrateConfig({ ...v1, version: 7 })).toThrow(/version de config inconnue: 7/)
+    // Translated now, so match either language rather than the French wording.
+    expect(() => migrateConfig({ ...v1, version: 7 })).toThrow(/(version de config inconnue|unknown config version).*7/)
   })
 })
 
@@ -68,7 +69,7 @@ describe('ConfigStore migration', () => {
     // A file we cannot interpret is never rewritten: the next start retries against it.
     expect(await readFile(file, 'utf8')).toBe(original)
     expect(await readdir(dir)).toEqual(['fremkit.json'])
-    expect(logged).toMatch(/version de config inconnue: 7/)
+    expect(logged).toMatch(/(version de config inconnue|unknown config version).*7/)
   })
 
   it('renames an unparsable file to .corrupt-<epoch> and recovers from the .bak', async () => {
@@ -140,5 +141,35 @@ describe('privacy.claudeAccountUsage on an older config', () => {
 
   it('leaves a fresh install off', () => {
     expect(DEFAULT_CONFIG.privacy.claudeAccountUsage).toBe(false)
+  })
+})
+
+describe('renamed stored values', () => {
+  const withModel = (model: string) => ({
+    version: 2,
+    connections: [{ id: 'bambu-1', type: 'bambu', name: 'Imprimante', fields: { host: '192.0.2.10', serial: 'P1', model } }],
+    pages: [{ id: 'home', name: 'Accueil', widgets: [] }],
+  })
+
+  it('turns a Bambu model of "autre" into "other"', () => {
+    // A French word had been written into the user's file, where every other stored value is
+    // English. The two mean the same thing to cameraTransport(), so nobody loses a selection.
+    const cfg = migrateConfig(withModel('autre'))
+    expect(cfg.connections[0].fields.model).toBe('other')
+  })
+
+  it('leaves every other model alone', () => {
+    for (const model of ['H2C', 'X1C', 'A1 mini', 'other', '']) {
+      expect(migrateConfig(withModel(model)).connections[0].fields.model, model).toBe(model)
+    }
+  })
+
+  it('touches no other type and no other field', () => {
+    const cfg = migrateConfig({
+      version: 2,
+      connections: [{ id: 'gh-1', type: 'github', name: 'GitHub', fields: { host: 'autre' } }],
+      pages: [{ id: 'home', name: 'Accueil', widgets: [] }],
+    })
+    expect(cfg.connections[0].fields.host).toBe('autre')
   })
 })

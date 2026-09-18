@@ -283,7 +283,7 @@ describe('bambuType', () => {
   it('declares host, serial, access code and model', () => {
     expect(bambuType.fields.map((f) => f.key)).toEqual(['host', 'serial', 'accessCode', 'model'])
     expect(bambuType.fields[2].secret).toBe(true)
-    expect(bambuType.fields[3].options).toEqual(['H2C', 'H2D', 'H2S', 'X1C', 'X1E', 'P1S', 'P1P', 'A1', 'A1 mini', 'autre'])
+    expect(bambuType.fields[3].options).toEqual(['H2C', 'H2D', 'H2S', 'X1C', 'X1E', 'P1S', 'P1P', 'A1', 'A1 mini', 'other'])
   })
 
   it('accepts an IP, a hostname and a bracketed IPv6, and refuses anything else', () => {

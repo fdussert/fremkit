@@ -252,9 +252,9 @@ export function createClipboardProvider(pasteboard: Pasteboard = pbPasteboard, n
         // Writing the pasteboard acts on the user's Mac: only a client on that Mac may ask.
         if (!ctx?.loopback) return { ok: false, error: tr(undefined, 'provider.localOnly') }
         const parsed = CopyPayloadSchema.safeParse(payload)
-        if (!parsed.success) return { ok: false, error: 'charge utile invalide' }
+        if (!parsed.success) return { ok: false, error: tr(undefined, 'provider.invalidPayload') }
         const entry = entries.find((e) => e.id === parsed.data.id)
-        if (!entry) return { ok: false, error: 'entrée inconnue' }
+        if (!entry) return { ok: false, error: tr(undefined, 'clipboard.unknownEntry') }
         try {
           await pasteboard.write(entry.text)
         } catch (err) {

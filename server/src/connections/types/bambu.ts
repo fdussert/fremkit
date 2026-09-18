@@ -11,7 +11,14 @@ export interface BambuTestDeps { connect?: MqttConnect }
 /** How long the test waits for the printer to answer the pushall. */
 const TEST_TIMEOUT_MS = 10_000
 
-export const BAMBU_MODELS = ['H2C', 'H2D', 'H2S', 'X1C', 'X1E', 'P1S', 'P1P', 'A1', 'A1 mini', 'autre']
+/**
+ * The models the camera protocol is chosen from. `other` is the catch-all.
+ *
+ * Stored values, not labels: they go into the config and are compared in code, so they stay in
+ * English like every other stored value. It used to be `autre`, which was a French word saved
+ * into a user's file.
+ */
+export const BAMBU_MODELS = ['H2C', 'H2D', 'H2S', 'X1C', 'X1E', 'P1S', 'P1P', 'A1', 'A1 mini', 'other']
 
 
 /**
