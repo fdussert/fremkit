@@ -463,3 +463,127 @@ describe('usedBy', () => {
     expect(usedBy(config, 'clock')).toEqual([])
   })
 })
+
+describe('POST /api/marketplace/update-all', () => {
+  const updateAll = (consent: Record<string, unknown> = {}) =>
+    app.inject({ method: 'POST', url: '/api/marketplace/update-all', payload: { consent } as never })
+
+  /**
+   * Three installed widgets, each with a newer release waiting, and the registry serving what the
+   * scenario needs: `good` updates, `liar` ships a package the index's hash does not describe,
+   * `greedy` asks for a permission the consent will not cover.
+   */
+  async function threeWaiting(): Promise<void> {
+    await app.close()
+    dir = await mkdtemp(join(tmpdir(), 'marketplace-'))
+    installedDir = join(dir, 'widgets')
+    const builtins = join(dir, 'builtins')
+    await mkdir(builtins, { recursive: true })
+
+    const ONE = (id: string, over: Record<string, unknown> = {}) =>
+      packageOf({ ...MANIFEST({ id, version: '1.0.0' }), ...over })
+    const TWO = (id: string, over: Record<string, unknown> = {}) =>
+      packageOf({ ...MANIFEST({ id, version: '2.0.0' }), ...over })
+
+    const v1 = { good: ONE('good'), liar: ONE('liar'), greedy: ONE('greedy') }
+    const v2 = { good: TWO('good'), liar: TWO('liar'), greedy: TWO('greedy', { subscriptions: ['system'] }) }
+
+    const entry = (id: string, version: string, zip: Buffer): Record<string, unknown> => ({
+      id, version, sdk: 1, name: id, description: 'D', icon: 'layout-grid',
+      permissions: { subscriptions: [], commands: [], network: [] }, connections: [],
+      size: zip.byteLength, sha256: sha256(zip), url: `https://${HOST}/widgets/${id}-${version}.zip`,
+      publishedAt: '2026-09-18T12:00:00.000Z', previous: [],
+    })
+
+    let serving: 'v1' | 'v2' = 'v1'
+    const registry = new Registry({
+      url: INDEX_URL, isPrivate: async () => false,
+      fetch: (async (url: string) => {
+        if (url === INDEX_URL) {
+          const set = serving === 'v1' ? v1 : v2
+          const version = serving === 'v1' ? '1.0.0' : '2.0.0'
+          return new Response(JSON.stringify({
+            registry: 'fremkit-sietch', generatedAt: '2026-09-18T12:00:00.000Z', schema: 1,
+            widgets: (['good', 'liar', 'greedy'] as const).map((id) => entry(id, version, set[id])),
+          }))
+        }
+        const id = /widgets\/([a-z]+)-/.exec(url)?.[1] as keyof typeof v1
+        // `liar` serves its *old* bytes at the new URL, so the hash will not match.
+        if (serving === 'v2' && id === 'liar') return new Response(new Uint8Array(v1.liar))
+        return new Response(new Uint8Array((serving === 'v1' ? v1 : v2)[id]))
+      }) as never,
+    })
+
+    store = new ConfigStore(join(dir, 'fremkit.json'))
+    await store.load()
+    catalog = new WidgetCatalog(builtins, installedDir)
+    await catalog.scan()
+    app = Fastify()
+    await app.register(marketplaceRoutes, { store, catalog, registry, installedDir })
+
+    for (const id of ['good', 'liar', 'greedy']) {
+      const res = await app.inject({ method: 'POST', url: '/api/marketplace/install', payload: { id, consent: set() } as never })
+      expect(res.statusCode, id).toBe(200)
+    }
+    serving = 'v2'
+    await app.inject({ method: 'POST', url: '/api/marketplace/refresh' })
+  }
+
+  it('answers one result per waiting widget and never stops on a failure', async () => {
+    await threeWaiting()
+    const res = await updateAll({ good: set(), liar: set(), greedy: set() })
+    expect(res.statusCode).toBe(200)
+    const results = res.json().results as { id: string; ok: boolean; error?: string; newPermissions?: { subscriptions: string[] } }[]
+    expect(results.map((r) => r.id).sort()).toEqual(['good', 'greedy', 'liar'])
+
+    const byId = Object.fromEntries(results.map((r) => [r.id, r]))
+    expect(byId.good.ok).toBe(true)
+    expect(byId.liar.ok).toBe(false)
+    expect(byId.greedy.ok).toBe(false)
+    expect(byId.greedy.newPermissions?.subscriptions).toEqual(['system'])
+
+    // One record written: the other two are untouched at the version they were.
+    const installed = store.get().marketplace.installed
+    expect(installed.good.version).toBe('2.0.0')
+    expect(installed.liar.version).toBe('1.0.0')
+    expect(installed.greedy.version).toBe('1.0.0')
+  })
+
+  it('updates the one whose consent was given, in the same run', async () => {
+    await threeWaiting()
+    const res = await updateAll({ good: set(), greedy: set({ subscriptions: ['system'] }) })
+    const byId = Object.fromEntries((res.json().results as { id: string; ok: boolean }[]).map((r) => [r.id, r]))
+    expect(byId.greedy.ok).toBe(true)
+    expect(store.get().marketplace.installed.greedy.consentedPermissions.subscriptions).toEqual(['system'])
+  })
+
+  it('answers nothing to update when nothing is waiting', async () => {
+    const res = await updateAll()
+    expect(res.statusCode).toBe(200)
+    expect(res.json().results).toEqual([])
+  })
+
+  it('ignores a widget the caller lists but the server does not think is waiting', async () => {
+    // The server decides what is out of date. A client naming something else is asking for an
+    // install, and this is not the route for that.
+    await install({ id: 'demo', consent: set() })
+    const res = await updateAll({ demo: set(), ghost: set() })
+    expect(res.json().results).toEqual([])
+  })
+
+  it('refuses a cross-site fetch and a body it cannot read', async () => {
+    const cross = await app.inject({
+      method: 'POST', url: '/api/marketplace/update-all',
+      headers: { 'sec-fetch-site': 'cross-site' }, payload: { consent: {} } as never,
+    })
+    expect(cross.statusCode).toBe(403)
+    const bad = await app.inject({ method: 'POST', url: '/api/marketplace/update-all', payload: { consent: { demo: 'yes' } } as never })
+    expect(bad.statusCode).toBe(400)
+  })
+
+  it('answers 503 while the registry is unreachable', async () => {
+    await app.close()
+    await build({ offline: true })
+    expect((await updateAll()).statusCode).toBe(503)
+  })
+})

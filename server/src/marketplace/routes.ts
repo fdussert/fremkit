@@ -60,6 +60,27 @@ const InstallBody = z.object({
 
 const UninstallBody = z.object({ id: z.string().regex(WIDGET_ID_RE) })
 
+/**
+ * "Update everything waiting", with the consent for each one.
+ *
+ * A map rather than a flag: the dialog lists the widgets and what each is newly asking for, and
+ * what it listed is what arrives here. A widget whose entry is missing — or `false` — is held to
+ * the same rule as a single update with no consent, so a bulk update cannot grant in bulk what
+ * was never shown.
+ */
+const UpdateAllBody = z.object({
+  consent: z.record(z.string().regex(WIDGET_ID_RE), z.union([z.literal(false), PermissionSetSchema])).default({}),
+})
+
+/** One widget's outcome in a bulk update. `newPermissions` means it was not attempted. */
+export interface UpdateAllResult {
+  id: string
+  ok: boolean
+  version?: string
+  error?: string
+  newPermissions?: Permissions
+}
+
 /** One row of what the admin shows: the index entry, plus what this machine makes of it. */
 export interface MarketplaceEntry extends IndexWidget {
   installed: boolean
@@ -128,11 +149,18 @@ export async function marketplaceRoutes(app: FastifyInstance, opts: MarketplaceO
    */
   const working = new Set<string>()
 
-  const exclusive = async (id: string, reply: FastifyReply, work: () => Promise<unknown>): Promise<unknown> => {
-    if (working.has(id)) return reply.code(409).send(fail('marketplace.busy'))
+  /** Runs `work` while holding the id, or answers `null` when somebody else already holds it. */
+  const withLock = async <T>(id: string, work: () => Promise<T>): Promise<T | null> => {
+    if (working.has(id)) return null
     working.add(id)
     try { return await work() }
     finally { working.delete(id) }
+  }
+
+  const exclusive = async (id: string, reply: FastifyReply, work: () => Promise<unknown>): Promise<unknown> => {
+    const out = await withLock(id, work)
+    if (out === null) return reply.code(409).send(fail('marketplace.busy'))
+    return out
   }
 
   /** The index, plus what this machine makes of every row. `offline` when it could not be read. */
@@ -164,41 +192,47 @@ export async function marketplaceRoutes(app: FastifyInstance, opts: MarketplaceO
     return answer
   })
 
-  const doInstall = async (req: FastifyRequest, reply: FastifyReply, mode: 'install' | 'update'): Promise<unknown> => {
-    // A write *and* an outbound fetch *and* a disk write. The Origin gate covers the first;
-    // this covers a page that never reads the answer and does not care.
-    if (isCrossSiteFetch(req.headers)) return reply.code(403).send({ errors: [tr(locale(), 'http.originNotAllowed')] })
-    const parsed = InstallBody.safeParse(req.body)
-    if (!parsed.success) return reply.code(400).send(fail('marketplace.badRequest'))
-    const { id, version, consent } = parsed.data
+  /**
+   * One install or update, as a status and a body rather than as an HTTP answer.
+   *
+   * Written this way so "update all" is the same code path run in a series, and not a second,
+   * subtly different one: every check below — the built-in ids, the SDK, the hash, the version
+   * in the package, the consent — has to hold for each widget of a bulk update exactly as it
+   * holds for a single one.
+   */
+  const installOne = async (
+    args: { id: string; version?: string; consent: Permissions | false; mode: 'install' | 'update' },
+    log: FastifyRequest['log'],
+  ): Promise<{ status: number; body: Record<string, unknown> }> => {
+    const { id, version, consent, mode } = args
 
     // The *folder* names, not the entries: a built-in whose manifest fails to parse is an error
     // rather than an entry, and it would have freed its id for an installed widget to take.
-    if (catalog.builtinIds.has(id)) return reply.code(409).send(fail('marketplace.builtinId'))
+    if (catalog.builtinIds.has(id)) return { status: 409, body: fail('marketplace.builtinId') }
     if (mode === 'update' && !store.get().marketplace.installed[id]) {
-      return reply.code(409).send(fail('marketplace.notInstalled'))
+      return { status: 409, body: fail('marketplace.notInstalled') }
     }
 
     let index: RegistryIndex
-    try { index = await registry.index() } catch { return reply.code(503).send(fail('marketplace.unreachable')) }
+    try { index = await registry.index() } catch { return { status: 503, body: fail('marketplace.unreachable') } }
     const widget = index.widgets.find((w) => w.id === id)
-    if (!widget) return reply.code(404).send(fail('marketplace.unknownWidget'))
-    if (widget.sdk > SDK_VERSION) return reply.code(409).send(fail('marketplace.sdkTooNew'))
+    if (!widget) return { status: 404, body: fail('marketplace.unknownWidget') }
+    if (widget.sdk > SDK_VERSION) return { status: 409, body: fail('marketplace.sdkTooNew') }
     const release = releaseOf(widget, version)
-    if (!release) return reply.code(404).send(fail('marketplace.unknownVersion'))
+    if (!release) return { status: 404, body: fail('marketplace.unknownVersion') }
 
     let zip: Buffer
     try { zip = await registry.download(release) }
-    catch (err) { return reply.code(502).send(fail(err instanceof RegistryError ? err.key : 'marketplace.unreachable')) }
+    catch (err) { return { status: 502, body: fail(err instanceof RegistryError ? err.key : 'marketplace.unreachable') } }
 
     let pkg: ReturnType<typeof readPackage>
     try { pkg = readPackage(zip, { id, sha256: release.sha256, size: release.size }, locale()) }
-    catch (err) { return reply.code(422).send(fail(err instanceof InstallError ? err.key : 'marketplace.badPackage')) }
+    catch (err) { return { status: 422, body: fail(err instanceof InstallError ? err.key : 'marketplace.badPackage') } }
 
     // The version in the package must be the one the index sent us to. A zip at the `1.0.0` URL
     // claiming `9.9.9` would otherwise be recorded as 9.9.9, and `updateAvailable` would be
     // false for the rest of that install's life.
-    if (pkg.manifest.version !== release.version) return reply.code(422).send(fail('marketplace.badManifest'))
+    if (pkg.manifest.version !== release.version) return { status: 422, body: fail('marketplace.badManifest') }
 
     // What the widget asks comes from the manifest *inside* the package, never from the index
     // entry that advertised it: the entry is a shop window, and only one of the two was hashed.
@@ -215,11 +249,14 @@ export async function marketplaceRoutes(app: FastifyInstance, opts: MarketplaceO
       // The difference reported is the one against the *grant*, which is what a dialog has to
       // show — and when the index and the package disagree, this is the honest path: the user is
       // asked again, on the package's real ask.
-      return reply.code(409).send({ ...fail('marketplace.consentRequired'), newPermissions: addedPermissions(granted, asked) })
+      return {
+        status: 409,
+        body: { ...fail('marketplace.consentRequired'), newPermissions: addedPermissions(granted, asked) },
+      }
     }
 
     try { await writePackage(installedDir, id, pkg.files) }
-    catch (err) { req.log.warn({ err }, 'marketplace install could not write the widget'); return reply.code(500).send(fail('marketplace.writeFailed')) }
+    catch (err) { log.warn({ err }, 'marketplace install could not write the widget'); return { status: 500, body: fail('marketplace.writeFailed') } }
 
     await catalog.scan()
 
@@ -239,11 +276,22 @@ export async function marketplaceRoutes(app: FastifyInstance, opts: MarketplaceO
     } catch (err) {
       // The files are on disk but nothing granted them anything; `effectiveManifest` gives a
       // widget with no record nothing at all, so this fails closed rather than open.
-      req.log.warn({ err }, 'marketplace install could not record the consent')
-      return reply.code(500).send(fail('marketplace.writeFailed'))
+      log.warn({ err }, 'marketplace install could not record the consent')
+      return { status: 500, body: fail('marketplace.writeFailed') }
     }
 
-    return reply.send({ ok: true, id, version: pkg.manifest.version, consentedPermissions: asked })
+    return { status: 200, body: { ok: true, id, version: pkg.manifest.version, consentedPermissions: asked } }
+  }
+
+  const doInstall = async (req: FastifyRequest, reply: FastifyReply, mode: 'install' | 'update'): Promise<unknown> => {
+    // A write *and* an outbound fetch *and* a disk write. The Origin gate covers the first;
+    // this covers a page that never reads the answer and does not care.
+    if (isCrossSiteFetch(req.headers)) return reply.code(403).send({ errors: [tr(locale(), 'http.originNotAllowed')] })
+    const parsed = InstallBody.safeParse(req.body)
+    if (!parsed.success) return reply.code(400).send(fail('marketplace.badRequest'))
+    const { id, version, consent } = parsed.data
+    const out = await installOne({ id, version, consent, mode }, req.log)
+    return reply.code(out.status).send(out.body)
   }
 
   /** The id for the lock, read before the body is trusted for anything else. */
@@ -261,6 +309,52 @@ export async function marketplaceRoutes(app: FastifyInstance, opts: MarketplaceO
     const id = lockId(req.body)
     if (!id) return doInstall(req, reply, 'update')
     return exclusive(id, reply, () => doInstall(req, reply, 'update'))
+  })
+
+  /**
+   * Updates every installed widget the registry has something newer for.
+   *
+   * In sequence, each through `installOne` and each under the per-id lock, and **never stopping
+   * on a failure**: a run of five where the second package does not match its hash must still
+   * update the other four, and the answer has to say which was which. So the status is 200 with
+   * a result per widget rather than the first error — the caller paints them per row.
+   */
+  app.post('/api/marketplace/update-all', async (req, reply) => {
+    if (isCrossSiteFetch(req.headers)) return reply.code(403).send({ errors: [tr(locale(), 'http.originNotAllowed')] })
+    const parsed = UpdateAllBody.safeParse(req.body)
+    if (!parsed.success) return reply.code(400).send(fail('marketplace.badRequest'))
+    const consents = parsed.data.consent
+
+    let index: RegistryIndex
+    try { index = await registry.index() } catch { return reply.code(503).send(fail('marketplace.unreachable')) }
+
+    const config = store.get()
+    // What the server itself thinks is waiting, not what the caller listed: a client asking to
+    // update something that is not installed, or not out of date, is asking for an install.
+    const waiting = index.widgets.filter((w) => {
+      const record = config.marketplace.installed[w.id]
+      return Boolean(record) && catalog.entry(w.id)?.source === 'installed'
+        && compareSemver(w.version, record.version) > 0
+    })
+
+    const results: UpdateAllResult[] = []
+    for (const widget of waiting) {
+      const out = await withLock(widget.id, () =>
+        installOne({ id: widget.id, consent: consents[widget.id] ?? false, mode: 'update' }, req.log))
+      if (out === null) { results.push({ id: widget.id, ok: false, error: tr(locale(), 'marketplace.busy') }); continue }
+      if (out.status === 200) {
+        results.push({ id: widget.id, ok: true, version: String(out.body.version ?? '') })
+        continue
+      }
+      const errors = out.body.errors
+      results.push({
+        id: widget.id,
+        ok: false,
+        error: Array.isArray(errors) ? String(errors[0]) : tr(locale(), 'marketplace.writeFailed'),
+        ...(out.body.newPermissions ? { newPermissions: out.body.newPermissions as Permissions } : {}),
+      })
+    }
+    return reply.send({ results })
   })
 
   app.post('/api/marketplace/uninstall', async (req, reply) => {
