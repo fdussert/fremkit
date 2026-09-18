@@ -22,11 +22,22 @@ export const INDEX_SCHEMA = 1
 
 const LocalizedTextSchema = z.union([z.string(), z.record(z.string(), z.string())])
 const Sha256Schema = z.string().regex(/^[0-9a-f]{64}$/)
+
+/**
+ * A package URL, by shape only.
+ *
+ * The rule that matters is not "https" — it is "on the registry's own host, with the registry's
+ * own scheme", and only `Registry` knows what that host is. It applies it to every URL in the
+ * index before the index is accepted, which is both stricter than a scheme check here and the
+ * reason a development registry on `http://127.0.0.1` can exist without this file knowing.
+ */
+const PackageUrl = z.url()
+/** A link the admin renders. Not a registry file, so https and nothing else. */
 const HttpsUrl = z.url({ protocol: /^https$/ })
 
 const DownloadSchema = z.object({
   version: z.string().regex(SEMVER_RE),
-  url: HttpsUrl,
+  url: PackageUrl,
   sha256: Sha256Schema,
   size: z.number().int().min(1),
 })
@@ -52,7 +63,7 @@ export const IndexWidgetSchema = z.object({
   connections: z.array(z.string()).default([]),
   size: z.number().int().min(1),
   sha256: Sha256Schema,
-  url: HttpsUrl,
+  url: PackageUrl,
   publishedAt: z.iso.datetime(),
   previous: z.array(DownloadSchema).default([]),
 })

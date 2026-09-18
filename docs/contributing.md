@@ -48,6 +48,36 @@ trusted to save this dashboard's config. Running Vite by hand (`pnpm --filter ui
 server started without the flag gives a dashboard whose WebSocket is refused — export
 `FREMKIT_DEV=1` for the server too.
 
+### Installing from a registry you are building
+
+The widget registry is a constant: one host, `https`, private addresses refused. That is right
+for an installed Fremkit and useless while nothing is published yet, so `FREMKIT_REGISTRY_URL`
+points the installer somewhere else — honoured **only** under `FREMKIT_DEV=1`, and ignored with
+a line on stderr otherwise. An environment variable that quietly redirected where a Fremkit
+installs widgets from would be the worst kind of quiet.
+
+```sh
+# in fremkit-sietch: build the index and the zips, and serve dist/
+pnpm build && npx serve dist -l 8080
+
+# in fremkit: a bench server that installs from it
+FREMKIT_DEV=1 FREMKIT_REGISTRY_URL=http://127.0.0.1:8080/index.json \
+  FREMKIT_PORT=4301 FREMKIT_DATA_DIR=/tmp/fremkit-bench pnpm start
+```
+
+The index carries absolute URLs, and by default they are on the Pages origin — which a locally
+served `dist/` is not. So the registry's build takes `FREMKIT_REGISTRY_BASE`:
+
+```sh
+FREMKIT_REGISTRY_BASE=http://127.0.0.1:8080 pnpm build
+```
+
+Under the override, `dev: true` relaxes exactly two things, and only for the registry's own
+host: the scheme may be `http:`, and the address may be a private or loopback one. Everything
+else holds — every package URL must still be on that same host *with that same scheme*, the
+size ceilings, the refused redirect, the sha256, the manifest and the package rules. Moving one
+address is the point; lowering the bar is not.
+
 ## Running against another data directory
 
 `FREMKIT_DATA_DIR` moves the config, the background library and the caches somewhere else. It

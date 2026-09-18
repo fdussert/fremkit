@@ -26,9 +26,29 @@ if (configured && !isAbsolute(configured)) {
 }
 const dataDir = configured || `${root}/data`
 
+/**
+ * A registry served from somewhere else, for development only.
+ *
+ * The production registry is a constant: one host, https, private addresses refused. That is
+ * right, and it makes the install path untestable until something is actually published — so
+ * `FREMKIT_REGISTRY_URL` can point at a locally built one, and is honoured **only** under
+ * `FREMKIT_DEV=1`. Outside that it is ignored, loudly: an environment variable that silently
+ * redirected where a Fremkit installs widgets from would be the worst kind of quiet.
+ */
+const dev = process.env.FREMKIT_DEV === '1'
+const requestedRegistry = process.env.FREMKIT_REGISTRY_URL
+let registryUrl: string | undefined
+if (requestedRegistry && !dev) {
+  console.error('fremkit: FREMKIT_REGISTRY_URL is ignored without FREMKIT_DEV=1; using the published registry')
+} else if (requestedRegistry) {
+  registryUrl = requestedRegistry
+  console.error(`fremkit: FREMKIT_DEV=1, installing widgets from ${requestedRegistry}`)
+}
+
 const app = await buildApp({
   dataDir,
   widgetsDir: `${root}/widgets`,
+  ...(registryUrl ? { registryUrl, registryDev: true } : {}),
   uiDist: `${root}/ui/dist`,
   providers,
   logger: true,

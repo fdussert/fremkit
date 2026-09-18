@@ -149,3 +149,69 @@ describe('releaseOf', () => {
     expect(releaseOf(entry, '0.8.0')).toBeUndefined()
   })
 })
+
+describe('the development override', () => {
+  const LOCAL = 'http://127.0.0.1:8080/index.json'
+
+  function localIndex(over: Record<string, unknown> = {}): Record<string, unknown> {
+    return {
+      registry: 'fremkit-sietch', generatedAt: '2026-09-18T12:00:00.000Z', schema: 1,
+      widgets: [widget({ url: 'http://127.0.0.1:8080/widgets/demo-1.0.0.zip', ...over })],
+    }
+  }
+
+  /** A private address, answered honestly — which is what the production rules refuse. */
+  const PRIVATE = async (): Promise<boolean> => true
+
+  it('refuses a local registry by default', async () => {
+    const registry = new Registry({
+      url: LOCAL, isPrivate: PRIVATE,
+      fetch: (async () => new Response(JSON.stringify(localIndex()))) as never,
+    })
+    await expect(registry.index()).rejects.toMatchObject({ key: 'marketplace.badUrl' })
+  })
+
+  it('accepts one under dev, http and loopback included', async () => {
+    const registry = new Registry({
+      url: LOCAL, dev: true, isPrivate: PRIVATE,
+      fetch: (async () => new Response(JSON.stringify(localIndex()))) as never,
+    })
+    const read = await registry.index()
+    expect(read.widgets[0].url).toBe('http://127.0.0.1:8080/widgets/demo-1.0.0.zip')
+  })
+
+  it('still refuses a package URL on another host under dev', async () => {
+    const registry = new Registry({
+      url: LOCAL, dev: true, isPrivate: PRIVATE,
+      fetch: (async () => new Response(JSON.stringify(localIndex({ url: 'http://evil.example.net/demo.zip' })))) as never,
+    })
+    await expect(registry.index()).rejects.toMatchObject({ key: 'marketplace.badUrl' })
+  })
+
+  it('still refuses a download on another host, and one over the ceiling, under dev', async () => {
+    const registry = new Registry({
+      url: LOCAL, dev: true, isPrivate: PRIVATE,
+      fetch: (async () => new Response(new Uint8Array(Buffer.from('zip')))) as never,
+    })
+    await expect(registry.download({ url: 'http://evil.example.net/a.zip', sha256: HASH, size: 3 }))
+      .rejects.toMatchObject({ key: 'marketplace.badUrl' })
+    await expect(registry.download({ url: 'http://127.0.0.1:8080/a.zip', sha256: HASH, size: 99 * 1024 * 1024 }))
+      .rejects.toMatchObject({ key: 'marketplace.tooLarge' })
+  })
+
+  it('refuses an https package URL from an http dev registry: one scheme, not a mixed case', async () => {
+    const registry = new Registry({
+      url: LOCAL, dev: true, isPrivate: PRIVATE,
+      fetch: (async () => new Response(JSON.stringify(localIndex({ url: 'https://127.0.0.1:8080/demo.zip' })))) as never,
+    })
+    await expect(registry.index()).rejects.toMatchObject({ key: 'marketplace.badUrl' })
+  })
+
+  it('still refuses a redirect under dev', async () => {
+    const registry = new Registry({
+      url: LOCAL, dev: true, isPrivate: PRIVATE,
+      fetch: (async () => new Response('', { status: 302 })) as never,
+    })
+    await expect(registry.index()).rejects.toMatchObject({ key: 'marketplace.unreachable' })
+  })
+})

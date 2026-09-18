@@ -42,6 +42,16 @@ export type Fetcher = (url: string, init: { signal: AbortSignal; headers: Record
 
 export interface RegistryOptions {
   url?: string
+  /**
+   * Development only, and only for the registry's *own* host: accept `http:` and a private or
+   * loopback address, so a registry built and served locally can be installed from before
+   * anything is published. `server/src/index.ts` sets it from `FREMKIT_DEV=1`.
+   *
+   * Nothing else relaxes. Every package URL must still be on the registry's host, the size caps
+   * hold, the redirect refusal holds, the hash and the manifest checks hold. The whole point is
+   * to move one address, not to lower the bar.
+   */
+  dev?: boolean
   /** Injected by the tests; production uses the global `fetch`. */
   fetch?: Fetcher
   isPrivate?: (host: string) => Promise<boolean>
@@ -71,12 +81,15 @@ export class Registry {
   private inFlight: Promise<RegistryIndex> | null = null
 
   readonly url: string
+  /** True while the local-registry override is in force; see `RegistryOptions.dev`. */
+  readonly dev: boolean
   private readonly doFetch: Fetcher
   private readonly isPrivate: (host: string) => Promise<boolean>
   private readonly now: () => number
 
   constructor(opts: RegistryOptions = {}) {
     this.url = opts.url ?? REGISTRY_URL
+    this.dev = opts.dev === true
     this.doFetch = opts.fetch ?? ((url, init) => fetch(url, { ...init, redirect: 'manual' }))
     this.isPrivate = opts.isPrivate ?? resolvesToPrivate
     this.now = opts.now ?? Date.now
@@ -123,11 +136,21 @@ export class Registry {
     return parsed.data
   }
 
-  /** True when a URL is https and on the registry's own host. */
+  /** The scheme the registry's own URL uses, which is the only one its files may use. */
+  private get scheme(): string { return new URL(this.url).protocol }
+
+  /**
+   * True when a URL is on the registry's own host, with the registry's own scheme.
+   *
+   * Not "https and the host": in development the registry may be an `http://127.0.0.1` one, and
+   * then its packages are on that same origin. Reading the scheme off `this.url` keeps the rule
+   * one rule — a production registry is https, so its packages must be too, and there is no
+   * mixed case where an https index may name http downloads.
+   */
   onRegistryHost(url: string): boolean {
     try {
       const parsed = new URL(url)
-      return parsed.protocol === 'https:' && parsed.hostname === this.host
+      return parsed.protocol === this.scheme && parsed.hostname === this.host
     } catch { return false }
   }
 
@@ -146,8 +169,15 @@ export class Registry {
 
   private async get(url: string, max: number, timeout = INDEX_TIMEOUT_MS): Promise<Buffer> {
     const parsed = new URL(url)
-    if (parsed.protocol !== 'https:') throw new RegistryError('marketplace.badUrl')
-    if (await this.isPrivate(parsed.hostname)) throw new RegistryError('marketplace.badUrl')
+    // In development the registry is whatever `FREMKIT_REGISTRY_URL` named — `http:` and a
+    // loopback address included — but still only that one host: `onRegistryHost` has already
+    // been applied to every URL this method is ever given.
+    if (!this.dev) {
+      if (parsed.protocol !== 'https:') throw new RegistryError('marketplace.badUrl')
+      if (await this.isPrivate(parsed.hostname)) throw new RegistryError('marketplace.badUrl')
+    } else if (!this.onRegistryHost(url)) {
+      throw new RegistryError('marketplace.badUrl')
+    }
     let res: Response
     try {
       res = await this.doFetch(url, {

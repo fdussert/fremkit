@@ -54,6 +54,10 @@ import { tr } from './i18n.js'
 export interface AppOptions {
   dataDir: string
   widgetsDir: string
+  /** Development only: a registry served from somewhere else. See `server/src/index.ts`. */
+  registryUrl?: string
+  /** Set with `registryUrl`, and only under `FREMKIT_DEV=1`; see `RegistryOptions.dev`. */
+  registryDev?: boolean
   uiDist?: string
   providers?: Provider[]
   logger?: boolean
@@ -180,7 +184,11 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   await app.register(connectionRoutes, { store, catalog, types: connectionTypes, manager: connections, secrets })
   await app.register(widgetRoutes, { catalog, store })
   await app.register(proxyRoutes, { catalog, store })
-  await app.register(marketplaceRoutes, { store, catalog, registry: new Registry(), installedDir })
+  const marketplaceRegistry = new Registry({
+    ...(opts.registryUrl ? { url: opts.registryUrl } : {}),
+    ...(opts.registryDev ? { dev: true } : {}),
+  })
+  await app.register(marketplaceRoutes, { store, catalog, registry: marketplaceRegistry, installedDir })
   await app.register(backgroundRoutes, { dataDir: opts.dataDir })
   await app.register(backupRoutes, {
     store,
