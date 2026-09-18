@@ -311,7 +311,10 @@ describe('GET /api/favicon', () => {
     const calls: string[] = []
     const store = new FaviconStore({ dir, fetchImpl: fakeFetch({}, calls) })
     for (const url of ['http://127.0.0.1:4242/', 'http://localhost:4242/', 'http://169.254.169.254/',
-      'http://10.0.0.1/', 'http://[::1]/']) {
+      'http://10.0.0.1/', 'http://[::1]/',
+      // Hex IPv4-mapped IPv6, which is what new URL() canonicalises [::ffff:127.0.0.1] to.
+      'http://[::ffff:7f00:1]/', 'http://[::ffff:127.0.0.1]/', 'http://[::7f00:1]/',
+      'http://[::ffff:a9fe:a9fe]/']) {
       const res = await app(store).inject({ url: `/api/favicon?url=${encodeURIComponent(url)}` })
       expect(res.statusCode, url).toBe(404)
     }

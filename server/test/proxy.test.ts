@@ -129,6 +129,19 @@ describe('proxy hardening', () => {
     expect(res.json().error).toMatch(/hôte privé ou local/)
   })
 
+  it('refuses loopback written as an IPv4-mapped IPv6 address', async () => {
+    // `new URL()` canonicalises `[::ffff:127.0.0.1]` to `[::ffff:7f00:1]`, and the hex form used
+    // to read as a public address — so a manifest naming it proxied any local service.
+    for (const host of ['[::ffff:7f00:1]', '[::ffff:127.0.0.1]', '[::7f00:1]', '[::1]',
+      '[0:0:0:0:0:ffff:7f00:1]']) {
+      const url = `http://${host}:${port}/x`
+      const res = await app([new URL(url).hostname], { real: true })
+        .inject({ url: `/api/proxy/weather?url=${encodeURIComponent(url)}` })
+      expect(res.statusCode, host).toBe(403)
+      expect(res.json().error, host).toMatch(/hôte privé ou local/)
+    }
+  })
+
   it('says nothing about why the upstream failed', async () => {
     const res = await app(['127.0.0.1']).inject({
       url: `/api/proxy/weather?url=${encodeURIComponent('http://127.0.0.1:1/secret-path?key=hunter2')}`,

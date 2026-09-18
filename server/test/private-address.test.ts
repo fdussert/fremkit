@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { isAddressLiteral, isPrivateAddress, isPrivateLiteral, resolvesToPrivate } from '../src/net/private.js'
+import { embeddedIpv4, expandIpv6, isAddressLiteral, isPrivateAddress, isPrivateLiteral, resolvesToPrivate } from '../src/net/private.js'
 
 describe('isPrivateAddress', () => {
   it('knows the IPv4 ranges a widget must not reach', () => {
@@ -23,6 +23,27 @@ describe('isPrivateAddress', () => {
     }
     for (const ip of ['2001:db8::1', '2606:4700::1111', '::ffff:198.51.100.7']) {
       expect(isPrivateAddress(ip), ip).toBe(false)
+    }
+  })
+
+  it('reads an IPv4 an IPv6 address carries however it is spelled', () => {
+    // `new URL()` canonicalises `[::ffff:127.0.0.1]` to `[::ffff:7f00:1]`, and a check that only
+    // knew the dotted form let every one of these reach the loopback stack. A widget declaring
+    // `permissions.network: ["[::ffff:7f00:1]"]` proxied any local service.
+    for (const ip of ['::ffff:7f00:1', '[::ffff:7f00:1]', '0:0:0:0:0:ffff:7f00:1',
+      '::7f00:1', '::127.0.0.1', '::ffff:a9fe:a9fe', '::ffff:c0a8:1', '::ffff:0a00:1',
+      '0000:0000:0000:0000:0000:ffff:7f00:0001']) {
+      expect(isPrivateAddress(ip), ip).toBe(true)
+    }
+    // A carried public IPv4 stays public, in hex as in dots.
+    for (const ip of ['::ffff:c633:6407', '::ffff:198.51.100.7', '::ffff:0808:0808']) {
+      expect(isPrivateAddress(ip), ip).toBe(false)
+    }
+  })
+
+  it('refuses an IPv6 literal it cannot read rather than guessing', () => {
+    for (const ip of ['1:2:3:4:5:6:7:8:9', '::ffff:999.1.1.1', 'gggg::1', '1::2::3', ':::1', '::ffff:1.2.3']) {
+      expect(isPrivateAddress(ip), ip).toBe(true)
     }
   })
   it('refuses anything it cannot read as an address', () => {
@@ -71,5 +92,37 @@ describe('resolvesToPrivate', () => {
   it('treats a name it cannot resolve as private', async () => {
     expect(await resolvesToPrivate('ghost.invalid', resolving())).toBe(true)
     expect(await resolvesToPrivate('ghost.invalid', async () => { throw new Error('ENOTFOUND') })).toBe(true)
+  })
+})
+
+describe('expandIpv6', () => {
+  it('expands :: and a trailing dotted quad to eight groups', () => {
+    expect(expandIpv6('::1')).toEqual([0, 0, 0, 0, 0, 0, 0, 1])
+    expect(expandIpv6('::')).toEqual([0, 0, 0, 0, 0, 0, 0, 0])
+    expect(expandIpv6('2001:db8::1')).toEqual([0x2001, 0xdb8, 0, 0, 0, 0, 0, 1])
+    expect(expandIpv6('::ffff:127.0.0.1')).toEqual([0, 0, 0, 0, 0, 0xffff, 0x7f00, 1])
+    expect(expandIpv6('[::ffff:7f00:1]')).toEqual([0, 0, 0, 0, 0, 0xffff, 0x7f00, 1])
+    expect(expandIpv6('1:2:3:4:5:6:7:8')).toEqual([1, 2, 3, 4, 5, 6, 7, 8])
+    expect(expandIpv6('0:0:0:0:0:ffff:1.2.3.4')).toEqual([0, 0, 0, 0, 0, 0xffff, 0x102, 0x304])
+  })
+  it('answers null for anything that is not eight readable groups', () => {
+    for (const ip of ['1:2:3:4:5:6:7:8:9', '1:2:3:4:5:6:7', 'gggg::1', '1::2::3',
+      '::ffff:1.2.3', '::ffff:256.0.0.1', '127.0.0.1', '']) {
+      expect(expandIpv6(ip), ip).toBeNull()
+    }
+  })
+})
+
+describe('embeddedIpv4', () => {
+  it('reads the mapped and the deprecated compatible forms', () => {
+    expect(embeddedIpv4([0, 0, 0, 0, 0, 0xffff, 0x7f00, 1])).toBe('127.0.0.1')
+    expect(embeddedIpv4([0, 0, 0, 0, 0, 0, 0x7f00, 1])).toBe('127.0.0.1')
+    expect(embeddedIpv4([0, 0, 0, 0, 0, 0xffff, 0xa9fe, 0xa9fe])).toBe('169.254.169.254')
+  })
+  it('carries none for a real IPv6 address, or for :: and ::1', () => {
+    expect(embeddedIpv4([0x2001, 0xdb8, 0, 0, 0, 0, 0, 1])).toBeNull()
+    expect(embeddedIpv4([0, 0, 0, 0, 0, 0, 0, 0])).toBeNull()
+    expect(embeddedIpv4([0, 0, 0, 0, 0, 0, 0, 1])).toBeNull()
+    expect(embeddedIpv4([0, 0, 0, 0, 1, 0xffff, 0x7f00, 1])).toBeNull()
   })
 })
