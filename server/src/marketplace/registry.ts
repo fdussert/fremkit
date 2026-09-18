@@ -133,8 +133,10 @@ export class Registry {
     const parsed = RegistryIndexSchema.safeParse(json)
     if (!parsed.success) throw new RegistryError('marketplace.badIndex')
     // Every URL the index names, checked once, here — so nothing downstream has to remember to.
-    for (const widget of parsed.data.widgets) {
-      for (const url of [widget.url, ...widget.previous.map((p) => p.url)]) {
+    // Themes as well as widgets: a package is a package, and an index naming a download on
+    // another server is refused whole rather than partly.
+    for (const entry of [...parsed.data.widgets, ...parsed.data.themes]) {
+      for (const url of [entry.url, ...entry.previous.map((p) => p.url)]) {
         if (!this.onRegistryHost(url)) throw new RegistryError('marketplace.badUrl')
       }
     }

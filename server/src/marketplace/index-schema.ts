@@ -69,10 +69,49 @@ export const IndexWidgetSchema = z.object({
 })
 export type IndexWidget = z.infer<typeof IndexWidgetSchema>
 
+/**
+ * A theme, as the index lists it.
+ *
+ * No `sdk`, no `permissions`, no `connections`: a theme is a JSON file of colour tokens, it runs
+ * nothing and reaches nothing, and there is nothing for a user to consent to. What it carries
+ * that a widget does not is `tokens` — the four the admin paints as a swatch strip, so a theme
+ * needs no preview image and a card needs no second request.
+ *
+ * Nothing reads this yet. It is here so an index that already lists themes parses on a Fremkit
+ * that cannot install them, rather than being refused whole.
+ */
+export const IndexThemeSchema = z.object({
+  id: z.string().regex(WIDGET_ID_RE),
+  version: z.string().regex(SEMVER_RE),
+  name: LocalizedTextSchema,
+  description: LocalizedTextSchema,
+  author: z.string().max(200).optional(),
+  license: z.string().max(64).optional(),
+  homepage: HttpsUrl.optional(),
+  tokens: z.object({
+    accent: z.string().min(1).max(64),
+    bg: z.string().min(1).max(64),
+    surface: z.string().min(1).max(64),
+    text: z.string().min(1).max(64),
+  }),
+  size: z.number().int().min(1),
+  sha256: Sha256Schema,
+  url: PackageUrl,
+  publishedAt: z.iso.datetime(),
+  previous: z.array(DownloadSchema).default([]),
+})
+export type IndexTheme = z.infer<typeof IndexThemeSchema>
+
 export const RegistryIndexSchema = z.object({
   registry: z.string().min(1).max(64),
   generatedAt: z.iso.datetime(),
   schema: z.literal(INDEX_SCHEMA),
   widgets: z.array(IndexWidgetSchema),
+  /**
+   * Absent from the indexes published before themes existed, which is why it defaults rather
+   * than being required — and why `schema` does not move: a Fremkit that ignores the key reads
+   * such an index exactly as it did before, and one that reads it finds an empty list.
+   */
+  themes: z.array(IndexThemeSchema).default([]),
 })
 export type RegistryIndex = z.infer<typeof RegistryIndexSchema>

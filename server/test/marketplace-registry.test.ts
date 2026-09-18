@@ -236,3 +236,47 @@ describe('the development override', () => {
     await expect(registry.index()).rejects.toMatchObject({ key: 'marketplace.unreachable' })
   })
 })
+
+describe('themes in the index', () => {
+  const theme = (over: Record<string, unknown> = {}): Record<string, unknown> => ({
+    id: 'nuit', version: '1.0.0',
+    name: { fr: 'Nuit', en: 'Night' }, description: { fr: 'Sombre', en: 'Dark' },
+    tokens: { accent: '#d9b36a', bg: '#0b0d10', surface: '#151a21', text: '#e6e8eb' },
+    size: 400, sha256: HASH, url: `https://${HOST}/themes/nuit-1.0.0.zip`,
+    publishedAt: '2026-09-18T12:00:00.000Z', previous: [],
+    ...over,
+  })
+
+  it('defaults to an empty list, so an index without the key still reads', async () => {
+    const { registry } = make(JSON.stringify(index()))
+    expect((await registry.index()).themes).toEqual([])
+  })
+
+  it('reads a theme entry beside the widgets', async () => {
+    const { registry } = make(JSON.stringify(index({ themes: [theme()] })))
+    const read = await registry.index()
+    expect(read.widgets[0].id).toBe('demo')
+    expect(read.themes[0].tokens.accent).toBe('#d9b36a')
+  })
+
+  it('holds a theme URL to the registry host like a widget\'s', async () => {
+    const off = index({ themes: [theme({ url: 'https://evil.example.net/nuit.zip' })] })
+    await expect(make(JSON.stringify(off)).registry.index()).rejects.toMatchObject({ key: 'marketplace.badUrl' })
+    const offPrevious = index({ themes: [theme({ previous: [{ version: '0.9.0', url: 'https://evil.example.net/a.zip', sha256: HASH, size: 10 }] })] })
+    await expect(make(JSON.stringify(offPrevious)).registry.index()).rejects.toMatchObject({ key: 'marketplace.badUrl' })
+  })
+
+  it('refuses a theme entry that does not validate, rather than dropping it', async () => {
+    // An index is accepted whole or not at all: a half-read one would have the admin show a
+    // registry that is quietly missing things.
+    for (const over of [{ tokens: { accent: '#fff' } }, { version: 'latest' }, { sha256: 'nope' }]) {
+      const bad = index({ themes: [theme(over)] })
+      await expect(make(JSON.stringify(bad)).registry.index(), JSON.stringify(over)).rejects.toThrow(RegistryError)
+    }
+  })
+
+  it('does not move the schema version for the new key', async () => {
+    const { registry } = make(JSON.stringify(index({ themes: [theme()] })))
+    expect((await registry.index()).schema).toBe(1)
+  })
+})
