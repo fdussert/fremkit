@@ -255,7 +255,7 @@ how an update asks again: **[docs/marketplace.md](docs/marketplace.md)**.
 | GitHub | a personal access token — classic for the notifications, fine-grained enough for reviews, pull requests and Actions — optionally an Enterprise API host | `github-inbox`, `github-actions` |
 | Homey Pro | the Homey's address, an API key with Devices and Flows in read and control | `homey-devices`, `homey-flows` |
 | ICS calendar | the published calendar address, a colour | `calendar` |
-| Synology | the NAS address, a dedicated read-only DSM account and its password | `synology-storage`, `synology-system` (from the registry) |
+| Synology | the NAS address, a dedicated DSM account in the administrators group (no shared folder, DSM application only) and its password | `synology-storage`, `synology-system` (from the registry) |
 ![The Connections dialog](docs/images/admin-connections.png)
 
 How to obtain each credential, what is stored where, and what is never logged:
