@@ -45,7 +45,7 @@ describe('a tile with no widget behind it', () => {
 
 describe('a bar slot with no widget behind it', () => {
   it('spends its one line on the words rather than on the id', () => {
-    const wrapper = mount(CompactWidgetFrame, { props: { navWidget, width: 5, cell: 40 } })
+    const wrapper = mount(CompactWidgetFrame, { props: { navWidget, cell: 40, height: 80 } })
     const missing = wrapper.find('.missing')
     expect(missing.text()).toMatch(/non installé|not installed/)
     expect(missing.text()).not.toContain('homey-devices')
