@@ -157,6 +157,19 @@ describe('what counts as a secret', () => {
       expect(isSecret(text), text).toBe(false)
     }
   })
+  it('leaves an accented or capitalised word alone', () => {
+    // `[^A-Za-z0-9]` counted the `è` of `problème` as a symbol, so every accented French word
+    // scored two classes and was masked — as was any capitalised word of eight letters.
+    for (const text of ['problème', 'Dashboard', 'événement', 'téléphone', 'Rétrospective',
+      'Écran', 'Widget', 'Ordinateur']) {
+      expect(isSecret(text), text).toBe(false)
+    }
+  })
+  it('still masks a short token once it carries a digit or a third class', () => {
+    for (const text of ['Passw0rd', 'aB3dEf9h', 'mot2passe', 'Été2026!']) {
+      expect(isSecret(text), text).toBe(true)
+    }
+  })
   it('leaves a destination alone: a URL or an address is copied to go somewhere', () => {
     // These mix character classes, and masking every one of them would empty the widget of
     // everything useful.
@@ -194,11 +207,17 @@ describe('a pasteboard that asks not to be remembered', () => {
     }
   })
 
-  it('does not even read the text of a concealed pasteboard', async () => {
+  it('never records the text of a concealed pasteboard, nor remembers having seen it', async () => {
+    // The text *is* read: knowing whether the pasteboard changed is what lets us skip the
+    // expensive type question on an unchanged one, and that needs the bytes. It goes no further
+    // than a local variable — never into the history, never published, never on disk.
     const read = vi.fn(async () => 'the password itself')
     const p = createClipboardProvider({ read, write: async () => {}, types: async () => ['org.nspasteboard.ConcealedType'] })
-    await p.poll!()
-    expect(read).not.toHaveBeenCalled()
+    expect((await p.poll!() as { entries: unknown[] }).entries).toEqual([])
+    // And it is asked again next time rather than treated as already seen: a later copy of the
+    // same text from somewhere that does not conceal it is the user's to keep.
+    expect((await p.poll!() as { entries: unknown[] }).entries).toEqual([])
+    expect(read).toHaveBeenCalledTimes(2)
   })
 
   it('records an ordinary pasteboard as before', async () => {
@@ -209,12 +228,36 @@ describe('a pasteboard that asks not to be remembered', () => {
 
   it('records as before on a machine that cannot answer the type question', async () => {
     // No `types` at all, and one that throws: both get the old behaviour, not an empty widget.
+    // The rejection used to be caught by the same try as the read, which emptied the widget.
     const without = createClipboardProvider({ read: async () => 'plain text here', write: async () => {} })
     expect((await without.poll!() as { entries: unknown[] }).entries).toHaveLength(1)
     const throwing = createClipboardProvider({
       read: async () => 'plain text here', write: async () => {},
       types: async () => { throw new Error('osascript missing') },
     })
-    expect((await throwing.poll!() as { entries: unknown[] }).entries).toHaveLength(0)
+    expect((await throwing.poll!() as { entries: unknown[] }).entries).toHaveLength(1)
+  })
+
+  it('asks for the types only when the text on the pasteboard changed', async () => {
+    // `osascript -l JavaScript` with an AppKit import is 100-200 ms of CPU, and this polls every
+    // second for as long as the dashboard is up.
+    let text = 'first thing'
+    const types = vi.fn(async () => ['public.utf8-plain-text'])
+    const p = createClipboardProvider({ read: async () => text, write: async () => {}, types })
+    await p.poll!()
+    expect(types).toHaveBeenCalledTimes(1)
+    await p.poll!()
+    await p.poll!()
+    expect(types).toHaveBeenCalledTimes(1)
+    text = 'something else'
+    await p.poll!()
+    expect(types).toHaveBeenCalledTimes(2)
+  })
+
+  it('does not ask for the types of an empty pasteboard', async () => {
+    const types = vi.fn(async () => [])
+    const p = createClipboardProvider({ read: async () => '   ', write: async () => {}, types })
+    await p.poll!()
+    expect(types).not.toHaveBeenCalled()
   })
 })
