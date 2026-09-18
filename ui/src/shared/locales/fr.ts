@@ -37,6 +37,7 @@ export const fr: Record<string, string> = {
   'admin.market.offline': 'Registre injoignable. La dernière liste connue est affichée.',
   'admin.market.empty': 'Aucun widget publié pour l’instant.',
   'admin.market.noMatch': 'Aucun widget ne correspond.',
+  'admin.market.working': 'en cours…',
   'admin.market.install': 'Installer',
   'admin.market.update': 'Mettre à jour',
   'admin.market.uninstall': 'Désinstaller',
@@ -61,6 +62,9 @@ export const fr: Record<string, string> = {
   'admin.permissions.reads.short': 'lit {n}',
   'admin.permissions.controls.short': 'commande {n}',
   'admin.permissions.network.short': 'réseau {n}',
+  'admin.permissions.notGranted': 'Demandé, non accordé',
+  'admin.permissions.notGranted.short': '{n} non accordé(s)',
+  'admin.permissions.notGrantedNote': 'Une nouvelle version du widget demande ceci ; il ne l’obtiendra pas avant que vous l’acceptiez dans Parcourir.',
   'admin.permissions.none': 'ne demande rien',
   'admin.permissions.note': 'Déclaré par l’auteur du widget dans son manifeste, et imposé par le serveur. Un widget ne peut pas lire un canal qui n’est pas listé ici, ni joindre un autre hôte.',
 

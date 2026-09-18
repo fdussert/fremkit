@@ -354,9 +354,15 @@ export interface MarketplaceResponse {
 }
 
 export interface WidgetsResponse {
+  /** Narrowed to what was granted; this is what the bridge enforces and the dashboard reads. */
   widgets: Record<string, WidgetManifest>; errors: { id: string; error: string }[]
   /** One entry per widget in `widgets`; a fact about the folder, not a claim of the manifest. */
   sources: Record<string, WidgetSource>
+  /**
+   * What each manifest *asks* for, un-narrowed. Admin only: "asks for X, granted Y" is the one
+   * way to tell a widget quietly missing a permission from one that never wanted it.
+   */
+  asks: Record<string, WidgetPermissionSet>
   /** The SDK generation this server speaks; a manifest asking for more needs a newer Fremkit. */
   sdk: number
 }

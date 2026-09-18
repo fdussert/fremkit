@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url'
 import { WIDGET_ID_RE } from '../config/schema.js'
 import type { WidgetCatalog } from './catalog.js'
 import type { ConfigStore } from '../config/store.js'
-import { grantedCatalog } from '../marketplace/consent.js'
+import { grantedCatalog, permissionsOf, type Permissions } from '../marketplace/consent.js'
 import { SDK_VERSION } from '../bridge/sdk.js'
 import { tr } from '../i18n.js'
 
@@ -62,7 +62,13 @@ export async function widgetRoutes(app: FastifyInstance, opts: { catalog: Widget
    * than `sdk` needs a newer Fremkit, and saying so is the admin's job, which means the admin has
    * to be told the number rather than guess it from the server's own version.
    */
-  const answer = (): { widgets: Record<string, unknown>; sources: Record<string, string>; errors: unknown[]; sdk: number } => ({
+  const answer = (): {
+    widgets: Record<string, unknown>
+    sources: Record<string, string>
+    asks: Record<string, Permissions>
+    errors: unknown[]
+    sdk: number
+  } => ({
     // What each widget may do, not what it asks for: an installed widget's manifest is narrowed
     // to the permissions the user accepted, so the bridge host relays nothing beyond them.
     widgets: Object.fromEntries(grantedCatalog(opts.catalog, opts.store.get())),
@@ -70,6 +76,15 @@ export async function widgetRoutes(app: FastifyInstance, opts: { catalog: Widget
     // offer to remove them. A manifest cannot carry it: it is a fact about the folder, not a
     // claim the widget's author gets to make.
     sources: Object.fromEntries([...opts.catalog.entries].map(([id, e]) => [id, e.source])),
+    /**
+     * What each widget's manifest *asks* for, un-narrowed.
+     *
+     * The dashboard must never read this — it would be a widget's own claim about itself, and
+     * the whole point of the narrowing is that nothing downstream sees it. The admin does need
+     * it: "asks for X, granted Y" is the only way a user can tell a widget that is quietly
+     * missing a permission from one that never wanted it.
+     */
+    asks: Object.fromEntries([...opts.catalog.entries].map(([id, e]) => [id, permissionsOf(e.manifest)])),
     errors: opts.catalog.errors,
     sdk: SDK_VERSION,
   })
@@ -92,13 +107,13 @@ export async function widgetRoutes(app: FastifyInstance, opts: { catalog: Widget
     const folder = opts.catalog.folderOf(id)
     if (!WIDGET_ID_RE.test(id) || !folder) return reply.code(404).send({ error: tr(undefined, 'widgets.unknown') })
     const safeRel = normalize(rel)
-    if (safeRel.startsWith('..') || safeRel.includes('/../')) return reply.code(400).send({ error: 'chemin invalide' })
+    if (safeRel.startsWith('..') || safeRel.includes('/../')) return reply.code(400).send({ error: tr(undefined, 'widgets.badPath') })
     if (safeRel.toLowerCase() === 'index.html') {
       let html: string
       try {
         html = await readFile(join(folder, 'index.html'), 'utf8')
       } catch (err) {
-        if ((err as NodeJS.ErrnoException).code === 'ENOENT') return reply.code(404).send({ error: 'widget introuvable' })
+        if ((err as NodeJS.ErrnoException).code === 'ENOENT') return reply.code(404).send({ error: tr(undefined, 'widgets.missing') })
         throw err
       }
       return reply

@@ -25,7 +25,7 @@ function unbindDragFallback(): void {
 </script>
 
 <script setup lang="ts">
-import { onMounted, onBeforeUnmount, ref } from 'vue'
+import { onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import BaseButton from '../shared/ui/BaseButton.vue'
 import BaseCard from '../shared/ui/BaseCard.vue'
 import BaseIcon from '../shared/ui/BaseIcon.vue'
@@ -45,11 +45,23 @@ const { t } = useI18n()
  */
 const tab = ref<'local' | 'browse'>('local')
 
+/** Opening Browse is the moment to try again after a registry that could not be reached. */
+watch(tab, (next) => { if (next === 'browse' && market.state.offline) void market.load(true) })
+
 /**
  * Installing writes files on the server; the library is what reads them, so a rescan is how the
  * new widget appears in the local tab without a reload.
  */
 const market = createMarketplaceStore({ onChanged: () => s.rescan() })
+
+/**
+ * The index is read when the column mounts, not when Browse is opened.
+ *
+ * The badge on the Browse tab counts the updates waiting, and Browse is the tab nobody is on —
+ * so a badge that only appeared once you had looked was a badge that never told you anything.
+ * `load()` is idempotent and quiet about failing.
+ */
+onMounted(() => { void market.load() })
 
 function onDragStart(e: DragEvent, id: string): void {
   s.setDragWidget(id)

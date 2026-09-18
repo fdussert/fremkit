@@ -1,4 +1,4 @@
-import type { WidgetManifest } from '../shared/types'
+import type { WidgetManifest, WidgetPermissionSet } from '../shared/types'
 
 /**
  * What a widget's manifest asks for, in a shape the admin can show.
@@ -42,6 +42,27 @@ export function widgetPermissions(manifest: WidgetManifest | undefined): WidgetP
   const reads = channelFamilies(manifest?.subscriptions ?? [])
   const controls = channelFamilies(manifest?.commands ?? [])
   const network = [...new Set(manifest?.permissions?.network ?? [])].sort()
+  const count = reads.length + controls.length + network.length
+  return { reads, controls, network, none: count === 0, count }
+}
+
+/**
+ * The part of a widget's ask that was **not** granted.
+ *
+ * Only ever non-empty for a widget installed from the marketplace: its manifest is the ask and
+ * the consent record is the grant, and an update can widen the first without touching the
+ * second. Showing the difference is the only way a user can tell a widget that is quietly
+ * missing a permission from one that never wanted it — the widget itself just looks broken.
+ */
+export function notGranted(manifest: WidgetManifest | undefined, asks: WidgetPermissionSet | undefined): WidgetPermissions {
+  if (!manifest || !asks) return { reads: [], controls: [], network: [], none: true, count: 0 }
+  const missing = (asked: string[], granted: string[]): string[] => {
+    const have = new Set(granted)
+    return asked.filter((a) => !have.has(a))
+  }
+  const reads = channelFamilies(missing(asks.subscriptions, manifest.subscriptions))
+  const controls = channelFamilies(missing(asks.commands, manifest.commands))
+  const network = [...new Set(missing(asks.network, manifest.permissions?.network ?? []))].sort()
   const count = reads.length + controls.length + network.length
   return { reads, controls, network, none: count === 0, count }
 }

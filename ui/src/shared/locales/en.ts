@@ -37,6 +37,7 @@ export const en: Record<string, string> = {
   'admin.market.offline': 'The registry could not be reached. This is the last list it gave.',
   'admin.market.empty': 'No widget published yet.',
   'admin.market.noMatch': 'No widget matches.',
+  'admin.market.working': 'working…',
   'admin.market.install': 'Install',
   'admin.market.update': 'Update',
   'admin.market.uninstall': 'Remove',
@@ -61,6 +62,9 @@ export const en: Record<string, string> = {
   'admin.permissions.reads.short': 'reads {n}',
   'admin.permissions.controls.short': 'controls {n}',
   'admin.permissions.network.short': 'network {n}',
+  'admin.permissions.notGranted': 'Asked for, not granted',
+  'admin.permissions.notGranted.short': '{n} not granted',
+  'admin.permissions.notGrantedNote': 'A newer version of the widget asks for this; it will not get it until you accept it in Browse.',
   'admin.permissions.none': 'asks for nothing',
   'admin.permissions.note': 'Declared by the widget’s author in its manifest, and enforced by the server. A widget cannot read a channel that is not listed here, nor reach another host.',
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { channelFamilies, channelFamily, widgetPermissions } from '../src/admin/permissions'
+import { channelFamilies, channelFamily, notGranted, widgetPermissions } from '../src/admin/permissions'
 import { iconSvg } from '../src/shared/icons'
 import type { WidgetManifest } from '../src/shared/types'
 
@@ -76,5 +76,37 @@ describe('iconSvg', () => {
     }
     // A manifest naming `constructor` used to put `function Object() { … }` into the markup.
     expect(iconSvg('constructor')).not.toContain('native code')
+  })
+})
+
+describe('notGranted', () => {
+  const granted = manifest({
+    subscriptions: ['synology:*'], commands: ['synology'],
+    permissions: { network: ['api.example.com'] },
+  })
+
+  it('is empty when the ask and the grant agree', () => {
+    const asks = { subscriptions: ['synology:*'], commands: ['synology'], network: ['api.example.com'] }
+    expect(notGranted(granted, asks).none).toBe(true)
+  })
+
+  it('names what the manifest asks for and the record does not cover', () => {
+    // The manifest is the ask and the consent record is the grant; an update can widen the
+    // first without touching the second, and the widget then just looks broken.
+    const asks = {
+      subscriptions: ['synology:*', 'system'],
+      commands: ['synology', 'shortcuts'],
+      network: ['api.example.com', 'evil.example'],
+    }
+    const missing = notGranted(granted, asks)
+    expect(missing.reads).toEqual(['system'])
+    expect(missing.controls).toEqual(['shortcuts'])
+    expect(missing.network).toEqual(['evil.example'])
+    expect(missing.count).toBe(3)
+  })
+
+  it('is empty for a built-in, which has no ask to compare against', () => {
+    expect(notGranted(granted, undefined).none).toBe(true)
+    expect(notGranted(undefined, { subscriptions: ['x'], commands: [], network: [] }).none).toBe(true)
   })
 })

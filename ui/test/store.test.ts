@@ -39,16 +39,16 @@ function config(): Config {
 const compactClock: WidgetManifest = { ...clockManifest, compact: { width: 5 } }
 const barWidgets: WidgetsResponse = {
   widgets: { clock: compactClock, cpu: { ...compactClock, id: 'cpu' }, plain: clockManifest },
-  errors: [], sources: {}, sdk: 1,
+  errors: [], sources: {}, asks: {}, sdk: 1,
 }
 
 function make(apiOverrides: Partial<StoreDeps['api']> = {}) {
   const api: StoreDeps['api'] = {
     getConfig: vi.fn(async () => config()),
     getStatus: vi.fn(async () => ({ degraded: false })),
-    getWidgets: vi.fn(async (): Promise<WidgetsResponse> => ({ widgets: { clock: clockManifest }, errors: [], sources: {}, sdk: 1 })),
+    getWidgets: vi.fn(async (): Promise<WidgetsResponse> => ({ widgets: { clock: clockManifest }, errors: [], sources: {}, asks: {}, sdk: 1 })),
     putConfig: vi.fn(async (c: Config) => c),
-    rescan: vi.fn(async (): Promise<WidgetsResponse> => ({ widgets: { clock: clockManifest }, errors: [], sources: {}, sdk: 1 })),
+    rescan: vi.fn(async (): Promise<WidgetsResponse> => ({ widgets: { clock: clockManifest }, errors: [], sources: {}, asks: {}, sdk: 1 })),
     ...apiOverrides,
   }
   let push: ((c: Config) => void) | null = null

@@ -2,7 +2,7 @@ import { reactive, computed, watch, type ComputedRef } from 'vue'
 import { api as realApi } from '../shared/api'
 import { pick, setLocale, t } from '../shared/i18n'
 import { useSocket } from '../shared/socket'
-import type { Config, NavHeight, NavWidget, Page, WidgetInstance, WidgetManifest, WidgetSource, WidgetsResponse } from '../shared/types'
+import type { Config, NavHeight, NavWidget, Page, WidgetInstance, WidgetManifest, WidgetPermissionSet, WidgetSource, WidgetsResponse } from '../shared/types'
 import { DEFAULT_NAV_HEIGHT, MAX_NAV_WIDGETS, ROWS_BY_NAV_HEIGHT, compactWidth, mergeSettings, navHasRoom, navWidgetsOf } from '../shared/types'
 import { fits, largestFreeSpot, type Grid, type Rect } from './layout'
 
@@ -25,6 +25,8 @@ export interface AdminState {
   manifests: Record<string, WidgetManifest>
   /** Where each widget came from, so the library can mark the ones the user installed. */
   sources: Record<string, WidgetSource>
+  /** What each manifest asks for, beside what it was granted. See `WidgetsResponse.asks`. */
+  asks: Record<string, WidgetPermissionSet>
   catalogErrors: { id: string; error: string }[]
   pageIndex: number
   selectedId: string | null
@@ -105,7 +107,7 @@ function stable(value: unknown): string {
 export function createAdminStore(deps: StoreDeps): AdminStore {
   const debounceMs = deps.debounceMs ?? SAVE_DEBOUNCE_MS
   const state = reactive<AdminState>({
-    config: null, manifests: {}, sources: {}, catalogErrors: [],
+    config: null, manifests: {}, sources: {}, asks: {}, catalogErrors: [],
     pageIndex: 0, selectedId: null, dragWidgetId: null,
     mode: 'edit', modal: null, status: 'saved', toast: '', degraded: false,
   })
@@ -245,6 +247,7 @@ export function createAdminStore(deps: StoreDeps): AdminStore {
       lastSent = stable(cfg)
       state.manifests = widgets.widgets
       state.sources = widgets.sources
+      state.asks = widgets.asks
       state.catalogErrors = widgets.errors
       undoStack.length = 0
       redoStack.length = 0
@@ -255,6 +258,7 @@ export function createAdminStore(deps: StoreDeps): AdminStore {
       const widgets = await deps.api.rescan()
       state.manifests = widgets.widgets
       state.sources = widgets.sources
+      state.asks = widgets.asks
       state.catalogErrors = widgets.errors
     },
 

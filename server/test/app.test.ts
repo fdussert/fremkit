@@ -198,7 +198,7 @@ describe('widget routes', () => {
     await rm(join(dir, 'widgets', 'clock', 'index.html'))
     const res = await app.inject({ url: '/widgets/clock/index.html' })
     expect(res.statusCode).toBe(404)
-    expect(res.json().error).toMatch(/introuvable/)
+    expect(res.json().error).toMatch(/introuvable|not found/)
   })
   it('serves an installed widget the same way, with the same guards', async () => {
     // `data/widgets` is the marketplace's folder. Everything the built-in folder gets — the CSP,

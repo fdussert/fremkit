@@ -20,10 +20,19 @@ first if you have not: *Connections* in the top bar.
 
 Pressing **Install** shows what the widget will be allowed to do, and nothing is downloaded
 until you agree. Accepting records that grant in your config, beside the version and the
-registry it came from.
+registry it came from. A widget that asks for nothing at all — a clock, a timer — has nothing
+to show, so it installs without a dialog.
+
+What you accept is what is checked. The card is drawn from the registry's index, which is text
+the registry writes; the permissions that end up granted are read from the manifest *inside* the
+package, which is the thing whose hash was verified. If the two disagree, the install is refused
+and the dialog opens again on the package's real ask — so a registry cannot advertise one
+permission and ship three.
 
 Installed widgets appear in the **Installed** tab like the built-in ones, marked `installed vX`,
-and are placed on a page the same way.
+and are placed on a page the same way. If one is asking for something it has not been granted —
+an update landed and you have not accepted it — its card says so, with the ungranted entries
+struck through: the widget is not broken, it is waiting for you.
 
 ## Updates
 
