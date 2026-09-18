@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto'
 import { mkdir, readdir, readFile, rename, stat, unlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { USER_AGENT } from '../version.js'
+import { resolvesToPrivate } from '../net/private.js'
 import { pickIconHref } from './pick.js'
 
 /** How long a cached icon is served without asking the site again. */
@@ -49,6 +50,8 @@ const TYPE_BY_EXTENSION: Record<string, string> = {
 
 export interface FaviconIcon { body: Buffer; contentType: string }
 type FetchLike = (input: string, init?: RequestInit) => Promise<Response>
+/** Injected so a test can decide what counts as private without touching the resolver. */
+type PrivateCheck = (host: string) => Promise<boolean>
 
 /**
  * The cache file name for an origin.
@@ -95,18 +98,27 @@ export function sniffImageType(body: Uint8Array): string | null {
  *
  * Nothing here ever logs or echoes the URL it was given: the only thing a caller learns from a
  * failure is that there is no icon.
+ *
+ * Every URL this store fetches is checked against `net/private.ts` first, the route's own check on
+ * the origin notwithstanding: the store follows redirects, and it fetches the icon the *page*
+ * declares. Both are chosen by the far end. A `Location: http://127.0.0.1:4242/api/config`, or a
+ * `<link rel=icon href="http://169.254.169.254/…">`, would otherwise make this server knock on the
+ * machine's own services on behalf of any widget holding a link URL — and quietly cache what came
+ * back under the public origin that was asked for.
  */
 export class FaviconStore {
   private readonly dir: string
   private readonly fetchImpl: FetchLike
   private readonly now: () => number
+  private readonly isPrivate: PrivateCheck
   /** One refresh per origin at a time, so a row of buttons on one site makes one fetch. */
   private readonly inFlight = new Map<string, Promise<FaviconIcon | null>>()
 
-  constructor(opts: { dir: string; fetchImpl?: FetchLike; now?: () => number }) {
+  constructor(opts: { dir: string; fetchImpl?: FetchLike; now?: () => number; isPrivate?: PrivateCheck }) {
     this.dir = opts.dir
     this.fetchImpl = opts.fetchImpl ?? ((input, init) => fetch(input, init))
     this.now = opts.now ?? Date.now
+    this.isPrivate = opts.isPrivate ?? ((host) => resolvesToPrivate(host))
   }
 
   /**
@@ -194,10 +206,17 @@ export class FaviconStore {
   /**
    * One GET, following at most `MAX_REDIRECTS` hops and never leaving http/https: a `Location`
    * pointing at `file:` or anything else ends the walk instead of being followed.
+   *
+   * The private-address check sits at the top of the loop, so it covers the URL the caller gave —
+   * the page, the icon the page declared, the `/favicon.ico` fallback — and every hop after it,
+   * with one rule in one place.
    */
   private async request(url: string): Promise<{ res: Response; finalUrl: string } | null> {
     let current = url
     for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+      let host: string
+      try { host = new URL(current).hostname } catch { return null }
+      if (await this.isPrivate(host)) return null
       const res = await this.fetchImpl(current, {
         redirect: 'manual',
         signal: AbortSignal.timeout(TIMEOUT_MS),

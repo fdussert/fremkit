@@ -27,6 +27,12 @@ function fakeFetch(routes: Record<string, Route | (() => Route)>, calls: string[
   }
 }
 
+/**
+ * These tests answer for the network with `fakeFetch`, so the private-address check must not go
+ * to the resolver either: every host they name is treated as public unless a test says otherwise.
+ */
+const PUBLIC = async (): Promise<boolean> => false
+
 let dir: string
 beforeEach(async () => { dir = await mkdtemp(join(tmpdir(), 'fremkit-favicons-')) })
 afterEach(() => { /* the temp dir is left to the OS, as elsewhere in the suite */ })
@@ -90,7 +96,7 @@ describe('cache key and freshness', () => {
   })
 
   it('accepts a favicon.ico served as application/octet-stream when its bytes are an image', async () => {
-    const store = new FaviconStore({ dir, fetchImpl: fakeFetch({
+    const store = new FaviconStore({ dir, isPrivate: PUBLIC, fetchImpl: fakeFetch({
       'https://example.com/': { type: 'text/html', body: '<html><head></head></html>' },
       'https://example.com/favicon.ico': { type: 'application/octet-stream', body: PNG },
     }) })
@@ -114,7 +120,7 @@ describe('cache key and freshness', () => {
 describe('FaviconStore', () => {
   it('fetches the declared icon and caches it under the origin hash', async () => {
     const calls: string[] = []
-    const store = new FaviconStore({ dir, fetchImpl: fakeFetch({
+    const store = new FaviconStore({ dir, isPrivate: PUBLIC, fetchImpl: fakeFetch({
       'https://example.com/': { type: 'text/html', body: '<link rel="apple-touch-icon" href="/touch.png">' },
       'https://example.com/touch.png': { type: 'image/png', body: PNG },
     }, calls) })
@@ -129,7 +135,7 @@ describe('FaviconStore', () => {
   })
 
   it('falls back to /favicon.ico at the origin when the page declares nothing', async () => {
-    const store = new FaviconStore({ dir, fetchImpl: fakeFetch({
+    const store = new FaviconStore({ dir, isPrivate: PUBLIC, fetchImpl: fakeFetch({
       'https://example.com/': { type: 'text/html', body: '<html><head><title>x</title></head></html>' },
       'https://example.com/favicon.ico': { type: 'image/x-icon', body: PNG },
     }) })
@@ -137,7 +143,7 @@ describe('FaviconStore', () => {
   })
 
   it('refuses a non-image content type', async () => {
-    const store = new FaviconStore({ dir, fetchImpl: fakeFetch({
+    const store = new FaviconStore({ dir, isPrivate: PUBLIC, fetchImpl: fakeFetch({
       'https://example.com/': { type: 'text/html', body: '<link rel="icon" href="/evil.html">' },
       'https://example.com/evil.html': { type: 'text/html', body: '<h1>not an icon</h1>' },
       'https://example.com/favicon.ico': { type: 'text/plain', body: 'nope' },
@@ -148,7 +154,7 @@ describe('FaviconStore', () => {
 
   it('refuses an icon past the size cap', async () => {
     const huge = Buffer.alloc(MAX_ICON_BYTES + 10, 1)
-    const store = new FaviconStore({ dir, fetchImpl: fakeFetch({
+    const store = new FaviconStore({ dir, isPrivate: PUBLIC, fetchImpl: fakeFetch({
       'https://example.com/': { type: 'text/html', body: '<link rel="icon" href="/big.png">' },
       'https://example.com/big.png': { type: 'image/png', body: huge },
       'https://example.com/favicon.ico': { status: 404 },
@@ -158,7 +164,7 @@ describe('FaviconStore', () => {
 
   it('never follows a redirect that leaves http(s)', async () => {
     const calls: string[] = []
-    const store = new FaviconStore({ dir, fetchImpl: fakeFetch({
+    const store = new FaviconStore({ dir, isPrivate: PUBLIC, fetchImpl: fakeFetch({
       'https://example.com/': { status: 302, location: 'file:///etc/passwd' },
       'https://example.com/favicon.ico': { status: 302, location: 'file:///etc/passwd' },
     }, calls) })
@@ -171,7 +177,7 @@ describe('FaviconStore', () => {
     const routes: Record<string, Route> = { 'https://example.com/': hop(0) }
     for (let i = 1; i <= 9; i++) routes[`https://example.com/hop${i}`] = hop(i)
     const calls: string[] = []
-    const store = new FaviconStore({ dir, fetchImpl: fakeFetch(routes, calls) })
+    const store = new FaviconStore({ dir, isPrivate: PUBLIC, fetchImpl: fakeFetch(routes, calls) })
     expect(await store.get('https://example.com')).toBeNull()
     // The page walk stops after three hops; /favicon.ico is a plain 404 in this table.
     expect(calls.filter((c) => c === 'https://example.com/').length).toBe(1)
@@ -179,7 +185,7 @@ describe('FaviconStore', () => {
   })
 
   it('follows a redirect to the real icon', async () => {
-    const store = new FaviconStore({ dir, fetchImpl: fakeFetch({
+    const store = new FaviconStore({ dir, isPrivate: PUBLIC, fetchImpl: fakeFetch({
       'https://example.com/': { type: 'text/html', body: '<link rel="icon" href="/i">' },
       'https://example.com/i': { status: 301, location: 'https://cdn.example.com/i.png' },
       'https://cdn.example.com/i.png': { type: 'image/png', body: PNG },
@@ -198,7 +204,7 @@ describe('FaviconStore', () => {
       'https://example.com/favicon.ico': () => ({ status: 500 }),
     }
     const calls: string[] = []
-    const store = new FaviconStore({ dir, now: () => now, fetchImpl: fakeFetch(routes, calls) })
+    const store = new FaviconStore({ dir, isPrivate: PUBLIC, now: () => now, fetchImpl: fakeFetch(routes, calls) })
     expect((await store.get('https://example.com'))?.body.equals(PNG)).toBe(true)
 
     // A week later the file is stale, and the site is down: the old icon is served anyway.
@@ -216,7 +222,7 @@ describe('FaviconStore and SVG', () => {
   it('refuses an SVG icon, declared or sniffed, and keeps no file', async () => {
     const svg = '<svg xmlns="http://www.w3.org/2000/svg" onload="alert(1)"/>'
     for (const type of ['image/svg+xml', 'application/octet-stream']) {
-      const store = new FaviconStore({ dir, fetchImpl: fakeFetch({
+      const store = new FaviconStore({ dir, isPrivate: PUBLIC, fetchImpl: fakeFetch({
         'https://example.com/': { type: 'text/html', body: '<link rel="icon" href="/i">' },
         'https://example.com/i': { type, body: svg },
         'https://example.com/favicon.ico': { type, body: svg },
@@ -227,7 +233,7 @@ describe('FaviconStore and SVG', () => {
   })
 
   it('falls back to the .ico when the only declared icon is an SVG', async () => {
-    const store = new FaviconStore({ dir, fetchImpl: fakeFetch({
+    const store = new FaviconStore({ dir, isPrivate: PUBLIC, fetchImpl: fakeFetch({
       'https://example.com/': { type: 'text/html', body: '<link rel="icon" href="/logo.svg">' },
       'https://example.com/favicon.ico': { type: 'image/png', body: PNG },
     }) })
@@ -240,7 +246,7 @@ describe('FaviconStore and SVG', () => {
     await writeFile(join(dir, `${key}.svg`), '<svg/>')
     await writeFile(join(dir, `${key}.svg.tmp`), '<svg/>')
     await writeFile(join(dir, `${key}.png`), PNG)
-    const store = new FaviconStore({ dir, fetchImpl: fakeFetch({}) })
+    const store = new FaviconStore({ dir, isPrivate: PUBLIC, fetchImpl: fakeFetch({}) })
     await store.purgeUnservable()
     expect(await readdir(dir)).toEqual([`${key}.png`])
   })
@@ -248,7 +254,7 @@ describe('FaviconStore and SVG', () => {
   it('never serves a cached SVG even before the purge has run', async () => {
     await mkdir(dir, { recursive: true })
     await writeFile(join(dir, `${cacheKey('https://example.com')}.svg`), '<svg/>')
-    const store = new FaviconStore({ dir, fetchImpl: fakeFetch({}) })
+    const store = new FaviconStore({ dir, isPrivate: PUBLIC, fetchImpl: fakeFetch({}) })
     expect(await store.get('https://example.com')).toBeNull()
     expect(extensionFor('image/svg+xml')).toBeNull()
   })
@@ -262,7 +268,7 @@ function app(store: FaviconStore) {
 
 describe('GET /api/favicon', () => {
   it('answers the image with a day of caching', async () => {
-    const store = new FaviconStore({ dir, fetchImpl: fakeFetch({
+    const store = new FaviconStore({ dir, isPrivate: PUBLIC, fetchImpl: fakeFetch({
       'https://example.com/': { type: 'text/html', body: '<link rel="icon" href="/a.png">' },
       'https://example.com/a.png': { type: 'image/png', body: PNG },
     }) })
@@ -274,14 +280,14 @@ describe('GET /api/favicon', () => {
   })
 
   it('answers a bodyless 404 when there is no icon', async () => {
-    const store = new FaviconStore({ dir, fetchImpl: fakeFetch({}) })
+    const store = new FaviconStore({ dir, isPrivate: PUBLIC, fetchImpl: fakeFetch({}) })
     const res = await app(store).inject({ url: `/api/favicon?url=${encodeURIComponent('https://example.com/secret-path')}` })
     expect(res.statusCode).toBe(404)
     expect(res.body).toBe('')
   })
 
   it('refuses a missing, malformed or non-http url with a bodyless 400', async () => {
-    const a = app(new FaviconStore({ dir, fetchImpl: fakeFetch({}) }))
+    const a = app(new FaviconStore({ dir, isPrivate: PUBLIC, fetchImpl: fakeFetch({}) }))
     for (const url of ['/api/favicon', '/api/favicon?url=', '/api/favicon?url=nope',
       `/api/favicon?url=${encodeURIComponent('file:///etc/passwd')}`]) {
       const res = await a.inject({ url })
@@ -291,7 +297,7 @@ describe('GET /api/favicon', () => {
   })
 
   it('refuses a cross-site read, which is how a page would embed it as an <img>', async () => {
-    const store = new FaviconStore({ dir, fetchImpl: fakeFetch({}) })
+    const store = new FaviconStore({ dir, isPrivate: PUBLIC, fetchImpl: fakeFetch({}) })
     const res = await app(store).inject({
       url: `/api/favicon?url=${encodeURIComponent('https://example.com/')}`,
       headers: { 'sec-fetch-site': 'cross-site' },
@@ -309,7 +315,7 @@ describe('GET /api/favicon', () => {
 
   it('refuses a private or local host, so it cannot knock on this machine', async () => {
     const calls: string[] = []
-    const store = new FaviconStore({ dir, fetchImpl: fakeFetch({}, calls) })
+    const store = new FaviconStore({ dir, isPrivate: PUBLIC, fetchImpl: fakeFetch({}, calls) })
     for (const url of ['http://127.0.0.1:4242/', 'http://localhost:4242/', 'http://169.254.169.254/',
       'http://10.0.0.1/', 'http://[::1]/',
       // Hex IPv4-mapped IPv6, which is what new URL() canonicalises [::ffff:127.0.0.1] to.
@@ -325,7 +331,7 @@ describe('GET /api/favicon', () => {
     await mkdir(dir, { recursive: true })
     await writeFile(join(dir, `${cacheKey('https://example.com')}.png`), PNG)
     const calls: string[] = []
-    const store = new FaviconStore({ dir, fetchImpl: fakeFetch({}, calls) })
+    const store = new FaviconStore({ dir, isPrivate: PUBLIC, fetchImpl: fakeFetch({}, calls) })
     const res = await app(store).inject({ url: `/api/favicon?url=${encodeURIComponent('https://example.com/other')}` })
     expect(res.statusCode).toBe(200)
     expect(calls).toEqual([])
@@ -343,7 +349,7 @@ describe('the size of the icon cache', () => {
       const when = new Date(1_000_000 + i * 1000)
       await utimes(file, when, when)
     }
-    const store = new FaviconStore({ dir, fetchImpl: fakeFetch({
+    const store = new FaviconStore({ dir, isPrivate: PUBLIC, fetchImpl: fakeFetch({
       'https://fresh.example/': { type: 'text/html', body: '<link rel="icon" href="/a.png">' },
       'https://fresh.example/a.png': { type: 'image/png', body: PNG },
     }) })
@@ -354,5 +360,54 @@ describe('the size of the icon cache', () => {
     // The newcomer stayed and the three oldest went.
     expect(remaining).toContain(`${cacheKey('https://fresh.example')}.png`)
     for (const gone of origins.slice(0, 3)) expect(remaining).not.toContain(`${cacheKey(gone)}.png`)
+  })
+})
+
+/**
+ * The route checks the origin it was asked for; the store then follows whatever the far end
+ * chooses. A redirect and a declared `<link rel=icon>` are both the far end choosing.
+ */
+describe('FaviconStore and private addresses', () => {
+  /** Everything on 127.0.0.1 / 169.254.169.254 is private here; the resolver is not consulted. */
+  const isPrivate = async (host: string) => host === '127.0.0.1' || host === '169.254.169.254'
+
+  it('refuses to follow a redirect into the machine itself', async () => {
+    const calls: string[] = []
+    const store = new FaviconStore({
+      dir, isPrivate,
+      fetchImpl: fakeFetch({
+        'https://example.com/': { status: 301, location: 'http://127.0.0.1:4242/api/config' },
+        'https://example.com/favicon.ico': { status: 301, location: 'http://127.0.0.1:4242/secret.png' },
+      }, calls),
+    })
+    expect(await store.get('https://example.com')).toBeNull()
+    expect(calls.some((c) => c.includes('127.0.0.1'))).toBe(false)
+  })
+
+  it('refuses the icon a page declares on a private host', async () => {
+    const calls: string[] = []
+    const store = new FaviconStore({
+      dir, isPrivate,
+      fetchImpl: fakeFetch({
+        'https://example.com/': {
+          type: 'text/html',
+          body: '<link rel="icon" href="http://169.254.169.254/latest/meta-data/iam/x.png">',
+        },
+      }, calls),
+    })
+    expect(await store.get('https://example.com')).toBeNull()
+    expect(calls.some((c) => c.includes('169.254.169.254'))).toBe(false)
+  })
+
+  it('still fetches a public icon, declared or by redirect', async () => {
+    const store = new FaviconStore({
+      dir, isPrivate,
+      fetchImpl: fakeFetch({
+        'https://example.com/': { type: 'text/html', body: '<link rel="icon" href="/icon.png">' },
+        'https://example.com/icon.png': { status: 302, location: 'https://cdn.example.com/i.png' },
+        'https://cdn.example.com/i.png': { type: 'image/png', body: PNG },
+      }),
+    })
+    expect(await store.get('https://example.com')).toMatchObject({ contentType: 'image/png' })
   })
 })
