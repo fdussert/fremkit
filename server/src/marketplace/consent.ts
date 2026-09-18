@@ -63,6 +63,24 @@ export function isEmpty(p: Permissions): boolean {
   return p.subscriptions.length === 0 && p.commands.length === 0 && p.network.length === 0
 }
 
+export const NO_PERMISSIONS: Permissions = { subscriptions: [], commands: [], network: [] }
+
+function merge(a: string[], b: string[]): string[] {
+  return [...new Set([...a, ...b])]
+}
+
+/**
+ * Everything either side names. Used for "what the user has seen": what they already granted,
+ * plus what the dialog they just answered listed.
+ */
+export function unionPermissions(a: Permissions, b: Permissions): Permissions {
+  return {
+    subscriptions: merge(a.subscriptions, b.subscriptions),
+    commands: merge(a.commands, b.commands),
+    network: merge(a.network, b.network),
+  }
+}
+
 function intersect(granted: string[], asked: string[]): string[] {
   const have = new Set(granted)
   return asked.filter((a) => have.has(a))

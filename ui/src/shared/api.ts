@@ -1,4 +1,18 @@
-import type { Config, ConnectionSummary, ConnectionTypeInfo, InstalledAppInfo, MarketplaceResponse, PickOption, WidgetsResponse } from './types'
+import type { Config, ConnectionSummary, ConnectionTypeInfo, InstalledAppInfo, MarketplaceResponse, PickOption, WidgetPermissionSet, WidgetsResponse } from './types'
+
+/**
+ * The install was refused because the package asks for something the dialog did not show.
+ *
+ * A distinct class rather than a message, because the answer carries the difference and the
+ * caller has to reopen the dialog on *that* — which is the honest path when the index entry and
+ * the package inside the zip disagree about what the widget wants.
+ */
+export class ConsentRequiredError extends Error {
+  constructor(message: string, readonly newPermissions: WidgetPermissionSet) {
+    super(message)
+    this.name = 'ConsentRequiredError'
+  }
+}
 
 export interface ConnectionInput { type: string; name: string; fields: Record<string, string>; secrets?: Record<string, string> }
 
@@ -48,11 +62,19 @@ export const api = {
    * `consent` says the permission dialog was answered, not that something is allowed: the
    * server recomputes the difference from the package it downloads and refuses either way.
    */
-  installWidget: (id: string, opts: { consent?: boolean; version?: string; update?: boolean } = {}) =>
-    fetch(`/api/marketplace/${opts.update ? 'update' : 'install'}`, {
+  installWidget: async (id: string, opts: { consent?: WidgetPermissionSet | false; version?: string; update?: boolean } = {}) => {
+    const res = await fetch(`/api/marketplace/${opts.update ? 'update' : 'install'}`, {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ id, consent: opts.consent ?? false, ...(opts.version ? { version: opts.version } : {}) }),
-    }).then((r) => json<{ ok: true; id: string; version: string }>(r)),
+    })
+    if (res.status === 409) {
+      const body = await res.json().catch(() => null) as { errors?: string[]; newPermissions?: WidgetPermissionSet } | null
+      const message = body?.errors?.join('\n') ?? `HTTP ${res.status}`
+      if (body?.newPermissions) throw new ConsentRequiredError(message, body.newPermissions)
+      throw new Error(message)
+    }
+    return json<{ ok: true; id: string; version: string }>(res)
+  },
   uninstallWidget: (id: string) =>
     fetch('/api/marketplace/uninstall', {
       method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id }),

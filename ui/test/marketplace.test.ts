@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
 import { createMarketplaceStore, matches, type MarketplaceApi } from '../src/admin/marketplace'
-import type { MarketplaceResponse, MarketplaceWidget } from '../src/shared/types'
+import { ConsentRequiredError } from '../src/shared/api'
+import type { MarketplaceResponse, MarketplaceWidget, WidgetPermissionSet } from '../src/shared/types'
+
+const NONE: WidgetPermissionSet = { subscriptions: [], commands: [], network: [] }
+const set = (over: Partial<WidgetPermissionSet> = {}): WidgetPermissionSet => ({ ...NONE, ...over })
 
 function widget(over: Partial<MarketplaceWidget> = {}): MarketplaceWidget {
   return {
@@ -92,11 +96,16 @@ describe('install', () => {
     await store.load()
     await store.start(store.state.widgets[0])
     expect(store.state.consent).toBeNull()
-    expect(api.installWidget).toHaveBeenCalledWith('demo', { update: false })
+    // Nothing new according to the index, so nothing was shown: `false`, not an empty set.
+    expect(api.installWidget).toHaveBeenCalledWith('demo', { consent: false, update: false })
   })
 
   it('opens the dialog first when something is, and installs nothing until it is answered', async () => {
-    const asking = widget({ consentNeeded: true, newPermissions: { subscriptions: ['system'], commands: [], network: [] } })
+    const asking = widget({
+      consentNeeded: true,
+      permissions: set({ subscriptions: ['system'] }),
+      newPermissions: set({ subscriptions: ['system'] }),
+    })
     const { api, store } = make([asking])
     await store.load()
     await store.start(store.state.widgets[0])
@@ -105,7 +114,34 @@ describe('install', () => {
 
     await store.accept()
     expect(store.state.consent).toBeNull()
-    expect(api.installWidget).toHaveBeenCalledWith('demo', { consent: true, update: false })
+    // What is sent is the set the dialog rendered, not "yes": the server checks the package's
+    // ask against it, so a package asking for more than was shown is refused.
+    expect(api.installWidget).toHaveBeenCalledWith('demo', { consent: set({ subscriptions: ['system'] }), update: false })
+  })
+
+  it('reopens the dialog when the package asks for more than the index advertised', async () => {
+    // The entry is free text on the registry's side; the zip is what was hashed. The server
+    // refuses and hands back the real ask, and the user is asked again on that.
+    const refused = new ConsentRequiredError('this version asks for new permissions', set({ subscriptions: ['system', 'homey:*'] }))
+    const { api, store } = make([widget()], { installWidget: vi.fn(async () => { throw refused }) })
+    await store.load()
+    await store.start(store.state.widgets[0])
+    expect(store.state.consent?.added.subscriptions).toEqual(['system', 'homey:*'])
+    expect(store.state.consent?.send.subscriptions).toEqual(['system', 'homey:*'])
+    expect(store.state.error).toBe('')
+  })
+
+  it('shows the refusal rather than looping when the same set is refused twice', async () => {
+    const refused = new ConsentRequiredError('this version asks for new permissions', set({ subscriptions: ['homey:*'] }))
+    const { api, store } = make([widget({ consentNeeded: true, permissions: set({ subscriptions: ['system'] }), newPermissions: set({ subscriptions: ['system'] }) })], {
+      installWidget: vi.fn(async () => { throw refused }),
+    })
+    await store.load()
+    await store.start(store.state.widgets[0])
+    await store.accept()
+    expect(store.state.consent).toBeNull()
+    expect(store.state.error).toMatch(/new permissions/)
+    expect(api.installWidget).toHaveBeenCalledTimes(1)
   })
 
   it('installs nothing when the dialog is dismissed', async () => {
@@ -171,16 +207,20 @@ describe('update and uninstall', () => {
     const { api, store } = make([widget({ installed: true, installedVersion: '1.0.0', version: '1.1.0', updateAvailable: true })])
     await store.load()
     await store.start(store.state.widgets[0], true)
-    expect(api.installWidget).toHaveBeenCalledWith('demo', { update: true })
+    expect(api.installWidget).toHaveBeenCalledWith('demo', { consent: false, update: true })
   })
 
   it('carries the update flag through the dialog', async () => {
-    const { api, store } = make([widget({ installed: true, updateAvailable: true, consentNeeded: true })])
+    const asking = widget({
+      installed: true, updateAvailable: true, consentNeeded: true,
+      permissions: set({ commands: ['synology'] }), newPermissions: set({ commands: ['synology'] }),
+    })
+    const { api, store } = make([asking])
     await store.load()
     await store.start(store.state.widgets[0], true)
     expect(store.state.consent?.update).toBe(true)
     await store.accept()
-    expect(api.installWidget).toHaveBeenCalledWith('demo', { consent: true, update: true })
+    expect(api.installWidget).toHaveBeenCalledWith('demo', { consent: set({ commands: ['synology'] }), update: true })
   })
 
   it('removes a widget and refreshes both the index and the library', async () => {

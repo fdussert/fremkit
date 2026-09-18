@@ -10,15 +10,30 @@
  */
 
 import { computed, reactive, type ComputedRef } from 'vue'
-import { api as realApi } from '../shared/api'
+import { ConsentRequiredError, api as realApi } from '../shared/api'
 import { pick, t } from '../shared/i18n'
 import type { MarketplaceResponse, MarketplaceWidget, WidgetPermissionSet } from '../shared/types'
 
 export interface MarketplaceApi {
   getMarketplace(): Promise<MarketplaceResponse>
   refreshMarketplace(): Promise<MarketplaceResponse>
-  installWidget(id: string, opts?: { consent?: boolean; version?: string; update?: boolean }): Promise<{ ok: true; id: string; version: string }>
+  installWidget(id: string, opts?: { consent?: WidgetPermissionSet | false; version?: string; update?: boolean }): Promise<{ ok: true; id: string; version: string }>
   uninstallWidget(id: string): Promise<{ ok: true; id: string }>
+}
+
+const NONE: WidgetPermissionSet = { subscriptions: [], commands: [], network: [] }
+
+function union(a: WidgetPermissionSet, b: WidgetPermissionSet): WidgetPermissionSet {
+  const merge = (x: string[], y: string[]): string[] => [...new Set([...x, ...y])]
+  return {
+    subscriptions: merge(a.subscriptions, b.subscriptions),
+    commands: merge(a.commands, b.commands),
+    network: merge(a.network, b.network),
+  }
+}
+
+function empty(p: WidgetPermissionSet): boolean {
+  return p.subscriptions.length === 0 && p.commands.length === 0 && p.network.length === 0
 }
 
 /** What the consent dialog is open about. `added` is what is new, `all` what the widget asks. */
@@ -27,6 +42,12 @@ export interface ConsentPrompt {
   update: boolean
   added: WidgetPermissionSet
   all: WidgetPermissionSet
+  /**
+   * The set sent to the server as `consent` if this is accepted: exactly what the dialog put in
+   * front of the user. The server checks the package's ask against it, so a package asking for
+   * more than was rendered here is refused rather than granted.
+   */
+  send: WidgetPermissionSet
 }
 
 export interface MarketplaceState {
@@ -105,6 +126,26 @@ export function createMarketplaceStore(deps: MarketplaceDeps = {}): MarketplaceS
     }
   }
 
+  /**
+   * Installs, and reopens the dialog if the server says the package asks for more than was shown.
+   *
+   * That happens when the index entry and the manifest inside the zip disagree — the entry is
+   * free text on the registry's side, the zip is the thing that was hashed. The user is then
+   * asked again on the real ask instead of being handed a grant they never saw.
+   */
+  const attempt = async (widget: MarketplaceWidget, update: boolean, consent: WidgetPermissionSet | false): Promise<void> => {
+    await run(widget.id, async () => {
+      try {
+        await api.installWidget(widget.id, { consent, update })
+      } catch (err) {
+        if (!(err instanceof ConsentRequiredError)) throw err
+        const shown = consent === false ? NONE : consent
+        const all = union(shown, err.newPermissions)
+        state.consent = { widget, update, added: err.newPermissions, all, send: all }
+      }
+    })
+  }
+
   const store: MarketplaceStore = {
     state,
     shown: computed(() => state.widgets.filter((w) => matches(w, state.search))),
@@ -129,15 +170,28 @@ export function createMarketplaceStore(deps: MarketplaceDeps = {}): MarketplaceS
 
     async start(widget: MarketplaceWidget, update = false): Promise<void> {
       if (widget.sdkTooNew || widget.shadowsBuiltin) return
-      if (!widget.consentNeeded) { await run(widget.id, () => api.installWidget(widget.id, { update })); return }
-      state.consent = { widget, update, added: widget.newPermissions, all: widget.permissions }
+      // Nothing new according to the index: try it, and let the server reopen the dialog if the
+      // package turns out to ask for more than the entry advertised.
+      if (!widget.consentNeeded) { await attempt(widget, update, false); return }
+      state.consent = {
+        widget, update, added: widget.newPermissions, all: widget.permissions,
+        // What the dialog renders is the widget's whole ask — the difference on top, the rest as
+        // context — so that whole set is what is being consented to.
+        send: widget.permissions,
+      }
     },
 
     async accept(): Promise<void> {
       const prompt = state.consent
       if (!prompt) return
       state.consent = null
-      await run(prompt.widget.id, () => api.installWidget(prompt.widget.id, { consent: true, update: prompt.update }))
+      // Deliberately not `attempt`: a second 409 on the very set the user just accepted means
+      // the package changed under us, and reopening the same dialog in a loop is worse than
+      // showing the refusal.
+      await run(prompt.widget.id, () => api.installWidget(prompt.widget.id, {
+        consent: empty(prompt.send) ? false : prompt.send,
+        update: prompt.update,
+      }))
     },
 
     cancel(): void { state.consent = null },

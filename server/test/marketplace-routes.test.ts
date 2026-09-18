@@ -1,6 +1,6 @@
 import { describe, expect, it, beforeEach, afterEach } from 'vitest'
 import Fastify, { type FastifyInstance } from 'fastify'
-import { mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises'
+import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { marketplaceRoutes, usedBy } from '../src/marketplace/routes.js'
@@ -86,6 +86,10 @@ afterEach(async () => { await app?.close() })
 const install = (payload: unknown, url = '/api/marketplace/install') =>
   app.inject({ method: 'POST', url, payload: payload as never })
 
+/** The consent a client sends: the set its dialog rendered. */
+const set = (over: Partial<{ subscriptions: string[]; commands: string[]; network: string[] }> = {}) =>
+  ({ subscriptions: [], commands: [], network: [], ...over })
+
 describe('GET /api/marketplace', () => {
   it('lists the index with what this machine makes of it', async () => {
     const res = await app.inject({ url: '/api/marketplace' })
@@ -153,7 +157,7 @@ describe('POST /api/marketplace/install', () => {
   })
 
   it('installs with consent, records what was granted, and serves it from the catalogue', async () => {
-    const res = await install({ id: 'demo', consent: true })
+    const res = await install({ id: 'demo', consent: set() })
     expect(res.statusCode).toBe(200)
     expect(res.json()).toMatchObject({ ok: true, id: 'demo', version: '1.0.0' })
     expect(await readFile(join(installedDir, 'demo', 'index.html'), 'utf8')).toBe('<html>demo</html>')
@@ -166,14 +170,14 @@ describe('POST /api/marketplace/install', () => {
   })
 
   it('refuses an id a built-in already owns', async () => {
-    const res = await install({ id: 'clock', consent: true })
+    const res = await install({ id: 'clock', consent: set() })
     expect(res.statusCode).toBe(409)
     expect(res.json().errors[0]).toMatch(/built-in|intégré/)
   })
 
   it('refuses a widget the index does not hold, and a version it no longer offers', async () => {
-    expect((await install({ id: 'ghost', consent: true })).statusCode).toBe(404)
-    expect((await install({ id: 'demo', version: '0.1.0', consent: true })).statusCode).toBe(404)
+    expect((await install({ id: 'ghost', consent: set() })).statusCode).toBe(404)
+    expect((await install({ id: 'demo', version: '0.1.0', consent: set() })).statusCode).toBe(404)
   })
 
   it('refuses a package whose bytes are not the ones the index named', async () => {
@@ -181,7 +185,7 @@ describe('POST /api/marketplace/install', () => {
     // The index describes one package; the server serves another.
     const advertised = packageOf()
     await build({ zip: packageOf(MANIFEST({ version: '9.9.9' })), index: indexFor(advertised) })
-    const res = await install({ id: 'demo', consent: true })
+    const res = await install({ id: 'demo', consent: set() })
     expect(res.statusCode).toBe(422)
     expect(res.json().errors[0]).toMatch(/index/i)
   })
@@ -190,13 +194,13 @@ describe('POST /api/marketplace/install', () => {
     await app.close()
     const zip = packageOf(MANIFEST({ sdk: SDK_VERSION + 1 }))
     await build({ zip, index: indexFor(zip, { sdk: SDK_VERSION + 1 }) })
-    expect((await install({ id: 'demo', consent: true })).statusCode).toBe(409)
+    expect((await install({ id: 'demo', consent: set() })).statusCode).toBe(409)
   })
 
   it('refuses a cross-site fetch, even one that never reads the answer', async () => {
     const res = await app.inject({
       method: 'POST', url: '/api/marketplace/install',
-      headers: { 'sec-fetch-site': 'cross-site' }, payload: { id: 'demo', consent: true } as never,
+      headers: { 'sec-fetch-site': 'cross-site' }, payload: { id: 'demo', consent: set() } as never,
     })
     expect(res.statusCode).toBe(403)
   })
@@ -209,17 +213,17 @@ describe('POST /api/marketplace/install', () => {
   it('answers 503 while the registry is unreachable, rather than a broken install', async () => {
     await app.close()
     await build({ offline: true })
-    expect((await install({ id: 'demo', consent: true })).statusCode).toBe(503)
+    expect((await install({ id: 'demo', consent: set() })).statusCode).toBe(503)
   })
 })
 
 describe('POST /api/marketplace/update', () => {
   it('refuses to update something that is not installed', async () => {
-    expect((await install({ id: 'demo', consent: true }, '/api/marketplace/update')).statusCode).toBe(409)
+    expect((await install({ id: 'demo', consent: set() }, '/api/marketplace/update')).statusCode).toBe(409)
   })
 
   it('goes through without a dialog when the new version asks for nothing new', async () => {
-    await install({ id: 'demo', consent: true })
+    await install({ id: 'demo', consent: set() })
     await app.close()
     const zip = packageOf(MANIFEST({ version: '1.1.0' }))
     const older = store.get()
@@ -232,7 +236,7 @@ describe('POST /api/marketplace/update', () => {
   })
 
   it('asks again when the new version asks for more', async () => {
-    await install({ id: 'demo', consent: true })
+    await install({ id: 'demo', consent: set() })
     await app.close()
     const zip = packageOf(MANIFEST({ version: '1.1.0', subscriptions: ['system'] }))
     const older = store.get()
@@ -244,9 +248,80 @@ describe('POST /api/marketplace/update', () => {
     expect(asked.json().newPermissions.subscriptions).toEqual(['system'])
     expect(store.get().marketplace.installed.demo.version).toBe('1.0.0')
 
-    const accepted = await install({ id: 'demo', consent: true }, '/api/marketplace/update')
+    // The consent has to *be* the set the dialog showed: an empty one grants nothing.
+    const accepted = await install({ id: 'demo', consent: set({ subscriptions: ['system'] }) }, '/api/marketplace/update')
     expect(accepted.statusCode).toBe(200)
     expect(store.get().marketplace.installed.demo.consentedPermissions.subscriptions).toEqual(['system'])
+  })
+})
+
+describe('the consent is what the user was shown', () => {
+  it('refuses a package asking for more than the index advertised', async () => {
+    // The dialog is drawn from the index entry; the record used to be written from the package
+    // manifest, and only the package is hashed. A registry could advertise one permission and
+    // ship a zip asking for three.
+    await app.close()
+    const zip = packageOf(MANIFEST({ subscriptions: ['system', 'homey:*'], permissions: { network: ['evil.example'] } }))
+    await build({ zip, index: indexFor(zip) })
+
+    const res = await install({ id: 'demo', consent: set({ subscriptions: ['system'] }) })
+    expect(res.statusCode).toBe(409)
+    // The difference reported is the one against the *grant*, which is empty on a first
+    // install — so the dialog reopens on the package's whole real ask, not on the delta from
+    // the entry that lied about it.
+    expect(res.json().newPermissions.subscriptions).toEqual(['system', 'homey:*'])
+    expect(res.json().newPermissions.network).toEqual(['evil.example'])
+    // Nothing granted, nothing written.
+    expect(store.get().marketplace.installed.demo).toBeUndefined()
+    await expect(readFile(join(installedDir, 'demo', 'index.html'))).rejects.toThrow()
+  })
+
+  it('installs when the set that was shown covers what the package asks', async () => {
+    await app.close()
+    const zip = packageOf(MANIFEST({ subscriptions: ['system'] }))
+    await build({ zip, index: indexFor(zip) })
+    const res = await install({ id: 'demo', consent: set({ subscriptions: ['system'] }) })
+    expect(res.statusCode).toBe(200)
+    expect(store.get().marketplace.installed.demo.consentedPermissions.subscriptions).toEqual(['system'])
+  })
+
+  it('records the package\'s ask, not the set that was shown', async () => {
+    // A dialog that showed more than the package needs must not grant the excess.
+    await app.close()
+    const zip = packageOf(MANIFEST({ subscriptions: ['system'] }))
+    await build({ zip, index: indexFor(zip) })
+    await install({ id: 'demo', consent: set({ subscriptions: ['system', 'clipboard'], commands: ['volume'] }) })
+    expect(store.get().marketplace.installed.demo.consentedPermissions)
+      .toEqual({ subscriptions: ['system'], commands: [], network: [] })
+  })
+
+  it('refuses a body whose consent is not a permission set', async () => {
+    // `true` used to mean "a dialog was answered". It says nothing about what was in it.
+    expect((await install({ id: 'demo', consent: true })).statusCode).toBe(400)
+    expect((await install({ id: 'demo', consent: { subscriptions: 'system' } })).statusCode).toBe(400)
+  })
+
+  it('does not pre-approve a reinstall from a record whose folder is gone', async () => {
+    await app.close()
+    const zip = packageOf(MANIFEST({ subscriptions: ['system'] }))
+    await build({ zip, index: indexFor(zip) })
+    await install({ id: 'demo', consent: set({ subscriptions: ['system'] }) })
+    // The folder removed by hand, or a config restored without its widgets: the record is stale.
+    await rm(join(installedDir, 'demo'), { recursive: true, force: true })
+    await catalog.scan()
+    const again = await install({ id: 'demo' })
+    expect(again.statusCode).toBe(409)
+    expect(again.json().newPermissions.subscriptions).toEqual(['system'])
+  })
+
+  it('refuses a package whose version is not the one the index sent us to', async () => {
+    // Otherwise the record says 9.9.9 and `updateAvailable` is false for ever.
+    await app.close()
+    const zip = packageOf(MANIFEST({ version: '9.9.9' }))
+    await build({ zip, index: indexFor(zip, { version: '1.0.0' }) })
+    const res = await install({ id: 'demo', consent: set() })
+    expect(res.statusCode).toBe(422)
+    expect(store.get().marketplace.installed.demo).toBeUndefined()
   })
 })
 
@@ -254,7 +329,7 @@ describe('POST /api/marketplace/uninstall', () => {
   const uninstall = (payload: unknown) => app.inject({ method: 'POST', url: '/api/marketplace/uninstall', payload: payload as never })
 
   it('removes the folder and the record', async () => {
-    await install({ id: 'demo', consent: true })
+    await install({ id: 'demo', consent: set() })
     const res = await uninstall({ id: 'demo' })
     expect(res.statusCode).toBe(200)
     expect(catalog.entry('demo')).toBeUndefined()
@@ -263,7 +338,7 @@ describe('POST /api/marketplace/uninstall', () => {
   })
 
   it('refuses while the widget is still placed, and says where', async () => {
-    await install({ id: 'demo', consent: true })
+    await install({ id: 'demo', consent: set() })
     await store.update((c) => ({
       ...c,
       pages: [{ ...c.pages[0], widgets: [...c.pages[0].widgets, { instanceId: 'demo-1', widgetId: 'demo', x: 0, y: 8, w: 8, h: 4, showTitle: true, settings: {} }] }],

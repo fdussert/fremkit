@@ -21,7 +21,7 @@ import { SDK_VERSION } from '../bridge/sdk.js'
 import { tr, type MessageKey } from '../i18n.js'
 import { Registry, RegistryError, releaseOf } from './registry.js'
 import { InstallError, readPackage, removePackage, writePackage } from './install.js'
-import { addedPermissions, isEmpty, permissionsOf, type Permissions } from './consent.js'
+import { NO_PERMISSIONS, addedPermissions, isEmpty, permissionsOf, unionPermissions, type Permissions } from './consent.js'
 import type { IndexWidget, RegistryIndex } from './index-schema.js'
 import { compareSemver } from './semver.js'
 
@@ -33,15 +33,29 @@ export interface MarketplaceOptions {
   installedDir: string
 }
 
+const PermissionSetSchema = z.object({
+  subscriptions: z.array(z.string().max(200)).max(200).default([]),
+  commands: z.array(z.string().max(200)).max(200).default([]),
+  network: z.array(z.string().max(253)).max(200).default([]),
+})
+
 const InstallBody = z.object({
   id: z.string().regex(WIDGET_ID_RE),
   version: z.string().min(1).max(64).optional(),
   /**
-   * The user saw the permissions and accepted them. Never believed on its own: the server
-   * recomputes the difference from the package it downloaded and refuses when there is one this
-   * flag was not sent for. It says "a dialog was answered", not "this is allowed".
+   * **What the dialog listed**, not "a dialog was answered".
+   *
+   * It used to be a boolean, and that was the hole: the dialog is drawn from the *index* entry,
+   * the record was written from the *package* manifest, and only the package is hashed. A
+   * registry advertising `subscriptions: ["system"]` and shipping a zip asking for
+   * `["system", "homey:*"]` plus a network host had all of it recorded as consented the moment
+   * the button was pressed — the user agreed to one list and granted another.
+   *
+   * So the client sends the set it rendered, the server checks the package's ask against *that*
+   * union the existing grant, and a package asking for more than was shown is refused with the
+   * real difference. `false` (or absent) means nothing was shown at all.
    */
-  consent: z.boolean().default(false),
+  consent: z.union([z.literal(false), PermissionSetSchema]).default(false),
 })
 
 const UninstallBody = z.object({ id: z.string().regex(WIDGET_ID_RE) })
@@ -158,14 +172,27 @@ export async function marketplaceRoutes(app: FastifyInstance, opts: MarketplaceO
     try { pkg = readPackage(zip, { id, sha256: release.sha256, size: release.size }, locale()) }
     catch (err) { return reply.code(422).send(fail(err instanceof InstallError ? err.key : 'marketplace.badPackage')) }
 
-    // The consent is computed from the manifest inside the package, not from the index entry
-    // that advertised it: the entry is a shop window, and only one of the two was hashed.
+    // The version in the package must be the one the index sent us to. A zip at the `1.0.0` URL
+    // claiming `9.9.9` would otherwise be recorded as 9.9.9, and `updateAvailable` would be
+    // false for the rest of that install's life.
+    if (pkg.manifest.version !== release.version) return reply.code(422).send(fail('marketplace.badManifest'))
+
+    // What the widget asks comes from the manifest *inside* the package, never from the index
+    // entry that advertised it: the entry is a shop window, and only one of the two was hashed.
     const record = store.get().marketplace.installed[id]
-    const granted: Permissions = record ? record.consentedPermissions : { subscriptions: [], commands: [], network: [] }
+    const installed = Boolean(record) && catalog.entry(id)?.source === 'installed'
+    // A record whose folder is gone is not a grant: a reinstall is an install, and pre-approving
+    // it from a stale record would skip the dialog for a widget that is no longer here.
+    const granted: Permissions = record && installed ? record.consentedPermissions : NO_PERMISSIONS
     const asked = permissionsOf(pkg.manifest)
-    const added = addedPermissions(granted, asked)
-    if (!isEmpty(added) && !consent) {
-      return reply.code(409).send({ ...fail('marketplace.consentRequired'), newPermissions: added })
+    // Everything the user has seen: what they already hold, plus what the dialog they answered
+    // listed. Anything the package asks for beyond that was never shown to anybody.
+    const shown = consent === false ? granted : unionPermissions(granted, consent)
+    if (!isEmpty(addedPermissions(shown, asked))) {
+      // The difference reported is the one against the *grant*, which is what a dialog has to
+      // show — and when the index and the package disagree, this is the honest path: the user is
+      // asked again, on the package's real ask.
+      return reply.code(409).send({ ...fail('marketplace.consentRequired'), newPermissions: addedPermissions(granted, asked) })
     }
 
     try { await writePackage(installedDir, id, pkg.files) }
