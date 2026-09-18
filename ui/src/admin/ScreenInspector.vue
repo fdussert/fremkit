@@ -154,7 +154,7 @@ function setBackground(patch: Partial<Background>): void {
         <option v-for="o in themeOptions" :key="o.id" :value="o.id">{{ o.label }}</option>
       </select>
       <BaseButton variant="icon" :title="t('admin.inspector.screen.theme.rescan')" @click="rescanThemes()">
-        <BaseIcon name="redo-2" :size="16" />
+        <BaseIcon name="refresh-cw" :size="16" />
       </BaseButton>
     </div>
   </BaseField>
