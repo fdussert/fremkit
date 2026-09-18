@@ -33,6 +33,9 @@ Fremkit turns a Corsair Xeneon Edge (a 2560 × 720 touch strip) into a widget da
   an external server it finds on 4242. Built with `scripts/build-helper.sh` (plain `swiftc`, no
   Xcode project), tested with `scripts/test-helper.sh`.
 - `scripts/` — setup, dev, build/install/test of the helper, signing identity.
+- `themes/<id>/theme.json` — a palette, fonts and text size as validated tokens, painted on the
+  dashboard, the editor and inside every widget. Two ship; the rest are published on the registry
+  and installed into `<dataDir>/themes`, exactly like a widget. See [docs/themes.md](docs/themes.md).
 - `data/` — runtime state, git-ignored except `fremkit.example.json`. **Never edit
   `data/fremkit.json` by hand**: it is the user's live dashboard, the admin writes it, and the
   server migrates it on load. `data/widgets/` holds the widgets installed from the marketplace,
@@ -133,6 +136,7 @@ agent's in-flight work. Say where the worktree is, and remove it once the work h
 | I want to… | Start at |
 |---|---|
 | add a widget | `docs/writing-widgets.md`, then copy `widgets/clock` or `widgets/calendar`. A new one goes to the registry repository, not to `widgets/` — see the rule above for the one case that does not |
+| add a theme | `docs/themes.md`, then copy `themes/edge/theme.json`. A new one goes to the registry too: `fremkit` and `edge` are here so a fresh install has a choice with no network, and that is the whole reason either of them is |
 | change the marketplace | `server/src/marketplace/` (registry client, installer, consent), `ui/src/admin/marketplace.ts` and `MarketplacePanel.vue`, `docs/marketplace.md` |
 | add a connection type | `server/src/connections/types/ics.ts` (simplest) or `github.ts` (fullest), register in `types/index.ts`, document in `docs/connections.md` |
 | add a provider | `server/src/providers/calendar.ts` (polling) or `shortcuts.ts` (commands only), register in `providers/index.ts` |

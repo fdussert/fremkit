@@ -97,11 +97,33 @@ tile you removed.
 |---|---|
 | Built-in widgets | `widgets/` in the checkout — updated by `git pull`, never by the admin |
 | Installed widgets | `data/widgets/<id>/` — git-ignored, and moved by `FREMKIT_DATA_DIR` |
-| What was granted | `marketplace.installed` in `data/fremkit.json` |
+| Built-in themes | `themes/` in the checkout: `fremkit` and `edge` |
+| Installed themes | `data/themes/<id>/` — the same rules, the same folder's worth of protection |
+| What was granted | `marketplace.installed` in `data/fremkit.json`, each record saying its `kind` |
 
-A widget installed from the registry can never take the id of a built-in: the installer refuses
-the collision, and a folder dropped into `data/widgets` by hand is reported as an error while the
-built-in keeps the id.
+Neither a widget nor a theme installed from the registry can take the id of a built-in: the
+installer refuses the collision, and a folder dropped in by hand is reported as an error while
+the built-in keeps the id. A record written before themes could be installed has no `kind` and is
+read as a widget, which is the only thing it could have been.
+
+## Themes
+
+A theme goes through all of this and is the safest thing in it. It is one JSON file of colour
+tokens: no code, nothing served, nothing subscribed to, no network host. So:
+
+- **No consent dialog**, because there would be nothing on it. The record is written with an
+  empty grant, which says that plainly — a missing one would read as "not recorded yet".
+- **A much tighter package**: `theme.json`, at most a `README.md`, 64 KB, and nothing else at
+  all. The allow-list is by name rather than by rule, which is the whole reason a theme is cheap
+  to trust.
+- **Every token validated**, by the same `TokensSchema` a theme on your own disk meets — one
+  expression per token. That is what stands in for the dialog: these values end up in a `style`
+  attribute on `<html>` and inside every widget frame, so the check is the protection.
+- **Removing the one in use is refused**, naming it, rather than repainting the screen in
+  something nobody chose.
+
+Install them from *Sietch* → **Themes**; they land in `data/themes/` and show up in Screen →
+Theme at once. See [themes.md](themes.md).
 
 ## What the installer checks
 

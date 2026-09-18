@@ -37,9 +37,9 @@ The name is the Fremen survival kit from *Dune*.
 - **A widget marketplace** — *Sietch* in the admin installs widgets from a curated registry,
   showing what each one will be allowed to do and asking again when an update wants more.
 - **Backup and restore** of the whole dashboard, as a zip that never carries a secret.
-- **Themes** — the palette, the fonts and the text size, as a folder with one JSON file: six ship
-  with it, yours sits beside them. The dashboard, the editor and the widgets all wear the one you
-  pick.
+- **Themes** — the palette, the fonts and the text size, as a folder with one JSON file: two ship
+  with it, four more are on the registry, and yours sits beside them. The dashboard, the editor
+  and the widgets all wear the one you pick.
 - **Two languages** — the whole interface is French or English, switched in the admin.
 - **A widget SDK** that is a folder, a JSON file and an HTML page.
 

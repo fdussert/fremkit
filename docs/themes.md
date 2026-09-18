@@ -9,12 +9,12 @@ them when you pull.
 themes/
   fremkit/theme.json    the built-in theme: graphite and sand
   edge/theme.json       anodised graphite, cream legends, larger text, no tile cards
-  nuit/theme.json       midnight blue, cool accent
-  brume/theme.json      soft slate and sage, larger text
-  terminal/theme.json   green phosphor, monospace throughout
-  papier/theme.json     light: dark ink on warm paper
   mine/theme.json       yours
 ```
+
+Two ship, for the same reason eighteen widgets do: what is in the checkout is what a fresh
+install needs with no network at all. Four more — `nuit`, `brume`, `terminal` and `papier` — are
+on the registry; see [Themes from the registry](#themes-from-the-registry) below.
 
 Pick one in the editor: **Screen** → **Theme**. The dashboard repaints at once, the editor with
 it, so what you see while arranging tiles is what the screen shows. ⟳ next to the list rereads the
@@ -146,7 +146,35 @@ asks of it:
 }
 ```
 
+## Themes from the registry
+
+*Admin → **Sietch** → **Themes**.* The same panel the widgets are installed from, the same index,
+the same installer: a theme is a package that happens to be the safest one there is.
+
+A card shows the four tokens `accent`, `bg`, `surface` and `text` as a strip of swatches, which is
+what you are actually choosing between — so a theme needs no preview image and the card needs no
+second request. **There is no consent dialog, and that is the point rather than an omission:** a
+theme declares no channels, no commands and no network hosts, so a dialog would be asking you to
+approve an empty list. What protects you is the validation — the downloaded `theme.json` is held
+to the same `TokensSchema` a theme on your disk is, one expression per token, because these
+values end up in a `style` attribute on `<html>` and inside every widget frame.
+
+An installed theme lands in `<dataDir>/themes/<id>/` — never in the checkout, so `git pull` can
+neither lose it nor conflict with it — and appears in Screen → Theme straight away. A built-in id
+can never be taken: `fremkit` and `edge` are refused by the installer and by the registry alike.
+
+Removing the theme the screen is painted with is refused, naming it, rather than repainting the
+dashboard in something nobody chose. Pick another one first.
+
+`nuit`, `brume`, `terminal` and `papier` shipped with Fremkit until they moved there; they are
+the same themes, by the same author, at the same version.
+
 ## Keeping your own theme
 
 `themes/mine/theme.json` is a file the repository does not know about: pulling never touches it,
 and nothing in the app writes to it. Copy `themes/edge/theme.json`, change the values, press ⟳.
+
+To share it, open a pull request on the
+[registry](https://github.com/fdussert/fremkit-sietch) — its CONTRIBUTING is the whole procedure,
+and it applies the schema below at pull-request time, so you hear about a typo before anyone
+installs it.
