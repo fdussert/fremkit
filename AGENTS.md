@@ -31,7 +31,7 @@ Fremkit turns a Corsair Xeneon Edge (a 2560 × 720 touch strip) into a widget da
   `data/fremkit.json` by hand**: it is the user's live dashboard, the admin writes it, and the
   server migrates it on load. `data/widgets/` holds the widgets installed from the marketplace,
   written by `server/src/marketplace/` and by nothing else.
-- The **widget registry** is a second repository, `fdussert/fremkit-widgets`. It holds the
+- The **widget registry** is a second repository, `fdussert/fremkit-sietch`. It holds the
   widgets that are not built in, packs them and publishes an index on GitHub Pages;
   `tools/vendor/` there is a byte-for-byte copy of this repository's manifest schema, address
   rules and zip writer, checked against upstream by its CI. Change them here, then copy them

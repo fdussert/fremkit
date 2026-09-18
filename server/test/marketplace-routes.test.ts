@@ -30,7 +30,7 @@ function packageOf(manifest: Record<string, unknown> = MANIFEST()): Buffer {
 
 function indexFor(zip: Buffer, over: Record<string, unknown> = {}): Record<string, unknown> {
   return {
-    registry: 'fremkit-widgets', generatedAt: '2026-09-18T12:00:00.000Z', schema: 1,
+    registry: 'fremkit-sietch', generatedAt: '2026-09-18T12:00:00.000Z', schema: 1,
     widgets: [{
       id: 'demo', version: '1.0.0', sdk: 1, name: 'Demo', description: 'D', icon: 'layout-grid',
       permissions: { subscriptions: ['system'], commands: [], network: [] }, connections: [],
@@ -95,7 +95,7 @@ describe('GET /api/marketplace', () => {
     const res = await app.inject({ url: '/api/marketplace' })
     expect(res.statusCode).toBe(200)
     const body = res.json()
-    expect(body.registry).toBe('fremkit-widgets')
+    expect(body.registry).toBe('fremkit-sietch')
     expect(body.offline).toBe(false)
     expect(body.sdk).toBe(SDK_VERSION)
     const w = body.widgets[0]
@@ -163,7 +163,7 @@ describe('POST /api/marketplace/install', () => {
     expect(await readFile(join(installedDir, 'demo', 'index.html'), 'utf8')).toBe('<html>demo</html>')
     expect(catalog.entry('demo')?.source).toBe('installed')
     const record = store.get().marketplace.installed.demo
-    expect(record).toMatchObject({ version: '1.0.0', registry: 'fremkit-widgets' })
+    expect(record).toMatchObject({ version: '1.0.0', registry: 'fremkit-sietch' })
     // The manifest in the package asks for nothing; the *index entry* advertised `system`. The
     // record follows the package, because only one of the two was hashed.
     expect(record.consentedPermissions).toEqual({ subscriptions: [], commands: [], network: [] })

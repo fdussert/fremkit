@@ -60,7 +60,7 @@ library, and in full in its inspector — so read that before installing one fro
 
 ### An installed widget
 
-A widget from the [registry](https://github.com/fdussert/fremkit-widgets) is the same untrusted
+A widget from the [registry](https://github.com/fdussert/fremkit-sietch) is the same untrusted
 code as any other, in the same sandbox, under the same CSP. Two things are different.
 
 It is held to **what you accepted**, not to what it asks for. Installing it records the three

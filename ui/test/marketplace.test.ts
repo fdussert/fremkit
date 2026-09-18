@@ -22,7 +22,7 @@ function widget(over: Partial<MarketplaceWidget> = {}): MarketplaceWidget {
 }
 
 function answer(widgets: MarketplaceWidget[], over: Partial<MarketplaceResponse> = {}): MarketplaceResponse {
-  return { registry: 'fremkit-widgets', generatedAt: '2026-09-18T12:00:00.000Z', widgets, offline: false, sdk: 1, ...over }
+  return { registry: 'fremkit-sietch', generatedAt: '2026-09-18T12:00:00.000Z', widgets, offline: false, sdk: 1, ...over }
 }
 
 function make(widgets: MarketplaceWidget[], over: Partial<MarketplaceApi> = {}, onChanged?: () => void) {

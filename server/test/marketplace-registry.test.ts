@@ -17,7 +17,7 @@ function widget(over: Record<string, unknown> = {}): Record<string, unknown> {
 }
 
 function index(over: Record<string, unknown> = {}): Record<string, unknown> {
-  return { registry: 'fremkit-widgets', generatedAt: '2026-09-18T12:00:00.000Z', schema: 1, widgets: [widget()], ...over }
+  return { registry: 'fremkit-sietch', generatedAt: '2026-09-18T12:00:00.000Z', schema: 1, widgets: [widget()], ...over }
 }
 
 /** A `fetch` that answers one body, and counts how often it was called. */
@@ -42,7 +42,7 @@ describe('Registry.index', () => {
   it('reads and validates the index', async () => {
     const { registry } = make(JSON.stringify(index()))
     const read = await registry.index()
-    expect(read.registry).toBe('fremkit-widgets')
+    expect(read.registry).toBe('fremkit-sietch')
     expect(read.widgets[0].id).toBe('demo')
   })
 

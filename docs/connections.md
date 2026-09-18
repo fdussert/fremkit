@@ -252,7 +252,7 @@ logged, never echoed back by the API and never quoted in an error — not even t
 own message, which carries the address.
 
 Used by the `synology-storage` and `synology-system` widgets, published on
-[the registry](https://github.com/fdussert/fremkit-widgets) rather than shipped with Fremkit.
+[the registry](https://github.com/fdussert/fremkit-sietch) rather than shipped with Fremkit.
 
 ## ICS calendars
 

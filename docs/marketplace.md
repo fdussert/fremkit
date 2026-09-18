@@ -4,7 +4,7 @@ Fremkit ships with twenty-six widgets. Everything written after that is publishe
 instead, and installed from the admin — so a new widget does not need a new Fremkit, and a
 Fremkit with no network still starts with a working dashboard.
 
-The registry is [fdussert/fremkit-widgets](https://github.com/fdussert/fremkit-widgets): one
+The registry is [fdussert/fremkit-sietch](https://github.com/fdussert/fremkit-sietch): one
 folder per widget, curated by pull request, packed by a workflow and published as an
 `index.json` on GitHub Pages. There is exactly one, and its address is a constant in the code
 rather than a setting — adding a second is a decision nobody has taken.
@@ -98,6 +98,6 @@ thing. The refresh button (⟳) goes back out on demand; otherwise the index is 
 ## Publishing a widget
 
 Write it against [writing-widgets.md](writing-widgets.md), then open a pull request on the
-registry — its [CONTRIBUTING](https://github.com/fdussert/fremkit-widgets/blob/main/CONTRIBUTING.md)
+registry — its [CONTRIBUTING](https://github.com/fdussert/fremkit-sietch/blob/main/CONTRIBUTING.md)
 is the whole procedure. `version` is semver and must go up; a version that is published stays
 published at those bytes.

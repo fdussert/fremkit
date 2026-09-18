@@ -19,7 +19,7 @@ import { tr } from '../i18n.js'
 import type { Locale } from '../config/schema.js'
 
 /** The one registry, and the only URL this module will fetch anything from. */
-export const REGISTRY_URL = 'https://fdussert.github.io/fremkit-widgets/index.json'
+export const REGISTRY_URL = 'https://fdussert.github.io/fremkit-sietch/index.json'
 
 /** Twenty minutes of network trouble is a bad afternoon; a day-old index is never wrong enough to matter. */
 export const INDEX_TTL_MS = 24 * 60 * 60 * 1000

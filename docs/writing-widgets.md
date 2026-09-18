@@ -366,7 +366,7 @@ image stream, nested state).
 ## Publishing it
 
 A widget that works is a pull request on the
-[registry](https://github.com/fdussert/fremkit-widgets): one folder under `widgets/<id>/`, and
+[registry](https://github.com/fdussert/fremkit-sietch): one folder under `widgets/<id>/`, and
 its CONTRIBUTING is the whole procedure. The CI applies the package rules — no dotfile, no
 symlink, no off-package script, size ceilings, a manifest that validates, a `version` that goes
 up — and the merge publishes a zip and an index entry that every Fremkit can install from.

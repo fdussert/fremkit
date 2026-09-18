@@ -180,7 +180,7 @@ describe('marketplace consent', () => {
     expect(before.marketplace).toEqual({ installed: {} })
 
     const record = {
-      version: '1.0.0', registry: 'fremkit-widgets', installedAt: '2026-09-18T12:00:00.000Z',
+      version: '1.0.0', registry: 'fremkit-sietch', installedAt: '2026-09-18T12:00:00.000Z',
       consentedPermissions: { subscriptions: ['synology:*'], commands: [], network: [] },
     }
     const kept = migrateConfig({

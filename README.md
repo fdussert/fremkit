@@ -241,7 +241,7 @@ above state lines such as "Server: running" and "Touch: active".
 Every setting of every widget is listed in **[docs/widgets.md](docs/widgets.md)**. To write your
 own, see **[docs/writing-widgets.md](docs/writing-widgets.md)**.
 
-More are published to the [widget registry](https://github.com/fdussert/fremkit-widgets) rather
+More are published to the [widget registry](https://github.com/fdussert/fremkit-sietch) rather
 than shipped here, and installed from *Browse* in the admin's widget column — including
 `synology-storage` and `synology-system`. What the installer checks, what a consent record is and
 how an update asks again: **[docs/marketplace.md](docs/marketplace.md)**.

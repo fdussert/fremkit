@@ -13,7 +13,7 @@ const manifest = (over: Record<string, unknown> = {}): WidgetManifest => Manifes
 
 const consent = (over: Partial<WidgetConsent['consentedPermissions']> = {}): WidgetConsent => ({
   version: '1.0.0',
-  registry: 'fremkit-widgets',
+  registry: 'fremkit-sietch',
   installedAt: '2026-09-18T12:00:00.000Z',
   consentedPermissions: { subscriptions: ['synology:*'], commands: ['synology'], network: ['api.example.com'], ...over },
 })
