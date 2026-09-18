@@ -374,6 +374,8 @@ export function createAdminStore(deps: StoreDeps): AdminStore {
           instanceId, widgetId,
           x: rect.x, y: rect.y, w: rect.w, h: rect.h,
           showTitle: true, settings: {},
+          // The screen's default for new tiles, copied rather than referenced: the tile owns it.
+          ...(c.display.tileOpacity !== undefined ? { opacity: c.display.tileOpacity } : {}),
         })
         state.selectedId = instanceId
       })

@@ -277,6 +277,21 @@ describe('undo / redo', () => {
     await vi.advanceTimersByTimeAsync(SAVE_DEBOUNCE_MS)
   })
 
+  it('gives a new tile the screen\'s default opacity, and leaves the placed ones alone', async () => {
+    const { store } = make()
+    await store.load()
+    store.apply((c) => { c.display.tileOpacity = 0.5 })
+    store.addWidget('clock')
+    const widgets = store.state.config!.pages[0].widgets
+    expect(widgets[1].opacity).toBe(0.5)
+    expect(widgets[0].opacity).toBeUndefined()
+    // Solid is the default and is stored as an absent key, so a tile added then carries none.
+    store.apply((c) => { c.display.tileOpacity = undefined })
+    store.addWidget('clock')
+    expect(store.state.config!.pages[0].widgets[2].opacity).toBeUndefined()
+    await vi.advanceTimersByTimeAsync(SAVE_DEBOUNCE_MS)
+  })
+
   it('drops a selection that no longer exists after an undo', async () => {
     const { store } = make()
     await store.load()

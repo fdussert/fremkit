@@ -121,6 +121,13 @@ function setNavOpacity(percent: number): void {
   s.apply((c) => { c.display.navOpacity = clamped === 100 ? undefined : clamped / 100 })
 }
 
+const tileOpacityPercent = computed(() => Math.round(surfaceOpacity(d.value.tileOpacity) * 100))
+/** Solid is the default, so it is stored as an absent key rather than an explicit 1. */
+function setTileOpacity(percent: number): void {
+  const clamped = Math.min(100, Math.max(0, percent))
+  s.apply((c) => { c.display.tileOpacity = clamped === 100 ? undefined : clamped / 100 })
+}
+
 /** An emptied field is NaN, which the schema would reject: ignore it instead of writing it. */
 function setAutoCycle(value: string | number): void {
   const n = Number(value)
@@ -182,6 +189,11 @@ function setBackground(patch: Partial<Background>): void {
     :hint="t('admin.inspector.screen.navOpacity.hint')">
     <BaseRange :model-value="navOpacityPercent" :step="5"
       :aria-label="t('admin.inspector.screen.navOpacity.aria')" @change="setNavOpacity" />
+  </BaseField>
+  <BaseField :label="t('admin.inspector.screen.tileOpacity', { percent: tileOpacityPercent })"
+    :hint="t('admin.inspector.screen.tileOpacity.hint')">
+    <BaseRange :model-value="tileOpacityPercent" :step="5"
+      :aria-label="t('admin.inspector.screen.tileOpacity.aria')" @change="setTileOpacity" />
   </BaseField>
   <BaseField :label="t('admin.inspector.screen.autoCycle')">
     <BaseInput type="number" lazy :min="0" :model-value="d.autoCycleSeconds"

@@ -168,6 +168,12 @@ export const DisplaySchema = z.object({
   navHeight: NavHeightSchema.optional(),
   /** Opacity of the navigation bar's background. Absent means a solid bar. */
   navOpacity: OpacitySchema.optional(),
+  /**
+   * The opacity a tile gets when it is added. Absent means solid, like a tile with no
+   * `opacity` of its own; each tile keeps its own value afterwards, so changing this touches
+   * only the tiles placed from then on.
+   */
+  tileOpacity: OpacitySchema.optional(),
   /** Absent means `both`; see `AdminGestureSchema`. */
   adminGesture: AdminGestureSchema.optional(),
   /** Absent means the plain --bg theme background, which is the default everywhere. */

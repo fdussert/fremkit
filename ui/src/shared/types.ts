@@ -54,6 +54,8 @@ export interface Display {
   navHeight?: NavHeight
   /** Opacity of the navigation bar's background, 0–1; absent means solid. */
   navOpacity?: number
+  /** The opacity a tile gets when it is added; absent means solid. */
+  tileOpacity?: number
   /** Absent means `both`; see `AdminGesture`. */
   adminGesture?: AdminGesture
   /** Compact widgets drawn in the navigation bar; absent when the bar carries none. */
