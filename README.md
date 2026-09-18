@@ -299,7 +299,7 @@ pnpm helper:test
 | `widgets/` | One folder per widget |
 | `scripts/` | Setup, dev, the helper's build and tests, the signing identity, kiosk, the Claude Code hooks |
 | `data/` | Your configuration and its assets. Git-ignored |
-| `brand/` | Icon, menu bar glyph, favicons, social image — see [brand/README-assets.md](brand/README-assets.md) (in French) |
+| `brand/` | Icon, menu bar glyph, favicons, social image — see [brand/README-assets.md](brand/README-assets.md) |
 | `docs/` | This documentation |
 
 A second checkout can run beside a live one by giving it another port: `FREMKIT_PORT=4301 pnpm start`.

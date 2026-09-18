@@ -1,74 +1,77 @@
-# Fremkit — assets de marque
+# Fremkit — brand assets
 
-Icône « F posé sur la dune » : un F construit en barres horizontales (l'écran ultra-large),
-posé sur une dune à deux crêtes (le fremkit des Fremen). Fond sombre, tout en sable —
-l'icône par défaut ne contient aucun bleu. Une variante bleue est fournie dans `variants/`.
+The "F on a dune" mark: an F built from horizontal bars (the ultra-wide screen), sitting on a
+two-crested dune (the Fremen fremkit). Dark ground, all sand — the default icon carries no blue at
+all. A blue variant is provided under `variants/`.
 
 ## Palette
 
-| Rôle | Hex | Usage |
+| Role | Hex | Used for |
 |---|---|---|
-| Fond profond | `#0b0d10` | fond de l'image sociale, fond de page |
-| Fond icône | `#14171c` | corps du carré arrondi |
-| Sable | `#d9b36a` | dune avant, barre haute du F |
-| Sable ombré | `#9a7540` | dune arrière, carré d'accent du F |
-| Bleu accent | `#2f6feb` | interface du dashboard, variante bleue de l'icône |
-| Clair | `#eef2f8` | hampe et barre médiane du F, titres |
-| Texte secondaire | `#98a1ae` | baseline |
+| Deep ground | `#0b0d10` | the social image's ground, the page background |
+| Icon ground | `#14171c` | the body of the rounded square |
+| Sand | `#d9b36a` | the front dune, the F's top bar |
+| Shaded sand | `#9a7540` | the back dune, the F's accent square |
+| Accent blue | `#2f6feb` | the dashboard interface, the blue icon variant |
+| Light | `#eef2f8` | the F's stem and middle bar, headings |
+| Secondary text | `#98a1ae` | the tagline |
 
-## Géométrie
+## Geometry
 
-Grille Apple : canevas 1024×1024, carré arrondi 824×824 centré (marge 100 de chaque côté),
-rayon de coin 185,4. Le F occupe 544×376 à partir de (240, 262), épaisseur de barre 92,
-rayon 12. La marque « pleine page » (favicon) est le même dessin dilaté de 1024/824 pour
-supprimer les marges Apple, qui n'ont pas lieu d'être dans un onglet.
+Apple's grid: a 1024×1024 canvas with a centred 824×824 rounded square (100 of margin on each
+side) and a 185.4 corner radius. The F occupies 544×376 from (240, 262), with a bar thickness of
+92 and a radius of 12. The "full bleed" mark (the favicon) is the same drawing scaled by 1024/824
+to remove Apple's margins, which have no business being in a browser tab.
 
-## Arborescence
+## Layout
 
 ```
 icon/
-  fremkit-icon.svg              source vectorielle 1024
-  png/fremkit-icon-{16..1024}.png       + variantes @2x
-  Fremkit.iconset/              nomenclature Apple
-  Fremkit.icns                  déjà assemblé, utilisable tel quel
+  fremkit-icon.svg              1024 vector source
+  png/fremkit-icon-{16..1024}.png       plus @2x variants
+  Fremkit.iconset/              Apple's naming
+  Fremkit.icns                  already assembled, usable as is
 menubar/
-  fremkit-menubar-template.svg        F seul — le template par défaut
-  fremkit-menubar-dune-template.svg   variante avec la dune
-  fremkitTemplate.png / @2x           18 et 36 px
+  fremkit-menubar-template.svg        the F alone — the default template
+  fremkit-menubar-dune-template.svg   the variant with the dune
+  fremkitTemplate.png / @2x           18 and 36 px
   fremkitDuneTemplate.png / @2x
 favicon/
   fremkit-mark-color.svg / favicon.svg
-  fremkit-mark-mono.svg         silhouette currentColor, sans fond
+  fremkit-mark-mono.svg         currentColor silhouette, no background
   favicon-{16,32,48,180,512}.png
   favicon.ico                   16 + 32 + 48
 social/
-  fremkit-social-1280x640.png   aperçu GitHub
-  fremkit-social.svg            version éditable (police Inter)
+  fremkit-social-1280x640.png   the GitHub preview
+  fremkit-social.svg            editable version (Inter)
+wallpaper/
+  fremkit-wallpaper.svg         2560×720, the Edge's default background
+  fremkit-wallpaper.png         what the server seeds into the background library
 variants/
-  fremkit-icon-blue.svg         barre haute en #2f6feb
-  png/fremkit-icon-blue-{16..1024}.png  + variantes @2x
+  fremkit-icon-blue.svg         top bar in #2f6feb
+  png/fremkit-icon-blue-{16..1024}.png  plus @2x variants
 tools/
-  build-assets.py               régénère tout depuis les sources
+  build-assets.py               regenerates everything from the sources
 ```
 
-## Icône d'app macOS
+## macOS app icon
 
-`Fremkit.icns` est fourni prêt à l'emploi. Pour le régénérer depuis le `.iconset` :
+`Fremkit.icns` ships ready to use. To rebuild it from the `.iconset`:
 
 ```sh
 iconutil -c icns icon/Fremkit.iconset -o icon/Fremkit.icns
 ```
 
-Dans le bundle, `Info.plist` → `CFBundleIconFile` = `Fremkit`.
+In the bundle, `Info.plist` → `CFBundleIconFile` = `Fremkit`.
 
-## Glyphe de barre de menus
+## Menu bar glyph
 
-Le template par défaut est le **F seul**. La dune a été retirée à cette taille : à 18 px
-elle devient du bruit et le glyphe tend à se lire « E ». La variante avec dune est
-fournie si tu la préfères en 36 px sur un écran Retina uniquement.
+The default template is the **F alone**. The dune was dropped at this size: at 18 px it turns into
+noise and the glyph starts reading as an "E". The variant with the dune is there if you prefer it,
+at 36 px on a Retina display only.
 
-Le suffixe `Template` dans le nom de fichier suffit à ce qu'AppKit traite l'image comme
-un template (teinte automatique selon le thème de la barre) :
+The `Template` suffix in the file name is all AppKit needs to treat the image as a template —
+tinted automatically to suit the menu bar's theme:
 
 ```swift
 let image = NSImage(named: "fremkitTemplate")!
@@ -76,20 +79,19 @@ image.isTemplate = true
 statusItem.button?.image = image
 ```
 
-Noir sur transparent, jamais de couleur : c'est macOS qui applique la teinte.
+Black on transparent, never coloured: macOS is what applies the tint.
 
-## Variante bleue
+## Blue variant
 
-Même géométrie au pixel près : seule la barre haute passe en `#2f6feb`, avec le carré
-d'accent en sable. C'est la version qui relie l'icône à la couleur d'interface du
-dashboard. À sortir si l'icône tout sable se perd sur un fond chaud, ou si tu veux que
-l'icône porte l'accent produit. Ce n'est pas l'icône par défaut du bundle.
+The same geometry to the pixel: only the top bar becomes `#2f6feb`, with the accent square in
+sand. This is the version that ties the icon to the dashboard's interface colour. Reach for it if
+the all-sand icon gets lost on a warm background, or if you want the icon to carry the product
+accent. It is not the bundle's default icon.
 
-Conséquence à garder en tête : l'icône par défaut ne porte plus la couleur d'accent de
-l'application. Le lien entre l'icône et l'interface passe désormais par la forme du F et
-le fond `#14171c`, pas par la couleur.
+Worth keeping in mind: the default icon no longer carries the application's accent colour. What
+ties the icon to the interface is now the shape of the F and the `#14171c` ground, not the colour.
 
-## Favicon et README
+## Favicon and README
 
 ```html
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
@@ -97,22 +99,30 @@ le fond `#14171c`, pas par la couleur.
 <link rel="apple-touch-icon" href="/favicon-180.png">
 ```
 
-Pour le README, `fremkit-mark-mono.svg` utilise `currentColor` : il suit automatiquement
-le thème clair ou sombre de GitHub s'il est inliné. En `<img>`, GitHub ne transmet pas la
-couleur héritée — utiliser alors la version couleur.
+For the README, `fremkit-mark-mono.svg` uses `currentColor`: inlined, it follows GitHub's light or
+dark theme on its own. In an `<img>`, GitHub does not pass the inherited colour through — use the
+colour version there.
 
-## Image sociale GitHub
+## GitHub social image
 
-`social/fremkit-social-1280x640.png` → Settings → General → Social preview → Upload.
-Le SVG déclare `font-family: Inter` ; si la police n'est pas disponible au rendu, le PNG
-reste la référence.
+`social/fremkit-social-1280x640.png` → Settings → General → Social preview → Upload. The SVG
+declares `font-family: Inter`; if the font is not available at render time, the PNG stays the
+reference.
 
-## Régénérer
+## Edge wallpaper
+
+`wallpaper/fremkit-wallpaper.svg` is the 2560×720 background a fresh install starts with: the same
+language as the social image — the deep ground, the two wave layers, the sand crest — with the
+mark small and faint in the corner and **no text**, because widgets sit on top of it. The server
+copies the PNG into the user's background library at start, as an ordinary file that can be picked
+and deleted like any upload.
+
+## Regenerating
 
 ```sh
 python3 -m pip install cairosvg pillow
 python3 tools/build-assets.py
 ```
 
-Le script contient toute la géométrie (chemins de dune, grille du F, palette) : c'est là
-qu'il faut modifier le dessin, pas dans les SVG générés.
+The script holds all of the geometry — the dune paths, the F's grid, the palette. That is where
+the drawing is changed, not in the generated SVGs.

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fremkit — production de tous les livrables de marque."""
+"""Fremkit — builds every brand deliverable."""
 import os, shutil, struct
 import cairosvg
 from PIL import Image, ImageDraw, ImageFont
@@ -29,7 +29,7 @@ DUNE_BACK  = ("M 100 878 C 190 872 250 840 320 826 C 380 814 440 822 510 842 "
               "C 600 868 700 886 780 892 C 840 896 890 898 924 898 "
               "L 924 1024 L 100 1024 Z")
 
-# ------------------------------------------------------------------ le "F"
+# ------------------------------------------------------------------ the "F"
 FX, FY, FS, FR = 240, 262, 92, 12
 FW, FH = 544, 376
 F_BLUE_W, F_MID_W, F_MID_DY = 430, 372, 148
@@ -53,7 +53,7 @@ CLIP = (f'<clipPath id="sq"><rect x="{SQ_X}" y="{SQ_Y}" width="{SQ_W}" height="{
         f'rx="{SQ_R}" ry="{SQ_R}"/></clipPath>')
 
 
-# ============================================== 1. icone d'app macOS
+# ============================================== 1. macOS app icon
 def app_icon():
     body = "\n".join([
         f'<rect x="{SQ_X}" y="{SQ_Y}" width="{SQ_W}" height="{SQ_W}" rx="{SQ_R}" ry="{SQ_R}" fill="{BG}"/>',
@@ -66,7 +66,7 @@ def app_icon():
     return svg1024(body, CLIP)
 
 
-# ============================================== 1 bis. variante bleue (accent produit)
+# ============================================== 1b. blue variant (the product accent)
 def app_icon_blue():
     body = "\n".join([
         f'<rect x="{SQ_X}" y="{SQ_Y}" width="{SQ_W}" height="{SQ_W}" rx="{SQ_R}" ry="{SQ_R}" fill="{BG}"/>',
@@ -79,8 +79,8 @@ def app_icon_blue():
     return svg1024(body, CLIP)
 
 
-# ============================================== 2. marque pleine page (favicon)
-# meme dessin, sans les marges Apple : on dilate le contenu de 1024/824
+# ============================================== 2. full-bleed mark (favicon)
+# The same drawing without Apple's margins: the content is scaled by 1024/824.
 def mark_color(radius=232):
     k = 1024 / SQ_W
     inner = "\n".join([
@@ -95,7 +95,7 @@ def mark_color(radius=232):
     return svg1024(body, CLIP)
 
 
-# dune autonome : silhouette fermee sur sa propre ligne de sol, sans cadre
+# A dune on its own: a closed silhouette on its own ground line, with no frame.
 DUNE_SOLO = ("M 180 822 C 320 818 430 794 522 758 C 584 734 604 708 648 700 "
              "C 684 694 716 716 748 742 C 800 784 846 810 884 822 Z")
 
@@ -111,7 +111,7 @@ def mark_mono():
     return svg1024(f'<g fill="currentColor">{inner}</g>')
 
 
-# ============================================== 3. glyphe barre de menus (template)
+# ============================================== 3. menu bar glyph (template)
 def menubar_glyph(with_dune=False, fill="#000000"):
     """18 pt. Par defaut le F seul : a 18 px la dune devient du bruit."""
     s, r = 5.4, 1.3
@@ -134,7 +134,7 @@ def menubar_glyph(with_dune=False, fill="#000000"):
             f'viewBox="0 0 36 36" fill="{fill}">\n' + "\n".join(parts) + '\n</svg>\n')
 
 
-# ============================================== ecriture des SVG sources
+# ============================================== writing the source SVGs
 files = {
     f"{ROOT}/icon/fremkit-icon.svg": app_icon(),
     f"{ROOT}/favicon/fremkit-mark-color.svg": mark_color(),
@@ -146,7 +146,7 @@ files = {
 for p, s in files.items():
     open(p, "w").write(s)
 
-# ============================================== PNG de l'icone
+# ============================================== icon PNGs
 ICON_SVG = f"{ROOT}/icon/fremkit-icon.svg"
 SIZES = [16, 32, 64, 128, 256, 512, 1024]
 for s in SIZES:
@@ -155,7 +155,7 @@ for s in SIZES:
     cairosvg.svg2png(url=ICON_SVG, write_to=f"{ROOT}/icon/png/fremkit-icon-{s}@2x.png",
                      output_width=s * 2, output_height=s * 2)
 
-# variante bleue
+# the blue variant
 ALT_SVG = f"{ROOT}/variants/fremkit-icon-blue.svg"
 for s in SIZES:
     cairosvg.svg2png(url=ALT_SVG, write_to=f"{ROOT}/variants/png/fremkit-icon-blue-{s}.png",
@@ -163,7 +163,7 @@ for s in SIZES:
     cairosvg.svg2png(url=ALT_SVG, write_to=f"{ROOT}/variants/png/fremkit-icon-blue-{s}@2x.png",
                      output_width=s * 2, output_height=s * 2)
 
-# .iconset (nomenclature Apple, pret pour `iconutil -c icns`)
+# .iconset (Apple's naming, ready for `iconutil -c icns`)
 ICONSET = [("16x16", 16, 32), ("32x32", 32, 64), ("128x128", 128, 256),
            ("256x256", 256, 512), ("512x512", 512, 1024)]
 for name, one, two in ICONSET:
@@ -172,7 +172,7 @@ for name, one, two in ICONSET:
     shutil.copy(f"{ROOT}/icon/png/fremkit-icon-{two}.png",
                 f"{ROOT}/icon/Fremkit.iconset/icon_{name}@2x.png")
 
-# .icns assemble directement (pas d'iconutil hors macOS)
+# .icns assembled directly (no iconutil off macOS)
 ICNS_TYPES = [(b"icp4", 16), (b"icp5", 32), (b"ic11", 32), (b"ic12", 64),
               (b"ic07", 128), (b"ic13", 256), (b"ic08", 256), (b"ic14", 512),
               (b"ic09", 512), (b"ic10", 1024)]
@@ -182,7 +182,7 @@ for tag, px in ICNS_TYPES:
     chunks += tag + struct.pack(">I", len(data) + 8) + data
 open(f"{ROOT}/icon/Fremkit.icns", "wb").write(b"icns" + struct.pack(">I", len(chunks) + 8) + chunks)
 
-# ============================================== glyphe barre de menus PNG
+# ============================================== menu bar glyph PNGs
 for src, stem in ((f"{ROOT}/menubar/fremkit-menubar-template.svg", "fremkitTemplate"),
                   (f"{ROOT}/menubar/fremkit-menubar-dune-template.svg", "fremkitDuneTemplate")):
     cairosvg.svg2png(url=src, write_to=f"{ROOT}/menubar/{stem}.png", output_width=18, output_height=18)
@@ -198,7 +198,7 @@ shutil.copy(f"{ROOT}/favicon/fremkit-mark-color.svg", f"{ROOT}/favicon/favicon.s
 ico = Image.open(f"{ROOT}/favicon/favicon-512.png").convert("RGBA")
 ico.save(f"{ROOT}/favicon/favicon.ico", sizes=[(16, 16), (32, 32), (48, 48)])
 
-# ============================================== image sociale 1280x640
+# ============================================== social image, 1280x640
 SW, SH = 1280, 640
 ICON_PX, ICON_TOP = 196, 122
 NAME_TOP, TAG_TOP = 352, 464
@@ -242,7 +242,7 @@ centered(sd, TAG_TOP, "Widget dashboard for the Corsair Xeneon Edge", f_tag, "#9
 
 social.save(f"{ROOT}/social/fremkit-social-1280x640.png")
 
-# version SVG editable de l'image sociale
+# an editable SVG of the social image
 k_soc = ICON_PX / 1024
 social_svg = f'''<svg xmlns="http://www.w3.org/2000/svg" width="{SW}" height="{SH}" viewBox="0 0 {SW} {SH}">
   <rect width="{SW}" height="{SH}" fill="{BG_DEEP}"/>
@@ -266,10 +266,10 @@ social_svg = f'''<svg xmlns="http://www.w3.org/2000/svg" width="{SW}" height="{S
 '''
 open(f"{ROOT}/social/fremkit-social.svg", "w").write(social_svg)
 
-# ============================================== fond d'ecran 2560x720
-# Le fond de l'Edge : la meme langue graphique que l'image sociale, sans aucun texte — il passe
-# derriere des widgets. Les vagues sont celles de l'image sociale, x2 en largeur et decalees vers
-# le bas de 80 px (640 -> 720), et la marque est posee petite et discrete dans le coin.
+# ============================================== wallpaper, 2560x720
+# The Edge's background: the same graphic language as the social image, with no text at all —
+# it sits behind widgets. The waves are the social image's, doubled in width and pushed 80 px
+# down (640 -> 720), and the mark sits small and faint in the corner.
 WPW, WPH = 2560, 720
 WP_MARK_PX, WP_MARK_X, WP_MARK_Y = 140, 2364, 486
 WP_MARK_OPACITY = 0.10
