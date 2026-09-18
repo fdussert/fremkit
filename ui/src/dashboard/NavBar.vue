@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { cancelsHold, startsHold } from './longPress'
+import { cancelsHold, isDoubleTap, startsHold, type Tap } from './longPress'
 import { DEFAULT_ADMIN_GESTURE, type AdminGesture } from '../shared/types'
 import { computed, onBeforeUnmount, ref } from 'vue'
 import { DEFAULT_NAV_HEIGHT, type NavSlot, type NavWidget, type Page, type WidgetManifest } from '../shared/types'
@@ -96,7 +96,7 @@ function holdContextMenu(e: Event): void {
   openAdmin()
 }
 
-/** The driver's double tap, which arrives as an ordinary double click. */
+/** The driver's double tap when the browser does synthesise one; see `isDoubleTap`. */
 function adminDoubleClick(e: Event): void {
   if (!wantsGesture('doubleTap')) return
   e.preventDefault()
@@ -104,10 +104,29 @@ function adminDoubleClick(e: Event): void {
   openAdmin()
 }
 
+/**
+ * The double tap counted here, from the taps themselves.
+ *
+ * `dblclick` does not arrive on the panel: the driver restores the cursor 0.25 s after a tap
+ * while its own double-tap window is 0.3 s, so the pointer warps away and back between the two
+ * and WebKit's click counting resets. The taps themselves always arrive.
+ */
+let lastTap: Tap | null = null
+
+function isSecondTap(e: PointerEvent): boolean {
+  const tap: Tap = { at: e.timeStamp, x: e.clientX, y: e.clientY }
+  if (isDoubleTap(lastTap, tap)) { lastTap = null; return true }
+  lastTap = tap
+  return false
+}
+
 function holdDown(e: PointerEvent): void {
   // A non-primary button is the driver's long press, handled above — never a hold to start.
   if (e.button === 2) { holdRightButton(e); return }
   if (!startsHold(e.button)) return
+  // Before the long-press timer, and whatever the long-press setting says: the two gestures are
+  // independent, and a second tap is a decision already made.
+  if (wantsGesture('doubleTap') && isSecondTap(e)) { openAdmin(); return }
   if (!wantsGesture('longPress')) return
   holdStart = { x: e.clientX, y: e.clientY }
   holding.value = true

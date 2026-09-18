@@ -39,6 +39,11 @@ final class AdminWindow: NSObject, NSWindowDelegate, WKUIDelegate {
             // launches, so one drag onto the Edge — or a display rearrangement — would otherwise
             // park it under the kiosk for good, focused and invisible.
             rescueIfBuried(window)
+            // Reopening a window that was hidden reloads it. The view is kept for the helper's
+            // lifetime, so without this the admin shows whatever was built when it was first
+            // opened — which after an upgrade means settings that exist in the code and not on
+            // screen. A window already in front is left alone: that is a raise, not an open.
+            if !window.isVisible { webView?.reload() }
             NSApp.activate(ignoringOtherApps: true)
             window.makeKeyAndOrderFront(nil)
             return
@@ -94,6 +99,11 @@ final class AdminWindow: NSObject, NSWindowDelegate, WKUIDelegate {
             return NSRect(origin: .zero, size: Self.size)
         }
         return AdminPlacement.centred(size: Self.size, in: screen)
+    }
+
+    /// Reloads the admin page. Wired to Cmd+R and used when a hidden window is reopened.
+    @objc func reloadAdmin() {
+        webView?.reload()
     }
 
     // MARK: - WKUIDelegate
@@ -156,6 +166,13 @@ final class AdminWindow: NSObject, NSWindowDelegate, WKUIDelegate {
         let windowMenu = NSMenu(title: L10n.string(.menuWindow))
         windowMenu.addItem(withTitle: L10n.string(.menuClose), action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
         windowMenu.addItem(withTitle: L10n.string(.menuMinimize), action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
+        windowMenu.addItem(.separator())
+        // Cmd+R, because a web view with no chrome has no other way to be reloaded by hand. The
+        // target is explicit: this object is not in the responder chain, so a nil target would
+        // send the action up it and find nobody.
+        let reload = NSMenuItem(title: L10n.string(.menuReload), action: #selector(reloadAdmin), keyEquivalent: "r")
+        reload.target = self
+        windowMenu.addItem(reload)
         windowItem.submenu = windowMenu
         main.addItem(windowItem)
 

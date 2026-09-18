@@ -38,3 +38,26 @@ export function startsHold(button: number): boolean {
 export function cancelsHold(origin: { x: number; y: number }, to: { x: number; y: number }): boolean {
   return Math.hypot(to.x - origin.x, to.y - origin.y) > HOLD_SLOP
 }
+
+/**
+ * Two taps close enough in time and place to be one gesture.
+ *
+ * Counted here rather than left to the browser's own `dblclick`. The driver does post the pair
+ * with `clickState: 2`, but it also restores the cursor 0.25 s after a tap while its own
+ * double-tap window is 0.3 s — so the pointer can warp away and back *between* the two taps, and
+ * that movement resets WebKit's click counting. `dblclick` then never fires, which is exactly
+ * what happened on the panel.
+ *
+ * The window is wider than the driver's 0.3 s because the page sees the taps after the driver
+ * has finished with them, and the slop a little wider than its 20 px for the same reason.
+ */
+export const DOUBLE_TAP_MS = 500
+export const DOUBLE_TAP_SLOP = 24
+
+export interface Tap { at: number; x: number; y: number }
+
+export function isDoubleTap(previous: Tap | null, tap: Tap): boolean {
+  if (!previous) return false
+  if (tap.at - previous.at > DOUBLE_TAP_MS) return false
+  return Math.hypot(tap.x - previous.x, tap.y - previous.y) <= DOUBLE_TAP_SLOP
+}

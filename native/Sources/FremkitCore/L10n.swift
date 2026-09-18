@@ -68,6 +68,7 @@ public enum L10nKey: String, CaseIterable {
     case menuWindow
     case menuClose
     case menuMinimize
+    case menuReload
 }
 
 /// French and English tables for `L10nKey`, and the rule that picks between them.
@@ -120,6 +121,7 @@ public enum L10n {
         .menuWindow: "Fenêtre",
         .menuClose: "Fermer",
         .menuMinimize: "Réduire",
+        .menuReload: "Recharger",
     ]
 
     private static let en: [L10nKey: String] = [
@@ -170,6 +172,7 @@ public enum L10n {
         .menuWindow: "Window",
         .menuClose: "Close",
         .menuMinimize: "Minimize",
+        .menuReload: "Reload",
     ]
 
     /// French for a French system, English for everything else — the same rule the server uses.
