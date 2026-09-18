@@ -52,7 +52,37 @@ describe('cssVariables', () => {
   it('layers a theme on the built-in one and names the properties', () => {
     const builtin = ThemeSchema.parse(theme({ bg: '#0b0d10', accent: '#d9b36a' }))
     const custom = ThemeSchema.parse({ ...theme({ accent: '#ffae42' }), id: 'edge' })
-    expect(cssVariables(custom, builtin)).toEqual({ '--bg': '#0b0d10', '--accent': '#ffae42' })
+    // `--on-accent` comes with the accent; see the test below.
+    expect(cssVariables(custom, builtin)).toMatchObject({ '--bg': '#0b0d10', '--accent': '#ffae42' })
+  })
+
+  it('derives on-accent from an accent the theme named itself', () => {
+    // Without this a theme with a pale accent inherits the built-in theme's `on-accent`, chosen
+    // for the built-in accent, and prints near-white on cream.
+    const builtin = ThemeSchema.parse(theme({ accent: '#d9b36a', 'on-accent': '#0b0d10' }))
+    const pale = ThemeSchema.parse({ ...theme({ accent: '#f5f0e6' }), id: 'papier' })
+    expect(cssVariables(pale, builtin)['--on-accent']).toBe('#0b0d10')
+    const dark = ThemeSchema.parse({ ...theme({ accent: '#1f3a5f' }), id: 'nuit' })
+    expect(cssVariables(dark, builtin)['--on-accent']).toBe('#ffffff')
+  })
+
+  it('reads a short or an alpha hex the same way', () => {
+    const builtin = ThemeSchema.parse(theme({}))
+    expect(cssVariables(ThemeSchema.parse(theme({ accent: '#fff' })), builtin)['--on-accent']).toBe('#0b0d10')
+    expect(cssVariables(ThemeSchema.parse(theme({ accent: '#000000ff' })), builtin)['--on-accent']).toBe('#ffffff')
+  })
+
+  it('obeys a theme that names on-accent itself', () => {
+    const builtin = ThemeSchema.parse(theme({}))
+    const custom = ThemeSchema.parse(theme({ accent: '#f5f0e6', 'on-accent': '#7a0000' }))
+    expect(cssVariables(custom, builtin)['--on-accent']).toBe('#7a0000')
+  })
+
+  it('leaves the built-in theme\'s own pairing alone', () => {
+    // It is not a theme "naming an accent on top of another": it *is* the bottom layer, and its
+    // two tokens were chosen together.
+    const builtin = ThemeSchema.parse(theme({ accent: '#d9b36a', 'on-accent': '#0b0d10' }))
+    expect(cssVariables(undefined, builtin)['--on-accent']).toBe('#0b0d10')
   })
 
   it('falls back to the built-in theme alone when the id is unknown', () => {

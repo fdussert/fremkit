@@ -107,12 +107,43 @@ export type Theme = z.infer<typeof ThemeSchema>
 /** The id a config falls back to, and the theme every other one is layered on. */
 export const BUILTIN_THEME = 'fremkit'
 
+/** WCAG relative luminance of a `#rgb`, `#rrggbb` or `#rrggbbaa`, or null when it is not one. */
+function luminance(hex: string): number | null {
+  const short = /^#([0-9a-fA-F])([0-9a-fA-F])([0-9a-fA-F])[0-9a-fA-F]?$/.exec(hex)
+  const long = /^#([0-9a-fA-F]{2})([0-9a-fA-F]{2})([0-9a-fA-F]{2})(?:[0-9a-fA-F]{2})?$/.exec(hex)
+  const parts = long ? long.slice(1, 4) : short ? short.slice(1, 4).map((c) => c + c) : null
+  if (!parts) return null
+  const [r, g, b] = parts.map((c) => {
+    const v = parseInt(c, 16) / 255
+    return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4
+  })
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b
+}
+
+/**
+ * The text colour to pair with an accent. Same 0.45 threshold as `ui/src/shared/color.ts` and
+ * the bridge's own copy: three places, one number, and they have to stay in step.
+ */
+function onAccent(hex: string): string {
+  const l = luminance(hex)
+  return l !== null && l > 0.45 ? '#0b0d10' : '#ffffff'
+}
+
 /**
  * The custom properties to set on `<html>`, `--` included, for a theme layered on the built-in
  * one. Both arguments are already-validated themes, so every value here is safe to write into a
  * style attribute.
+ *
+ * One token is computed rather than merged: a theme that sets `accent` and leaves `on-accent`
+ * alone inherits the built-in theme's, which was chosen for the built-in accent. A pale accent
+ * would then be printed on in near-white. Deriving it is what every other accent in the product
+ * already does — the per-tile accent in the admin, the bridge inside a widget — so a theme
+ * saying "my accent is this" gets the same answer they do, and a theme that names `on-accent`
+ * itself is still obeyed.
  */
 export function cssVariables(theme: Theme | undefined, builtin: Theme | undefined): Record<string, string> {
-  const merged = { ...(builtin?.tokens ?? {}), ...(theme?.tokens ?? {}) }
+  const merged: Record<string, string | number> = { ...(builtin?.tokens ?? {}), ...(theme?.tokens ?? {}) }
+  const own = theme?.tokens ?? {}
+  if (own.accent && !own['on-accent']) merged['on-accent'] = onAccent(own.accent)
   return Object.fromEntries(Object.entries(merged).map(([name, v]) => [`--${name}`, String(v)]))
 }
