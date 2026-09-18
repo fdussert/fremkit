@@ -126,6 +126,13 @@ describe('GET /api/marketplace', () => {
   })
 })
 
+describe('GET /api/marketplace', () => {
+  it('refuses a cross-site read, which would make the server go out onto the network', async () => {
+    const res = await app.inject({ url: '/api/marketplace', headers: { 'sec-fetch-site': 'cross-site' } })
+    expect(res.statusCode).toBe(403)
+  })
+})
+
 describe('POST /api/marketplace/refresh', () => {
   it('goes out again and answers 503 while the registry is unreachable', async () => {
     expect((await app.inject({ url: '/api/marketplace' })).statusCode).toBe(200)
@@ -140,6 +147,33 @@ describe('POST /api/marketplace/refresh', () => {
     await build({ offline: true })
     const down = await app.inject({ method: 'POST', url: '/api/marketplace/refresh' })
     expect(down.statusCode).toBe(503)
+  })
+
+  it('says so even when it has a cached index to fall back on', async () => {
+    // The fallback is right for a background read and wrong for a refresh: answering 200 with
+    // the index it already had would say "read again, all fine" while nothing was read.
+    let down = false
+    const zip = packageOf()
+    const index = indexFor(zip)
+    const registry = new Registry({
+      url: INDEX_URL, isPrivate: async () => false,
+      fetch: (async () => {
+        if (down) throw new Error('offline')
+        return new Response(JSON.stringify(index))
+      }) as never,
+    })
+    const one = Fastify()
+    await one.register(marketplaceRoutes, { store, catalog, registry, installedDir })
+    expect((await one.inject({ url: '/api/marketplace' })).json().widgets).toHaveLength(1)
+
+    down = true
+    const refused = await one.inject({ method: 'POST', url: '/api/marketplace/refresh' })
+    expect(refused.statusCode).toBe(503)
+    // And the listing still shows what it last knew — the cache is not stale yet, so this one
+    // does not even go out; either way the user is not shown an empty registry.
+    const listing = (await one.inject({ url: '/api/marketplace' })).json()
+    expect(listing.widgets).toHaveLength(1)
+    await one.close()
   })
 })
 

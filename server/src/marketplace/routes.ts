@@ -133,7 +133,13 @@ export async function marketplaceRoutes(app: FastifyInstance, opts: MarketplaceO
     }
   }
 
-  app.get('/api/marketplace', async () => view())
+  app.get('/api/marketplace', async (req, reply) => {
+    // A read that makes the server go out onto the network on the caller's behalf, so the same
+    // refusal as the proxy and the favicon route: `Sec-Fetch-Site` is the only signal a
+    // cross-site `<img>` or `fetch` in `no-cors` mode gives, and it is enough.
+    if (isCrossSiteFetch(req.headers)) return reply.code(403).send({ errors: [tr(locale(), 'http.originNotAllowed')] })
+    return view()
+  })
 
   app.post('/api/marketplace/refresh', async (_req, reply) => {
     const answer = await view(true)

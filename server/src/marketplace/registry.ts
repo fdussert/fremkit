@@ -103,9 +103,16 @@ export class Registry {
   get lastFetchedAt(): number | null { return this.cached ? this.fetchedAt : null }
 
   /**
-   * The index, from memory while it is fresh. A failed refresh keeps the cached one: an offline
-   * afternoon should leave the marketplace readable, with the admin saying it could not reach
-   * the registry — not empty, which reads as "every widget was withdrawn".
+   * The index, from memory while it is fresh.
+   *
+   * A background read that fails falls back to the cached one: an offline afternoon should leave
+   * the marketplace readable, with the admin saying it could not reach the registry — not empty,
+   * which reads as "every widget was withdrawn".
+   *
+   * `force` does **not** get that fallback, and that is the point of the flag. It is what
+   * `POST /api/marketplace/refresh` is made of, and a refresh that answered 200 with the index
+   * it already had would tell the user "read again, all fine" while nothing had been read at
+   * all. The route catches the throw and falls back to `last` itself, for the listing.
    */
   async index(force = false): Promise<RegistryIndex> {
     if (!force && this.cached && this.now() - this.fetchedAt < INDEX_TTL_MS) return this.cached
@@ -114,7 +121,7 @@ export class Registry {
     try {
       return await this.inFlight
     } catch (err) {
-      if (this.cached) return this.cached
+      if (!force && this.cached) return this.cached
       throw err
     }
   }

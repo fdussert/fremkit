@@ -59,7 +59,27 @@ describe('Registry.index', () => {
     expect(calls.length).toBe(3)
   })
 
-  it('keeps the last index when a refresh fails, rather than reading as "all withdrawn"', async () => {
+  it('keeps the last index when a background read fails, rather than reading as "all withdrawn"', async () => {
+    let clock = 0
+    let fail = false
+    const registry = new Registry({
+      url: URL_, isPrivate: PUBLIC, now: () => clock,
+      fetch: (async () => {
+        if (fail) throw new Error('offline')
+        return new Response(JSON.stringify(index()))
+      }) as never,
+    })
+    await registry.index()
+    fail = true
+    // Stale, so this one really does go out — and falls back to what it had.
+    clock += 25 * 60 * 60 * 1000
+    expect((await registry.index()).widgets[0].id).toBe('demo')
+    expect(registry.last).not.toBeNull()
+  })
+
+  it('throws on a forced read instead of handing back the index it already had', async () => {
+    // `force` is what `POST /api/marketplace/refresh` is made of. Answering "all fine" with a
+    // cached index would say the registry was read when nothing was.
     let fail = false
     const registry = new Registry({
       url: URL_, isPrivate: PUBLIC,
@@ -70,8 +90,9 @@ describe('Registry.index', () => {
     })
     await registry.index()
     fail = true
-    expect((await registry.index(true)).widgets[0].id).toBe('demo')
-    expect(registry.last).not.toBeNull()
+    await expect(registry.index(true)).rejects.toThrow(RegistryError)
+    // And what it last knew is still there for the listing to fall back on.
+    expect(registry.last?.widgets[0].id).toBe('demo')
   })
 
   it('refuses an index of the wrong schema version', async () => {
