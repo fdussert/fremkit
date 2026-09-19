@@ -163,6 +163,11 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     connectionTypes,
     declaredFromCatalog(catalog.entries, (id) => grantedFor(catalog, store.get(), id)),
   )
+  // Both, and both are needed. The catalogue changing is a widget arriving or leaving; the
+  // config changing is the *consent record* being written, which is what turns a declaration
+  // into a grant. An install does the two in that order — `catalog.scan()` then `store.update()`
+  // — so hooking only the first registered nothing at all: at that moment there was no record
+  // yet, and a declaration nobody has agreed to grants no type.
   catalog.onScan(syncDeclared)
   syncDeclared()
   /** A camera whose connection is gone keeps neither a socket nor the access code it was built on. */
@@ -175,6 +180,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   hub.broadcast('config', store.get())
   store.onChange((cfg) => {
     setServerLocale(cfg.locale)
+    syncDeclared()
     hub.broadcast('config', cfg)
     // Fire and forget: a failed sync must not break the save that triggered it.
     void connections.sync(cfg.connections)

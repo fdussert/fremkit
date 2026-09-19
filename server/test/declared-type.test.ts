@@ -230,3 +230,32 @@ describe('keeping the registry in step with what is installed', () => {
     expect(found).toEqual([])
   })
 })
+
+describe('when the registry is refreshed', () => {
+  /**
+   * A declaration becomes a grant when the *consent record* is written, not when the folder
+   * lands. An install does `catalog.scan()` and then `store.update()`, in that order — so a sync
+   * hooked to the catalogue alone runs at the moment there is still no record, and registers
+   * nothing at all. Found on a bench server; this is the shape of it.
+   */
+  it('registers nothing until the record exists, and everything once it does', () => {
+    const registry = new ConnectionTypeRegistry()
+    const decl = bearer()
+    let record: { connection?: ConnectionDecl } | undefined
+    const entries: [string, { manifest: never; source: 'installed' }][] =
+      [['homey-flows', { manifest: { connection: decl } as never, source: 'installed' }]]
+    const sync = (): void => syncDeclaredTypes(
+      registry,
+      declaredFromCatalog(entries, () => ({ connection: record?.connection } as never)),
+    )
+
+    // The folder is there, the record is not: the state right after `catalog.scan()`.
+    sync()
+    expect(registry.get('decl:homey-flows:homey-flows')).toBeUndefined()
+
+    // The record lands, and the second sync is the one that matters.
+    record = { connection: decl }
+    sync()
+    expect(registry.get('decl:homey-flows:homey-flows')).toBeDefined()
+  })
+})
