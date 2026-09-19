@@ -4,7 +4,8 @@ import BaseButton from '../shared/ui/BaseButton.vue'
 import BaseField from '../shared/ui/BaseField.vue'
 import BaseInput from '../shared/ui/BaseInput.vue'
 import ConnectionWidgets from './ConnectionWidgets.vue'
-import { useI18n } from '../shared/i18n'
+import { pick, useI18n } from '../shared/i18n'
+import { useAdminStore } from './store'
 import { boundSecretsToReveal, buildSecretsPayload, useConnectionsStore } from './connections'
 import { nextConnectionColor, type ConnectionSummary, type ConnectionTypeInfo } from '../shared/types'
 
@@ -12,7 +13,22 @@ const props = defineProps<{ type: ConnectionTypeInfo; connection: ConnectionSumm
 const emit = defineEmits<{ done: []; cancel: [] }>()
 
 const s = useConnectionsStore()
+const admin = useAdminStore()
 const { t } = useI18n()
+
+/**
+ * The widget that declared this type, by the name a person reads, falling back to its id.
+ *
+ * The id is what the type carries; the manifest is what the admin has. A widget that is not
+ * installed any more leaves the id, which is still better than nothing — it is what the user
+ * would search the registry for.
+ */
+const widgetName = computed(() => {
+  const id = props.type.declaredBy
+  if (!id) return ''
+  const manifest = admin.state.manifests[id]
+  return manifest ? pick(manifest.name) : id
+})
 const name = ref(props.connection?.name ?? props.type.name)
 const fields = reactive<Record<string, string>>({})
 /** What the secret inputs currently show. Meaningless on its own — see `touched`. */
@@ -123,6 +139,13 @@ async function onSave(): Promise<void> {
 
 <template>
   <form class="form" @submit.prevent="onSave">
+    <!-- A form asking for an API key should name what asked for it. `description` carries the
+         author's own setup instructions for a declared type, rendered as text. -->
+    <p v-if="type.declaredBy" class="declared">
+      {{ t('declared.byWidget', { widget: widgetName }) }}
+    </p>
+    <p v-if="type.declaredBy && type.description" class="hint">{{ type.description }}</p>
+
     <BaseField :label="t('admin.connections.form.name')">
       <BaseInput lazy :model-value="name" :placeholder="type.name" @update:model-value="setName(String($event))" />
     </BaseField>
@@ -175,6 +198,9 @@ async function onSave(): Promise<void> {
 select, .color { width: 100%; box-sizing: border-box; font: inherit; font-size: var(--fs-sm); color: var(--text);
   background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--radius-sm); padding: 6px 8px; }
 .color { padding: 2px; height: 32px; }
+.declared { margin: 0 0 var(--space-2); font-size: var(--fs-xs); color: var(--text-muted); }
+.hint { margin: 0 0 var(--space-3); font-size: var(--fs-xs); color: var(--text-muted);
+  white-space: pre-wrap; word-break: break-word; }
 .masked { display: flex; align-items: center; gap: var(--space-2); }
 .masked span { flex: 1; letter-spacing: .2em; color: var(--text-muted); font-size: var(--fs-sm); }
 .result { margin: 0 0 var(--space-3); font-size: var(--fs-sm); color: var(--danger); white-space: pre-wrap; }

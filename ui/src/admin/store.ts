@@ -34,6 +34,13 @@ export interface AdminState {
   mode: Mode
   /** The dialog currently open above the editor, or null. */
   modal: ModalName | null
+  /**
+   * The connection type the Connections dialog should open a *new* connection on, or ''.
+   *
+   * Cleared by `openModal`, so it only ever survives the one open it was set for: a stale value
+   * would put somebody back on a form they had already left.
+   */
+  newConnectionType: string
   status: Status
   toast: string
   /** The server cannot read data/fremkit.json: nothing may be saved until it is fixed. */
@@ -72,6 +79,14 @@ export interface AdminStore {
   selectPage(i: number): void
   setMode(mode: Mode): void
   openModal(name: ModalName): void
+  /**
+   * Opens Connections straight onto a new connection of `typeId`.
+   *
+   * The reason it exists: a widget that declares a connection is useless until one is created,
+   * and its own settings form is where somebody notices. Sending them to a list and asking them
+   * to find the right type among nine is where that attempt ends.
+   */
+  openNewConnection(typeId: string): void
   closeModal(): void
   setDragWidget(id: string | null): void
   dismissToast(): void
@@ -107,6 +122,7 @@ function stable(value: unknown): string {
 export function createAdminStore(deps: StoreDeps): AdminStore {
   const debounceMs = deps.debounceMs ?? SAVE_DEBOUNCE_MS
   const state = reactive<AdminState>({
+    newConnectionType: '',
     config: null, manifests: {}, sources: {}, asks: {}, catalogErrors: [],
     pageIndex: 0, selectedId: null, dragWidgetId: null,
     mode: 'edit', modal: null, status: 'saved', toast: '', degraded: false,
@@ -295,7 +311,8 @@ export function createAdminStore(deps: StoreDeps): AdminStore {
     select(id: string | null): void { state.selectedId = id },
     selectPage(i: number): void { state.pageIndex = i; state.selectedId = null },
     setMode(mode: Mode): void { state.mode = mode; if (mode === 'test') state.selectedId = null },
-    openModal(name: ModalName): void { state.modal = name },
+    openModal(name: ModalName): void { state.modal = name; state.newConnectionType = '' },
+    openNewConnection(typeId: string): void { state.newConnectionType = typeId; state.modal = 'connections' },
     closeModal(): void { state.modal = null },
     setDragWidget(id: string | null): void { state.dragWidgetId = id },
     dismissToast(): void { state.toast = '' },

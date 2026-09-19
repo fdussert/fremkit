@@ -196,6 +196,8 @@ export const fr: Record<string, string> = {
 
   'admin.connections.new': 'Nouvelle connexion',
   'admin.connections.empty': 'Aucune connexion.',
+  'declared.byWidget': 'déclaré par {widget}',
+  'declared.orphan': 'déclaré par un widget qui n’est plus installé',
   'admin.connections.add': 'Ajouter',
   'admin.connections.noTypes': 'Aucun type de connexion disponible.',
   'admin.connections.confirmRemove': 'Supprimer la connexion « {name} » ?',
@@ -226,6 +228,7 @@ export const fr: Record<string, string> = {
   'admin.settings.connection.unknown': '{id} (introuvable)',
   'admin.settings.connection.empty': 'Aucune connexion de ce type.',
   'admin.settings.connection.manage': 'Gérer les connexions',
+  'admin.settings.connection.create': 'En créer une…',
   'admin.settings.apps.helper': 'Le helper Fremkit doit tourner pour lister les apps du Dock.',
   'admin.settings.pick.chooseConnection': 'Choisissez d’abord une connexion.',
   'admin.settings.pick.empty': 'Rien à choisir pour cette connexion.',

@@ -24,6 +24,7 @@ import { Registry, RegistryError, releaseOf } from './registry.js'
 import { InstallError, readPackage, removePackage, writePackage, type PackageKind, type ReadPackageResult } from './install.js'
 import { NO_PERMISSIONS, addedPermissions, grantedPermissions, isEmpty, permissionsOf, unionPermissions, type Permissions } from './consent.js'
 import type { IndexTheme, IndexWidget, RegistryIndex } from './index-schema.js'
+import { declaredBy } from '../connections/declared.js'
 import { compareSemver } from './semver.js'
 
 export interface MarketplaceOptions {
@@ -199,6 +200,19 @@ export function usedBy(config: Config, id: string): string[] {
     places.push(tr(config.locale, 'marketplace.navBar'))
   }
   return places
+}
+
+/**
+ * The connections that belong to a widget's declared type, by id and name.
+ *
+ * Named on an uninstall so the admin can ask "delete the key too?". Nothing here deletes
+ * anything: a credential the user entered is theirs to keep, and reinstalling the widget finds
+ * the connection exactly where it was.
+ */
+export function declaredConnections(config: Config, widgetId: string): { id: string; name: string }[] {
+  return config.connections
+    .filter((c) => declaredBy(c.type) === widgetId)
+    .map((c) => ({ id: c.id, name: c.name }))
 }
 
 export async function marketplaceRoutes(app: FastifyInstance, opts: MarketplaceOptions): Promise<void> {
@@ -568,7 +582,10 @@ export async function marketplaceRoutes(app: FastifyInstance, opts: MarketplaceO
       delete installed[id]
       return { ...c, marketplace: { ...c.marketplace, installed } }
     })
-    return reply.send({ ok: true, id })
+    // The connections this widget's declared type owns are left alone — see `syncDeclaredTypes`
+    // — but the answer names them, so the admin can offer to delete them and their keys too
+    // rather than leaving a credential behind with nothing to explain it.
+    return reply.send({ ok: true, id, connections: declaredConnections(config, id) })
   }
 
   /**

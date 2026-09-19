@@ -6,20 +6,43 @@ import BaseIcon from '../shared/ui/BaseIcon.vue'
 import ConnectionForm from './ConnectionForm.vue'
 import { useI18n } from '../shared/i18n'
 import { useConnectionsStore } from './connections'
+import { useAdminStore } from './store'
 
 const s = useConnectionsStore()
+const admin = useAdminStore()
 const { t } = useI18n()
 /** Which connection the form is editing: an id for an existing one, '' for none. */
 const editingId = ref('')
 /** Type of the connection being created, empty when editing an existing one. */
 const creatingType = ref('')
 
-onMounted(() => { if (!s.state.loaded) void s.load().catch(() => { /* the banner shows the error */ }) })
+/**
+ * Opens straight onto a new connection when the admin asked for one of a given type.
+ *
+ * `load()` first, because the form needs the type's fields — and the type may be a declared one
+ * the list has never rendered.
+ */
+onMounted(async () => {
+  if (!s.state.loaded) await s.load().catch(() => { /* the banner shows the error */ })
+  const wanted = admin.state.newConnectionType
+  if (wanted && s.state.types.some((t) => t.id === wanted)) startCreate(wanted)
+})
 
 const editing = computed(() => s.state.connections.find((c) => c.id === editingId.value) ?? null)
 const type = computed(() => s.state.types.find((t) => t.id === (creatingType.value || editing.value?.type)) ?? null)
 const typeName = (id: string): string => s.state.types.find((t) => t.id === id)?.name ?? id
 const typeIcon = (id: string): string => s.state.types.find((t) => t.id === id)?.icon ?? 'layout-grid'
+
+/**
+ * A connection whose type nothing offers any more.
+ *
+ * Uninstalling a widget takes its declared type out of the registry and leaves the connections
+ * alone, on purpose: reinstalling is then the same connection rather than a form to fill again,
+ * and deleting somebody's API key because they removed a widget is not a decision this code
+ * makes. So the row stays, greyed, saying why — and Remove still works.
+ */
+const orphan = (typeId: string): boolean =>
+  s.state.loaded && !s.state.types.some((t) => t.id === typeId)
 
 function startCreate(typeId: string): void {
   creatingType.value = typeId
@@ -52,11 +75,13 @@ async function remove(id: string, name: string): Promise<void> {
     <p v-if="s.state.error" class="err">{{ s.state.error }}</p>
     <p v-if="!s.state.connections.length" class="empty">{{ t('admin.connections.empty') }}</p>
     <div class="list">
-      <BaseCard v-for="c in s.state.connections" :key="c.id" @click="startEdit(c.id)">
+      <BaseCard v-for="c in s.state.connections" :key="c.id" :class="{ orphan: orphan(c.type) }"
+        :data-connection="c.id" @click="startEdit(c.id)">
         <BaseIcon :name="typeIcon(c.type)" :size="20" />
         <div class="txt">
           <strong>{{ c.name }}</strong>
-          <small>{{ typeName(c.type) }}</small>
+          <small v-if="orphan(c.type)">{{ t('declared.orphan') }}</small>
+          <small v-else>{{ typeName(c.type) }}</small>
         </div>
         <BaseButton variant="icon" :title="t('common.remove')" @click.stop="remove(c.id, c.name)">
           <BaseIcon name="trash-2" :size="14" />
@@ -85,6 +110,8 @@ h3 { font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: .08em; 
   margin: var(--space-4) 0 var(--space-2); }
 .list { display: flex; flex-direction: column; gap: var(--space-2); }
 .list :deep(.card) { cursor: pointer; }
+/* The type is gone, the credential is not: readable, clearly inert, still removable. */
+.list :deep(.card.orphan) { opacity: .6; }
 .txt { display: flex; flex-direction: column; min-width: 0; flex: 1; }
 .txt strong { font-size: var(--fs-sm); font-weight: 600; }
 .txt small { font-size: var(--fs-xs); color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

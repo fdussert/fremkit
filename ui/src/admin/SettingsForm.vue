@@ -353,6 +353,12 @@ const itemText = (item: Record<string, unknown>, key: string, field: ListItemFie
         </select>
       </label>
       <small v-if="!connections.ofType(f.connectionType ?? '').length" class="hint">{{ t('admin.settings.connection.empty') }}</small>
+      <!-- A widget that declares a connection is useless until one exists, and this form is
+           where somebody notices. Sending them to a list of nine types is where that ends. -->
+      <button v-if="!connections.ofType(f.connectionType ?? '').length && f.connectionType" type="button"
+        class="link" @click="admin.openNewConnection(f.connectionType)">
+        {{ t('admin.settings.connection.create') }}
+      </button>
       <button type="button" class="link" @click="admin.openModal('connections')">{{ t('admin.settings.connection.manage') }}</button>
     </div>
 
