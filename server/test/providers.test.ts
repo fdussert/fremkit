@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { parseVolume, createVolumeProvider } from '../src/providers/volume.js'
-import { parseSpotify, createSpotifyProvider, OPEN_PROGRAM, SPOTIFY_BUNDLE_ID } from '../src/providers/spotify.js'
+import { parseSpotify, createSpotifyProvider, OPEN_PROGRAM, SPOTIFY_BUNDLE_ID, STATE } from '../src/providers/spotify.js'
 import { createMutedeckProvider } from '../src/providers/mutedeck.js'
 
 describe('volume', () => {
@@ -21,8 +21,21 @@ describe('volume', () => {
 describe('spotify', () => {
   it('parses the delimited state', () => {
     // The separator is an ASCII unit separator: a track name can contain any printable text.
-    const s = parseSpotify(['playing', 'Song', 'Artist', 'Album', 'https://i.scdn.co/x', '215000', '12.5', '80'].join('\x1f'))
+    const s = parseSpotify(['playing', 'Song', 'Artist', 'Album', 'https://i.scdn.co/x', '215000', '12500', '80'].join('\x1f'))
     expect(s).toEqual({ available: true, state: 'playing', title: 'Song', artist: 'Artist', album: 'Album', artwork: 'https://i.scdn.co/x', durationMs: 215000, positionMs: 12500, volume: 80 })
+  })
+
+  /**
+   * The bug this guards: AppleScript writes a number with the Mac's own decimal separator, so on
+   * a French system `player position` answered `69,724998` and `Number()` made NaN of it — a
+   * progress bar stuck at zero for everyone outside an English locale. The script asks Spotify
+   * to round the position to whole milliseconds instead, and an integer has no separator.
+   */
+  it('asks Spotify for a whole number of milliseconds, never a float', () => {
+    expect(STATE).toContain('round ((player position) * 1000)')
+    expect(STATE).not.toContain('sep & (player position)')
+    const french = parseSpotify(['playing', 'Song', 'Artist', 'Album', '', '215000', '69,724998', '80'].join('\x1f'))
+    expect(Number.isNaN(french.positionMs)).toBe(true)
   })
   it('reports unavailable when Spotify is not running', async () => {
     const run = vi.fn(async (script: string) => (script.includes('System Events') ? 'false' : ''))

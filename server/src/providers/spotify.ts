@@ -11,10 +11,18 @@ import { tr } from '../i18n.js'
  */
 const SEP = '\x1f'
 const IS_RUNNING = 'tell application "System Events" to (name of processes) contains "Spotify"'
-const STATE = `tell application "Spotify"
+/**
+ * The position is rounded to milliseconds by AppleScript rather than read as the float it is.
+ *
+ * `player position` is the one fractional value here, and AppleScript writes a number with the
+ * Mac's own decimal separator: on a French system it answers `69,724998`, which `Number()` reads
+ * as NaN — and a NaN position is a progress bar that never moves. An integer has no separator to
+ * get wrong. `duration` is already in milliseconds, and `sound volume` is already whole.
+ */
+export const STATE = `tell application "Spotify"
   if player state is stopped then return "stopped"
   set sep to "${SEP}"
-  return (player state as string) & sep & (name of current track) & sep & (artist of current track) & sep & (album of current track) & sep & (artwork url of current track) & sep & (duration of current track) & sep & (player position) & sep & (sound volume)
+  return (player state as string) & sep & (name of current track) & sep & (artist of current track) & sep & (album of current track) & sep & (artwork url of current track) & sep & (duration of current track) & sep & (round ((player position) * 1000)) & sep & (sound volume)
 end tell`
 
 export function parseSpotify(raw: string) {
@@ -24,7 +32,7 @@ export function parseSpotify(raw: string) {
     state: state as 'playing' | 'paused' | 'stopped',
     title, artist, album, artwork,
     durationMs: Number(duration),
-    positionMs: Math.round(Number(position) * 1000),
+    positionMs: Number(position),
     volume: Number(volume),
   }
 }
