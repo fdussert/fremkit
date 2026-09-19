@@ -220,6 +220,19 @@ describe('the development override', () => {
       .rejects.toMatchObject({ key: 'marketplace.tooLarge' })
   })
 
+  it('holds a theme download to the theme ceiling, not the widget one', async () => {
+    // A theme is one JSON file. Under the widget ceiling, 20 MB of attacker-chosen bytes would
+    // be fetched and hashed before the rule that says "64 KB" ever ran.
+    const registry = new Registry({
+      url: LOCAL, dev: true, isPrivate: PRIVATE,
+      fetch: (async () => new Response(new Uint8Array(Buffer.from('zip')))) as never,
+    })
+    const big = { url: 'http://127.0.0.1:8080/themes/nuit-1.0.0.zip', sha256: HASH, size: 200 * 1024 }
+    await expect(registry.download(big, 'theme')).rejects.toMatchObject({ key: 'marketplace.tooLarge' })
+    // The same size is unremarkable for a widget, which is the point of having two.
+    await expect(registry.download(big)).resolves.toBeInstanceOf(Buffer)
+  })
+
   it('refuses an https package URL from an http dev registry: one scheme, not a mixed case', async () => {
     const registry = new Registry({
       url: LOCAL, dev: true, isPrivate: PRIVATE,

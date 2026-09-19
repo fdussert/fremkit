@@ -12,6 +12,7 @@
  * private-address refusal in case that host ever resolves somewhere it should not.
  */
 
+import { THEME_LIMITS } from './install.js'
 import { RegistryIndexSchema, type IndexWidget, type RegistryIndex } from './index-schema.js'
 import { resolvesToPrivate } from '../net/private.js'
 import { USER_AGENT } from '../version.js'
@@ -169,10 +170,13 @@ export class Registry {
    * The size and the hash are verified *before* a single entry is read, because unpacking is
    * where an archive gets to be clever and verifying is where it does not.
    */
-  async download(entry: { url: string; sha256: string; size: number }): Promise<Buffer> {
+  async download(entry: { url: string; sha256: string; size: number }, kind: 'widget' | 'theme' = 'widget'): Promise<Buffer> {
     if (!this.onRegistryHost(entry.url)) throw new RegistryError('marketplace.badUrl')
-    if (entry.size > MAX_PACKAGE_BYTES) throw new RegistryError('marketplace.tooLarge')
-    const body = await this.get(entry.url, Math.min(entry.size, MAX_PACKAGE_BYTES), PACKAGE_TIMEOUT_MS)
+    // A theme is one JSON file; letting it come down under the widget ceiling would mean 20 MB
+    // of attacker-chosen bytes read and hashed before the rule that says "64 KB" ever runs.
+    const max = kind === 'theme' ? THEME_LIMITS.maxUncompressedBytes : MAX_PACKAGE_BYTES
+    if (entry.size > max) throw new RegistryError('marketplace.tooLarge')
+    const body = await this.get(entry.url, Math.min(entry.size, max), PACKAGE_TIMEOUT_MS)
     return body
   }
 
