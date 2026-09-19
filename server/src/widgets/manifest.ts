@@ -159,6 +159,139 @@ const ChannelSchema = z.string().min(1).refine((channel) => {
   return !RESERVED_CHANNELS.has(family) && !RESERVED_CHANNELS.has(channel)
 }, { error: () => tr(undefined, 'manifest.reservedChannel') })
 
+
+/**
+ * A connection a widget declares for itself, instead of one the core has code for.
+ *
+ * Most services a widget wants are one auth header on HTTPS: the host is typed by the user, a
+ * token goes in a header, and the widget reads JSON. Writing a coded connection type for each
+ * of those means a release of Fremkit per service. So a widget may describe one, and the core
+ * stores it, tests it and injects the secret — **the widget never sees the secret**, only the
+ * answers.
+ *
+ * What stays coded is everything this shape cannot express: a session handshake (Synology), a
+ * protocol that is not HTTP (Bambu's MQTT), OAuth, a local binary. A declaration is not an
+ * escape hatch, it is the easy half.
+ *
+ * Everything here is read from a manifest that arrived over the network, so every rule below is
+ * enforced by this schema rather than assumed by the code that reads it.
+ */
+
+/** How the secret is presented to the service. `host` is the case with no secret at all. */
+export const CONNECTION_KINDS = ['host', 'http-bearer', 'http-basic', 'api-key-header', 'api-key-query'] as const
+export type ConnectionKind = (typeof CONNECTION_KINDS)[number]
+
+/**
+ * Headers a declaration may put an API key in.
+ *
+ * An allow-list because a header name is a way to reach past the proxy: `Host` changes which
+ * virtual host answers, `Cookie` turns a declared connection into a session, and a `X-Forwarded-*`
+ * is a lie told to whatever is in front of the service. These four are the ones services
+ * actually use.
+ */
+export const API_KEY_HEADERS = ['Authorization', 'X-API-Key', 'X-Api-Key', 'X-Auth-Token'] as const
+
+/** The methods a declared request may use. No `HEAD`, no `OPTIONS`: nothing needs them yet. */
+export const CONNECTION_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'] as const
+
+/** The names of the coded types, lower-cased. A declaration may not borrow one as its label. */
+const CODED_TYPE_NAMES = new Set([
+  'azure devops', 'bambu lab', 'github', 'homey pro', 'ics calendar', 'calendrier ics', 'synology',
+])
+
+/**
+ * One path the widget is allowed to ask for.
+ *
+ * `/`-rooted, and every segment is a literal, `*` (exactly one segment) or `**` (the rest, and
+ * only at the end). No query string — the proxy builds the URL, and a pattern that could carry
+ * one would be a pattern that could carry a second host. No `.` or `..`, which a service's own
+ * router may collapse in ways this one cannot predict.
+ */
+const PATH_SEGMENT = /^(?:\*|\*\*|[A-Za-z0-9._~%!$&'()+,;=:@-]+)$/
+export const ConnectionPathSchema = z.string().min(1).max(200).refine((path) => {
+  if (!path.startsWith('/')) return false
+  if (path.includes('?') || path.includes('#')) return false
+  const segments = path.slice(1).split('/')
+  if (segments.some((seg) => seg === '' || seg === '.' || seg === '..')) return false
+  if (!segments.every((seg) => PATH_SEGMENT.test(seg))) return false
+  // `**` swallows everything after it, so anything written after it is a rule nobody applies.
+  return segments.findIndex((seg) => seg === '**') === -1
+    || segments.findIndex((seg) => seg === '**') === segments.length - 1
+}, { error: () => tr(undefined, 'manifest.badConnectionPath') })
+
+/** A field of a declared connection: a `ConnectionFieldSpec` without the admin-only extras. */
+const ConnectionDeclFieldSchema = z.object({
+  key: z.string().regex(/^[a-z][a-z0-9_]{0,31}$/),
+  label: LocalizedTextSchema,
+  help: LocalizedTextSchema.optional(),
+  placeholder: LocalizedTextSchema.optional(),
+  secret: z.boolean().optional(),
+  required: z.boolean().optional(),
+})
+
+const ConnectionRequestSchema = z.object({
+  method: z.enum(CONNECTION_METHODS),
+  path: ConnectionPathSchema,
+  /**
+   * Serve a GET from a per-connection cache for this long, so two widgets on one screen do not
+   * poll the same service twice. Five minutes is the ceiling: past that it is not a cache, it is
+   * a stale reading presented as a live one.
+   */
+  cacheMs: z.number().int().min(0).max(300_000).optional(),
+})
+
+export const ConnectionDeclSchema = z.object({
+  name: LocalizedTextSchema,
+  kind: z.enum(CONNECTION_KINDS),
+  fields: z.array(ConnectionDeclFieldSchema).min(1).max(8),
+  headerName: z.enum(API_KEY_HEADERS).optional(),
+  queryName: z.string().regex(/^[A-Za-z0-9_-]{1,32}$/).optional(),
+  /**
+   * `http` is allowed, and has to be: a Key Light or a Homey on the LAN serves plain HTTP or a
+   * certificate no authority signed. The proxy refuses `http` to a public host — see
+   * `declared.ts` — so the exception stays where it belongs, on the local network.
+   */
+  scheme: z.enum(['https', 'http']).default('https'),
+  test: z.object({
+    method: z.literal('GET'),
+    path: ConnectionPathSchema,
+    expect: z.number().int().min(100).max(599),
+  }).optional(),
+  requests: z.array(ConnectionRequestSchema).min(1).max(32),
+  /** Setup instructions, shown above the fields. Rendered as text: no HTML, no links followed. */
+  hint: LocalizedTextSchema.optional(),
+})
+  .refine((c) => c.fields.filter((f) => f.key === 'host').length === 1, {
+    error: () => tr(undefined, 'manifest.connectionNeedsHost'),
+  })
+  .refine((c) => !c.fields.some((f) => f.key === 'host' && f.secret), {
+    error: () => tr(undefined, 'manifest.connectionHostNotSecret'),
+  })
+  .refine((c) => {
+    const secrets = c.fields.filter((f) => f.secret).length
+    return c.kind === 'host' ? secrets === 0 : secrets === 1
+  }, { error: () => tr(undefined, 'manifest.connectionSecretCount') })
+  .refine((c) => (c.kind === 'api-key-header') === (c.headerName !== undefined), {
+    error: () => tr(undefined, 'manifest.connectionHeaderName'),
+  })
+  .refine((c) => (c.kind === 'api-key-query') === (c.queryName !== undefined), {
+    error: () => tr(undefined, 'manifest.connectionQueryName'),
+  })
+  .refine((c) => !CODED_TYPE_NAMES.has(localizedValues(c.name).join(' ').toLowerCase().trim())
+    && !localizedValues(c.name).some((v) => CODED_TYPE_NAMES.has(v.toLowerCase().trim())), {
+    error: () => tr(undefined, 'manifest.connectionNameTaken'),
+  })
+  .refine((c) => localizedValues(c.hint).every((v) => v.length <= 2000), {
+    error: () => tr(undefined, 'manifest.connectionHintTooLong'),
+  })
+export type ConnectionDecl = z.infer<typeof ConnectionDeclSchema>
+
+/** Every string a `LocalizedText` holds, whichever of its two shapes it is in. */
+function localizedValues(text: LocalizedText | undefined): string[] {
+  if (text === undefined) return []
+  return typeof text === 'string' ? [text] : Object.values(text)
+}
+
 const RawManifestSchema = z.object({
   id: z.string().regex(WIDGET_ID_RE),
   name: LocalizedTextSchema,
@@ -198,6 +331,14 @@ const RawManifestSchema = z.object({
       error: () => tr(undefined, 'manifest.privateNetworkHost'),
     })).default([]),
   }).prefault({}),
+  /**
+   * A connection this widget describes for itself. Absent in almost every manifest.
+   *
+   * It is a *permission*, not a setting: the consent dialog renders it, the consent record
+   * stores it, and the proxy will only make the requests it lists. A widget that changes it in
+   * an update asks again.
+   */
+  connection: ConnectionDeclSchema.optional(),
 })
 
 export const ManifestSchema = RawManifestSchema.transform((m, ctx) => {
