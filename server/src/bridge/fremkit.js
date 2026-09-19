@@ -168,8 +168,29 @@
     sendCommand: function (channel, name, payload) {
       return request({ type: 'fremkit:command', channel: channel, name: name, payload: payload })
     },
+    /**
+     * Fetches through the host.
+     *
+     * Two shapes. An `https://…` URL goes to a host the manifest declared in
+     * `permissions.network`, read-only, as it always has. A `conn:/some/path` goes to the
+     * *connection this instance is bound to*: the server resolves which one, adds the
+     * credentials, and only makes the requests the manifest declared and the user agreed to.
+     *
+     * A widget never sees the secret, and never needs to: it does not name a host, a token or a
+     * connection. It names a path.
+     */
     fetch: function (url, init) {
-      var safeInit = init ? { method: init.method, headers: init.headers } : undefined
+      var isConn = typeof url === 'string' && url.indexOf('conn:') === 0
+      if (isConn && !F.instanceId) {
+        // No instance means no connection to resolve, and the answer would be the same after a
+        // round trip. Told here so a widget can render "not configured" without a flicker.
+        return Promise.reject(new Error('unconfigured'))
+      }
+      var safeInit = init
+        ? (isConn
+          ? { method: init.method, headers: init.headers, body: init.body }
+          : { method: init.method, headers: init.headers })
+        : undefined
       return request({ type: 'fremkit:fetch', url: url, init: safeInit }).then(function (r) {
         return {
           ok: r.status >= 200 && r.status < 300,

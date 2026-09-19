@@ -220,7 +220,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   await app.register(connectionRoutes, { store, catalog, types: connectionTypes, manager: connections, secrets })
   await app.register(widgetRoutes, { catalog, store })
   await app.register(themeRoutes, { catalog: themes })
-  await app.register(proxyRoutes, { catalog, store })
+  await app.register(proxyRoutes, { catalog, store, secrets })
   const marketplaceRegistry = new Registry({
     ...(opts.registryUrl ? { url: opts.registryUrl } : {}),
     ...(opts.registryDev ? { dev: true } : {}),

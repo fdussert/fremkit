@@ -4,7 +4,7 @@ import { t, useI18n } from './i18n'
 import { isHexColor, tileText } from './color'
 import { useAppliedTheme, useThemeColors } from './theme'
 import { channelAllowed, mergeSettings, type AccentMode, type NavSlot, type WidgetInstance, type WidgetManifest, type WidgetSize } from './types'
-import { FrameTrust, fetchTarget, nonEmptyString, stampInstance } from './widgetMessages'
+import { FrameTrust, connRequest, fetchTarget, nonEmptyString, stampInstance } from './widgetMessages'
 
 export type BridgeState = 'loading' | 'ready' | 'error'
 
@@ -145,6 +145,20 @@ export function useWidgetBridge(
       case 'fremkit:fetch': {
         const id = str(m.id)
         if (!id) break
+        // `conn:` is the declared connection this instance is bound to. The widget names a path
+        // and nothing else: no host, no token, no connection id. The server resolves all three.
+        const conn = connRequest(m)
+        if (conn) {
+          const instanceId = instance().instanceId
+          fetch(`/api/proxy/${encodeURIComponent(instance().widgetId)}/conn`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ instanceId, ...conn }),
+          })
+            .then(async (r) => reply(id, { status: r.status, headers: { 'content-type': r.headers.get('content-type') }, body: await r.text() }))
+            .catch((e: Error) => reply(id, undefined, e.message))
+          break
+        }
         // GET-only, and refused rather than coerced when the widget asks for anything else.
         const url = fetchTarget(m)
         if (!url) { reply(id, undefined, t('bridge.badRequest')); break }

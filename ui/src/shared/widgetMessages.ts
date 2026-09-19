@@ -47,6 +47,59 @@ export function fetchTarget(message: { url?: unknown; init?: unknown }): string 
 }
 
 /**
+ * A `conn:` request, as the host should read it, or null.
+ *
+ * `conn:` means "the connection this instance is bound to". The widget never names a connection,
+ * a host or a token — it names a path, and the server decides the rest. So everything checked
+ * here is shape: a rooted path, a method the declaration could have listed, a string body, and
+ * the two headers a widget is allowed to set.
+ *
+ * The real allow-list is the server's. This only refuses what is not worth a round trip.
+ */
+export function connRequest(message: { url?: unknown; init?: unknown }): {
+  path: string
+  method: string
+  body?: string
+  headers?: Record<string, string>
+} | null {
+  const url = nonEmptyString(message.url)
+  if (!url || !url.startsWith('conn:')) return null
+  const path = url.slice('conn:'.length)
+  if (!path.startsWith('/')) return null
+
+  const init = message.init
+  if (init === undefined || init === null) return { path, method: 'GET' }
+  if (typeof init !== 'object' || Array.isArray(init)) return null
+  const raw = init as { method?: unknown; body?: unknown; headers?: unknown }
+
+  const method = raw.method === undefined ? 'GET' : raw.method
+  if (typeof method !== 'string') return null
+  if (!['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) return null
+
+  let body: string | undefined
+  if (raw.body !== undefined && raw.body !== null) {
+    if (typeof raw.body !== 'string') return null
+    body = raw.body
+  }
+
+  let headers: Record<string, string> | undefined
+  if (raw.headers !== undefined && raw.headers !== null) {
+    if (typeof raw.headers !== 'object' || Array.isArray(raw.headers)) return null
+    const out: Record<string, string> = {}
+    for (const [name, value] of Object.entries(raw.headers as Record<string, unknown>)) {
+      if (typeof value !== 'string') return null
+      // The server refuses anything else too; saying so here saves a request the widget's author
+      // would otherwise have to read a 403 to understand.
+      if (!['content-type', 'accept'].includes(name.toLowerCase())) return null
+      out[name.toLowerCase()] = value
+    }
+    headers = out
+  }
+
+  return { path, method, ...(body === undefined ? {} : { body }), ...(headers === undefined ? {} : { headers }) }
+}
+
+/**
  * Whether the document currently inside a widget's iframe is still the one the host trusts.
  *
  * `ev.source` is the iframe's `contentWindow`, and that object survives a navigation: a widget

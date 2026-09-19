@@ -1,10 +1,17 @@
 import type { FastifyInstance } from 'fastify'
+import { z } from 'zod'
 import type { WidgetCatalog } from '../widgets/catalog.js'
+import type { ConnectionDecl } from '../widgets/manifest.js'
 import type { ConfigStore } from '../config/store.js'
+import type { SecretStore } from '../secrets/types.js'
 import { grantedFor } from '../marketplace/consent.js'
 import { resolvesToPrivate } from '../net/private.js'
 import { isCrossSiteFetch } from '../http/guard.js'
+import { findInstance } from '../config/instances.js'
+import { authFor, declaredTypeId, originOf, secretField } from '../connections/declared.js'
+import { ConnCache, allowedRequest, checkHeaders, checkPath } from './conn.js'
 import { tr } from '../i18n.js'
+import { WIDGET_ID_RE, type Config } from '../config/schema.js'
 
 const TIMEOUT_MS = 10_000
 const MAX_REDIRECTS = 5
@@ -25,6 +32,26 @@ export const MAX_BODY_BYTES = 1024 * 1024
 const JSON_TYPE = 'application/json; charset=utf-8'
 const TEXT_TYPE = 'text/plain; charset=utf-8'
 
+/**
+ * What a widget asks the proxy to do on its connection's behalf.
+ *
+ * `instanceId` rather than a connection id: the widget names *itself*, and the server resolves
+ * which connection that instance is bound to. A widget that could name a connection could name
+ * somebody else's.
+ */
+const ConnBody = z.object({
+  instanceId: z.string().min(1).max(64),
+  method: z.enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']),
+  path: z.string().min(1).max(2000),
+  body: z.string().max(256 * 1024).optional(),
+  headers: z.record(z.string().max(64), z.string().max(200)).optional(),
+})
+
+/** How long a declared request may take. Longer than the proxy's: a LAN device can be slow. */
+const CONN_TIMEOUT_MS = 15_000
+/** A declared connection answers with data, not with documents. */
+const CONN_MAX_BODY_BYTES = 2 * 1024 * 1024
+
 export interface ProxyOptions {
   catalog: WidgetCatalog
   /** Read for the consent records: what an installed widget may reach is a config fact. */
@@ -34,6 +61,12 @@ export interface ProxyOptions {
    * tests put their upstream on loopback and stand in for a public host here.
    */
   isPrivate?: (host: string) => Promise<boolean>
+  /** Where a declared connection's secret is read from. Absent in the tests that never use one. */
+  secrets?: SecretStore
+  /** Only ever passed by the tests; production uses the global `fetch`. */
+  fetch?: typeof fetch
+  /** Only ever passed by the tests, to make a cache expiry happen without waiting for it. */
+  now?: () => number
 }
 
 export async function proxyRoutes(app: FastifyInstance, opts: ProxyOptions): Promise<void> {
@@ -48,13 +81,13 @@ export async function proxyRoutes(app: FastifyInstance, opts: ProxyOptions): Pro
    * Reads at most `MAX_BODY_BYTES`, giving up rather than truncating: half a JSON document is not
    * a document, and a widget silently parsing one would be worse than an error.
    */
-  const readCapped = async (res: Response): Promise<Buffer | null> => {
+  const readCapped = async (res: Response, max = MAX_BODY_BYTES): Promise<Buffer | null> => {
     const declared = Number(res.headers.get('content-length'))
-    if (Number.isFinite(declared) && declared > MAX_BODY_BYTES) { void res.body?.cancel().catch(() => {}); return null }
+    if (Number.isFinite(declared) && declared > max) { void res.body?.cancel().catch(() => {}); return null }
     const reader = res.body?.getReader()
     if (!reader) {
       const buffer = Buffer.from(await res.arrayBuffer())
-      return buffer.byteLength > MAX_BODY_BYTES ? null : buffer
+      return buffer.byteLength > max ? null : buffer
     }
     const chunks: Buffer[] = []
     let total = 0
@@ -62,7 +95,7 @@ export async function proxyRoutes(app: FastifyInstance, opts: ProxyOptions): Pro
       const { done, value } = await reader.read()
       if (done) break
       total += value.byteLength
-      if (total > MAX_BODY_BYTES) { void reader.cancel().catch(() => {}); return null }
+      if (total > max) { void reader.cancel().catch(() => {}); return null }
       chunks.push(Buffer.from(value))
     }
     return Buffer.concat(chunks)
@@ -122,4 +155,140 @@ export async function proxyRoutes(app: FastifyInstance, opts: ProxyOptions): Pro
     const looksJson = /^[\s﻿]*[[{]/.test(body.subarray(0, 64).toString('utf8'))
     return reply.code(upstream.status).header('content-type', looksJson ? JSON_TYPE : TEXT_TYPE).send(body)
   })
+
+  const cache = new ConnCache(opts.now)
+
+  /**
+   * `POST /api/proxy/:widgetId/conn` — one request on a declared connection.
+   *
+   * The whole of the declared-connection promise is in this handler: the widget names a path, the
+   * server decides whether that path is one the user agreed to, adds the secret, and hands back
+   * the answer. The widget never holds the credential and can never see it — not in a response,
+   * not in an error, not in a log line.
+   *
+   * Order matters and is deliberate. Everything that can be refused without touching the network
+   * is refused first: the origin, the body's shape, the path's shape, the grant, the instance,
+   * the connection, then the allow-list. Only then is the secret read, and only then is a request
+   * made.
+   */
+  app.post<{ Params: { widgetId: string } }>('/api/proxy/:widgetId/conn', async (req, reply) => {
+    if (isCrossSiteFetch(req.headers)) return reply.code(403).send({ error: tr(undefined, 'http.originNotAllowed') })
+    const widgetId = req.params.widgetId
+    if (!WIDGET_ID_RE.test(widgetId)) return reply.code(404).send({ error: tr(undefined, 'widgets.unknown') })
+
+    const parsed = ConnBody.safeParse(req.body)
+    if (!parsed.success) return reply.code(400).send({ error: tr(undefined, 'proxy.badRequest') })
+    const { instanceId, method, body: sent } = parsed.data
+
+    // Refused before it is matched against anything: see `checkPath`.
+    const path = checkPath(parsed.data.path)
+    if (path === null) return reply.code(400).send({ error: tr(undefined, 'proxy.badPath') })
+
+    const headers = checkHeaders(parsed.data.headers)
+    if (headers === null) return reply.code(403).send({ error: tr(undefined, 'proxy.headerNotAllowed') })
+
+    const config = opts.store.get()
+    // Granted, not declared. A widget that rewrote its own manifest reaches nothing.
+    const manifest = grantedFor(opts.catalog, config, widgetId)
+    if (!manifest) return reply.code(404).send({ error: tr(undefined, 'widgets.unknown') })
+    const decl = manifest.connection
+    if (!decl) return reply.code(403).send({ error: tr(undefined, 'proxy.noDeclaration') })
+
+    // The instance has to be one of this widget's: an instance id is not a capability, and a
+    // widget asking on behalf of another one is asking for somebody else's connection.
+    const instance = findInstance(config, instanceId)
+    if (!instance || instance.widgetId !== widgetId) {
+      return reply.code(404).send({ error: tr(undefined, 'proxy.unknownInstance') })
+    }
+
+    const connection = connectionFor(config, instance.settings, widgetId, decl)
+    if (!connection) return reply.code(409).send({ error: tr(undefined, 'proxy.unconfigured') })
+
+    const allowed = allowedRequest(decl, { method, path })
+    if (!allowed) {
+      // Names the rule that was broken, never the secret and never the host.
+      return reply.code(403).send({ error: tr(undefined, 'proxy.requestNotDeclared', { method, path }) })
+    }
+
+    const host = (connection.fields.host ?? '').trim()
+    if (!host) return reply.code(409).send({ error: tr(undefined, 'proxy.unconfigured') })
+
+    const cacheMs = method === 'GET' ? (allowed.cacheMs ?? 0) : 0
+    if (cacheMs > 0) {
+      const hit = cache.get(connection.id, path, cacheMs)
+      if (hit) {
+        return reply.code(hit.status)
+          .header('content-type', hit.json ? JSON_TYPE : TEXT_TYPE)
+          .header('x-fremkit-cache', 'hit')
+          .send(hit.body)
+      }
+    }
+
+    const key = secretField(decl)
+    const secret = key && opts.secrets ? ((await opts.secrets.get(`${connection.id}/${key}`)) ?? '') : ''
+    const auth = authFor(decl, connection.fields, key ? { [key]: secret } : {})
+
+    let url: URL
+    try { url = new URL(originOf(decl, host) + path) }
+    catch { return reply.code(409).send({ error: tr(undefined, 'proxy.unconfigured') }) }
+    for (const [name, value] of Object.entries(auth.query)) url.searchParams.set(name, value)
+
+    const doFetch = opts.fetch ?? fetch
+    let upstream: Response
+    try {
+      upstream = await doFetch(url, {
+        method,
+        headers: { ...headers, ...auth.headers },
+        ...(sent !== undefined && method !== 'GET' ? { body: sent } : {}),
+        // A 3xx is an error, not a hop. The secret is bound to the host the user typed, and
+        // following a redirect is exactly how it would reach one they did not.
+        redirect: 'manual',
+        signal: AbortSignal.timeout(CONN_TIMEOUT_MS),
+      })
+    } catch (err) {
+      // The name of the error and nothing else: the message quotes the URL, and the URL may hold
+      // the key when the declaration puts it in the query string.
+      req.log.warn({ widgetId, name: (err as Error).name }, 'declared connection request failed')
+      return reply.code(502).send({ error: tr(undefined, 'proxy.upstreamFailed') })
+    }
+
+    if ([301, 302, 303, 307, 308].includes(upstream.status)) {
+      void upstream.body?.cancel().catch(() => {})
+      return reply.code(502).send({ error: tr(undefined, 'proxy.redirectRefused') })
+    }
+
+    let answer: Buffer | null
+    try { answer = await readCapped(upstream, CONN_MAX_BODY_BYTES) } catch { answer = null }
+    if (answer === null) return reply.code(502).send({ error: tr(undefined, 'proxy.tooLarge') })
+
+    const json = /^[\s﻿]*[[{]/.test(answer.subarray(0, 64).toString('utf8'))
+    // A write invalidates what this connection cached: the next read must see what it just did.
+    if (method !== 'GET') cache.forget(connection.id)
+    else if (cacheMs > 0) cache.put(connection.id, path, { status: upstream.status, body: answer, json })
+
+    return reply.code(upstream.status).header('content-type', json ? JSON_TYPE : TEXT_TYPE).send(answer)
+  })
+}
+
+/**
+ * The connection an instance is bound to, for a widget's declared type.
+ *
+ * Found through the instance's own settings: the widget declares a `connection` setting whose
+ * `connectionType` is its declared type, and the value is the connection's id. A setting naming
+ * a connection of another type is ignored rather than followed — that is how a widget would
+ * reach a coded type's credentials.
+ */
+function connectionFor(
+  config: Config,
+  settings: Record<string, unknown>,
+  widgetId: string,
+  decl: ConnectionDecl,
+): { id: string; fields: Record<string, string> } | undefined {
+  const typeId = declaredTypeId(widgetId, typeof decl.name === 'string' ? decl.name : (Object.values(decl.name)[0] ?? ''))
+  const ids = Object.values(settings).filter((v): v is string => typeof v === 'string')
+  for (const id of ids) {
+    const found = config.connections.find((c) => c.id === id && c.type === typeId)
+    if (found) return { id: found.id, fields: found.fields }
+  }
+  return undefined
 }
