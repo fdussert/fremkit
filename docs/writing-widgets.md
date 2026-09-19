@@ -285,6 +285,83 @@ runs on the user's Mac, so `127.0.0.1` there would mean the Fremkit API itself a
 `169.254.169.254` a metadata service. The answer is relayed as `application/json` or
 `text/plain`, never with the upstream's own content type, and never above 1 MB.
 
+## Declaring a connection
+
+`permissions.network` is for a public API a widget reads without signing in. When the service
+needs a credential, or sits on the local network, the widget **declares a connection** and the
+core holds the credential for it.
+
+A widget declaring one never sees the secret. It asks for a path; the server resolves which
+connection this instance is bound to, checks the method and the path against the requests the
+user agreed to, adds the credential, and hands back the answer.
+
+```json
+"connection": {
+  "name": { "fr": "Homey (flows)", "en": "Homey (flows)" },
+  "kind": "http-bearer",
+  "fields": [
+    { "key": "host", "label": { "fr": "Adresse du Homey", "en": "The Homey's address" }, "required": true },
+    { "key": "token", "label": { "fr": "Clé API", "en": "API key" }, "secret": true, "required": true }
+  ],
+  "test": { "method": "GET", "path": "/api/manager/flow/flow", "expect": 200 },
+  "requests": [
+    { "method": "GET", "path": "/api/manager/flow/flow", "cacheMs": 15000 },
+    { "method": "POST", "path": "/api/manager/flow/flow/*/trigger" }
+  ],
+  "hint": { "fr": "Paramètres → API keys…", "en": "Settings → API keys…" }
+}
+```
+
+```js
+var flows = await Fremkit.fetch('conn:/api/manager/flow/flow').then(r => r.json())
+await Fremkit.fetch('conn:/api/manager/flow/flow/' + id + '/trigger', {
+  method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}'
+})
+```
+
+| Field | What it is |
+|---|---|
+| `name` | The type's label in the admin. `{ fr, en }`. May not be a built-in type's name |
+| `kind` | `host`, `http-bearer`, `http-basic`, `api-key-header`, `api-key-query` |
+| `fields` | What the form asks for. Exactly one `{ "key": "host" }`, never secret; exactly one `secret: true` field unless the kind is `host`, which has none |
+| `headerName` | `api-key-header` only, and required there. One of `Authorization`, `X-API-Key`, `X-Api-Key`, `X-Auth-Token` |
+| `queryName` | `api-key-query` only, and required there |
+| `scheme` | `https` (the default) or `http`. See below |
+| `test` | One GET the Test button makes, and the status it expects. Optional |
+| `requests` | Every call the widget may make. At most 32 |
+| `hint` | Setup instructions, shown above the form and in the consent dialog. Text only, 2000 characters |
+
+**Paths are patterns.** `/`-rooted; each segment is a literal, `*` (exactly one segment) or `**`
+(the rest, including none, and only at the end). No query string, no `.` or `..`. The server
+refuses a request whose path carries any of those before it is matched at all, because a service
+may route `/a/../b` differently from the matcher.
+
+**`http` is for the local network.** A Key Light and a Homey have no certificate an authority
+signed. Fremkit honours `scheme: "http"` for a *private* address and silently uses https for
+anything else — the exception exists because there is no certificate to be had, not as a way to
+take somebody's key off TLS on the open internet.
+
+**`cacheMs`** serves a GET from a per-connection cache for that long (5 minutes at most), so two
+widgets on one screen do not poll the same service twice. A write clears everything that
+connection cached.
+
+**What a widget may set on a request:** a `body` (a string) and the `Content-Type` and `Accept`
+headers. Nothing else. `Authorization` would override the credential the server just injected,
+`Cookie` would make it a session, `Host` would pick a different virtual host.
+
+**The connection setting.** Declare a `connection` setting whose `connectionType` is
+`decl:<widgetId>:<slug of the name>` — `decl:homey-flows:homey-flows` for the example above. The
+slug is the English name, lower-cased, non-alphanumerics folded to `-`. Without that setting the
+widget has nothing to bind to and `Fremkit.fetch('conn:…')` answers `unconfigured`.
+
+**Known limit:** there is no `allowSelfSigned`. A device on the LAN serving https with its own
+certificate cannot be reached this way in v1 — declare `scheme: "http"` if it also serves plain
+HTTP, or ask for a coded connection type.
+
+**What stays coded.** A session handshake (Synology), a protocol that is not HTTP (Bambu's
+MQTT), OAuth, a local binary. A declaration is the easy half, not an escape hatch: if it does
+not fit an auth header on HTTP, it belongs in `server/src/connections/types/`.
+
 ## Security
 
 A widget is third-party code, and the host treats it as such.

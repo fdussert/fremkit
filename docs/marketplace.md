@@ -125,6 +125,27 @@ tokens: no code, nothing served, nothing subscribed to, no network host. So:
 Install them from *Sietch* → **Themes**; they land in `data/themes/` and show up in Screen →
 Theme at once. See [themes.md](themes.md).
 
+## When a widget declares a connection
+
+Some widgets need a service you have to sign in to — a Homey, a NAS, a light on your desk. A
+widget may describe that connection itself rather than needing one written into Fremkit, and
+the dialog then carries a **Connection** block:
+
+> This widget declares a connection named **Homey (flows)**. Your *API key* will be sent as
+> *Authorization: Bearer* to the host **you enter in the admin**, for these requests:
+> `GET /api/manager/flow/flow`, `POST /api/manager/flow/flow/*/trigger`
+
+Then the author's setup instructions, as text.
+
+Read it as the promise it is. The host is not named because there is not one yet — you type it
+afterwards, and the credential goes there and nowhere else. The requests are the *whole* list:
+the server refuses anything the widget asks for that is not on it, and the widget never holds
+the credential to ask with. A declaration that asks for plain HTTP says so in red, and Fremkit
+honours it only for an address on your own network.
+
+An update that changes any part of it — a new request, a different header, a different scheme,
+a different hint — asks again. There is no part of a declaration that could change harmlessly.
+
 ## What the installer checks
 
 The registry runs these rules at pull-request time, so an author hears about a mistake early.

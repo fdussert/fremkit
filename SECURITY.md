@@ -86,6 +86,22 @@ malicious about it. The registry is curated by pull request and the review reads
 does with the permissions it asks for — but the thing to read before pressing Install is the
 list in the dialog.
 
+A widget may also **declare a connection** — a service it needs credentials for, described in
+its own manifest rather than coded into Fremkit. What that widget can reach is narrower than it
+sounds, and deliberately so. It never holds the credential: it asks the server for a *path*, and
+the server checks the method and that path against the exact list of requests you were shown
+before installing, adds the credential, and returns the answer. Anything not on the list is a
+403. The credential goes to the address **you** typed and to nothing else — a redirect is an
+error rather than a hop, and the address cannot be changed without the key being asked for
+again. A path that a service might route differently from the matcher (`..`, `%2f`, an empty
+segment) is refused before it is matched. The widget may set a body and two headers,
+`Content-Type` and `Accept`; `Authorization`, `Cookie` and `Host` are refused, because each is a
+way of reaching past the proxy. Plain HTTP is honoured only for an address on your own network,
+where there is no certificate to be had.
+
+The thing this does *not* protect you from is the same as above: a widget doing exactly what it
+declared, on data you agreed it could reach. The list in the dialog is the thing to read.
+
 ### Remote data rendered by a widget
 
 Calendar titles, volume names, printer fields, pull request titles: none of it is yours, all of it

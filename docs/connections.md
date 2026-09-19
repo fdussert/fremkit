@@ -25,6 +25,41 @@ the keychain instead of into a page. The widget is HTML in a sandbox and is publ
 lists the widgets that read it, with an Install button beside the ones this machine does not
 have. Nothing else to set up.
 
+## Connections a widget declares
+
+The types above are **coded**: they live in `server/src/connections/types/`, they ship with
+Fremkit, and each one exists because the service needs something a form cannot describe — a
+session handshake, MQTT, a local binary.
+
+Most services need none of that. They want one auth header on HTTPS. So a widget may **declare**
+the connection it needs, in its own manifest, and Fremkit stores it, tests it and holds the
+credential — without a release of Fremkit per service.
+
+What that changes for you:
+
+- **The form looks the same**, and says which widget asked for it. The author's setup
+  instructions sit above the fields.
+- **The key is stored the same way** — macOS keychain, never returned by the API, never logged,
+  never in a backup — and is bound to the address you typed. Change the address and Fremkit
+  asks for the key again, because that key would otherwise be sent somewhere new.
+- **The widget never sees it.** It asks the server for a path; the server checks that path
+  against the list you agreed to when you installed the widget, adds the credential, and hands
+  back the answer. A widget that asks for anything else is refused.
+- **The address may be on your own network.** That is the point: a Key Light, a Homey, a NAS.
+  A declared connection is the one path that reaches a private address, and only the one *you*
+  typed.
+- **Uninstalling the widget leaves the connection.** The type disappears from the list, the
+  connection stays and is shown greyed — reinstalling finds it where it was. Remove it yourself
+  when you want the key gone.
+
+The install dialog names the connection, the field, how it will be carried and every request the
+widget may make, before anything is downloaded. See
+[marketplace.md](marketplace.md) and, to write one,
+[writing-widgets.md](writing-widgets.md#declaring-a-connection).
+
+**A known limit:** there is no "accept a self-signed certificate" for a declared connection in
+this version. A LAN device serving https with its own certificate needs a coded type.
+
 ## Where the values are kept
 
 Non-secret fields live in `data/fremkit.json`, which is git-ignored. Fields marked secret never

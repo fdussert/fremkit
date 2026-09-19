@@ -8,7 +8,7 @@ import { grantedFor } from '../marketplace/consent.js'
 import { resolvesToPrivate } from '../net/private.js'
 import { isCrossSiteFetch } from '../http/guard.js'
 import { findInstance } from '../config/instances.js'
-import { authFor, declaredTypeId, originOf, secretField } from '../connections/declared.js'
+import { authFor, declaredTypeId, originOf, secretField, slugText } from '../connections/declared.js'
 import { ConnCache, allowedRequest, checkHeaders, checkPath } from './conn.js'
 import { tr } from '../i18n.js'
 import { WIDGET_ID_RE, type Config } from '../config/schema.js'
@@ -284,7 +284,7 @@ function connectionFor(
   widgetId: string,
   decl: ConnectionDecl,
 ): { id: string; fields: Record<string, string> } | undefined {
-  const typeId = declaredTypeId(widgetId, typeof decl.name === 'string' ? decl.name : (Object.values(decl.name)[0] ?? ''))
+  const typeId = declaredTypeId(widgetId, slugText(decl.name))
   const ids = Object.values(settings).filter((v): v is string => typeof v === 'string')
   for (const id of ids) {
     const found = config.connections.find((c) => c.id === id && c.type === typeId)

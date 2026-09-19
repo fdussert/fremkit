@@ -8,7 +8,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
   authFor, declaredBy, declaredFromCatalog, declaredType, declaredTypeId,
-  isDeclaredType, originOf, schemeFor, syncDeclaredTypes,
+  isDeclaredType, originOf, schemeFor, slugText, syncDeclaredTypes,
 } from '../src/connections/declared.js'
 import { ConnectionDeclSchema, type ConnectionDecl } from '../src/widgets/manifest.js'
 import { ConnectionTypeRegistry } from '../src/connections/registry.js'
@@ -41,6 +41,16 @@ describe('the id a declaration gets', () => {
   it('makes a slug out of anything, including a name that is all punctuation', () => {
     expect(declaredTypeId('w', 'Ma Connexion Élégante')).toBe('decl:w:ma-connexion-elegante')
     expect(declaredTypeId('w', '···')).toBe('decl:w:connection')
+  })
+
+  it('is the same id however the manifest happened to order its locales', () => {
+    // Otherwise a manifest reformatted between two versions changes the type id and orphans
+    // every connection made with it.
+    expect(slugText({ fr: 'Flows Homey', en: 'Homey flows' })).toBe('Homey flows')
+    expect(slugText({ en: 'Homey flows', fr: 'Flows Homey' })).toBe('Homey flows')
+    // No English: the alphabetically first locale, which is still a fixed choice.
+    expect(slugText({ fr: 'Flows', de: 'Abläufe' })).toBe('Abläufe')
+    expect(slugText('Plain')).toBe('Plain')
   })
 })
 

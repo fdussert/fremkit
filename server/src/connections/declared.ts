@@ -53,9 +53,19 @@ function slug(name: string): string {
   return out || 'connection'
 }
 
-/** The first string of a `LocalizedText`, for the places that need one before a locale is known. */
-function firstText(text: ConnectionDecl['name']): string {
-  return typeof text === 'string' ? text : (Object.values(text)[0] ?? 'connection')
+/**
+ * The one string a `LocalizedText` is slugged from — deterministically.
+ *
+ * Not "the first value": that is the order the keys happen to sit in the JSON file, so a manifest
+ * reformatted between two versions would change the type id and orphan every connection made
+ * with it. English when it is there, otherwise the alphabetically first locale, so the same
+ * declaration always produces the same id whatever an editor did to the file.
+ */
+export function slugText(text: ConnectionDecl['name']): string {
+  if (typeof text === 'string') return text
+  if (typeof text.en === 'string' && text.en) return text.en
+  const keys = Object.keys(text).sort()
+  return keys.length ? (text[keys[0]] ?? 'connection') : 'connection'
 }
 
 /** The field whose value is the secret, or undefined for the `host` kind, which has none. */
@@ -201,7 +211,7 @@ async function runTest(
  */
 export function declaredType(widgetId: string, decl: ConnectionDecl, deps: DeclaredTypeDeps = {}): ConnectionType {
   return {
-    id: declaredTypeId(widgetId, firstText(decl.name)),
+    id: declaredTypeId(widgetId, slugText(decl.name)),
     name: decl.name,
     description: decl.hint ?? '',
     icon: 'plug',
@@ -242,7 +252,7 @@ export function syncDeclaredTypes(
   installed: { widgetId: string; decl: ConnectionDecl }[],
   deps: DeclaredTypeDeps = {},
 ): void {
-  const wanted = new Map(installed.map((w) => [declaredTypeId(w.widgetId, firstText(w.decl.name)), w]))
+  const wanted = new Map(installed.map((w) => [declaredTypeId(w.widgetId, slugText(w.decl.name)), w]))
   for (const type of registry.list()) {
     if (isDeclaredType(type.id) && !wanted.has(type.id)) registry.remove(type.id)
   }
