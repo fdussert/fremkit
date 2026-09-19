@@ -320,7 +320,48 @@ export function fieldsInScope(
 export type WidgetSource = 'builtin' | 'installed'
 
 /** The three lists a widget asks for, as the registry index and a consent record spell them. */
-export interface WidgetPermissionSet { subscriptions: string[]; commands: string[]; network: string[] }
+/**
+ * One field of a connection a widget declares. The shape the server's `ConnectionDeclSchema`
+ * produces, narrowed to what the admin renders.
+ */
+export interface ConnectionDeclField {
+  key: string
+  label: LocalizedText
+  help?: LocalizedText
+  placeholder?: LocalizedText
+  secret?: boolean
+  required?: boolean
+}
+
+/** A request a declared connection may make, as the dialog lists it. */
+export interface ConnectionDeclRequest { method: string; path: string; cacheMs?: number }
+
+/**
+ * A connection a widget declares for itself, as the admin receives it.
+ *
+ * Mirrors `ConnectionDeclSchema` on the server. It arrives inside a permission set rather than
+ * beside one because that is what it is: agreeing to it is agreeing that the server will hold a
+ * credential for this service and make exactly these requests with it.
+ */
+export interface ConnectionDecl {
+  name: LocalizedText
+  kind: 'host' | 'http-bearer' | 'http-basic' | 'api-key-header' | 'api-key-query'
+  fields: ConnectionDeclField[]
+  headerName?: string
+  queryName?: string
+  scheme: 'https' | 'http'
+  test?: { method: 'GET'; path: string; expect: number }
+  requests: ConnectionDeclRequest[]
+  hint?: LocalizedText
+}
+
+export interface WidgetPermissionSet {
+  subscriptions: string[]
+  commands: string[]
+  network: string[]
+  /** Present only when the widget declares a connection; see `ConnectionDecl`. */
+  connection?: ConnectionDecl
+}
 
 /**
  * One row of the marketplace: what the registry published, plus what this machine makes of it.

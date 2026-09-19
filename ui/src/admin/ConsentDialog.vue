@@ -39,6 +39,33 @@ function groups(set: WidgetPermissionSet): { key: string; icon: string; items: s
   ].filter((g) => g.items.length)
 }
 
+/**
+ * How the secret will be presented, in words rather than in the kind's name.
+ *
+ * "as Authorization: Bearer" tells somebody who has seen an API key before exactly what will
+ * happen; `http-bearer` tells them nothing. The host is deliberately *not* named: there is none
+ * yet — the user types it in the admin afterwards, and saying so is the point.
+ */
+const carriage = computed(() => {
+  const c = props.prompt.added.connection ?? props.prompt.all.connection
+  if (!c) return ''
+  if (c.kind === 'http-bearer') return 'Authorization: Bearer'
+  if (c.kind === 'http-basic') return 'Authorization: Basic'
+  if (c.kind === 'api-key-header') return `${c.headerName ?? ''}`
+  if (c.kind === 'api-key-query') return `?${c.queryName ?? ''}=`
+  return ''
+})
+
+/** The declaration this dialog is about, new or already granted. */
+const connection = computed(() => props.prompt.added.connection ?? props.prompt.all.connection)
+/** The field whose value is the credential, so the dialog can name it as the user will see it. */
+const secretLabel = computed(() => {
+  const field = connection.value?.fields.find((f) => f.secret)
+  return field ? pick(field.label) : ''
+})
+/** The declaration is new to this dialog; an unchanged one is context, not an ask. */
+const connectionIsNew = computed(() => props.prompt.added.connection !== undefined)
+
 const added = computed(() => groups(props.prompt.added))
 const all = computed(() => groups(props.prompt.all))
 /** On a first install the difference *is* everything, so showing both lists would repeat it. */
@@ -68,6 +95,24 @@ const title = computed(() => t(props.prompt.update ? 'admin.market.consentUpdate
       </div>
     </template>
 
+    <!-- A connection is the one permission that is not a list of channels, and the one that
+         costs the user a credential. It gets its own block, in words. -->
+    <section v-if="connection" class="conn" :class="{ dim: !connectionIsNew }">
+      <h3>{{ t('admin.market.consentConnection') }}</h3>
+      <p class="says">{{ t('admin.market.consentConnectionLead', { name: pick(connection.name) }) }}</p>
+      <p v-if="carriage" class="says">
+        {{ t('admin.market.consentConnectionSecret', { field: secretLabel, carriage }) }}
+      </p>
+      <p v-else class="says">{{ t('admin.market.consentConnectionNoSecret') }}</p>
+      <p v-if="connection.scheme === 'http'" class="says warn">{{ t('admin.market.consentConnectionHttp') }}</p>
+      <span class="items">
+        <code v-for="r in connection.requests" :key="r.method + r.path">{{ r.method }} {{ r.path }}</code>
+      </span>
+      <!-- The author's own setup instructions, as text: newlines kept, nothing rendered, no
+           link followed. It is a manifest from the network in a dialog about trusting it. -->
+      <p v-if="connection.hint" class="hint">{{ pick(connection.hint) }}</p>
+    </section>
+
     <p v-if="prompt.widget.connections.length" class="note">
       {{ t('admin.market.needsConnection', { types: prompt.widget.connections.join(', ') }) }}
     </p>
@@ -88,6 +133,14 @@ h3 { font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: .08em; 
   margin: var(--space-4) 0 var(--space-2); }
 .group { display: flex; flex-direction: column; gap: var(--space-1); margin-bottom: var(--space-2); }
 .group.dim { opacity: .65; }
+.conn { border: 1px solid var(--accent); border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3); margin: var(--space-3) 0; }
+.conn.dim { border-color: var(--border-strong); opacity: .65; }
+.conn h3 { margin-top: 0; }
+.says { margin: 0 0 var(--space-1); font-size: var(--fs-sm); }
+.says.warn { color: var(--danger); }
+.hint { margin: var(--space-2) 0 0; font-size: var(--fs-xs); color: var(--text-muted);
+  white-space: pre-wrap; word-break: break-word; }
 .lbl { display: flex; align-items: center; gap: var(--space-1); font-size: var(--fs-xs); color: var(--text-muted);
   text-transform: uppercase; letter-spacing: .06em; }
 .items { display: flex; flex-wrap: wrap; gap: var(--space-1); }

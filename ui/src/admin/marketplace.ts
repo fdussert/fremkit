@@ -33,11 +33,14 @@ function union(a: WidgetPermissionSet, b: WidgetPermissionSet): WidgetPermission
     subscriptions: merge(a.subscriptions, b.subscriptions),
     commands: merge(a.commands, b.commands),
     network: merge(a.network, b.network),
+    // The later one wins: `b` is what is being asked for now.
+    ...(b.connection ?? a.connection ? { connection: b.connection ?? a.connection } : {}),
   }
 }
 
 function empty(p: WidgetPermissionSet): boolean {
   return p.subscriptions.length === 0 && p.commands.length === 0 && p.network.length === 0
+    && p.connection === undefined
 }
 
 /**

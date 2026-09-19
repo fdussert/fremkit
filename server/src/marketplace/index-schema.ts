@@ -13,6 +13,7 @@
  * package rather than taken from the index entry that advertised them.
  */
 
+import { ConnectionDeclSchema } from '../widgets/manifest.js'
 import { z } from 'zod'
 import { SEMVER_RE, WIDGET_CATEGORIES } from '../widgets/manifest.js'
 import { WIDGET_ID_RE } from '../config/schema.js'
@@ -68,6 +69,16 @@ export const IndexWidgetSchema = z.object({
     subscriptions: z.array(z.string()).default([]),
     commands: z.array(z.string()).default([]),
     network: z.array(z.string()).default([]),
+    /**
+     * The connection the widget declares, copied from its manifest so the dialog can show it
+     * before anything is downloaded.
+     *
+     * Parsed with the real schema, because this is the thing the dialog renders and the user
+     * agrees to — an index advertising a declaration Fremkit would refuse should be refused
+     * here rather than after the download. The grant is still checked against the manifest
+     * inside the package: the entry is a shop window, and only the package was hashed.
+     */
+    connection: ConnectionDeclSchema.optional(),
   }),
   /** Connection types the widget's settings need, so the admin can say so before installing. */
   connections: z.array(z.string()).default([]),

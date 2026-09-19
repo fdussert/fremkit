@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { addedPermissions, effectiveManifest, grantedCatalog, grantedFor, isEmpty, permissionsOf } from '../src/marketplace/consent.js'
+import { addedPermissions, effectiveManifest, grantedCatalog, grantedFor, grantedManifest, grantedPermissions, isEmpty, permissionsOf } from '../src/marketplace/consent.js'
 import { ManifestSchema, type WidgetManifest } from '../src/widgets/manifest.js'
 import { WidgetCatalog } from '../src/widgets/catalog.js'
 import { DEFAULT_CONFIG, type Config, type WidgetConsent } from '../src/config/schema.js'
@@ -115,5 +115,81 @@ describe('grantedFor and grantedCatalog', () => {
   it('narrows the whole catalogue in one pass', () => {
     const all = grantedCatalog(catalogWith('installed'), config(consent({ network: [] })))
     expect(all.get('nas')!.permissions.network).toEqual([])
+  })
+})
+
+describe('a declared connection as a permission', () => {
+  const decl = (over: Record<string, unknown> = {}) => ({
+    name: 'Homey Flows',
+    kind: 'http-bearer',
+    scheme: 'https',
+    fields: [{ key: 'host', label: 'A' }, { key: 'token', label: 'K', secret: true }],
+    requests: [{ method: 'GET', path: '/api/manager/flow/flow' }],
+    ...over,
+  })
+
+  const asked = (connection?: unknown) => ({
+    subscriptions: [], commands: [], network: [],
+    ...(connection ? { connection } : {}),
+  } as never)
+
+  it('asks again when anything about the declaration changed', () => {
+    // There is no part of a declaration that could change harmlessly: a new request is a new
+    // call the widget may make, a changed kind moves the key to another header, and
+    // `scheme: 'http'` takes it off TLS.
+    const granted = asked(decl())
+    for (const change of [
+      { requests: [{ method: 'GET', path: '/api/manager/flow/flow' }, { method: 'POST', path: '/api/manager/system' }] },
+      { kind: 'api-key-header', headerName: 'X-API-Key' },
+      { scheme: 'http' },
+      { hint: 'paste your key here' },
+      { fields: [{ key: 'host', label: 'A' }, { key: 'token', label: 'Token', secret: true }] },
+      { name: 'Homey Flows Pro' },
+    ]) {
+      const added = addedPermissions(granted, asked(decl(change)))
+      expect(isEmpty(added), JSON.stringify(change)).toBe(false)
+      expect(added.connection).toBeDefined()
+    }
+  })
+
+  it('says nothing when it is the same offer, however the manifest was formatted', () => {
+    const granted = asked(decl())
+    expect(isEmpty(addedPermissions(granted, asked(decl())))).toBe(true)
+    // Key order is not a change.
+    const reordered = { requests: decl().requests, kind: 'http-bearer', scheme: 'https', name: 'Homey Flows', fields: decl().fields }
+    expect(isEmpty(addedPermissions(granted, asked(reordered)))).toBe(true)
+  })
+
+  it('is new when there was none before, and is not carried by a grant alone', () => {
+    expect(addedPermissions(asked(), asked(decl())).connection).toBeDefined()
+    // A grant that still holds one, against a version that dropped it: nothing new to agree to.
+    expect(isEmpty(addedPermissions(asked(decl()), asked()))).toBe(true)
+  })
+
+  it('is granted only while it is the declaration that was agreed to', () => {
+    const manifest = ManifestSchema.parse({
+      id: 'homey-flows', name: 'F', version: '2.0.0', minSize: [8, 4], defaultSize: [8, 4],
+      connection: decl(),
+    })
+    const record = (connection?: unknown): WidgetConsent => ({
+      kind: 'widget' as const, version: '2.0.0', registry: 'r', installedAt: 'x',
+      consentedPermissions: {
+        subscriptions: [], commands: [], network: [],
+        ...(connection ? { connection: connection as Record<string, unknown> } : {}),
+      },
+    })
+    expect(grantedManifest(manifest, record(decl())).connection).toBeDefined()
+    // A widget that widened its own manifest reaches nothing, like a channel never granted.
+    expect(grantedManifest(manifest, record(decl({ requests: [{ method: 'GET', path: '/x' }] }))).connection).toBeUndefined()
+    expect(grantedManifest(manifest, record()).connection).toBeUndefined()
+  })
+
+  it('treats a stored declaration it cannot validate as no grant at all', () => {
+    // The config is kept loose so an old file still loads; what enforces the grant is not.
+    const bad = {
+      kind: 'widget' as const, version: '2.0.0', registry: 'r', installedAt: 'x',
+      consentedPermissions: { subscriptions: [], commands: [], network: [], connection: { name: 'X' } },
+    }
+    expect(grantedPermissions(bad).connection).toBeUndefined()
   })
 })
