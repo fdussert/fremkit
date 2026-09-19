@@ -136,9 +136,11 @@ export interface MarketplaceThemeEntry extends IndexTheme {
 }
 
 function themeEntryFor(theme: IndexTheme, config: Config, themes: ThemeCatalog): MarketplaceThemeEntry {
-  const record = config.marketplace.installed[theme.id]
+  // `installed` is keyed by id across both kinds, so the record has to say it is a theme's: a
+  // widget called `nuit` would otherwise lend its version to a theme of the same name.
+  const record = recordOf(config, theme.id, 'theme')
   const local = themes.entry(theme.id)
-  const installed = Boolean(record) && local?.source === 'installed'
+  const installed = record !== undefined && local?.source === 'installed'
   return {
     ...theme,
     installed,
@@ -149,10 +151,23 @@ function themeEntryFor(theme: IndexTheme, config: Config, themes: ThemeCatalog):
   }
 }
 
+/**
+ * The install record for an id, but only when it is the right kind's.
+ *
+ * `marketplace.installed` is one map keyed by id, and a widget and a theme may legitimately
+ * share a name — the two live in different folders and neither shadows the other. What they
+ * cannot share is the record, which holds a version and a grant. Reading one as the other is how
+ * a theme reports the widget's version, or a widget is granted a theme's empty permissions.
+ */
+function recordOf(config: Config, id: string, kind: PackageKind): WidgetConsent | undefined {
+  const record = config.marketplace.installed[id]
+  return record && record.kind === kind ? record : undefined
+}
+
 function entryFor(widget: IndexWidget, config: Config, catalog: WidgetCatalog): MarketplaceEntry {
-  const record = config.marketplace.installed[widget.id]
+  const record = recordOf(config, widget.id, 'widget')
   const local = catalog.entry(widget.id)
-  const installed = Boolean(record) && local?.source === 'installed'
+  const installed = record !== undefined && local?.source === 'installed'
   const installedVersion = installed ? record.version : null
   const asked: Permissions = {
     subscriptions: widget.permissions.subscriptions,
@@ -264,7 +279,11 @@ export async function marketplaceRoutes(app: FastifyInstance, opts: MarketplaceO
     // The *folder* names, not the entries: a built-in whose manifest fails to parse is an error
     // rather than an entry, and it would have freed its id for an installed widget to take.
     if (catalog.builtinIds.has(id)) return { status: 409, body: fail('marketplace.builtinId') }
-    if (mode === 'update' && !store.get().marketplace.installed[id]) {
+    // One record per id across both kinds: installing over the other kind's would take its
+    // version and its grant with it. Refused rather than merged — the user removes one first.
+    const held = store.get().marketplace.installed[id]
+    if (held && held.kind !== 'widget') return { status: 409, body: fail('marketplace.idIsATheme') }
+    if (mode === 'update' && !held) {
       return { status: 409, body: fail('marketplace.notInstalled') }
     }
 
@@ -357,7 +376,9 @@ export async function marketplaceRoutes(app: FastifyInstance, opts: MarketplaceO
     const { id, version, mode } = args
 
     if (themes.builtinIds.has(id)) return { status: 409, body: fail('marketplace.builtinThemeId') }
-    if (mode === 'update' && !store.get().marketplace.installed[id]) {
+    const held = store.get().marketplace.installed[id]
+    if (held && held.kind !== 'theme') return { status: 409, body: fail('marketplace.idIsAWidget') }
+    if (mode === 'update' && !held) {
       return { status: 409, body: fail('marketplace.themeNotInstalled') }
     }
 
@@ -369,7 +390,7 @@ export async function marketplaceRoutes(app: FastifyInstance, opts: MarketplaceO
     if (!release) return { status: 404, body: fail('marketplace.unknownVersion') }
 
     let zip: Buffer
-    try { zip = await registry.download(release) }
+    try { zip = await registry.download(release, 'theme') }
     catch (err) { return { status: 502, body: fail(err instanceof RegistryError ? err.key : 'marketplace.unreachable') } }
 
     let pkg: ReadPackageResult
@@ -531,7 +552,7 @@ export async function marketplaceRoutes(app: FastifyInstance, opts: MarketplaceO
   const doUninstall = async (id: string, kind: PackageKind, req: FastifyRequest, reply: FastifyReply): Promise<unknown> => {
     const config = store.get()
     if (kind === 'theme') return uninstallTheme(id, req, reply)
-    if (!config.marketplace.installed[id] && catalog.entry(id)?.source !== 'installed') {
+    if (!recordOf(config, id, 'widget') && catalog.entry(id)?.source !== 'installed') {
       return reply.code(404).send(fail('marketplace.notInstalled'))
     }
     // Refused rather than cascaded: removing the widget would leave holes in pages the user
@@ -562,7 +583,7 @@ export async function marketplaceRoutes(app: FastifyInstance, opts: MarketplaceO
    */
   const uninstallTheme = async (id: string, req: FastifyRequest, reply: FastifyReply): Promise<unknown> => {
     const config = store.get()
-    if (!config.marketplace.installed[id] && themes.entry(id)?.source !== 'installed') {
+    if (!recordOf(config, id, 'theme') && themes.entry(id)?.source !== 'installed') {
       return reply.code(404).send(fail('marketplace.themeNotInstalled'))
     }
     if (config.display.theme === id) return reply.code(409).send(fail('marketplace.themeInUse'))

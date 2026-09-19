@@ -697,6 +697,44 @@ describe('POST /api/marketplace/install-missing', () => {
     expect((await installMissing({ demo: set({ subscriptions: ['system'] }) })).json().results).toEqual([])
   })
 
+  it('keeps a widget and a theme of the same id from sharing one record', async () => {
+    // `marketplace.installed` is one map keyed by id. The two live in different folders and
+    // neither shadows the other, so the name is allowed — the record is not, because it holds a
+    // version and a grant.
+    const zip = packageOf()
+    await build({ zip, index: { ...indexFor(zip), themes: [] } })
+    expect((await install({ id: 'demo', consent: set({ subscriptions: ['system'] }) })).statusCode).toBe(200)
+
+    const themeJson = writeZip(
+      [{ name: 'theme.json', data: Buffer.from(JSON.stringify({ id: 'demo', name: { fr: 'D', en: 'D' }, version: '1.0.0', tokens: {} })) }],
+      new Date(Date.UTC(1980, 0, 1)),
+    )
+    await app.close()
+    await build({
+      zip,
+      index: { ...indexFor(zip), themes: [{
+        id: 'demo', version: '1.0.0', name: { fr: 'D', en: 'D' }, description: { fr: 'd', en: 'd' },
+        tokens: { accent: '#fff', bg: '#000', surface: '#111', text: '#eee' },
+        size: themeJson.byteLength, sha256: sha256(themeJson), url: `https://${HOST}/themes/demo-1.0.0.zip`,
+        publishedAt: '2026-09-18T12:00:00.000Z', previous: [],
+      }] },
+      themeZip: themeJson,
+    })
+    await store.update((c) => ({ ...c, marketplace: { installed: { demo: {
+      kind: 'widget' as const, version: '1.0.0', registry: 'fremkit-sietch',
+      consentedPermissions: { subscriptions: ['system'], commands: [], network: [] },
+      installedAt: '2026-09-18T12:00:00.000Z',
+    } } } }))
+
+    const asTheme = await app.inject({ method: 'POST', url: '/api/marketplace/install', payload: { id: 'demo', kind: 'theme' } as never })
+    expect(asTheme.statusCode).toBe(409)
+    expect(asTheme.json().errors[0]).toMatch(/widget/i)
+
+    // And the listing does not lend the widget's version to the theme.
+    const body = (await app.inject({ url: '/api/marketplace' })).json()
+    expect(body.themes[0]).toMatchObject({ id: 'demo', installed: false, installedVersion: null })
+  })
+
   it('refuses a cross-site call and a malformed body', async () => {
     const cross = await app.inject({
       method: 'POST', url: '/api/marketplace/install-missing',
@@ -804,6 +842,33 @@ describe('themes', () => {
     const zip = themeZip(THEME({ version: '9.9.9' }))
     await withTheme(zip)
     expect((await installTheme()).statusCode).toBe(422)
+  })
+
+  it('refuses a widget install over an installed theme of the same id', async () => {
+    const zip = themeZip()
+    await withTheme(zip)
+    await installTheme()
+    const asWidget = await app.inject({ method: 'POST', url: '/api/marketplace/install', payload: { id: 'nuit' } as never })
+    // 404 would also be an honest answer (the index has no widget `nuit`), so the point is the
+    // record: whatever happens, the theme's is still there and still a theme's.
+    expect(asWidget.statusCode).not.toBe(200)
+    expect(store.get().marketplace.installed.nuit.kind).toBe('theme')
+  })
+
+  it('does not call a theme installed when a widget of that id holds the record', async () => {
+    const zip = themeZip()
+    await withTheme(zip)
+    await store.update((c) => ({ ...c, marketplace: { installed: { nuit: {
+      kind: 'widget' as const, version: '9.9.9', registry: 'fremkit-sietch',
+      consentedPermissions: { subscriptions: [], commands: [], network: [] },
+      installedAt: '2026-09-18T12:00:00.000Z',
+    } } } }))
+    const body = (await app.inject({ url: '/api/marketplace' })).json()
+    expect(body.themes[0]).toMatchObject({ installed: false, installedVersion: null, updateAvailable: false })
+    // And removing it is a 404 rather than a delete of somebody else's record.
+    const gone = await app.inject({ method: 'POST', url: '/api/marketplace/uninstall', payload: { id: 'nuit', kind: 'theme' } as never })
+    expect(gone.statusCode).toBe(404)
+    expect(store.get().marketplace.installed.nuit.kind).toBe('widget')
   })
 
   it('removes one, and refuses while the screen is painted with it', async () => {
