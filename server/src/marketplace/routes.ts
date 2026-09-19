@@ -25,6 +25,7 @@ import { InstallError, readPackage, removePackage, writePackage, type PackageKin
 import { NO_PERMISSIONS, addedPermissions, grantedPermissions, isEmpty, permissionsOf, unionPermissions, type Permissions } from './consent.js'
 import type { IndexTheme, IndexWidget, RegistryIndex } from './index-schema.js'
 import { declaredBy, isDeclaredType } from '../connections/declared.js'
+import { ConnectionDeclSchema } from '../widgets/manifest.js'
 import { compareSemver } from './semver.js'
 
 export interface MarketplaceOptions {
@@ -45,6 +46,14 @@ const PermissionSetSchema = z.object({
   subscriptions: z.array(z.string().max(200)).max(200).default([]),
   commands: z.array(z.string().max(200)).max(200).default([]),
   network: z.array(z.string().max(253)).max(200).default([]),
+  /**
+   * The connection declaration the dialog rendered, when the widget declares one.
+   *
+   * It has to be here, and it was not: without it the server dropped the one part of the set the
+   * user had just agreed to, found it "new" again against the package, and answered 409 for
+   * ever — the dialog reopened on the same text, and no amount of pressing Install helped.
+   */
+  connection: ConnectionDeclSchema.optional(),
 })
 
 /**

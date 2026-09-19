@@ -752,6 +752,51 @@ describe('POST /api/marketplace/install-missing', () => {
   })
 })
 
+describe('installing a widget that declares a connection', () => {
+  const DECL = {
+    name: 'Key Light', kind: 'host', scheme: 'http',
+    fields: [{ key: 'host', label: { fr: 'Adresse', en: 'Address' } }],
+    requests: [{ method: 'GET', path: '/elgato/lights' }],
+  }
+
+  async function withDecl(): Promise<void> {
+    await app.close()
+    const zip = packageOf({ ...MANIFEST(), connection: DECL })
+    await build({
+      zip,
+      index: { ...indexFor(zip), widgets: [{
+        ...(indexFor(zip).widgets as Record<string, unknown>[])[0],
+        permissions: { subscriptions: [], commands: [], network: [], connection: DECL },
+      }] },
+    })
+  }
+
+  it('accepts the declaration the dialog rendered, rather than dropping it and asking again', async () => {
+    // Found on a bench server: the consent body's schema had no `connection`, so the server
+    // threw away the one part of the set the user had just agreed to, found it new again
+    // against the package, and answered 409 for ever. The dialog reopened on the same text.
+    await withDecl()
+    const res = await install({ id: 'demo', consent: { ...set(), connection: DECL } })
+    expect(res.statusCode).toBe(200)
+    expect(store.get().marketplace.installed.demo.consentedPermissions.connection)
+      .toMatchObject({ kind: 'host', scheme: 'http' })
+  })
+
+  it('still refuses when the package declares something the dialog did not show', async () => {
+    await withDecl()
+    const narrower = { ...DECL, requests: [{ method: 'GET', path: '/elgato/accessory-info' }] }
+    const res = await install({ id: 'demo', consent: { ...set(), connection: narrower } })
+    expect(res.statusCode).toBe(409)
+    expect(res.json().newPermissions.connection).toBeDefined()
+  })
+
+  it('refuses a consent whose declaration the schema would not accept', async () => {
+    await withDecl()
+    const res = await install({ id: 'demo', consent: { ...set(), connection: { ...DECL, kind: 'nonsense' } } })
+    expect(res.statusCode).toBe(400)
+  })
+})
+
 describe('POST /api/marketplace/share', () => {
   const share = (body: Record<string, unknown>) =>
     app.inject({ method: 'POST', url: '/api/marketplace/share', payload: body as never })
