@@ -191,6 +191,11 @@ export const nextConnectionColor = (taken: number): string =>
 export interface ConnectionTypeInfo {
   id: string; name: string; description: string; icon: string; fields: ConnectionFieldSpec[]
   /**
+   * The widget that declared this type, when a widget did. Absent on a type the core has code
+   * for. The admin says so on the form: an API key field should name what asked for it.
+   */
+  declaredBy?: string
+  /**
    * The plain field keys a stored secret is tied to — the ones that decide where it is sent. The
    * server refuses a save that changes one of them while keeping the stored secret, so the form
    * asks for the secret again as soon as one is edited.

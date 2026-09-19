@@ -1,3 +1,4 @@
+import { declaredBy } from './declared.js'
 import { pick, tr, type Locale } from '../i18n.js'
 import type { ConnectionType } from './types.js'
 
@@ -20,6 +21,8 @@ export interface ConnectionTypeDescription {
   id: string; name: string; description: string; icon: string; fields: ConnectionFieldDescription[]
   /** The plain field keys a stored secret is tied to; see `ConnectionType.secretBindings`. */
   secretBindings: string[]
+  /** The widget that declared this type, when it is a declared one. Absent for a coded type. */
+  declaredBy?: string
 }
 
 /** Which secrets are already stored for a connection, so validation knows what may be omitted. */
@@ -33,6 +36,8 @@ export class ConnectionTypeRegistry {
   }
 
   register(type: ConnectionType): void { this.types.set(type.id, type) }
+  /** Used only for declared types: a coded one lives as long as the process does. */
+  remove(id: string): void { this.types.delete(id) }
   get(id: string): ConnectionType | undefined { return this.types.get(id) }
   list(): ConnectionType[] { return [...this.types.values()] }
 
@@ -48,6 +53,9 @@ export class ConnectionTypeRegistry {
       name: pick(type.name, locale),
       description: pick(type.description, locale),
       icon: type.icon,
+      // Present only on a type a widget declared, so the admin can say whose it is — a form
+      // asking for an API key should name what asked for it.
+      ...(declaredBy(type.id) ? { declaredBy: declaredBy(type.id) } : {}),
       // The admin needs these to offer the secret again as soon as the user edits a bound field,
       // rather than letting them fill a form the server is bound to refuse.
       secretBindings: type.secretBindings ?? [],

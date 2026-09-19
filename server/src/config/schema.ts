@@ -257,6 +257,16 @@ export const ConsentSchema = z.object({
     subscriptions: z.array(z.string()).default([]),
     commands: z.array(z.string()).default([]),
     network: z.array(z.string()).default([]),
+    /**
+     * The connection declaration the user agreed to, when the widget declares one.
+     *
+     * Stored loosely on purpose: the config is this machine's own file, and running an old
+     * record through a schema that has since grown a rule would refuse a config the user never
+     * changed. What *enforces* it — `grantedPermissions` — parses it properly and treats a
+     * record it cannot validate as granting no connection at all, so loose storage never
+     * becomes a loose grant.
+     */
+    connection: z.record(z.string(), z.unknown()).optional(),
   }),
   installedAt: z.string().min(1),
 })

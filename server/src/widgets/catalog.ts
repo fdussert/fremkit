@@ -64,6 +64,16 @@ export class WidgetCatalog {
   /** The folder that owns an id, for the routes that serve its bytes. */
   folderOf(id: string): string | undefined { return this.entries.get(id)?.folder }
 
+  /**
+   * Called after every scan, by whatever needs to follow the catalogue.
+   *
+   * One hook rather than a call beside each of the five `scan()` sites: the marketplace, the
+   * rescan route and the boot all mean the same thing by it — "what is installed has changed" —
+   * and a sixth site added later would otherwise silently update nothing.
+   */
+  private readonly watchers: (() => void)[] = []
+  onScan(cb: () => void): void { this.watchers.push(cb) }
+
   async scan(): Promise<void> {
     const entries = new Map<string, CatalogEntry>()
     const errors: CatalogError[] = []
@@ -102,5 +112,6 @@ export class WidgetCatalog {
     this.entries = entries
     this.builtinIds = builtinIds
     this.errors = errors
+    for (const watch of this.watchers) watch()
   }
 }

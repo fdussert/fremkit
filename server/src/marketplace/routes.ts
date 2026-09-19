@@ -22,7 +22,7 @@ import { SDK_VERSION } from '../bridge/sdk.js'
 import { tr, type MessageKey } from '../i18n.js'
 import { Registry, RegistryError, releaseOf } from './registry.js'
 import { InstallError, readPackage, removePackage, writePackage, type PackageKind, type ReadPackageResult } from './install.js'
-import { NO_PERMISSIONS, addedPermissions, isEmpty, permissionsOf, unionPermissions, type Permissions } from './consent.js'
+import { NO_PERMISSIONS, addedPermissions, grantedPermissions, isEmpty, permissionsOf, unionPermissions, type Permissions } from './consent.js'
 import type { IndexTheme, IndexWidget, RegistryIndex } from './index-schema.js'
 import { compareSemver } from './semver.js'
 
@@ -174,9 +174,7 @@ function entryFor(widget: IndexWidget, config: Config, catalog: WidgetCatalog): 
     commands: widget.permissions.commands,
     network: widget.permissions.network,
   }
-  const granted: Permissions = record
-    ? record.consentedPermissions
-    : { subscriptions: [], commands: [], network: [] }
+  const granted: Permissions = record ? grantedPermissions(record) : NO_PERMISSIONS
   const added = addedPermissions(granted, asked)
   return {
     ...widget,
@@ -315,7 +313,7 @@ export async function marketplaceRoutes(app: FastifyInstance, opts: MarketplaceO
     const installed = Boolean(record) && catalog.entry(id)?.source === 'installed'
     // A record whose folder is gone is not a grant: a reinstall is an install, and pre-approving
     // it from a stale record would skip the dialog for a widget that is no longer here.
-    const granted: Permissions = record && installed ? record.consentedPermissions : NO_PERMISSIONS
+    const granted: Permissions = record && installed ? grantedPermissions(record) : NO_PERMISSIONS
     const asked = permissionsOf(pkg.manifest)
     // Everything the user has seen: what they already hold, plus what the dialog they answered
     // listed. Anything the package asks for beyond that was never shown to anybody.

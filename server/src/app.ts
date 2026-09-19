@@ -9,6 +9,8 @@ import { ConfigStore } from './config/store.js'
 import { setServerLocale } from './i18n.js'
 import { ConnectionManager } from './connections/manager.js'
 import { ConnectionTypeRegistry } from './connections/registry.js'
+import { declaredFromCatalog, syncDeclaredTypes } from './connections/declared.js'
+import { grantedFor } from './marketplace/consent.js'
 import { connectionRoutes } from './connections/routes.js'
 import { defaultConnectionTypes } from './connections/types/index.js'
 import type { ConnectionType } from './connections/types.js'
@@ -152,6 +154,17 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   const secrets = createSecretStore(store.get().secrets.backend, opts.dataDir)
   const connectionTypes = new ConnectionTypeRegistry(opts.connectionTypes ?? defaultConnectionTypes())
   const connections = new ConnectionManager({ registry, types: connectionTypes, secrets })
+  /**
+   * The connection types the installed widgets declare, refreshed whenever the catalogue or the
+   * config changes — an install adds one, an uninstall takes one away, and a consent that has
+   * not been given yet grants none.
+   */
+  const syncDeclared = (): void => syncDeclaredTypes(
+    connectionTypes,
+    declaredFromCatalog(catalog.entries, (id) => grantedFor(catalog, store.get(), id)),
+  )
+  catalog.onScan(syncDeclared)
+  syncDeclared()
   /** A camera whose connection is gone keeps neither a socket nor the access code it was built on. */
   const retainCameras = (cfg: { connections: { id: string; type: string }[] }): void => {
     bambuCameras.retain(new Set(cfg.connections.filter((c) => c.type === 'bambu').map((c) => c.id)))
