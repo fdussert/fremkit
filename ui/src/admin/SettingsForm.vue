@@ -33,6 +33,14 @@ const props = defineProps<{
    * rendered; omitting the prop shows the whole schema, as the form always did.
    */
   scope?: SettingScope
+  /**
+   * The widget this form configures, when the caller knows it.
+   *
+   * Only used to grant a share: picking a connection that belongs to another widget's declared
+   * type has to be recorded on *this* widget's consent, and without the id there is nothing to
+   * record it against — so the option is simply not offered.
+   */
+  widgetId?: string
 }>()
 const emit = defineEmits<{ change: [key: string, value: unknown] }>()
 /** Everything below reads the filtered schema, so a field out of scope is invisible to the form. */
@@ -88,9 +96,49 @@ onUnmounted(() => unsubscribe?.())
  */
 function connectionOptions(f: SettingField, k: string): { id: string; label: string }[] {
   const list = connections.ofType(f.connectionType ?? '').map((c) => ({ id: c.id, label: c.name }))
+  for (const c of reusable(f)) list.push({ id: c.id, label: t('admin.settings.connection.reuse', { name: c.name }) })
   const current = String(val(k) ?? '')
   if (current && !list.some((o) => o.id === current)) list.push({ id: current, label: t('admin.settings.connection.unknown', { id: current }) })
   return list
+}
+
+/**
+ * Connections of *another* widget's declared type that would fit this one.
+ *
+ * Two widgets wanting the same Homey should not mean two forms and two copies of one API key.
+ * "Fits" is the same kind and the same field keys — which is as close as anything can get to
+ * "the same service" without asking the user, and the user is asked all the same: picking one
+ * records a share on this widget's consent, and the server refuses any connection not listed
+ * there.
+ *
+ * Never a coded type: sharing may only widen a widget's reach to the kind of thing it could
+ * have asked the user to create for it.
+ */
+function reusable(f: SettingField): { id: string; name: string }[] {
+  const mine = connections.state.types.find((t) => t.id === f.connectionType)
+  if (!mine?.declaredBy) return []
+  const shape = (t: { fields: { key: string; secret?: boolean }[] }): string =>
+    t.fields.map((x) => `${x.key}:${x.secret ? 1 : 0}`).sort().join('|')
+  const wanted = shape(mine)
+  const fits = new Set(connections.state.types
+    .filter((t) => t.id !== mine.id && t.declaredBy && shape(t) === wanted)
+    .map((t) => t.id))
+  return connections.state.connections.filter((c) => fits.has(c.type)).map((c) => ({ id: c.id, name: c.name }))
+}
+
+/**
+ * Picking a connection, and granting the share when it is somebody else's.
+ *
+ * The setting is written either way; the share is what makes the proxy accept it, and without
+ * it the widget would hold a setting the server answers 409 to.
+ */
+function chooseConnection(f: SettingField, k: string, id: string): void {
+  emit('change', k, id)
+  const widgetId = props.widgetId
+  if (!id || !widgetId) return
+  const chosen = connections.state.connections.find((c) => c.id === id)
+  if (!chosen || chosen.type === f.connectionType) return
+  void connections.share(widgetId, id, true).catch(() => { /* the connections banner says why */ })
 }
 
 /**
@@ -347,7 +395,7 @@ const itemText = (item: Record<string, unknown>, key: string, field: ListItemFie
     <div v-else-if="f.type === 'connection'" class="field">
       <label class="lbl">
         {{ pick(f.label) }}
-        <select :value="String(val(k) ?? '')" @change="emit('change', k, ($event.target as HTMLSelectElement).value)">
+        <select :value="String(val(k) ?? '')" @change="chooseConnection(f, k, ($event.target as HTMLSelectElement).value)">
           <option value="">{{ t('admin.settings.connection.none') }}</option>
           <option v-for="o in connectionOptions(f, k)" :key="o.id" :value="o.id">{{ o.label }}</option>
         </select>

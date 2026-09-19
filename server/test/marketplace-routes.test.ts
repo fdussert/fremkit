@@ -721,7 +721,7 @@ describe('POST /api/marketplace/install-missing', () => {
       themeZip: themeJson,
     })
     await store.update((c) => ({ ...c, marketplace: { installed: { demo: {
-      kind: 'widget' as const, version: '1.0.0', registry: 'fremkit-sietch',
+      kind: 'widget' as const, sharedConnections: [], version: '1.0.0', registry: 'fremkit-sietch',
       consentedPermissions: { subscriptions: ['system'], commands: [], network: [] },
       installedAt: '2026-09-18T12:00:00.000Z',
     } } } }))
@@ -749,6 +749,72 @@ describe('POST /api/marketplace/install-missing', () => {
     await app.close()
     await build({ offline: true })
     expect((await installMissing()).statusCode).toBe(503)
+  })
+})
+
+describe('POST /api/marketplace/share', () => {
+  const share = (body: Record<string, unknown>) =>
+    app.inject({ method: 'POST', url: '/api/marketplace/share', payload: body as never })
+
+  async function installed(): Promise<void> {
+    const zip = packageOf()
+    await build({ zip })
+    expect((await install({ id: 'demo', consent: set({ subscriptions: ['system'] }) })).statusCode).toBe(200)
+    await store.update((c) => ({
+      ...c,
+      connections: [
+        { id: 'homey-x1', type: 'decl:homey-flows:homey', name: 'Homey', fields: { host: 'h' } },
+        { id: 'nas-1', type: 'synology', name: 'NAS', fields: { host: 'h' } },
+      ],
+    }))
+  }
+
+  it('records a share on the widget, and takes it back', async () => {
+    await installed()
+    expect((await share({ id: 'demo', connectionId: 'homey-x1', allow: true })).statusCode).toBe(200)
+    expect(store.get().marketplace.installed.demo.sharedConnections).toEqual(['homey-x1'])
+    // No copy of the connection: there is still one credential, in one place.
+    expect(store.get().connections).toHaveLength(2)
+
+    expect((await share({ id: 'demo', connectionId: 'homey-x1', allow: false })).statusCode).toBe(200)
+    expect(store.get().marketplace.installed.demo.sharedConnections).toEqual([])
+  })
+
+  it('refuses to share a coded type, which a widget could never have asked for', async () => {
+    await installed()
+    const res = await share({ id: 'demo', connectionId: 'nas-1', allow: true })
+    expect(res.statusCode).toBe(409)
+    expect(store.get().marketplace.installed.demo.sharedConnections).toEqual([])
+  })
+
+  it('refuses for a widget that is not installed, and a malformed body', async () => {
+    await installed()
+    expect((await share({ id: 'ghost', connectionId: 'homey-x1', allow: true })).statusCode).toBe(404)
+    expect((await share({ id: 'demo', connectionId: 'homey-x1' })).statusCode).toBe(400)
+  })
+
+  it('refuses a cross-site call', async () => {
+    await installed()
+    const res = await app.inject({
+      method: 'POST', url: '/api/marketplace/share',
+      headers: { 'sec-fetch-site': 'cross-site' },
+      payload: { id: 'demo', connectionId: 'homey-x1', allow: true } as never,
+    })
+    expect(res.statusCode).toBe(403)
+  })
+
+  it('keeps what was shared across an update of the same widget', async () => {
+    // A new version of a widget is not a different widget; the user agreed to that connection
+    // for it, and making them agree again on every update would train them to click through.
+    await installed()
+    await share({ id: 'demo', connectionId: 'homey-x1', allow: true })
+    await store.update((c) => ({
+      ...c,
+      marketplace: { installed: { demo: { ...c.marketplace.installed.demo, version: '0.9.0' } } },
+    }))
+    const res = await app.inject({ method: 'POST', url: '/api/marketplace/update', payload: { id: 'demo', consent: set({ subscriptions: ['system'] }) } as never })
+    expect(res.statusCode).toBe(200)
+    expect(store.get().marketplace.installed.demo.sharedConnections).toEqual(['homey-x1'])
   })
 })
 
@@ -859,7 +925,7 @@ describe('themes', () => {
     const zip = themeZip()
     await withTheme(zip)
     await store.update((c) => ({ ...c, marketplace: { installed: { nuit: {
-      kind: 'widget' as const, version: '9.9.9', registry: 'fremkit-sietch',
+      kind: 'widget' as const, sharedConnections: [], version: '9.9.9', registry: 'fremkit-sietch',
       consentedPermissions: { subscriptions: [], commands: [], network: [] },
       installedAt: '2026-09-18T12:00:00.000Z',
     } } } }))
@@ -905,7 +971,7 @@ describe('themes', () => {
     })
     // `build` gives a fresh store, so the record has to be put back before the update is asked for.
     await store.update((c) => ({ ...c, marketplace: { installed: { nuit: {
-      kind: 'theme' as const, version: '1.0.0', registry: 'fremkit-sietch',
+      kind: 'theme' as const, sharedConnections: [], version: '1.0.0', registry: 'fremkit-sietch',
       consentedPermissions: { subscriptions: [], commands: [], network: [] },
       installedAt: '2026-09-18T12:00:00.000Z',
     } } } }))

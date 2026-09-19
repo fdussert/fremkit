@@ -13,6 +13,7 @@ const manifest = (over: Record<string, unknown> = {}): WidgetManifest => Manifes
 
 const consent = (over: Partial<WidgetConsent['consentedPermissions']> = {}): WidgetConsent => ({
   kind: 'widget',
+  sharedConnections: [],
   version: '1.0.0',
   registry: 'fremkit-sietch',
   installedAt: '2026-09-18T12:00:00.000Z',
@@ -172,7 +173,7 @@ describe('a declared connection as a permission', () => {
       connection: decl(),
     })
     const record = (connection?: unknown): WidgetConsent => ({
-      kind: 'widget' as const, version: '2.0.0', registry: 'r', installedAt: 'x',
+      kind: 'widget' as const, version: '2.0.0', registry: 'r', installedAt: 'x', sharedConnections: [],
       consentedPermissions: {
         subscriptions: [], commands: [], network: [],
         ...(connection ? { connection: connection as Record<string, unknown> } : {}),
@@ -187,7 +188,7 @@ describe('a declared connection as a permission', () => {
   it('treats a stored declaration it cannot validate as no grant at all', () => {
     // The config is kept loose so an old file still loads; what enforces the grant is not.
     const bad = {
-      kind: 'widget' as const, version: '2.0.0', registry: 'r', installedAt: 'x',
+      kind: 'widget' as const, version: '2.0.0', registry: 'r', installedAt: 'x', sharedConnections: [],
       consentedPermissions: { subscriptions: [], commands: [], network: [], connection: { name: 'X' } },
     }
     expect(grantedPermissions(bad).connection).toBeUndefined()

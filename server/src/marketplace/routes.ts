@@ -24,7 +24,7 @@ import { Registry, RegistryError, releaseOf } from './registry.js'
 import { InstallError, readPackage, removePackage, writePackage, type PackageKind, type ReadPackageResult } from './install.js'
 import { NO_PERMISSIONS, addedPermissions, grantedPermissions, isEmpty, permissionsOf, unionPermissions, type Permissions } from './consent.js'
 import type { IndexTheme, IndexWidget, RegistryIndex } from './index-schema.js'
-import { declaredBy } from '../connections/declared.js'
+import { declaredBy, isDeclaredType } from '../connections/declared.js'
 import { compareSemver } from './semver.js'
 
 export interface MarketplaceOptions {
@@ -74,6 +74,13 @@ const InstallBody = z.object({
 })
 
 const UninstallBody = z.object({ id: z.string().regex(WIDGET_ID_RE), kind: KindSchema })
+
+/** Granting or revoking one widget's use of another's declared connection. */
+const ShareBody = z.object({
+  id: z.string().regex(WIDGET_ID_RE),
+  connectionId: z.string().min(1).max(64),
+  allow: z.boolean(),
+})
 
 /**
  * "Update everything waiting", with the consent for each one.
@@ -349,6 +356,9 @@ export async function marketplaceRoutes(app: FastifyInstance, opts: MarketplaceO
 
     const consented: WidgetConsent = {
       kind: 'widget',
+      // An update keeps what was shared with it: the user agreed to that connection for this
+      // widget, and a new version of the same widget is not a different widget.
+      sharedConnections: record?.sharedConnections ?? [],
       version: pkg.version,
       registry: index.registry,
       // What was *shown*, which is what the package asks for — not the union with an older
@@ -418,6 +428,8 @@ export async function marketplaceRoutes(app: FastifyInstance, opts: MarketplaceO
 
     const record: WidgetConsent = {
       kind: 'theme',
+      // A theme reaches nothing; the field exists once, on the record, for both kinds.
+      sharedConnections: [],
       version: pkg.version,
       registry: index.registry,
       // Nothing to consent to, and an empty set says exactly that — rather than a missing key
@@ -552,6 +564,48 @@ export async function marketplaceRoutes(app: FastifyInstance, opts: MarketplaceO
     const missing = index.widgets.filter((w) =>
       usedBy(config, w.id).length > 0 && catalog.entry(w.id) === undefined && w.sdk <= SDK_VERSION)
     return reply.send({ results: await runSeries(missing, 'install', parsed.data.consent, req.log) })
+  })
+
+  /**
+   * "Reuse this connection for that widget too?", and the undoing of it.
+   *
+   * A grant, so it goes through the same door every other grant does — the config, on the
+   * widget's consent record — rather than becoming a property of the connection. Two widgets
+   * wanting the same Homey should cost one credential and one form, and revoking should be
+   * deleting one line rather than hunting for a copy.
+   *
+   * The connection has to be a *declared* one. Sharing can widen a widget's reach only to
+   * something of exactly the kind it could have asked the user to create for it; a coded type's
+   * credentials — a Synology password, a Bambu access code — are never on offer here.
+   */
+  app.post('/api/marketplace/share', async (req, reply) => {
+    if (isCrossSiteFetch(req.headers)) return reply.code(403).send({ errors: [tr(locale(), 'http.originNotAllowed')] })
+    const parsed = ShareBody.safeParse(req.body)
+    if (!parsed.success) return reply.code(400).send(fail('marketplace.badRequest'))
+    const { id, connectionId, allow } = parsed.data
+
+    const config = store.get()
+    if (!recordOf(config, id, 'widget')) return reply.code(404).send(fail('marketplace.notInstalled'))
+    const connection = config.connections.find((c) => c.id === connectionId)
+    if (allow && (!connection || !isDeclaredType(connection.type))) {
+      return reply.code(409).send(fail('marketplace.notShareable'))
+    }
+
+    await store.update((c) => {
+      const record = c.marketplace.installed[id]
+      if (!record) return c
+      const held = new Set(record.sharedConnections)
+      if (allow) held.add(connectionId)
+      else held.delete(connectionId)
+      return {
+        ...c,
+        marketplace: {
+          ...c.marketplace,
+          installed: { ...c.marketplace.installed, [id]: { ...record, sharedConnections: [...held] } },
+        },
+      }
+    })
+    return reply.send({ ok: true, id, connectionId, allow })
   })
 
   app.post('/api/marketplace/uninstall', async (req, reply) => {

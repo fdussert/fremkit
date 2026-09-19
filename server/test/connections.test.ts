@@ -177,7 +177,30 @@ describe('GET /api/connections', () => {
   it('masks every secret with a boolean', async () => {
     await put('ado-x1z9', { type: 'azure-devops', name: 'Travail', fields: { organization: 'example-org', project: 'example-project' }, secrets: { pat: 'token-1' } })
     const res = await app.inject({ method: 'GET', url: '/api/connections' })
-    expect(res.json()).toEqual([{ id: 'ado-x1z9', type: 'azure-devops', name: 'Travail', fields: { organization: 'example-org', project: 'example-project' }, secrets: { pat: true } }])
+    expect(res.json()).toEqual([{
+      id: 'ado-x1z9', type: 'azure-devops', name: 'Travail',
+      fields: { organization: 'example-org', project: 'example-project' },
+      secrets: { pat: true },
+      // Empty for every connection nobody shared, which is almost all of them.
+      sharedWith: [],
+    }])
+  })
+
+  it('names the widgets a declared connection was shared with', async () => {
+    // The route does not care what kind of type it is; the grant lives on the widget's record.
+    await put('homey-x1', { type: 'azure-devops', name: 'Homey', fields: { organization: 'o', project: 'p' }, secrets: { pat: 't' } })
+    const config = (await app.inject({ method: 'GET', url: '/api/config' })).json()
+    config.marketplace = { installed: {
+      'homey-devices': {
+        kind: 'widget', version: '1.0.0', registry: 'r', installedAt: 'x',
+        sharedConnections: ['homey-x1'],
+        consentedPermissions: { subscriptions: [], commands: [], network: [] },
+      },
+    } }
+    expect((await app.inject({ method: 'PUT', url: '/api/config', payload: config })).statusCode).toBe(200)
+
+    const body = (await app.inject({ method: 'GET', url: '/api/connections' })).json()
+    expect(body.find((c: { id: string }) => c.id === 'homey-x1').sharedWith).toEqual(['homey-devices'])
   })
 })
 

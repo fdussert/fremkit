@@ -174,7 +174,8 @@ function moveToPage(): void {
       :title="t('admin.inspector.widget.settings')" default-open>
       <CopySettingsFrom :widget-id="inst.widgetId" :instance-id="inst.instanceId"
         @copy="s.updateInstance(inst!.instanceId, { settings: $event })" />
-      <SettingsForm :schema="manifest.settingsSchema" scope="tile" :values="inst.settings" @change="onSetting" />
+      <SettingsForm :schema="manifest.settingsSchema" scope="tile" :values="inst.settings"
+        :widget-id="inst.widgetId" @change="onSetting" />
     </BaseSection>
 
     <WidgetPermissions :manifest="manifest" :asks="asks" />

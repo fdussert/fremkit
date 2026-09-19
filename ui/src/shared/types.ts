@@ -204,7 +204,14 @@ export interface ConnectionTypeInfo {
 }
 
 /** A connection as `GET /api/connections` returns it: secret values replaced by a boolean. */
-export interface ConnectionSummary extends Connection { secrets: Record<string, boolean> }
+export interface ConnectionSummary extends Connection {
+  secrets: Record<string, boolean>
+  /**
+   * Widget ids that were granted the use of this connection although it belongs to another
+   * widget's declared type. Absent on an older server; empty on almost every connection.
+   */
+  sharedWith?: string[]
+}
 
 /**
  * Whether a widget may touch a channel. A manifest entry is either a literal channel name or a

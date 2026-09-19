@@ -189,7 +189,9 @@ describe('marketplace consent', () => {
     })
     // `kind` is the one thing added: a record written before themes could be installed can only
     // ever have been a widget, and reading it as one is the whole of that migration.
-    expect(kept.marketplace.installed['synology-storage']).toEqual({ ...record, kind: 'widget' })
+    // `kind` and `sharedConnections` are what a record written before them reads as: a widget,
+    // sharing nothing. Both are defaults rather than a migration step.
+    expect(kept.marketplace.installed['synology-storage']).toEqual({ ...record, kind: 'widget', sharedConnections: [] })
   })
 
   it('reads a record written before themes could be installed as a widget', () => {

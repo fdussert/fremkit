@@ -426,3 +426,53 @@ describe('the per-connection cache', () => {
     expect(cache.get('c1', '/a', 60_000)).toBeUndefined()
   })
 })
+
+describe('a connection shared with another widget', () => {
+  /** `flows-1` is bound to a connection that belongs to *another* widget's declared type. */
+  function shared(sharedConnections: string[]): Config {
+    const cfg = config()
+    cfg.connections = [{
+      id: 'homey-x1', type: declaredTypeId('homey-devices', 'Homey (devices)'),
+      name: 'Homey', fields: { host: '192.168.1.40' },
+    }]
+    cfg.marketplace.installed['homey-flows'].sharedConnections = sharedConnections
+    return cfg
+  }
+
+  const ask = (cfg: Config) => app({ cfg }).inject({
+    method: 'POST', url: '/api/proxy/homey-flows/conn',
+    payload: { instanceId: 'flows-1', method: 'GET', path: '/api/manager/flow/flow' } as never,
+  })
+
+  it('is refused when it was not granted', async () => {
+    // Without the grant a widget could reach any declared connection simply by naming its id in
+    // its own settings, which the widget writes.
+    expect((await ask(shared([]))).statusCode).toBe(409)
+    expect(calls).toHaveLength(0)
+  })
+
+  it('is used when the consent record lists it', async () => {
+    const res = await ask(shared(['homey-x1']))
+    expect(res.statusCode).toBe(200)
+    expect(calls[0].url.hostname).toBe('192.168.1.40')
+  })
+
+  it('is refused for a coded type, however the record was written', async () => {
+    // Sharing widens a widget's reach only to the kind of thing it could have asked the user to
+    // create for it. A Synology password is not on offer.
+    const cfg = shared(['homey-x1'])
+    cfg.connections = [{ id: 'homey-x1', type: 'synology', name: 'NAS', fields: { host: '192.168.1.9' } }]
+    expect((await ask(cfg)).statusCode).toBe(409)
+    expect(calls).toHaveLength(0)
+  })
+
+  it('still holds the shared connection to this widget’s own allow-list', async () => {
+    // Sharing is about *which* credential, never about which requests.
+    const res = await app({ cfg: shared(['homey-x1']) }).inject({
+      method: 'POST', url: '/api/proxy/homey-flows/conn',
+      payload: { instanceId: 'flows-1', method: 'GET', path: '/api/manager/system' } as never,
+    })
+    expect(res.statusCode).toBe(403)
+    expect(calls).toHaveLength(0)
+  })
+})

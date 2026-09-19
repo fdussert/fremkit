@@ -23,6 +23,18 @@ const { t } = useI18n()
  * installed any more leaves the id, which is still better than nothing — it is what the user
  * would search the registry for.
  */
+/** The widgets that were granted this connection although it is not their own type's. */
+const sharedWith = computed(() => (props.connection?.sharedWith ?? []).map((id) => {
+  const manifest = admin.state.manifests[id]
+  return { id, name: manifest ? pick(manifest.name) : id }
+}))
+
+async function revoke(widgetId: string): Promise<void> {
+  if (!props.connection) return
+  await s.share(widgetId, props.connection.id, false).catch(() => { /* the banner says why */ })
+  await s.load().catch(() => { /* same */ })
+}
+
 const widgetName = computed(() => {
   const id = props.type.declaredBy
   if (!id) return ''
@@ -180,6 +192,16 @@ async function onSave(): Promise<void> {
     <!-- A connection shows nothing by itself; this is what puts it on a screen. -->
     <ConnectionWidgets :type="type.id" />
 
+    <!-- Who else holds this one. Each name is a line the user can take back: there is one
+         credential in one place, so revoking is deleting a grant rather than hunting a copy. -->
+    <div v-if="sharedWith.length" class="shared">
+      <span class="lbl">{{ t('admin.connections.form.usedBy') }}</span>
+      <span v-for="w in sharedWith" :key="w.id" class="chip">
+        {{ w.name }}
+        <button type="button" :title="t('admin.connections.form.revoke')" @click="revoke(w.id)">×</button>
+      </span>
+    </div>
+
     <!-- One message at a time: the test result if there is one, the store's error otherwise. -->
     <p v-if="result" class="result" :class="{ ok: result.ok }">{{ result.text }}</p>
     <p v-else-if="s.state.error" class="result">{{ s.state.error }}</p>
@@ -199,6 +221,13 @@ select, .color { width: 100%; box-sizing: border-box; font: inherit; font-size: 
   background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--radius-sm); padding: 6px 8px; }
 .color { padding: 2px; height: 32px; }
 .declared { margin: 0 0 var(--space-2); font-size: var(--fs-xs); color: var(--text-muted); }
+.shared { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2);
+  margin: 0 0 var(--space-3); font-size: var(--fs-xs); color: var(--text-muted); }
+.shared .chip { display: inline-flex; align-items: center; gap: var(--space-1);
+  border: 1px solid var(--border-strong); border-radius: var(--radius-sm); padding: 1px 4px 1px 6px; }
+.shared .chip button { font: inherit; line-height: 1; border: 0; background: none; cursor: pointer;
+  color: var(--text-muted); padding: 0 2px; }
+.shared .chip button:hover { color: var(--danger); }
 .hint { margin: 0 0 var(--space-3); font-size: var(--fs-xs); color: var(--text-muted);
   white-space: pre-wrap; word-break: break-word; }
 .masked { display: flex; align-items: center; gap: var(--space-2); }

@@ -189,9 +189,18 @@ export const DisplaySchema = z.object({
 /** A connection id is a slug: it becomes a channel suffix and a secret-key segment. */
 export const CONNECTION_ID_RE = /^[a-z0-9][a-z0-9-]*$/
 
+/**
+ * A connection *type* id: a coded type's slug, or a declared one's `decl:<widget>:<slug>`.
+ *
+ * Two colons and three slugs, spelled out rather than left open: the type id is read back from a
+ * config file, used to look a type up and written into log lines, and a pattern that admitted
+ * anything would be one more place a hand-edited file could put something surprising.
+ */
+export const CONNECTION_TYPE_RE = /^[a-z0-9][a-z0-9_-]*(?::[a-z0-9][a-z0-9_-]*:[a-z0-9][a-z0-9_-]*)?$/
+
 export const ConnectionSchema = z.object({
   id: z.string().regex(CONNECTION_ID_RE),
-  type: z.string().regex(WIDGET_ID_RE),
+  type: z.string().regex(CONNECTION_TYPE_RE),
   name: z.string().min(1),
   /** Non-secret fields only. Secret values live in the SecretStore, never here. */
   fields: z.record(z.string(), z.string()).default({}),
@@ -269,6 +278,17 @@ export const ConsentSchema = z.object({
     connection: z.record(z.string(), z.unknown()).optional(),
   }),
   installedAt: z.string().min(1),
+  /**
+   * Connections of *another* widget's declared type this widget may use.
+   *
+   * Two widgets that want the same Homey should not mean two forms and two copies of one API
+   * key. Accepting "reuse this one?" records the connection's id here rather than copying
+   * anything — there is still one credential, in one place, and revoking is deleting one line.
+   *
+   * It is a grant like any other, which is why it lives on the consent record: the proxy accepts
+   * a connection outside the widget's own type only when it is listed here.
+   */
+  sharedConnections: z.array(z.string().min(1).max(64)).max(32).default([]),
 })
 export type WidgetConsent = z.infer<typeof ConsentSchema>
 

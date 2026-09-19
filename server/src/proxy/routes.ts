@@ -8,7 +8,7 @@ import { grantedFor } from '../marketplace/consent.js'
 import { resolvesToPrivate } from '../net/private.js'
 import { isCrossSiteFetch } from '../http/guard.js'
 import { findInstance } from '../config/instances.js'
-import { authFor, declaredTypeId, originOf, secretField, slugText } from '../connections/declared.js'
+import { authFor, declaredTypeId, isDeclaredType, originOf, secretField, slugText } from '../connections/declared.js'
 import { ConnCache, allowedRequest, checkHeaders, checkPath } from './conn.js'
 import { tr } from '../i18n.js'
 import { WIDGET_ID_RE, type Config } from '../config/schema.js'
@@ -201,7 +201,8 @@ export async function proxyRoutes(app: FastifyInstance, opts: ProxyOptions): Pro
       return reply.code(404).send({ error: tr(undefined, 'proxy.unknownInstance') })
     }
 
-    const connection = connectionFor(config, instance.settings, widgetId, decl)
+    const connection = connectionFor(config, instance.settings, widgetId, decl,
+      config.marketplace.installed[widgetId]?.sharedConnections ?? [])
     if (!connection) return reply.code(409).send({ error: tr(undefined, 'proxy.unconfigured') })
 
     const allowed = allowedRequest(decl, { method, path })
@@ -275,20 +276,31 @@ export async function proxyRoutes(app: FastifyInstance, opts: ProxyOptions): Pro
  *
  * Found through the instance's own settings: the widget declares a `connection` setting whose
  * `connectionType` is its declared type, and the value is the connection's id. A setting naming
- * a connection of another type is ignored rather than followed — that is how a widget would
- * reach a coded type's credentials.
+ * a connection of a *coded* type is ignored rather than followed — that is how a declared widget
+ * would otherwise reach a Synology's password.
+ *
+ * `shared` is the exception, and it is a grant: another widget's declared connection, listed on
+ * this widget's consent record because the user accepted "reuse this one?". It still has to be
+ * a declared type — never a coded one — so sharing can only ever widen a widget's reach to
+ * something of exactly the kind it could have asked the user to create itself.
  */
 function connectionFor(
   config: Config,
   settings: Record<string, unknown>,
   widgetId: string,
   decl: ConnectionDecl,
+  shared: string[],
 ): { id: string; fields: Record<string, string> } | undefined {
   const typeId = declaredTypeId(widgetId, slugText(decl.name))
+  const allowedShared = new Set(shared)
   const ids = Object.values(settings).filter((v): v is string => typeof v === 'string')
   for (const id of ids) {
-    const found = config.connections.find((c) => c.id === id && c.type === typeId)
-    if (found) return { id: found.id, fields: found.fields }
+    const found = config.connections.find((c) => c.id === id)
+    if (!found) continue
+    if (found.type === typeId) return { id: found.id, fields: found.fields }
+    if (allowedShared.has(found.id) && isDeclaredType(found.type)) {
+      return { id: found.id, fields: found.fields }
+    }
   }
   return undefined
 }

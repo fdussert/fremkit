@@ -62,7 +62,7 @@ export function findConnectionUsers(config: Config, catalog: WidgetCatalog, id: 
   return uses
 }
 
-const mask = (connection: Connection, secretKeys: string[], stored: Set<string>): unknown => ({
+const mask = (connection: Connection, secretKeys: string[], stored: Set<string>): Record<string, unknown> => ({
   ...connection,
   secrets: Object.fromEntries(secretKeys.map((k) => [k, stored.has(k)])),
 })
@@ -113,10 +113,18 @@ export async function connectionRoutes(
   app.get('/api/connections/types', async () => types.describe(store.get().locale))
 
   app.get('/api/connections', async () => {
+    const config = store.get()
     const out: unknown[] = []
-    for (const connection of store.get().connections) {
+    for (const connection of config.connections) {
       const type = types.get(connection.type)
-      out.push(mask(connection, type ? types.secretKeys(type) : [], await storedSecrets(connection)))
+      out.push({
+        ...mask(connection, type ? types.secretKeys(type) : [], await storedSecrets(connection)),
+        // Which widgets hold this one besides the one that declared its type. The admin shows
+        // "used by: A, B" and each name is a line the user can take back.
+        sharedWith: Object.entries(config.marketplace.installed)
+          .filter(([, record]) => record.sharedConnections.includes(connection.id))
+          .map(([widgetId]) => widgetId),
+      })
     }
     return out
   })

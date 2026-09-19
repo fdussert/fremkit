@@ -16,6 +16,7 @@ export interface ConnectionsApi {
   putConnection(id: string, body: ConnectionInput): Promise<ConnectionSummary>
   deleteConnection(id: string): Promise<void>
   testConnection(id: string, body: Partial<ConnectionInput>): Promise<ConnectionTestResult>
+  shareConnection(widgetId: string, connectionId: string, allow: boolean): Promise<unknown>
 }
 
 /**
@@ -62,6 +63,8 @@ export interface ConnectionsStore {
   remove(id: string): Promise<void>
   test(id: string, input: Partial<ConnectionInput>): Promise<ConnectionTestResult>
   ofType(typeId: string): ConnectionSummary[]
+  /** Lets a widget use a connection of another widget's declared type, or takes it back. */
+  share(widgetId: string, connectionId: string, allow: boolean): Promise<void>
   suggestId(typeId: string): string
   clearError(): void
 }
@@ -130,6 +133,12 @@ export function createConnectionsStore(deps: { api: ConnectionsApi; uid?: () => 
 
     ofType(typeId): ConnectionSummary[] {
       return state.connections.filter((c) => c.type === typeId)
+    },
+
+    async share(widgetId, connectionId, allow): Promise<void> {
+      state.error = ''
+      try { await deps.api.shareConnection(widgetId, connectionId, allow) }
+      catch (err) { state.error = message(err); throw err }
     },
 
     clearError(): void {

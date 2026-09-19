@@ -22,6 +22,7 @@ function fakeApi(overrides: Partial<Record<string, unknown>> = {}) {
     putConnection: vi.fn(async () => CONNECTIONS[0]),
     deleteConnection: vi.fn(async () => undefined),
     testConnection: vi.fn(async () => ({ ok: true as const, detail: 'Connexion établie' })),
+    shareConnection: vi.fn(async () => ({ ok: true })),
     ...overrides,
   }
 }

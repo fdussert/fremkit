@@ -101,6 +101,18 @@ export const api = {
       method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ consent }),
     }).then((r) => json<{ results: { id: string; ok: boolean; version?: string; error?: string; newPermissions?: WidgetPermissionSet }[] }>(r)),
 
+  /**
+   * Lets a widget use a connection that belongs to another widget's declared type, or stops it.
+   *
+   * No copy is made: the id is recorded on the widget's consent record, so there is one
+   * credential in one place and revoking is deleting one line.
+   */
+  shareConnection: (id: string, connectionId: string, allow: boolean) =>
+    fetch('/api/marketplace/share', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ id, connectionId, allow }),
+    }).then((r) => json<{ ok: true; id: string; connectionId: string; allow: boolean }>(r)),
+
   /** The applications installed on this machine, for the fields a manifest marks `suggest: apps`. */
   getInstalledApps: () => fetch('/api/apps/installed').then((r) => json<InstalledAppInfo[]>(r)),
 
