@@ -115,6 +115,7 @@ describe('the host field, which is the one string the user types', () => {
     for (const raw of [
       '10.0.0.1:x@evil.example',
       'user:pw@evil.example',
+      'evil.example.',
       '10.0.0.1/../x',
       '10.0.0.1?a=b',
       '10.0.0.1#f',

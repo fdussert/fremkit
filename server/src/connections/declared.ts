@@ -126,6 +126,9 @@ export function parseDeclaredHost(raw: string): DeclaredHost | null {
   // slash, a default port, an escaped character, a second `@` — anything at all — fails here.
   if (url.host !== trimmed.toLowerCase()) return null
   if (!url.hostname) return null
+  // `evil.example.` is the same host as `evil.example` to a resolver and a different string to
+  // everything here; one spelling, so a host-based rule can never be walked around with a dot.
+  if (url.hostname.endsWith('.')) return null
 
   return { hostname: url.hostname.replace(/^\[(.*)\]$/, '$1'), authority: url.host }
 }
