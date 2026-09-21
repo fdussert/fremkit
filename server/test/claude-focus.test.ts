@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { ClaudeTracker } from '../src/claude/tracker.js'
-import { focusClient } from '../src/claude/focus.js'
+import { appOfProcess, focusClient } from '../src/claude/focus.js'
 import { createClaudeSessionsProvider } from '../src/claude/providers.js'
 
 /**
@@ -17,6 +17,54 @@ const ev = (extra: Record<string, unknown> = {}) => ({
   hook_event_name: 'SessionStart', session_id: 's1', cwd: '/Users/alice/projects/fremkit', ...extra,
 })
 const ORCA = { bundleId: 'com.stablyai.orca', program: 'Orca', pid: 4242, tty: 'ttys028', orca: { pane: 'p:q', tab: 't', terminal: 'term_abc123' } }
+
+describe('appOfProcess', () => {
+  /** A process tree like the real one: claude → zsh → login → the app's helper. */
+  const tree: Record<string, string> = {
+    '1489': '83553 claude',
+    '83553': '83552 -/bin/zsh',
+    '83552': '9807 /usr/bin/login',
+    '9807': '1 /Applications/Orca.app/Contents/Frameworks/Orca Helper.app/Contents/MacOS/Orca Helper',
+  }
+  const reader = async (cmd: string, args: string[]) => {
+    if (cmd === '/bin/ps') return `${tree[args[3]] ?? ''}\n`
+    if (cmd === '/usr/bin/defaults') return args[1] === '/Applications/Orca.app/Contents/Info.plist' ? 'com.stablyai.orca\n' : ''
+    throw new Error('unexpected ' + cmd)
+  }
+
+  it('walks up to the outermost .app and reads its bundle id', async () => {
+    expect(await appOfProcess(1489, reader)).toBe('com.stablyai.orca')
+  })
+
+  it('recognises iTerm2 by its out-of-bundle server, and picks the tab by tty', async () => {
+    const iterm: Record<string, string> = { '46407': '2219 claude', '2219': '2215 -zsh', '2215': '2214 /usr/bin/login', '2214': '1 /Users/someone/Library/Application Support/iTerm2/iTermServer-3.6.11' }
+    const reader = async (cmd: string, args: string[]) => {
+      if (cmd === '/bin/ps' && args[1] === 'tty=') return 'ttys000\n'
+      if (cmd === '/bin/ps') return `${iterm[args[3]] ?? ''}\n`
+      throw new Error('unexpected ' + cmd)
+    }
+    expect(await appOfProcess(46407, reader)).toBe('com.googlecode.iterm2')
+    const calls: string[][] = []
+    const runner = async (cmd: string, args: string[]) => { calls.push([cmd, ...args]) }
+    const r = await focusClient(undefined, '/tmp', runner, 46407, reader)
+    expect(r.ok).toBe(true)
+    expect(calls[0][0]).toBe('/usr/bin/osascript')
+    expect(calls[0]).toContain('/dev/ttys000')
+  })
+
+  it('answers null when no ancestor is an application', async () => {
+    const bare = async (cmd: string, args: string[]) => cmd === '/bin/ps' ? ({ '7': '6 claude', '6': '1 -/bin/zsh' }[args[3]] ?? '') + '\n' : ''
+    expect(await appOfProcess(7, bare)).toBeNull()
+  })
+
+  it('fronts the owning application for a session that only a scan found', async () => {
+    const calls: string[][] = []
+    const runner = async (cmd: string, args: string[]) => { calls.push([cmd, ...args]) }
+    const r = await focusClient(undefined, '/tmp', runner, 1489, reader)
+    expect(r.ok).toBe(true)
+    expect(calls).toEqual([['/usr/bin/open', '-b', 'com.stablyai.orca']])
+  })
+})
 
 describe('focus', () => {
   const calls: { cmd: string; args: string[] }[] = []

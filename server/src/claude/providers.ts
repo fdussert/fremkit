@@ -4,7 +4,7 @@ import type { ClaudeUsage } from './usage.js'
 import { listClaudeProcesses, type ClaudeProcess } from './processes.js'
 import { z } from 'zod'
 import { tr } from '../i18n.js'
-import { focusClient, type Runner as FocusRunner } from './focus.js'
+import { focusClient, type Reader as FocusReader, type Runner as FocusRunner } from './focus.js'
 import { playSound, type Runner } from './attention.js'
 
 export { createClaudeAccountProvider } from './account.js'
@@ -16,6 +16,7 @@ export interface ClaudeSessionsProviderOptions {
   now?: () => number
   /** Injectable for tests: what actually runs `osascript`, `open` and the Orca CLI. */
   focusRunner?: FocusRunner
+  focusReader?: FocusReader
   /** Injected by the tests; production runs `afplay`. */
   soundRunner?: Runner
 }
@@ -60,7 +61,7 @@ export function createClaudeSessionsProvider(tracker: ClaudeTracker, opts: Claud
         // Answered rather than thrown: "I do not know that session" is something the card shows,
         // not a failure of the command.
         if (!session) return { ok: false, reason: 'unknownSession' }
-        return await focusClient(tracker.clientOf(parsed.data.sessionId), session.cwd, opts.focusRunner)
+        return await focusClient(tracker.clientOf(parsed.data.sessionId), session.cwd, opts.focusRunner, tracker.pidOf(parsed.data.sessionId), opts.focusReader)
       },
       /**
        * The admin's ▶ beside the sound setting: play the chosen sound once, now. Local callers

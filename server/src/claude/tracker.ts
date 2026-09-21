@@ -396,6 +396,12 @@ export class ClaudeTracker {
     return s ? s.client : undefined
   }
 
+  /** The session's process, from its hook or from the scan that found it. */
+  pidOf(sessionId: string): number | undefined {
+    const s = this.sessions.get(sessionId)
+    return s?.pid ?? s?.client?.pid
+  }
+
   /**
    * First event wins; a later one only fills what is still missing.
    *

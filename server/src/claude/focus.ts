@@ -21,6 +21,53 @@ export type Runner = (cmd: string, args: string[]) => Promise<void>
 const run: Runner = (cmd, args) => new Promise((resolve, reject) =>
   execFile(cmd, args, { timeout: 5000 }, (err) => (err ? reject(err) : resolve())))
 
+/** `ps -o ppid=,comm= -p <pid>`, as a string; injected by the tests. */
+export type Reader = (cmd: string, args: string[]) => Promise<string>
+const read: Reader = (cmd, args) => new Promise((resolve, reject) =>
+  execFile(cmd, args, { timeout: 5000 }, (err, out) => (err ? reject(err) : resolve(String(out)))))
+
+/** The tty a process is attached to, as `ps` prints it (`ttys000`), or undefined when it has none. */
+export async function ttyOfProcess(pid: number, reader: Reader = read): Promise<string | undefined> {
+  try {
+    const tty = (await reader('/bin/ps', ['-o', 'tty=', '-p', String(pid)])).trim()
+    return TTY_RE.test(tty) ? tty : undefined
+  } catch { return undefined }
+}
+
+/**
+ * The application a process runs under, found by walking up its parents until one of them is
+ * a `.app` bundle: `claude` → `zsh` → `login` → `Orca Helper.app` → the bundle's `Info.plist`.
+ *
+ * This is what a session found by scanning processes has instead of a hook's report, and what
+ * a hooked session falls back to when its hook ran before the report existed. Eight hops is
+ * more than any terminal nests; the walk stops at pid 1 or at a parent `ps` will not name.
+ */
+export async function appOfProcess(pid: number, reader: Reader = read): Promise<string | null> {
+  let current = pid
+  for (let hop = 0; hop < 8 && current > 1; hop++) {
+    let line: string
+    try { line = (await reader('/bin/ps', ['-o', 'ppid=,comm=', '-p', String(current)])).trim() } catch { return null }
+    const m = /^(\d+)\s+(.*)$/.exec(line)
+    if (!m) return null
+    const comm = m[2]
+    // iTerm2 runs its shells under a server that lives outside the bundle
+    // (`~/Library/Application Support/iTerm2/iTermServer-<version>`), so the walk never meets an
+    // `.app`; the server's name is the tell.
+    if (/\/iTermServer[^/]*$/.test(comm)) return 'com.googlecode.iterm2'
+    const app = /^(.*\.app)\/Contents\//.exec(comm)?.[1]
+    if (app) {
+      // The outermost `.app` on the path is the one the user launched (`Orca.app`, not its helper).
+      const outer = /^(.*?\.app)\//.exec(app + '/')?.[1] ?? app
+      try {
+        const id = (await reader('/usr/bin/defaults', ['read', `${outer}/Contents/Info.plist`, 'CFBundleIdentifier'])).trim()
+        return BUNDLE_RE.test(id) ? id : null
+      } catch { return null }
+    }
+    current = Number(m[1])
+  }
+  return null
+}
+
 /** Orca ships its CLI inside the bundle; `orca terminal switch` is what fronts one pane. */
 const ORCA_CLI = '/Applications/Orca.app/Contents/Resources/bin/orca'
 const ORCA_BUNDLE = 'com.stablyai.orca'
@@ -101,10 +148,25 @@ export interface FocusResult {
  * application. An unknown client with no bundle id has nothing to aim at and says so, rather
  * than fronting something arbitrary.
  */
-export async function focusClient(client: SessionClient | undefined, cwd: string, runner: Runner = run): Promise<FocusResult> {
-  if (!client) return { ok: false, reason: 'unknownClient' }
-  const kind = kindOf(client)
+export async function focusClient(
+  client: SessionClient | undefined,
+  cwd: string,
+  runner: Runner = run,
+  pid?: number,
+  reader: Reader = read,
+): Promise<FocusResult> {
   try {
+    if (!client?.bundleId && pid) {
+      // No report from a hook: the process tree still says which application owns the session,
+      // and `ps` still knows its tty — enough to pick the exact tab in a terminal.
+      const bundleId = await appOfProcess(pid, reader)
+      const tty = await ttyOfProcess(pid, reader)
+      if (bundleId === 'com.googlecode.iterm2') return await focusTty(ITERM_SCRIPT, tty, bundleId, runner)
+      if (bundleId === 'com.apple.Terminal') return await focusTty(TERMINAL_SCRIPT, tty, bundleId, runner)
+      return await focusApp(bundleId ?? undefined, runner)
+    }
+    if (!client) return { ok: false, reason: 'unknownClient' }
+    const kind = kindOf(client)
     switch (kind) {
       case 'orca': return await focusOrca(client, runner)
       case 'terminal': return await focusTty(TERMINAL_SCRIPT, client.tty, 'com.apple.Terminal', runner)

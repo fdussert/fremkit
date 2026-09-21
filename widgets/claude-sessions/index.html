@@ -46,7 +46,6 @@
   .go{position:absolute;top:6px;right:6px;width:44px;height:44px;min-height:44px;display:flex;align-items:center;justify-content:center;padding:0;border-radius:10px;background:transparent;color:var(--text-muted, #8b93a0);font-size:calc(20px * var(--text-scale, 1));line-height:1}
   .go:active{background:var(--accent, #d9b36a);color:var(--on-accent,#0b0d10)}
   .card.permission .go{color:#f0a020}
-  .go.x{font-size:calc(16px * var(--text-scale, 1))}
   /* The button sits over the top-right corner, so the badge stops short of it. */
   .card .head{padding-right:44px}
   .client{font-size:calc(11px * var(--text-scale, 1));color:var(--text-muted, #8b93a0);border:1px solid var(--border-strong, #3a404a);border-radius:6px;padding:0 5px;white-space:nowrap}
@@ -80,7 +79,6 @@
     commitOne: { fr: '1 commit', en: '1 commit' },
     commitMany: { fr: '{n} commits', en: '{n} commits' },
     go: { fr: 'Aller à la session', en: 'Go to the session' },
-    dismiss: { fr: 'Retirer la carte', en: 'Remove the card' },
     noWindow: { fr: 'fenêtre introuvable', en: 'cannot find its window' },
     ungrouped: { fr: 'Application inconnue', en: 'Unknown application' }
   }
@@ -142,13 +140,9 @@
     clientEl.textContent = s.client ? s.client.label : ''
     clientEl.hidden = !s.client
     // A placeholder found by scanning processes has no hook, so nothing knows where it lives.
-    // Touching the card goes to the session; the corner button is the *other* thing a card can
-    // want — and a finished card wants to be cleared, so there it is a cross.
-    var goEl = card.querySelector('.go'), finished = s.state === 'done' || s.state === 'idle' || s.state === 'error'
-    goEl.textContent = finished ? '\u2715' : '\u2197'
-    goEl.setAttribute('aria-label', Fremkit.t(finished ? L.dismiss : L.go))
-    goEl.classList.toggle('x', finished)
-    goEl.hidden = !finished && !s.client
+    var goEl = card.querySelector('.go')
+    goEl.textContent = '\u2197'
+    goEl.setAttribute('aria-label', Fremkit.t(L.go))
     var where = s.branch ? s.project + '@' + s.branch : (s.title ? s.project : ''), whereEl = card.querySelector('.where')
     whereEl.textContent = where; whereEl.hidden = !where
     var qEl = card.querySelector('.q')
@@ -270,13 +264,10 @@
     Fremkit.subscribe('claude-sessions', function (d) { if (d.error) return; sessions = d.sessions || []; today = d.today || null; render() })
     setInterval(render, 1000)
     document.getElementById('cards').addEventListener('click', function (e) {
-      var card = e.target.closest('.card'); if (!card || card.getAttribute('data-discovered')) return
-      var id = card.getAttribute('data-id'), st = card.getAttribute('data-state')
-      var finished = st === 'done' || st === 'idle' || st === 'error'
-      // The corner button clears a finished card; everywhere else, and on every other card, a
-      // touch goes to the session — it is the one thing a person wants from a card.
-      if (finished && e.target.closest('.go')) return Fremkit.sendCommand('claude-sessions', 'dismiss', { sessionId: id })
-      goTo(id, card)
+      var card = e.target.closest('.card'); if (!card) return
+      // A touch anywhere on any card goes to the session; the server finds its window from the
+      // hook's report or, failing that, from the process tree.
+      goTo(card.getAttribute('data-id'), card)
     })
   })
 </script></body></html>
