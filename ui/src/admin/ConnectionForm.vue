@@ -35,12 +35,34 @@ async function revoke(widgetId: string): Promise<void> {
   await s.load().catch(() => { /* same */ })
 }
 
-const widgetName = computed(() => {
-  const id = props.type.declaredBy
-  if (!id) return ''
-  const manifest = admin.state.manifests[id]
-  return manifest ? pick(manifest.name) : id
+/**
+ * Every widget this form is worth filling in for, not only the one that named the type.
+ *
+ * Two widgets can declare the same *shape* of connection — same kind, same field keys — and the
+ * admin then offers each of them the other's connection. Both Homey widgets do exactly that, and
+ * that is the point: a Homey invalidates the previous API key whenever a new one is issued, so
+ * two connections meant the second key quietly broke the first. Naming one widget over a form
+ * that serves two is how somebody ends up making the second key.
+ *
+ * Only *installed* widgets are in the list, because only their types are registered. The name
+ * falls back to the id for a widget whose manifest the admin does not hold — still better than
+ * nothing, since that is what the user would search the registry for.
+ */
+const declaringWidgets = computed(() => {
+  const mine = props.type
+  if (!mine.declaredBy) return []
+  const shape = (t: { fields: { key: string; secret?: boolean }[] }): string =>
+    t.fields.map((x) => `${x.key}:${x.secret ? 1 : 0}`).sort().join('|')
+  const wanted = shape(mine)
+  const ids = [mine.declaredBy, ...s.state.types
+    .filter((t) => t.id !== mine.id && t.declaredBy && shape(t) === wanted)
+    .map((t) => t.declaredBy as string)]
+  return [...new Set(ids)].map((id) => {
+    const manifest = (admin.state.manifests ?? {})[id]
+    return manifest ? pick(manifest.name) : id
+  })
 })
+const widgetName = computed(() => declaringWidgets.value.join(', '))
 const name = ref(props.connection?.name ?? props.type.name)
 const fields = reactive<Record<string, string>>({})
 /** What the secret inputs currently show. Meaningless on its own — see `touched`. */

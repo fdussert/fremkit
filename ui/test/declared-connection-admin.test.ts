@@ -29,6 +29,20 @@ const DECL_TYPE: ConnectionTypeInfo = {
   ],
 }
 
+/** The second Homey widget: a different type id, the same shape, so one key serves both. */
+const DEVICES_TYPE: ConnectionTypeInfo = {
+  id: 'decl:homey-devices:homey-devices',
+  name: 'Homey (devices)',
+  description: 'Settings → API keys → create one with Devices read and control.',
+  icon: 'plug',
+  declaredBy: 'homey-devices',
+  secretBindings: ['host'],
+  fields: [
+    { key: 'host', label: 'Address' },
+    { key: 'token', label: 'API key', secret: true },
+  ],
+}
+
 const CODED_TYPE: ConnectionTypeInfo = {
   id: 'github', name: 'GitHub', description: 'A personal access token.', icon: 'github',
   secretBindings: ['host'], fields: [{ key: 'token', label: 'Token', secret: true }],
@@ -37,6 +51,12 @@ const CODED_TYPE: ConnectionTypeInfo = {
 const MANIFEST = {
   id: 'homey-flows', name: { fr: 'Flows Homey', en: 'Homey flows' }, version: '2.0.0', sdk: 1,
   description: '', icon: 'play', minSize: [8, 4], defaultSize: [8, 4],
+  subscriptions: [], commands: [], settingsSchema: {}, permissions: { network: [] },
+} as unknown as WidgetManifest
+
+const DEVICES_MANIFEST = {
+  id: 'homey-devices', name: { fr: 'Appareils Homey', en: 'Homey devices' }, version: '2.0.0', sdk: 1,
+  description: '', icon: 'layout-grid', minSize: [8, 4], defaultSize: [24, 8],
   subscriptions: [], commands: [], settingsSchema: {}, permissions: { network: [] },
 } as unknown as WidgetManifest
 
@@ -76,6 +96,26 @@ describe('the form for a declared type', () => {
     const said = wrapper.find('.declared').text()
     expect(said).toMatch(/Flows Homey|Homey flows/)
     wrapper.unmount()
+  })
+
+  it('names every widget the same connection would serve, not only the one that declared it', () => {
+    // Both Homey widgets declare the same shape, so the admin offers each of them the other's
+    // connection. A form that named one of them is how somebody ends up making a second API key
+    // — and a Homey invalidates the previous one when a new one is issued.
+    useAdminStore().state.manifests = { 'homey-flows': MANIFEST, 'homey-devices': DEVICES_MANIFEST }
+    seed([DECL_TYPE, DEVICES_TYPE])
+    const wrapper = form(DECL_TYPE)
+    const said = wrapper.find('.declared').text()
+    expect(said).toMatch(/Flows Homey|Homey flows/)
+    expect(said).toMatch(/Appareils Homey|Homey devices/)
+    wrapper.unmount()
+  })
+
+  it('names only its own widget when nothing else declares that shape', () => {
+    useAdminStore().state.manifests = { 'homey-flows': MANIFEST, 'homey-devices': DEVICES_MANIFEST }
+    seed([DECL_TYPE, { ...DEVICES_TYPE, fields: [{ key: 'host', label: 'Address' }, { key: 'apiKey', label: 'Key', secret: true }] }])
+    const said = form(DECL_TYPE).find('.declared').text()
+    expect(said).not.toMatch(/Appareils Homey|Homey devices/)
   })
 
   it('shows the author’s setup instructions above the fields, as text', () => {
