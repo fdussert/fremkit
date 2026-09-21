@@ -797,6 +797,78 @@ describe('installing a widget that declares a connection', () => {
   })
 })
 
+describe('a listing whose declaration changed since it was granted', () => {
+  const DECL = {
+    name: 'Key Light', kind: 'host', scheme: 'http',
+    fields: [{ key: 'host', label: { fr: 'Adresse', en: 'Address' } }],
+    requests: [{ method: 'GET', path: '/elgato/lights' }],
+  }
+  const WIDER = { ...DECL, requests: [...DECL.requests, { method: 'POST', path: '/api/admin/**' }] }
+
+  /**
+   * The widget installed and its folder in place, the index advertising `advertised`, and the
+   * *record* granting `DECL` — which is the shape of every update that changed its declaration.
+   *
+   * Installed against the advertised version so the folder is really there, then the grant is
+   * narrowed back: rebuilding would give a fresh temp directory and take the folder with it.
+   */
+  async function installedThenChanged(advertised: Record<string, unknown>): Promise<void> {
+    const zip = packageOf({ ...MANIFEST(), connection: advertised })
+    await build({ zip, index: { ...indexFor(zip), widgets: [{
+      ...(indexFor(zip).widgets as Record<string, unknown>[])[0],
+      permissions: { subscriptions: [], commands: [], network: [], connection: advertised },
+    }] } })
+    expect((await install({ id: 'demo', consent: { ...set(), connection: advertised } })).statusCode).toBe(200)
+
+    await store.update((c) => ({ ...c, marketplace: { installed: { demo: {
+      ...c.marketplace.installed.demo,
+      consentedPermissions: { subscriptions: [], commands: [], network: [], connection: DECL },
+    } } } }))
+  }
+
+  it('says so in the listing, so a bulk dialog has something to render', async () => {
+    // Without this every bulk path granted a changed declaration unseen: they build their
+    // dialog from `newPermissions` and send the entry's own permissions.
+    await installedThenChanged(WIDER)
+    const row = (await app.inject({ url: '/api/marketplace' })).json().widgets[0]
+    expect(row.consentNeeded).toBe(true)
+    expect(row.newPermissions.connection).toMatchObject({ kind: 'host' })
+    expect(row.newPermissions.connection.requests).toHaveLength(2)
+  })
+
+  it('says nothing when the declaration is the one that was granted', async () => {
+    await installedThenChanged(DECL)
+    const row = (await app.inject({ url: '/api/marketplace' })).json().widgets[0]
+    expect(row.consentNeeded).toBe(false)
+    expect(row.newPermissions.connection).toBeUndefined()
+  })
+
+  it('notices a scheme flipped to http, which is the quiet one', async () => {
+    await installedThenChanged({ ...DECL, scheme: 'https' })
+    const row = (await app.inject({ url: '/api/marketplace' })).json().widgets[0]
+    expect(row.consentNeeded).toBe(true)
+  })
+
+  it('refuses a bulk consent that leaves the declaration out', async () => {
+    // What "update all" would send if it built its consent from a set with no connection in it.
+    await installedThenChanged(WIDER)
+    // The record is put a version behind, so the entry counts as an update and the series
+    // actually reaches this widget.
+    await store.update((c) => ({
+      ...c,
+      marketplace: { installed: { demo: { ...c.marketplace.installed.demo, version: '0.9.0' } } },
+    }))
+    const res = await app.inject({
+      method: 'POST', url: '/api/marketplace/update-all',
+      payload: { consent: { demo: set() } } as never,
+    })
+    expect(res.statusCode).toBe(200)
+    const [result] = res.json().results as { ok: boolean; newPermissions?: { connection?: unknown } }[]
+    expect(result.ok).toBe(false)
+    expect(result.newPermissions?.connection).toBeDefined()
+  })
+})
+
 describe('POST /api/marketplace/share', () => {
   const share = (body: Record<string, unknown>) =>
     app.inject({ method: 'POST', url: '/api/marketplace/share', payload: body as never })

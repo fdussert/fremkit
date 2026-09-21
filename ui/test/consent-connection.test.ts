@@ -11,6 +11,7 @@
 import { describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
 import ConsentDialog from '../src/admin/ConsentDialog.vue'
+import UpdateAllDialog from '../src/admin/UpdateAllDialog.vue'
 import type { ConnectionDecl, MarketplaceWidget, WidgetPermissionSet } from '../src/shared/types'
 
 const NONE: WidgetPermissionSet = { subscriptions: [], commands: [], network: [] }
@@ -122,6 +123,55 @@ describe('what the dialog says about a declared connection', () => {
 
   it('says nothing at all when the widget declares none', () => {
     const wrapper = open({ added: NONE, all: NONE })
+    expect(wrapper.find('.conn').exists()).toBe(false)
+    wrapper.unmount()
+  })
+})
+
+describe('the bulk dialog', () => {
+  const entry = (added: Partial<WidgetPermissionSet>) => ({ widget: widget(), added: { ...NONE, ...added } })
+
+  it('renders the connection block for a widget whose declaration changed', async () => {
+    // This is where a changed declaration would slip through: "update all" and "install the
+    // missing ones" build their list from `newPermissions` and one dialog covers the series.
+    const wrapper = mount(UpdateAllDialog, {
+      attachTo: document.body,
+      props: { entries: [entry({ connection: decl() })] } as never,
+    })
+    await wrapper.vm.$nextTick()
+    const block = wrapper.find('.conn')
+    expect(block.exists()).toBe(true)
+    expect(block.text()).toContain('Homey Flows')
+    expect(block.text()).toContain('Authorization: Bearer')
+    expect(block.findAll('code').map((c) => c.text()))
+      .toEqual(['GET /api/manager/flow/flow', 'POST /api/manager/flow/flow/*/trigger'])
+    wrapper.unmount()
+  })
+
+  it('warns about plain HTTP there too', async () => {
+    const wrapper = mount(UpdateAllDialog, {
+      attachTo: document.body,
+      props: { entries: [entry({ connection: decl({ scheme: 'http' }) })] } as never,
+    })
+    await wrapper.vm.$nextTick()
+    expect(wrapper.find('.conn .warn').exists()).toBe(true)
+    wrapper.unmount()
+  })
+
+  it('does not call a widget with a new declaration "no new permission"', async () => {
+    const wrapper = mount(UpdateAllDialog, {
+      attachTo: document.body,
+      props: { entries: [entry({ connection: decl() })] } as never,
+    })
+    await wrapper.vm.$nextTick()
+    expect(wrapper.find('.none').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('still says so for one that really asks for nothing new', async () => {
+    const wrapper = mount(UpdateAllDialog, { attachTo: document.body, props: { entries: [entry({})] } as never })
+    await wrapper.vm.$nextTick()
+    expect(wrapper.find('.none').exists()).toBe(true)
     expect(wrapper.find('.conn').exists()).toBe(false)
     wrapper.unmount()
   })

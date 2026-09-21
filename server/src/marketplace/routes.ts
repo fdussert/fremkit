@@ -190,6 +190,13 @@ function entryFor(widget: IndexWidget, config: Config, catalog: WidgetCatalog): 
     subscriptions: widget.permissions.subscriptions,
     commands: widget.permissions.commands,
     network: widget.permissions.network,
+    // The declaration is a permission, and leaving it out of `asked` made every bulk path grant
+    // a changed one unseen: "update all" and "install the missing ones" build their dialog from
+    // `newPermissions` and send the entry's own `permissions`, so a version that added
+    // `POST /api/admin/**` — or flipped `scheme` to `http` — was agreed to by a dialog that
+    // never mentioned it. A single install survived only because the server's 409 reopens the
+    // dialog on its own set.
+    ...(widget.permissions.connection ? { connection: widget.permissions.connection } : {}),
   }
   const granted: Permissions = record ? grantedPermissions(record) : NO_PERMISSIONS
   const added = addedPermissions(granted, asked)

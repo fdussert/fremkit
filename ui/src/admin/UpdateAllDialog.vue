@@ -17,7 +17,7 @@ import BaseIcon from '../shared/ui/BaseIcon.vue'
 import BaseModal from '../shared/ui/BaseModal.vue'
 import { pick, useI18n } from '../shared/i18n'
 import { channelFamilies } from './permissions'
-import type { MarketplaceWidget, WidgetPermissionSet } from '../shared/types'
+import type { ConnectionDecl, MarketplaceWidget, WidgetPermissionSet } from '../shared/types'
 
 /**
  * `title`, `lead` and `confirm` are passed by the caller because the same dialog covers two series: the
@@ -43,12 +43,32 @@ function groups(set: WidgetPermissionSet): { key: string; icon: string; items: s
   ].filter((g) => g.items.length)
 }
 
+/**
+ * How the secret will be presented, in words. Same wording as the single-widget dialog: a bulk
+ * run is not a reason to say less about the one permission that costs a credential.
+ */
+function carriage(c: ConnectionDecl): string {
+  if (c.kind === 'http-bearer') return 'Authorization: Bearer'
+  if (c.kind === 'http-basic') return 'Authorization: Basic'
+  if (c.kind === 'api-key-header') return c.headerName ?? ''
+  if (c.kind === 'api-key-query') return `?${c.queryName ?? ''}=`
+  return ''
+}
+
 const rows = computed(() => props.entries.map((e) => ({
   id: e.widget.id,
   name: pick(e.widget.name),
   version: e.widget.version,
   groups: groups(e.added),
+  // A declaration that is new or changed. It is the reason this dialog cannot be a list of
+  // channel names: agreeing here is agreeing that the server will hold a credential.
+  connection: e.added.connection,
 })))
+
+const secretLabel = (c: ConnectionDecl): string => {
+  const field = c.fields.find((f) => f.secret)
+  return field ? pick(field.label) : ''
+}
 </script>
 
 <template>
@@ -58,11 +78,27 @@ const rows = computed(() => props.entries.map((e) => ({
 
     <div v-for="row in rows" :key="row.id" class="entry">
       <strong>{{ row.name }} <span class="v">v{{ row.version }}</span></strong>
-      <p v-if="!row.groups.length" class="none">{{ t('admin.market.noNewPermission') }}</p>
+      <p v-if="!row.groups.length && !row.connection" class="none">{{ t('admin.market.noNewPermission') }}</p>
       <div v-for="g in row.groups" :key="g.key" class="group">
         <span class="lbl"><BaseIcon :name="g.icon" :size="14" />{{ t(`admin.permissions.${g.key}`) }}</span>
         <span class="items"><code v-for="i in g.items" :key="i">{{ i }}</code></span>
       </div>
+
+      <!-- The same block the single-widget dialog draws. A bulk run is where a changed
+           declaration would otherwise slip through, so it says at least as much here. -->
+      <section v-if="row.connection" class="conn">
+        <span class="lbl"><BaseIcon name="plug" :size="14" />{{ t('admin.market.consentConnection') }}</span>
+        <p class="says">{{ t('admin.market.consentConnectionLead', { name: pick(row.connection.name) }) }}</p>
+        <p v-if="carriage(row.connection)" class="says">
+          {{ t('admin.market.consentConnectionSecret', {
+            field: secretLabel(row.connection), carriage: carriage(row.connection) }) }}
+        </p>
+        <p v-else class="says">{{ t('admin.market.consentConnectionNoSecret') }}</p>
+        <p v-if="row.connection.scheme === 'http'" class="says warn">{{ t('admin.market.consentConnectionHttp') }}</p>
+        <span class="items">
+          <code v-for="r in row.connection.requests" :key="r.method + r.path">{{ r.method }} {{ r.path }}</code>
+        </span>
+      </section>
     </div>
 
     <p class="note">{{ t('admin.permissions.note') }}</p>
@@ -86,6 +122,10 @@ const rows = computed(() => props.entries.map((e) => ({
 code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: var(--fs-xs);
   background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
   padding: 1px 5px; word-break: break-all; }
+.conn { display: block; border-left: 2px solid var(--accent); padding-left: var(--space-2);
+  margin: var(--space-1) 0 var(--space-2); }
+.says { margin: 0 0 var(--space-1); font-size: var(--fs-xs); }
+.says.warn { color: var(--danger); }
 .none, .note { margin: 0; font-size: var(--fs-xs); color: var(--text-dim); }
 .note { margin-top: var(--space-3); }
 .actions { display: flex; justify-content: flex-end; gap: var(--space-2); margin-top: var(--space-4); }
