@@ -40,6 +40,42 @@ without it.
 Only the tool name and a short summary reach Fremkit. Tool inputs and outputs are never sent and
 never stored.
 
+The hook also adds a `client` object saying where the session lives: the terminal application's
+bundle id, `TERM_PROGRAM`, the pid of the `claude` process, its tty, and — under Orca — the pane
+and tab it runs in. It is the only way anything can know: the server otherwise sees a session id
+and a working directory, and two sessions in two panes of the same folder are the same pair of
+strings. It is what makes the ↗ on a card work.
+
+That object stays on the server. The dashboard is told which *kind* of application it is and what
+to call it (`Orca`, `Terminal`, `iTerm2`, `VS Code`), never the pane key or the tty.
+
+Two Orca variables are deliberately **not** sent: `ORCA_AGENT_HOOK_ENDPOINT` and
+`ORCA_AGENT_HOOK_TOKEN`. That is a token for Orca's own hook receiver, `orca terminal switch`
+does the job without it, and a credential has no business in an event that ends up on disk.
+
+## Going to a session
+
+A card that is waiting for you goes to its session when touched; every other card has a ↗ in its
+corner. What happens depends on the application:
+
+| Client | What is raised |
+|---|---|
+| Orca | the exact pane, through `orca terminal switch --terminal <handle>` |
+| Terminal.app, iTerm2 | the tab whose tty matches, through AppleScript — macOS asks once to allow it |
+| VS Code | the window already open on that folder |
+| anything else | the application, by its bundle id |
+
+A session whose hook never said where it lives — one Fremkit found by scanning processes, or one
+from before this existed — shows no arrow at all.
+
+## A sound when a session waits
+
+`claude-sessions` can play one of the macOS system sounds when a session starts waiting, either
+for any prompt or only for a question. The sound is played by Fremkit itself rather than by the
+widget: a widget runs in a sandboxed iframe, which cannot start audio nobody clicked on, and the
+point is to hear it when the dashboard is not in front of you. At most one sound every five
+seconds, so five subagents stopping together do not chime five times.
+
 ## Rate limits
 
 Rate limits appear only for claude.ai Pro and Max subscribers, and only after the first API

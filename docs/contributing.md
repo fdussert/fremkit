@@ -180,6 +180,19 @@ non-secret fields, the secrets backend and the language.
 A v1 file (32 × 8 cells of 80 px) is migrated on load — coordinates doubled, cell halved — and the
 original kept as `data/fremkit.json.bak`.
 
+**Claude Code hooks** — `scripts/claude-hook.sh` forwards each hook event to
+`/api/hooks/claude`. It adds one thing of its own: a `client` object saying where the session
+lives — the terminal application's bundle id, `TERM_PROGRAM`, the pid of the `claude` process,
+its tty, and Orca's pane, tab and terminal handle when they are set. It is the only place that
+can know; nothing observed from outside tells two panes of the same folder apart. jq is not on
+every Mac, so the object is built with `printf` and spliced in after the opening brace, and every
+step is best-effort — a failure leaves the event as it arrived, with the 1 s timeout and `exit 0`
+intact.
+
+It deliberately does not forward `ORCA_AGENT_HOOK_ENDPOINT` or `ORCA_AGENT_HOOK_TOKEN`. The
+server keeps the `client` object to itself and publishes only a kind and a label
+(`{ kind: 'orca', label: 'Orca' }`) — a pane key and a tty are of no use on a dashboard.
+
 **Other data** — background images in `data/backgrounds/`, Dock icons in `data/icons/`, icons
 extracted from installed application bundles in `data/icons/apps/`, site favicons in
 `data/icons/favicons/`, secrets in the keychain or `data/secrets.json`; all git-ignored. The supervised server's stdout and stderr go

@@ -11,6 +11,19 @@ Anything that changes what the dashboard, the admin or a widget can do gets a li
 ## Unreleased
 
 ### Added
+- **Claude sessions: go to the session.** A card waiting for you goes to its window when you
+  touch it, and every other card has a ↗ that does the same — the exact Orca pane, the
+  Terminal.app or iTerm2 tab, the VS Code window on that folder, or at least the application.
+  The card also says which application the session lives in, which is what tells two panes of the
+  same folder apart. The hook reports that from inside the session; it stays on the server, and
+  the dashboard is told only the kind and the name.
+- **Claude sessions can chime.** One of the macOS system sounds when a session starts waiting,
+  for a question or for any prompt, played by Fremkit rather than by the widget so you hear it
+  when the dashboard is not in front of you. At most one every five seconds.
+- Three more settings on the Claude sessions widget: show only what is waiting, hide finished
+  sessions after 30 minutes (on by default), and group the board by application.
+
+### Added
 - A registry package says what each version changed, and the admin shows it: under the chip on a
   card with an update waiting, and beside the permissions in the install, update and *Update all*
   dialogs. An update several versions behind lists every version it is taking. The text is the

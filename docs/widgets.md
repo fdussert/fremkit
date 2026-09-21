@@ -97,9 +97,22 @@ waiting), subagents and elapsed time. Fed by the hooks described in
 
 Minimum size 16 × 4, default 16 × 8.
 
+A card that is waiting for you goes to its session when you touch it; every other card has a ↗
+in its corner that does the same. Which window is raised depends on the terminal application —
+see [claude-code.md](claude-code.md#going-to-a-session).
+
 | Setting | Type | Default | Scope | What it is |
 |---|---|---|---|---|
 | `max` | number | `0` | both | Sessions shown; `0` means all of them |
+| `onlyWaiting` | boolean | off | both | Show only the sessions waiting for you |
+| `hideDone` | boolean | on | both | Drop a finished or idle session from the board after 30 min |
+| `groupByClient` | boolean | off | both | One section per application (Orca, Terminal, …) |
+| `sound` | enum | `none` | both | A macOS system sound when a session starts waiting |
+| `soundOn` | enum | `attention` | both | What the sound is for: a question, or a question or a permission |
+
+The count in the header is always the real total — a filter changes what is worth looking at, not
+what is running. The sound is played by Fremkit rather than by the widget, and only the first
+placed tile that chose one is heard; see [claude-code.md](claude-code.md#a-sound-when-a-session-waits).
 
 ## claude-usage
 
