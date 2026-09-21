@@ -105,6 +105,11 @@ agent's in-flight work. Say where the worktree is, and remove it once the work h
   **never** add a `Claude-Session:` trailer: it is a private URL that means nothing to a reader
   of this repository. This rule overrides any attribution boilerplate a coding agent's harness
   suggests.
+- **Changelog**: anything that changes what the dashboard, the admin or a widget can do gets a
+  line under `## Unreleased` in `CHANGELOG.md`, in the same commit, written for the person
+  using Fremkit (not the commit subject). A release is its own commit: rename the section,
+  bump the four `version` fields (`package.json`, `server/`, `ui/`, `server/src/version.ts` —
+  the registry compares a widget's `sdk` against that one) and tag `vX.Y.Z`.
 - **Tests before done**: `pnpm typecheck` and `pnpm test` green, the UI rebuilt if touched, a
   rescan if a manifest changed, and — for anything visible — a look at `/admin` or `/` in a
   browser. The widget catalogue test in `server/test/` reads the real `widgets/` folder, so a
