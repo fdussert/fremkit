@@ -10,6 +10,18 @@ Anything that changes what the dashboard, the admin or a widget can do gets a li
 
 ## Unreleased
 
+### Changed
+- **Homey is a declared connection now.** The Homey connection type built into Fremkit is gone:
+  both Homey widgets bring their own, so one API key serves the two of them. An existing Homey
+  connection is migrated when the server starts — same name, same address, same key — and the
+  tiles keep pointing at it. Nothing to redo. Update *Homey devices* from Sietch to get the
+  version that uses it.
+- The Homey devices widget lost its device picker: the list of devices came from the connection
+  type built into Fremkit, and a declared connection serves none. Name the devices by id, or show
+  every device and filter by zone. A selection made with the old picker keeps working.
+- A connection form declared by a widget now names every widget that connection would serve,
+  rather than only the one that declared it.
+
 ### Added
 - **Claude sessions: go to the session.** Touch a card and its window comes forward — the
   exact Orca pane, the Terminal.app or iTerm2 tab, the VS Code window on that folder, or at
