@@ -75,6 +75,10 @@ describe('focus', () => {
     fresh()
     expect(await focusClient(ORCA, '/x', runner)).toEqual({ ok: true, how: 'pane' })
     expect(calls[0].args).toEqual(['terminal', 'switch', '--terminal', 'term_abc123'])
+    // And Orca itself comes forward: the switch alone changes nothing on screen when another
+    // application has the focus.
+    expect(calls[1].cmd).toBe('/usr/bin/open')
+    expect(calls[1].args).toEqual(['-b', 'com.stablyai.orca'])
   })
 
   it('falls back to fronting Orca when the pane cannot be raised', async () => {

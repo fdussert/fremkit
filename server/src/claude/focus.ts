@@ -238,7 +238,10 @@ async function focusOrca(client: SessionClient, runner: Runner): Promise<FocusRe
   const handle = client.orca?.terminal
   if (handle && ORCA_TERMINAL_RE.test(handle)) {
     try {
+      // The switch selects the pane inside Orca; it does not bring Orca forward when another
+      // application has the focus, which is exactly the moment somebody touches the Edge.
       await runner(ORCA_CLI, ['terminal', 'switch', '--terminal', handle])
+      await runner('/usr/bin/open', ['-b', ORCA_BUNDLE])
       return { ok: true, how: 'pane' }
     } catch { /* the CLI is missing, or the pane is gone: front the app instead */ }
   }
