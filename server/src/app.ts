@@ -30,6 +30,7 @@ import type { Provider } from './providers/types.js'
 import { Hub } from './ws/hub.js'
 import { wsRoutes } from './ws/routes.js'
 import { proxyRoutes } from './proxy/routes.js'
+import { ConnCache } from './proxy/conn.js'
 import { backgroundRoutes } from './backgrounds/routes.js'
 import { faviconRoutes } from './favicons/routes.js'
 import { ClaudeTracker } from './claude/tracker.js'
@@ -67,6 +68,8 @@ export interface AppOptions {
   registryDev?: boolean
   /** Where the themes live. Defaults to the repository folder, which is what ships the built-in one. */
   themesDir?: string
+  /** Only ever passed by the tests, which need to look inside what the proxy cached. */
+  connCache?: ConnCache
   uiDist?: string
   providers?: Provider[]
   logger?: boolean
@@ -155,6 +158,13 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   const connectionTypes = new ConnectionTypeRegistry(opts.connectionTypes ?? defaultConnectionTypes())
   const connections = new ConnectionManager({ registry, types: connectionTypes, secrets })
   /**
+   * What the proxy has cached per declared connection.
+   *
+   * Shared, because the three things that make a cached answer wrong are in three other files:
+   * the credential changing, the connection going away, and a share being taken back.
+   */
+  const connCache = opts.connCache ?? new ConnCache()
+  /**
    * The connection types the installed widgets declare, refreshed whenever the catalogue or the
    * config changes — an install adds one, an uninstall takes one away, and a consent that has
    * not been given yet grants none.
@@ -223,10 +233,10 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   await app.register(fastifyStatic, { root: opts.widgetsDir, serve: false, decorateReply: true })
 
   await app.register(configRoutes, { store, catalog })
-  await app.register(connectionRoutes, { store, catalog, types: connectionTypes, manager: connections, secrets })
+  await app.register(connectionRoutes, { store, catalog, types: connectionTypes, manager: connections, secrets, connCache })
   await app.register(widgetRoutes, { catalog, store })
   await app.register(themeRoutes, { catalog: themes })
-  await app.register(proxyRoutes, { catalog, store, secrets })
+  await app.register(proxyRoutes, { catalog, store, secrets, cache: connCache })
   const marketplaceRegistry = new Registry({
     ...(opts.registryUrl ? { url: opts.registryUrl } : {}),
     ...(opts.registryDev ? { dev: true } : {}),
@@ -234,6 +244,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   await app.register(marketplaceRoutes, {
     store, catalog, themes, registry: marketplaceRegistry,
     installedDir, installedThemesDir: installedThemesDir(opts.dataDir),
+    connCache,
   })
   await app.register(backgroundRoutes, { dataDir: opts.dataDir })
   await app.register(backupRoutes, {

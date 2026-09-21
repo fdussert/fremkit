@@ -9,6 +9,7 @@ import { sha256 } from '../src/marketplace/install.js'
 import { writeZip } from '../src/backup/zip.js'
 import { WidgetCatalog } from '../src/widgets/catalog.js'
 import { ThemeCatalog } from '../src/themes/catalog.js'
+import { ConnCache } from '../src/proxy/conn.js'
 import { ConfigStore } from '../src/config/store.js'
 import { DEFAULT_CONFIG } from '../src/config/schema.js'
 import { SDK_VERSION } from '../src/bridge/sdk.js'
@@ -51,6 +52,7 @@ let builtinThemesDir: string
 let installedThemesDir: string
 let installedDir: string
 let requested: string[]
+let connCache: ConnCache
 
 interface Setup {
   zip?: Buffer
@@ -72,6 +74,7 @@ async function build(setup: Setup = {}): Promise<void> {
   const zip = setup.zip ?? packageOf()
   const index = setup.index ?? indexFor(zip)
   requested = []
+  connCache = new ConnCache()
   const registry = new Registry({
     url: INDEX_URL,
     isPrivate: async () => false,
@@ -97,7 +100,7 @@ async function build(setup: Setup = {}): Promise<void> {
   await themes.scan()
   await catalog.scan()
   app = Fastify()
-  await app.register(marketplaceRoutes, { store, catalog, themes, registry, installedDir, installedThemesDir })
+  await app.register(marketplaceRoutes, { store, catalog, themes, registry, installedDir, installedThemesDir, connCache })
 }
 
 beforeEach(() => build())
@@ -211,7 +214,7 @@ describe('POST /api/marketplace/refresh', () => {
       }) as never,
     })
     const one = Fastify()
-    await one.register(marketplaceRoutes, { store, catalog, themes, registry, installedDir, installedThemesDir })
+    await one.register(marketplaceRoutes, { store, catalog, themes, registry, installedDir, installedThemesDir, connCache })
     expect((await one.inject({ url: '/api/marketplace' })).json().widgets).toHaveLength(1)
 
     down = true
@@ -339,7 +342,7 @@ describe('POST /api/marketplace/install', () => {
   await themes.scan()
     await catalog.scan()
     app = Fastify()
-    await app.register(marketplaceRoutes, { store, catalog, themes, registry, installedDir, installedThemesDir })
+    await app.register(marketplaceRoutes, { store, catalog, themes, registry, installedDir, installedThemesDir, connCache })
 
     const first = install({ id: 'demo', consent: set() })
     // Not a tick: the lock is taken when the route body runs, which is after Fastify has
@@ -579,7 +582,7 @@ describe('POST /api/marketplace/update-all', () => {
   await themes.scan()
     await catalog.scan()
     app = Fastify()
-    await app.register(marketplaceRoutes, { store, catalog, themes, registry, installedDir, installedThemesDir })
+    await app.register(marketplaceRoutes, { store, catalog, themes, registry, installedDir, installedThemesDir, connCache })
 
     for (const id of ['good', 'liar', 'greedy']) {
       const res = await app.inject({ method: 'POST', url: '/api/marketplace/install', payload: { id, consent: set() } as never })
@@ -956,6 +959,18 @@ describe('POST /api/marketplace/share', () => {
     await app.inject({ method: 'POST', url: '/api/marketplace/uninstall', payload: { id: 'owner' } as never })
     const res = await share({ id: 'demo', connectionId: 'homey-x1', allow: true })
     expect(res.statusCode).toBe(409)
+  })
+
+  it('drops what the proxy cached for a connection when the share is taken back', async () => {
+    // A revocation that left the answers readable would be a revocation in name only: the
+    // widget was served from a cache keyed by connection, not by widget.
+    await installed()
+    await share({ id: 'demo', connectionId: 'homey-x1', allow: true })
+    connCache.put('homey-x1', '/a', { status: 200, body: Buffer.from('cached'), json: false })
+    expect(connCache.get('homey-x1', '/a', 60_000)).toBeDefined()
+
+    await share({ id: 'demo', connectionId: 'homey-x1', allow: false })
+    expect(connCache.get('homey-x1', '/a', 60_000)).toBeUndefined()
   })
 
   it('always allows taking a share back', async () => {

@@ -13,6 +13,7 @@ import {
 import { ConnectionDeclSchema, type ConnectionDecl } from '../src/widgets/manifest.js'
 import { ConnectionTypeRegistry } from '../src/connections/registry.js'
 import { rejectsHost } from '../src/connections/routes.js'
+import { ConnCache } from '../src/proxy/conn.js'
 import type { ConnectionType } from '../src/connections/types.js'
 
 const decl = (over: Record<string, unknown> = {}): ConnectionDecl => ConnectionDeclSchema.parse({
@@ -367,5 +368,36 @@ describe('whether two declarations are the same shape of connection', () => {
       fields: [{ key: 'token', label: 'Key', secret: true }, { key: 'host', label: 'Address' }],
     })
     expect(sameConnectionShape(shape(), reversed)).toBe(true)
+  })
+})
+
+describe('what clears a cached declared-connection answer', () => {
+  /**
+   * The connection routes hold the cache and clear it on save and on delete. Exercised through
+   * `rejectsHost`'s neighbour rather than through the route, for the same reason as above: a
+   * declared type only exists while a widget that declares it is installed.
+   *
+   * What is asserted here is the contract the routes depend on — `forget` takes everything for
+   * one connection and nothing for any other.
+   */
+  it('forgets one connection entirely and leaves the others alone', () => {
+    const cache = new ConnCache(() => 1000)
+    cache.put('homey-x1', '/api/manager/flow/flow', { status: 200, body: Buffer.from('a'), json: true })
+    cache.put('homey-x1', '/api/manager/devices/device', { status: 200, body: Buffer.from('b'), json: true })
+    cache.put('light-1', '/elgato/lights', { status: 200, body: Buffer.from('c'), json: true })
+
+    cache.forget('homey-x1')
+    expect(cache.get('homey-x1', '/api/manager/flow/flow', 60_000)).toBeUndefined()
+    expect(cache.get('homey-x1', '/api/manager/devices/device', 60_000)).toBeUndefined()
+    expect(cache.get('light-1', '/elgato/lights', 60_000)).toBeDefined()
+  })
+
+  it('does not confuse two ids where one is a prefix of the other', () => {
+    const cache = new ConnCache(() => 1000)
+    cache.put('homey', '/a', { status: 200, body: Buffer.from('short'), json: false })
+    cache.put('homey-x1', '/a', { status: 200, body: Buffer.from('long'), json: false })
+    cache.forget('homey')
+    expect(cache.get('homey', '/a', 60_000)).toBeUndefined()
+    expect(cache.get('homey-x1', '/a', 60_000)?.body.toString()).toBe('long')
   })
 })

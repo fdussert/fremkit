@@ -67,6 +67,15 @@ export interface ProxyOptions {
   fetch?: typeof fetch
   /** Only ever passed by the tests, to make a cache expiry happen without waiting for it. */
   now?: () => number
+  /**
+   * The cache of declared-connection reads.
+   *
+   * Owned by the caller, because the routes that *invalidate* it — a connection saved or
+   * deleted, a share revoked — are in other files. A cache only this file could reach would be
+   * a cache nothing could clear, which is how a revoked widget goes on being served the answers
+   * it was granted before.
+   */
+  cache?: ConnCache
 }
 
 export async function proxyRoutes(app: FastifyInstance, opts: ProxyOptions): Promise<void> {
@@ -156,7 +165,7 @@ export async function proxyRoutes(app: FastifyInstance, opts: ProxyOptions): Pro
     return reply.code(upstream.status).header('content-type', looksJson ? JSON_TYPE : TEXT_TYPE).send(body)
   })
 
-  const cache = new ConnCache(opts.now)
+  const cache = opts.cache ?? new ConnCache(opts.now)
 
   /**
    * `POST /api/proxy/:widgetId/conn` — one request on a declared connection.

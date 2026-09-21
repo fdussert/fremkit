@@ -1,4 +1,5 @@
 import { isDeclaredType, parseDeclaredHost } from './declared.js'
+import type { ConnCache } from '../proxy/conn.js'
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { CONNECTION_ID_RE, type Config, type Connection, type Locale } from '../config/schema.js'
@@ -82,9 +83,23 @@ const mask = (connection: Connection, secretKeys: string[], stored: Set<string>)
 
 export async function connectionRoutes(
   app: FastifyInstance,
-  opts: { store: ConfigStore; catalog: WidgetCatalog; types: ConnectionTypeRegistry; manager: ConnectionManager; secrets: SecretStore },
+  opts: {
+    store: ConfigStore
+    catalog: WidgetCatalog
+    types: ConnectionTypeRegistry
+    manager: ConnectionManager
+    secrets: SecretStore
+    /**
+     * What the proxy cached for a declared connection.
+     *
+     * Cleared here because this is where the two things that make it wrong happen: the address
+     * or the credential changing, and the connection going away. A cached answer is a request
+     * that was authorised with the *old* credential.
+     */
+    connCache?: ConnCache
+  },
 ): Promise<void> {
-  const { store, catalog, types, manager, secrets } = opts
+  const { store, catalog, types, manager, secrets, connCache } = opts
   /** Read per request, not captured: the user can change the language while the server runs. */
   const locale = (): Locale => store.get().locale
 
@@ -199,6 +214,9 @@ export async function connectionRoutes(
       return reply.code(500).send({ errors: [tr(locale(), 'connections.secretWriteFailed')] })
     }
     await manager.sync(next.connections)
+    // The address or the credential may have changed, so everything cached for this connection
+    // was fetched with the old one. A stale read is a request nobody would authorise now.
+    connCache?.forget(id)
 
     return mask(connection, types.secretKeys(type), await storedSecrets(connection))
   })
@@ -221,6 +239,7 @@ export async function connectionRoutes(
     const next = await store.update((c) => ({ ...c, connections: c.connections.filter((x) => x.id !== id) }))
     await manager.forget(connection)
     await manager.sync(next.connections)
+    connCache?.forget(id)
     return reply.code(204).send()
   })
 

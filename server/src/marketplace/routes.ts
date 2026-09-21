@@ -25,6 +25,7 @@ import { InstallError, readPackage, removePackage, writePackage, type PackageKin
 import { NO_PERMISSIONS, addedPermissions, grantedFor, grantedPermissions, isEmpty, permissionsOf, unionPermissions, type Permissions } from './consent.js'
 import type { IndexTheme, IndexWidget, RegistryIndex } from './index-schema.js'
 import { declaredBy, isDeclaredType, sameConnectionShape } from '../connections/declared.js'
+import type { ConnCache } from '../proxy/conn.js'
 import { ConnectionDeclSchema } from '../widgets/manifest.js'
 import { compareSemver } from './semver.js'
 
@@ -37,6 +38,8 @@ export interface MarketplaceOptions {
   installedDir: string
   /** `<dataDir>/themes`; the only folder the theme path writes to. */
   installedThemesDir: string
+  /** What the proxy cached per declared connection; cleared when a share is taken back. */
+  connCache?: ConnCache
 }
 
 /** One route's outcome, as a status and a body rather than as an HTTP answer. */
@@ -633,6 +636,10 @@ export async function marketplaceRoutes(app: FastifyInstance, opts: MarketplaceO
         },
       }
     })
+    // Taking a share back has to take the answers with it: the widget was served from a cache
+    // keyed by connection, and a revocation that left those readable would be a revocation in
+    // name only.
+    if (!allow) opts.connCache?.forget(connectionId)
     return reply.send({ ok: true, id, connectionId, allow })
   })
 

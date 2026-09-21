@@ -151,6 +151,14 @@ describe('the paths a widget may even ask about', () => {
     }
   })
 
+  it('refuses a control character, NUL first among them', () => {
+    // Header splitting and truncation at once: some parsers stop reading at a NUL and some do
+    // not, so the matcher and the service would be looking at different strings.
+    for (const path of ['/a\u0000b', '/a\rb', '/a\nb', '/a\u007fb', '/a\tb']) {
+      expect(checkPath(path), JSON.stringify(path)).toBeNull()
+    }
+  })
+
   it('takes an ordinary one', () => {
     expect(checkPath('/api/manager/flow/flow')).toBe('/api/manager/flow/flow')
     expect(checkPath('/a/b%20c')).toBe('/a/b%20c')
@@ -405,6 +413,21 @@ describe('the per-connection cache', () => {
     const after = await a.inject({ method: 'POST', url: '/api/proxy/homey-flows/conn', payload: { instanceId: 'flows-1', method: 'GET', path: '/cached/thing' } as never })
     expect(after.headers['x-fremkit-cache']).toBeUndefined()
     expect(calls).toHaveLength(3)
+  })
+
+  it('is dropped when the connection is saved, deleted or un-shared', () => {
+    // The three things that make a cached answer wrong. The routes that do them live in other
+    // files, which is why the cache is owned by `app.ts` rather than by the proxy.
+    const cache = new ConnCache(() => 1000)
+    cache.put('c1', '/a', { status: 200, body: Buffer.from('one'), json: false })
+    cache.put('c1', '/b', { status: 200, body: Buffer.from('two'), json: false })
+    cache.put('c2', '/a', { status: 200, body: Buffer.from('other'), json: false })
+
+    cache.forget('c1')
+    expect(cache.get('c1', '/a', 60_000)).toBeUndefined()
+    expect(cache.get('c1', '/b', 60_000)).toBeUndefined()
+    // And only that connection's.
+    expect(cache.get('c2', '/a', 60_000)?.body.toString()).toBe('other')
   })
 
   it('keys on the connection and the path, never on the widget', () => {

@@ -50,6 +50,10 @@ export function checkPath(raw: string): string | null {
   if (typeof raw !== 'string' || raw.length === 0 || raw.length > 2000) return null
   if (!raw.startsWith('/')) return null
   if (raw.includes('?') || raw.includes('#') || raw.includes('\\')) return null
+  // A control character in a URL is a header-splitting attempt or a truncation one; a NUL is
+  // both, and some parsers stop reading at it while others do not.
+  // eslint-disable-next-line no-control-regex
+  if (/[\u0000-\u001f\u007f]/.test(raw)) return null
   // `%2e` is `.` and `%2f` is `/`; either would make the service route on a path this matcher
   // never saw. There is no legitimate reason for a widget to send one.
   if (/%(?:2e|2f|5c)/i.test(raw)) return null

@@ -1,3 +1,4 @@
+import { ConnCache } from '../src/proxy/conn.js'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -70,6 +71,7 @@ const CONFIG = {
 }
 
 let app: FastifyInstance
+let connCache: ConnCache
 let dataDir: string
 
 beforeEach(async () => {
@@ -78,7 +80,8 @@ beforeEach(async () => {
   bambuTested = null
   dataDir = await mkdtemp(join(tmpdir(), 'fremkit-conn-'))
   await writeFile(join(dataDir, 'fremkit.json'), JSON.stringify(CONFIG), 'utf8')
-  app = await buildApp({ dataDir, widgetsDir: join(process.cwd(), '..', 'widgets'), providers: [], connectionTypes: [fakeType, otherType] })
+  connCache = new ConnCache()
+  app = await buildApp({ dataDir, widgetsDir: join(process.cwd(), '..', 'widgets'), providers: [], connectionTypes: [fakeType, otherType], connCache })
 })
 afterEach(async () => { await app.close() })
 
@@ -184,6 +187,19 @@ describe('GET /api/connections', () => {
       // Empty for every connection nobody shared, which is almost all of them.
       sharedWith: [],
     }])
+  })
+
+  it('clears what the proxy cached for a connection when it is saved or deleted', async () => {
+    // A cached answer was fetched with the address and the credential that were there then; a
+    // save may have changed either. Asserted through the routes, which is where it has to run.
+    await put('ado-x1z9', { type: 'azure-devops', name: 'T', fields: { organization: 'o', project: 'p' }, secrets: { pat: 't' } })
+    connCache.put('ado-x1z9', '/a', { status: 200, body: Buffer.from('cached'), json: false })
+    await put('ado-x1z9', { type: 'azure-devops', name: 'T', fields: { organization: 'other', project: 'p' }, secrets: { pat: 't' } })
+    expect(connCache.get('ado-x1z9', '/a', 60_000)).toBeUndefined()
+
+    connCache.put('ado-x1z9', '/a', { status: 200, body: Buffer.from('cached'), json: false })
+    expect((await app.inject({ method: 'DELETE', url: '/api/connections/ado-x1z9' })).statusCode).toBe(204)
+    expect(connCache.get('ado-x1z9', '/a', 60_000)).toBeUndefined()
   })
 
   it('names the widgets a declared connection was shared with', async () => {
