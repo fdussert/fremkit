@@ -8,7 +8,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
   authFor, declaredBy, declaredFromCatalog, declaredType, declaredTypeId,
-  isDeclaredType, originOf, parseDeclaredHost, schemeFor, slugText, syncDeclaredTypes,
+  isDeclaredType, originOf, parseDeclaredHost, sameConnectionShape, schemeFor, slugText, syncDeclaredTypes,
 } from '../src/connections/declared.js'
 import { ConnectionDeclSchema, type ConnectionDecl } from '../src/widgets/manifest.js'
 import { ConnectionTypeRegistry } from '../src/connections/registry.js'
@@ -319,5 +319,53 @@ describe('the guard the connection save applies', () => {
     // An ICS calendar's "host" is a whole URL; a Bambu has none at all.
     expect(rejectsHost('ics', { host: 'https://example.com/cal.ics?x=1' })).toBe(false)
     expect(rejectsHost('bambu', {})).toBe(false)
+  })
+})
+
+describe('whether two declarations are the same shape of connection', () => {
+  const shape = (over: Record<string, unknown> = {}) => bearer(over)
+
+  it('accepts two that ask for the same kind and the same fields', () => {
+    // Different requests on purpose: two widgets reading the same Homey ask it for different
+    // things, and that is what sharing is for.
+    expect(sameConnectionShape(shape(), shape({ requests: [{ method: 'GET', path: '/other' }] }))).toBe(true)
+    // A different label or hint is not a different connection either.
+    expect(sameConnectionShape(shape(), shape({ hint: 'read this' }))).toBe(true)
+  })
+
+  it('refuses a different kind', () => {
+    // A bearer token handed to a widget that would put it in a query string goes into a URL,
+    // where it is logged, in a form that service never asked for.
+    const query = decl({
+      kind: 'api-key-query', queryName: 'apikey',
+      fields: [{ key: 'host', label: 'A' }, { key: 'token', label: 'K', secret: true }],
+    })
+    expect(sameConnectionShape(shape(), query)).toBe(false)
+  })
+
+  it('refuses a different header or query parameter within the same kind', () => {
+    const header = (name: string) => decl({
+      kind: 'api-key-header', headerName: name,
+      fields: [{ key: 'host', label: 'A' }, { key: 'k', label: 'K', secret: true }],
+    })
+    expect(sameConnectionShape(header('X-API-Key'), header('X-API-Key'))).toBe(true)
+    expect(sameConnectionShape(header('X-API-Key'), header('X-Auth-Token'))).toBe(false)
+  })
+
+  it('refuses different fields, or the same names with a different secret', () => {
+    expect(sameConnectionShape(shape(), shape({
+      fields: [{ key: 'host', label: 'A' }, { key: 'apikey', label: 'K', secret: true }],
+    }))).toBe(false)
+    expect(sameConnectionShape(shape(), shape({
+      fields: [{ key: 'host', label: 'A' }, { key: 'token', label: 'K', secret: true }, { key: 'extra', label: 'E' }],
+    }))).toBe(false)
+  })
+
+  it('does not care what order the fields were written in', () => {
+    const reversed = decl({
+      name: 'Homey Flows', kind: 'http-bearer',
+      fields: [{ key: 'token', label: 'Key', secret: true }, { key: 'host', label: 'Address' }],
+    })
+    expect(sameConnectionShape(shape(), reversed)).toBe(true)
   })
 })

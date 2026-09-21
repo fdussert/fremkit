@@ -290,6 +290,26 @@ export function declaredFromCatalog(
   return out
 }
 
+/**
+ * Whether two declarations describe the same *shape* of connection.
+ *
+ * The kind and the field keys, with `secret` on each. That is as close as anything can get to
+ * "the same service" without asking the user — and the user is asked anyway, since sharing is a
+ * grant they accept. What it rules out is the case where the two are plainly not interchangeable:
+ * a bearer connection offered to a widget that would put the value in a query string sends the
+ * key somewhere it was never meant to go, in a form the service will not accept either.
+ *
+ * Deliberately not the requests, the hint or the labels: two widgets reading the same Homey ask
+ * it for different things, and that is the point of sharing.
+ */
+export function sameConnectionShape(a: ConnectionDecl, b: ConnectionDecl): boolean {
+  if (a.kind !== b.kind) return false
+  if (a.headerName !== b.headerName || a.queryName !== b.queryName) return false
+  const shape = (d: ConnectionDecl): string =>
+    d.fields.map((f) => `${f.key}:${f.secret ? 1 : 0}`).sort().join('|')
+  return shape(a) === shape(b)
+}
+
 export function syncDeclaredTypes(
   registry: { register(type: ConnectionType): void; remove(id: string): void; list(): ConnectionType[] },
   installed: { widgetId: string; decl: ConnectionDecl }[],

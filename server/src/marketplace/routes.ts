@@ -22,9 +22,9 @@ import { SDK_VERSION } from '../bridge/sdk.js'
 import { tr, type MessageKey } from '../i18n.js'
 import { Registry, RegistryError, releaseOf } from './registry.js'
 import { InstallError, readPackage, removePackage, writePackage, type PackageKind, type ReadPackageResult } from './install.js'
-import { NO_PERMISSIONS, addedPermissions, grantedPermissions, isEmpty, permissionsOf, unionPermissions, type Permissions } from './consent.js'
+import { NO_PERMISSIONS, addedPermissions, grantedFor, grantedPermissions, isEmpty, permissionsOf, unionPermissions, type Permissions } from './consent.js'
 import type { IndexTheme, IndexWidget, RegistryIndex } from './index-schema.js'
-import { declaredBy, isDeclaredType } from '../connections/declared.js'
+import { declaredBy, isDeclaredType, sameConnectionShape } from '../connections/declared.js'
 import { ConnectionDeclSchema } from '../widgets/manifest.js'
 import { compareSemver } from './semver.js'
 
@@ -605,6 +605,18 @@ export async function marketplaceRoutes(app: FastifyInstance, opts: MarketplaceO
     const connection = config.connections.find((c) => c.id === connectionId)
     if (allow && (!connection || !isDeclaredType(connection.type))) {
       return reply.code(409).send(fail('marketplace.notShareable'))
+    }
+    if (allow && connection) {
+      // The two declarations have to describe the same shape of connection. Offering a bearer
+      // connection to a widget that puts the value in a query string would send the key in a
+      // form that service never asked for — and put it in a URL, where it is logged.
+      const mine = grantedFor(catalog, config, id)?.connection
+      const theirs = declaredBy(connection.type)
+        ? grantedFor(catalog, config, declaredBy(connection.type) as string)?.connection
+        : undefined
+      if (!mine || !theirs || !sameConnectionShape(mine, theirs)) {
+        return reply.code(409).send(fail('marketplace.notCompatible'))
+      }
     }
 
     await store.update((c) => {

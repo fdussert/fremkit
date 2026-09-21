@@ -52,7 +52,14 @@ let installedThemesDir: string
 let installedDir: string
 let requested: string[]
 
-interface Setup { zip?: Buffer; index?: Record<string, unknown>; offline?: boolean; themeZip?: Buffer }
+interface Setup {
+  zip?: Buffer
+  index?: Record<string, unknown>
+  offline?: boolean
+  themeZip?: Buffer
+  /** Per-widget packages, by id, when one zip for every URL is not enough. */
+  zips?: Record<string, Buffer>
+}
 
 async function build(setup: Setup = {}): Promise<void> {
   dir = await mkdtemp(join(tmpdir(), 'marketplace-'))
@@ -73,6 +80,8 @@ async function build(setup: Setup = {}): Promise<void> {
       if (setup.offline) throw new Error('offline')
       if (url === INDEX_URL) return new Response(JSON.stringify(index))
       if (setup.themeZip && url.includes('/themes/')) return new Response(new Uint8Array(setup.themeZip))
+      const named = /\/widgets\/([a-z0-9-]+)-/.exec(url)?.[1]
+      if (named && setup.zips?.[named]) return new Response(new Uint8Array(setup.zips[named]))
       return new Response(new Uint8Array(zip))
     }) as never,
   })
@@ -873,15 +882,48 @@ describe('POST /api/marketplace/share', () => {
   const share = (body: Record<string, unknown>) =>
     app.inject({ method: 'POST', url: '/api/marketplace/share', payload: body as never })
 
-  async function installed(): Promise<void> {
-    const zip = packageOf()
-    await build({ zip })
-    expect((await install({ id: 'demo', consent: set({ subscriptions: ['system'] }) })).statusCode).toBe(200)
+  const BEARER = {
+    name: 'Homey', kind: 'http-bearer', scheme: 'http',
+    fields: [{ key: 'host', label: 'A' }, { key: 'token', label: 'K', secret: true }],
+    requests: [{ method: 'GET', path: '/a' }],
+  }
+  const QUERY = {
+    name: 'Homey', kind: 'api-key-query', queryName: 'apikey', scheme: 'http',
+    fields: [{ key: 'host', label: 'A' }, { key: 'token', label: 'K', secret: true }],
+    requests: [{ method: 'GET', path: '/a' }],
+  }
+
+  /**
+   * Two installed widgets: `owner` declares the connection, `demo` wants to share it.
+   *
+   * Both really installed, because the check compares the two *granted* declarations — an owner
+   * that is not installed has none, and there would be nothing to compare against.
+   */
+  async function installed(demoDecl: Record<string, unknown> = BEARER): Promise<void> {
+    await app.close()
+    const demoZip = packageOf({ ...MANIFEST(), connection: demoDecl })
+    const ownerZip = packageOf({ ...MANIFEST({ id: 'owner' }), connection: BEARER })
+    const entry = (id: string, connection: unknown) => ({
+      ...(indexFor(demoZip).widgets as Record<string, unknown>[])[0],
+      id,
+      url: `https://${HOST}/widgets/${id}-1.0.0.zip`,
+      sha256: sha256(id === 'demo' ? demoZip : ownerZip),
+      size: (id === 'demo' ? demoZip : ownerZip).byteLength,
+      permissions: { subscriptions: [], commands: [], network: [], connection },
+    })
+    await build({
+      zip: demoZip,
+      zips: { demo: demoZip, owner: ownerZip },
+      index: { ...indexFor(demoZip), widgets: [entry('demo', demoDecl), entry('owner', BEARER)] },
+    })
+    expect((await install({ id: 'demo', consent: { ...set(), connection: demoDecl } })).statusCode).toBe(200)
+    expect((await install({ id: 'owner', consent: { ...set(), connection: BEARER } })).statusCode).toBe(200)
+
     await store.update((c) => ({
       ...c,
       connections: [
-        { id: 'homey-x1', type: 'decl:homey-flows:homey', name: 'Homey', fields: { host: 'h' } },
-        { id: 'nas-1', type: 'synology', name: 'NAS', fields: { host: 'h' } },
+        { id: 'homey-x1', type: 'decl:owner:homey', name: 'Homey', fields: { host: '192.168.1.40' } },
+        { id: 'nas-1', type: 'synology', name: 'NAS', fields: { host: '192.168.1.9' } },
       ],
     }))
   }
@@ -893,6 +935,33 @@ describe('POST /api/marketplace/share', () => {
     // No copy of the connection: there is still one credential, in one place.
     expect(store.get().connections).toHaveLength(2)
 
+    expect((await share({ id: 'demo', connectionId: 'homey-x1', allow: false })).statusCode).toBe(200)
+    expect(store.get().marketplace.installed.demo.sharedConnections).toEqual([])
+  })
+
+  it('refuses a connection that is not the shape this widget declares', async () => {
+    // `demo` would put the value in a query string; the connection belongs to a bearer type.
+    // The key would go into a URL — where it is logged — in a form the service never asked for.
+    await installed(QUERY)
+    const res = await share({ id: 'demo', connectionId: 'homey-x1', allow: true })
+    expect(res.statusCode).toBe(409)
+    expect(store.get().marketplace.installed.demo.sharedConnections).toEqual([])
+  })
+
+  it('refuses when the widget that declared the connection is no longer installed', async () => {
+    // There is then no granted declaration to compare against, and "probably compatible" is not
+    // a thing this decides on somebody's behalf.
+    await installed()
+    await app.inject({ method: 'POST', url: '/api/marketplace/uninstall', payload: { id: 'owner' } as never })
+    const res = await share({ id: 'demo', connectionId: 'homey-x1', allow: true })
+    expect(res.statusCode).toBe(409)
+  })
+
+  it('always allows taking a share back', async () => {
+    // Revoking must not depend on anything still being compatible, or installed.
+    await installed()
+    expect((await share({ id: 'demo', connectionId: 'homey-x1', allow: true })).statusCode).toBe(200)
+    await app.inject({ method: 'POST', url: '/api/marketplace/uninstall', payload: { id: 'owner' } as never })
     expect((await share({ id: 'demo', connectionId: 'homey-x1', allow: false })).statusCode).toBe(200)
     expect(store.get().marketplace.installed.demo.sharedConnections).toEqual([])
   })
