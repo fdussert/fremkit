@@ -883,12 +883,13 @@ describe('POST /api/marketplace/share', () => {
     app.inject({ method: 'POST', url: '/api/marketplace/share', payload: body as never })
 
   const BEARER = {
-    name: 'Homey', kind: 'http-bearer', scheme: 'http',
+    // Not `Homey`: that is a coded type's id, and a declaration may not wear one as its label.
+    name: 'Homey Flows', kind: 'http-bearer', scheme: 'http',
     fields: [{ key: 'host', label: 'A' }, { key: 'token', label: 'K', secret: true }],
     requests: [{ method: 'GET', path: '/a' }],
   }
   const QUERY = {
-    name: 'Homey', kind: 'api-key-query', queryName: 'apikey', scheme: 'http',
+    name: 'Homey Flows', kind: 'api-key-query', queryName: 'apikey', scheme: 'http',
     fields: [{ key: 'host', label: 'A' }, { key: 'token', label: 'K', secret: true }],
     requests: [{ method: 'GET', path: '/a' }],
   }
@@ -922,7 +923,7 @@ describe('POST /api/marketplace/share', () => {
     await store.update((c) => ({
       ...c,
       connections: [
-        { id: 'homey-x1', type: 'decl:owner:homey', name: 'Homey', fields: { host: '192.168.1.40' } },
+        { id: 'homey-x1', type: 'decl:owner:homey-flows', name: 'Homey', fields: { host: '192.168.1.40' } },
         { id: 'nas-1', type: 'synology', name: 'NAS', fields: { host: '192.168.1.9' } },
       ],
     }))

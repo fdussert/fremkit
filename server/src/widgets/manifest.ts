@@ -194,10 +194,28 @@ export const API_KEY_HEADERS = ['Authorization', 'X-API-Key', 'X-Api-Key', 'X-Au
 /** The methods a declared request may use. No `HEAD`, no `OPTIONS`: nothing needs them yet. */
 export const CONNECTION_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'] as const
 
-/** The names of the coded types, lower-cased. A declaration may not borrow one as its label. */
-const CODED_TYPE_NAMES = new Set([
+/**
+ * What a declaration's label may not be: a coded type's name, or its id.
+ *
+ * Both, because a label of `Homey` is as misleading as `Homey Pro` — the id is what the code
+ * calls it and what a reader of the docs will have seen. Compared on a *slug* rather than on the
+ * string, so `Homey`, `homey`, `Home-y` and `HOMEY` are one and the same answer: no.
+ *
+ * It is about the label alone. The type id is namespaced with the widget's own id whatever
+ * happens, so nothing here is protecting a namespace — it is protecting what the user reads on
+ * the form where they type a credential.
+ */
+const CODED_TYPE_LABELS = [
   'azure devops', 'bambu lab', 'github', 'homey pro', 'ics calendar', 'calendrier ics', 'synology',
-])
+  // The ids, which is what `docs/connections.md` and every settings schema call them.
+  'azure-devops', 'bambu', 'homey', 'ics',
+]
+const CODED_TYPE_SLUGS = new Set(CODED_TYPE_LABELS.map(nameSlug))
+
+/** A name reduced to what distinguishes it: lower case, accents folded, everything else dropped. */
+function nameSlug(value: string): string {
+  return value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '')
+}
 
 /**
  * One path the widget is allowed to ask for.
@@ -277,8 +295,7 @@ export const ConnectionDeclSchema = z.object({
   .refine((c) => (c.kind === 'api-key-query') === (c.queryName !== undefined), {
     error: () => tr(undefined, 'manifest.connectionQueryName'),
   })
-  .refine((c) => !CODED_TYPE_NAMES.has(localizedValues(c.name).join(' ').toLowerCase().trim())
-    && !localizedValues(c.name).some((v) => CODED_TYPE_NAMES.has(v.toLowerCase().trim())), {
+  .refine((c) => !localizedValues(c.name).some((v) => CODED_TYPE_SLUGS.has(nameSlug(v))), {
     error: () => tr(undefined, 'manifest.connectionNameTaken'),
   })
   .refine((c) => localizedValues(c.hint).every((v) => v.length <= 2000), {

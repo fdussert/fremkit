@@ -17,7 +17,8 @@ const decl = (over: Record<string, unknown> = {}): Record<string, unknown> => ({
 })
 
 const bearer = (over: Record<string, unknown> = {}): Record<string, unknown> => decl({
-  name: 'Homey',
+  // Not `Homey`: that is a coded type's id, and the schema refuses it as a label. See below.
+  name: 'Homey Flows',
   kind: 'http-bearer',
   fields: [
     { key: 'host', label: 'Address' },
@@ -126,11 +127,24 @@ describe('the shape of a declaration', () => {
   })
 
   it('will not let a declaration wear a built-in type name', () => {
-    // The id is namespaced whatever happens; the *label* is what the user reads in the form.
-    for (const name of ['Homey Pro', 'homey pro', 'GitHub', 'Synology', { fr: 'Calendrier ICS', en: 'X' }]) {
+    // The id is namespaced whatever happens; the *label* is what the user reads on the form
+    // where they type a credential.
+    for (const name of [
+      'Homey Pro', 'homey pro', 'GitHub', 'Synology', { fr: 'Calendrier ICS', en: 'X' },
+      // The ids too, which is what the docs and every settings schema call them.
+      'homey', 'Homey', 'HOMEY', 'Home-y', 'home y', 'bambu', 'ics', 'azure-devops', 'Azure DevOps',
+      // And the same with an accent, since that is one keystroke away from the real thing.
+      'Sýnology',
+    ]) {
       expect(parse(decl({ name })).success, JSON.stringify(name)).toBe(false)
     }
-    expect(parse(decl({ name: 'Homey Flows' })).success).toBe(true)
+  })
+
+  it('leaves a name that merely mentions one alone', () => {
+    // "Homey Flows" is honest: it says what it is for, and it is not the built-in type.
+    for (const name of ['Homey Flows', 'My Homey lights', { fr: 'Homey (flows)', en: 'Homey (flows)' }]) {
+      expect(parse(decl({ name })).success, JSON.stringify(name)).toBe(true)
+    }
   })
 
   it('caps what an author can make the admin render', () => {
