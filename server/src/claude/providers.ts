@@ -4,6 +4,7 @@ import type { ClaudeUsage } from './usage.js'
 import { listClaudeProcesses, type ClaudeProcess } from './processes.js'
 import { z } from 'zod'
 import { tr } from '../i18n.js'
+import { focusClient, type Runner as FocusRunner } from './focus.js'
 
 export { createClaudeAccountProvider } from './account.js'
 
@@ -12,10 +13,14 @@ export interface ClaudeSessionsProviderOptions {
   /** Minimum delay between two process-discovery scans, in ms. */
   discoveryMs?: number
   now?: () => number
+  /** Injectable for tests: what actually runs `osascript`, `open` and the Orca CLI. */
+  focusRunner?: FocusRunner
 }
 
 /** A session id is a non-empty string; nothing else can be dismissed. */
 export const DismissPayloadSchema = z.object({ sessionId: z.string().min(1).max(200) })
+/** Same shape for `focus`: the id names the session, and the server looks up everything else. */
+export const FocusPayloadSchema = DismissPayloadSchema
 
 export function createClaudeSessionsProvider(tracker: ClaudeTracker, opts: ClaudeSessionsProviderOptions = {}): Provider {
   const list = opts.listProcesses ?? listClaudeProcesses
@@ -36,6 +41,24 @@ export function createClaudeSessionsProvider(tracker: ClaudeTracker, opts: Claud
       return { sessions: tracker.snapshot().sessions, today: tracker.today() }
     },
     commands: {
+      /**
+       * Bring the session's own window forward.
+       *
+       * The payload is a session id and nothing else: where that session lives is what the
+       * server holds and the widget has never been told, which is the whole reason a tile in a
+       * sandboxed iframe can ask for this at all. Local callers only, like every other command
+       * that acts on the Mac itself.
+       */
+      focus: async (payload, ctx) => {
+        if (!ctx?.loopback) return { ok: false, error: tr(undefined, 'provider.localOnly') }
+        const parsed = FocusPayloadSchema.safeParse(payload)
+        if (!parsed.success) throw new Error(tr(undefined, 'claude.invalidDismiss'))
+        const session = tracker.snapshot().sessions.find((s) => s.sessionId === parsed.data.sessionId)
+        // Answered rather than thrown: "I do not know that session" is something the card shows,
+        // not a failure of the command.
+        if (!session) return { ok: false, reason: 'unknownSession' }
+        return await focusClient(tracker.clientOf(parsed.data.sessionId), session.cwd, opts.focusRunner)
+      },
       dismiss: async (payload) => {
         const parsed = DismissPayloadSchema.safeParse(payload)
         // Never the raw ZodError: it echoes the payload back to the caller.
