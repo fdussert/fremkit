@@ -25,6 +25,26 @@ const PATH_MAX = 1024
 /** The tracker truncates these for display anyway; this is the ceiling on what it holds at all. */
 const MESSAGE_MAX = 8192
 
+/**
+ * Where the session lives, as the hook read it out of its own environment.
+ *
+ * Same discipline as the rest: every field optional and `.catch(undefined)`, so a value of the
+ * wrong shape costs that field and not the event. The caps are the point — these are environment
+ * variables, and an environment variable is whatever somebody exported.
+ */
+const ClientSchema = z.object({
+  bundleId: shortText(ID_MAX),
+  program: shortText(NAME_MAX),
+  pid: z.number().int().positive().max(9_999_999).optional().catch(undefined),
+  tty: shortText(NAME_MAX),
+  terminalSession: shortText(ID_MAX),
+  orca: z.object({
+    pane: shortText(ID_MAX),
+    tab: shortText(ID_MAX),
+    terminal: shortText(ID_MAX),
+  }).optional().catch(undefined),
+}).optional().catch(undefined)
+
 const ModelSchema = z.union([
   z.string().max(NAME_MAX),
   z.object({ id: shortText(NAME_MAX), display_name: shortText(NAME_MAX) }),
@@ -45,6 +65,7 @@ export const HookEventSchema = z.object({
   model: ModelSchema,
   session_name: shortText(NAME_MAX),
   fremkit_branch: shortText(NAME_MAX),
+  client: ClientSchema,
   workspace: z.object({
     current_dir: shortText(PATH_MAX),
     project_dir: shortText(PATH_MAX),

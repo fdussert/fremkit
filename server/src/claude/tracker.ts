@@ -6,6 +6,64 @@ import type { ClaudeProcess } from './processes.js'
 
 export type ClaudeState = 'idle' | 'working' | 'permission' | 'done' | 'error'
 
+/**
+ * Where a session lives, as its own hook read it out of its environment.
+ *
+ * Held server-side and never published: it is how `focus` finds the window again, and it carries
+ * a pane key, a tty and an application id — the kind of thing that is of no use on a dashboard
+ * and of some use to anything that can read one. The snapshot carries {@link ClientView} instead.
+ */
+export interface SessionClient {
+  bundleId?: string
+  program?: string
+  pid?: number
+  tty?: string
+  terminalSession?: string
+  orca?: { pane?: string; tab?: string; terminal?: string }
+}
+
+/** The client kinds `focus` knows how to act on. Anything else is `other`. */
+export type ClientKind = 'orca' | 'terminal' | 'iterm' | 'vscode' | 'other'
+
+/** All a card needs: which kind of window, and what to call it. */
+export interface ClientView { kind: ClientKind; label: string }
+
+/**
+ * Bundle ids and `TERM_PROGRAM` values that name a kind, and the label that goes on the card.
+ *
+ * A closed table on purpose: the label is written here rather than taken from the environment,
+ * so a session cannot choose what a card says about it by exporting a variable.
+ */
+const CLIENTS: { kind: ClientKind; label: string; bundleIds: string[]; programs: string[] }[] = [
+  { kind: 'orca', label: 'Orca', bundleIds: ['com.stablyai.orca'], programs: ['orca'] },
+  { kind: 'terminal', label: 'Terminal', bundleIds: ['com.apple.terminal'], programs: ['apple_terminal'] },
+  { kind: 'iterm', label: 'iTerm2', bundleIds: ['com.googlecode.iterm2'], programs: ['iterm.app'] },
+  { kind: 'vscode', label: 'VS Code', bundleIds: ['com.microsoft.vscode', 'com.visualstudio.code.oss'], programs: ['vscode'] },
+]
+/** A label made from an unknown client's own words is cut short: it is on a card, not in a log. */
+const LABEL_MAX = 24
+
+/**
+ * The card's view of a client: a known kind with its own name, or `other` with whatever it
+ * calls itself.
+ *
+ * `undefined` for a session whose hook predates this, or one discovered from a process — and the
+ * card simply says nothing, which is what it did before.
+ */
+export function clientView(client: SessionClient | undefined): ClientView | undefined {
+  if (!client) return undefined
+  const bundleId = client.bundleId?.toLowerCase()
+  const program = client.program?.toLowerCase()
+  const known = CLIENTS.find((c) => (bundleId && c.bundleIds.includes(bundleId)) || (program && c.programs.includes(program)))
+  if (known) return { kind: known.kind, label: known.label }
+  const own = client.program || client.bundleId?.split('.').pop()
+  if (!own) return undefined
+  return { kind: 'other', label: own.slice(0, LABEL_MAX) }
+}
+
+/** A session as the dashboard sees it: the raw client replaced by what a card may know. */
+export type PublicClaudeSession = Omit<ClaudeSession, 'client'> & { client?: ClientView }
+
 export interface ClaudeSession {
   sessionId: string
   project: string
@@ -34,6 +92,8 @@ export interface ClaudeSession {
   question?: { header?: string; text: string; options: string[] }
   /** Pid of the process backing this session, once matched by syncProcesses(). */
   pid?: number
+  /** Where the session lives. Server-side only — `snapshot()` replaces it with a {@link ClientView}. */
+  client?: SessionClient
   /** True for a placeholder created from a running process with no hook event yet. */
   discovered?: boolean
 }
@@ -69,6 +129,8 @@ export interface HookEvent {
   permission_mode?: string
   /** Rate-limit windows, forwarded by the statusline script and read by ClaudeUsage. */
   rate_limits?: unknown
+  /** Where the session lives, added by `scripts/claude-hook.sh` from its own environment. */
+  client?: SessionClient
 }
 
 const MESSAGE_MAX = 200
@@ -112,6 +174,14 @@ const claudeSessionSchema = z.object({
   question: z.object({ header: z.string().optional(), text: z.string(), options: z.array(z.string()) }).optional(),
   pid: z.number().optional(),
   discovered: z.boolean().optional(),
+  client: z.object({
+    bundleId: z.string().optional(),
+    program: z.string().optional(),
+    pid: z.number().optional(),
+    tty: z.string().optional(),
+    terminalSession: z.string().optional(),
+    orca: z.object({ pane: z.string().optional(), tab: z.string().optional(), terminal: z.string().optional() }).optional(),
+  }).optional(),
 })
 
 interface TodayCounters { day: number; sessions: string[]; done: string[]; commits: number }
@@ -171,6 +241,7 @@ export class ClaudeTracker {
     if (!known) return
     this.rollDay(t)
     this.noteSeen(id)
+    if (event.client) this.mergeClient(s, event.client)
     if (event.cwd && name !== 'StatusLine') { s.cwd = event.cwd; s.project = basename(event.cwd) || event.cwd }
     switch (name) {
       case 'SessionStart': this.setState(s, 'idle', t); break
@@ -287,13 +358,45 @@ export class ClaudeTracker {
     await this.persist()
   }
 
-  snapshot(): { sessions: ClaudeSession[]; updatedAt: number } {
+  snapshot(): { sessions: PublicClaudeSession[]; updatedAt: number } {
     const t = this.now()
     this.sweep(t)
     const sessions = [...this.sessions.values()]
-      .map((s) => ({ ...s, context: s.context ? { ...s.context } : undefined }))
+      .map((s) => ({ ...s, context: s.context ? { ...s.context } : undefined, client: clientView(s.client) }))
       .sort((a, b) => STATE_ORDER[a.state] - STATE_ORDER[b.state] || b.lastEventAt - a.lastEventAt)
     return { sessions, updatedAt: t }
+  }
+
+  /**
+   * Where one session lives, for `focus` and for nothing else.
+   *
+   * The only way out of the tracker for the raw client, deliberately separate from `snapshot()`:
+   * whatever is added to a session from now on reaches the dashboard, and this does not.
+   */
+  clientOf(sessionId: string): SessionClient | undefined {
+    const s = this.sessions.get(sessionId)
+    return s ? s.client : undefined
+  }
+
+  /**
+   * First event wins; a later one only fills what is still missing.
+   *
+   * A session does not move between panes, so the first hook to report is the one that was there.
+   * Filling the gaps matters all the same: the statusline runs in a different shell from the
+   * hooks, and between them they know more than either does alone.
+   */
+  private mergeClient(s: ClaudeSession, incoming: SessionClient): void {
+    const cur = s.client ?? {}
+    const merged: SessionClient = {
+      bundleId: cur.bundleId ?? incoming.bundleId,
+      program: cur.program ?? incoming.program,
+      pid: cur.pid ?? incoming.pid,
+      tty: cur.tty ?? incoming.tty,
+      terminalSession: cur.terminalSession ?? incoming.terminalSession,
+    }
+    const orca = { ...(incoming.orca ?? {}), ...(cur.orca ?? {}) }
+    if (Object.values(orca).some((v) => v !== undefined)) merged.orca = orca
+    s.client = merged
   }
 
   /** Drops sessions whose last event is older than the TTL. */
