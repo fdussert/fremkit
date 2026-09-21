@@ -11,10 +11,9 @@ Anything that changes what the dashboard, the admin or a widget can do gets a li
 ## Unreleased
 
 ### Added
-- **Claude sessions: go to the session.** A card waiting for you goes to its window when you
-  touch it, and every other card has a ↗ that does the same — the exact Orca pane, the
-  Terminal.app or iTerm2 tab, the VS Code window on that folder, or at least the application.
-  The card also says which application the session lives in, which is what tells two panes of the
+- **Claude sessions: go to the session.** Touch a card and its window comes forward — the
+  exact Orca pane, the Terminal.app or iTerm2 tab, the VS Code window on that folder, or at
+  least the application. A finished card is cleared with the cross in its corner. The card also says which application the session lives in, which is what tells two panes of the
   same folder apart. The hook reports that from inside the session; it stays on the server, and
   the dashboard is told only the kind and the name.
 - **Claude sessions can chime.** One of the macOS system sounds when a session starts waiting,
