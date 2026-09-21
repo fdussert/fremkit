@@ -2,6 +2,7 @@ import { basename, dirname } from 'node:path'
 import { readFile, writeFile, rename, mkdir } from 'node:fs/promises'
 import { z } from 'zod'
 import { summarizeTool } from './tool-summary.js'
+import type { AttentionEvent } from './attention.js'
 import type { ClaudeProcess } from './processes.js'
 
 export type ClaudeState = 'idle' | 'working' | 'permission' | 'done' | 'error'
@@ -200,6 +201,14 @@ export interface ClaudeTrackerOptions {
   persistMs?: number
   /** Injectable for tests: counts the actual writes behind the debounce. */
   writeFn?: (path: string, data: string) => Promise<void>
+  /**
+   * Called when a session starts waiting for the user.
+   *
+   * The transition *into* `permission`, not the state: a session sitting in it for ten minutes
+   * has already been announced. Whether anything happens is the listener's business — the
+   * tracker knows when, and nothing about sounds.
+   */
+  onAttention?: (event: AttentionEvent) => void
 }
 
 export class ClaudeTracker {
@@ -209,6 +218,7 @@ export class ClaudeTracker {
   private readonly filePath?: string
   private readonly persistMs: number
   private readonly writeFn: (path: string, data: string) => Promise<void>
+  private readonly onAttention?: (event: AttentionEvent) => void
   private dirty = false
   private timer: ReturnType<typeof setTimeout> | null = null
   /** Serialises persists: every write chains onto the previous one. */
@@ -224,6 +234,7 @@ export class ClaudeTracker {
     this.filePath = opts.filePath
     this.persistMs = opts.persistMs ?? PERSIST_MS
     this.writeFn = opts.writeFn ?? ((path, data) => writeFile(path, data, 'utf8'))
+    this.onAttention = opts.onAttention
   }
 
   handle(event: HookEvent): void {
@@ -235,12 +246,16 @@ export class ClaudeTracker {
     // An unknown event (a future hook, or a typo in a script) must not register a
     // ghost session; it only refreshes one that already exists.
     const known = KNOWN_EVENTS.has(name ?? '')
+    // A session this very event brought into existence never announces itself: the first thing
+    // heard from a session is not a question, and a dismissed card that comes back is new again.
+    const fresh = known && !this.sessions.has(id)
     const s = known ? this.getOrCreate(id, event, t) : this.sessions.get(id)
     if (!s) return
     s.lastEventAt = t
     if (!known) return
     this.rollDay(t)
     this.noteSeen(id)
+    const before = s.state
     if (event.client) this.mergeClient(s, event.client)
     if (event.cwd && name !== 'StatusLine') { s.cwd = event.cwd; s.project = basename(event.cwd) || event.cwd }
     switch (name) {
@@ -275,6 +290,9 @@ export class ClaudeTracker {
       case 'StatusLine': this.applyStatusLine(s, event); break
       case 'SessionEnd': this.sessions.delete(id); break
       default: break
+    }
+    if (!fresh && s.state === 'permission' && before !== 'permission') {
+      this.onAttention?.({ sessionId: id, isQuestion: s.question !== undefined })
     }
     this.schedulePersist()
   }

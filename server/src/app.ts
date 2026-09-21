@@ -37,6 +37,7 @@ import { ClaudeTracker } from './claude/tracker.js'
 import { ClaudeUsage } from './claude/usage.js'
 import { claudeRoutes } from './claude/routes.js'
 import { createClaudeSessionsProvider, createClaudeUsageProvider, createClaudeAccountProvider } from './claude/providers.js'
+import { createAttention } from './claude/attention.js'
 import { DockState } from './dock/state.js'
 import { dockRoutes } from './dock/routes.js'
 import { InstalledApps } from './apps/installed.js'
@@ -51,7 +52,7 @@ import { backupRoutes } from './backup/routes.js'
 import { bambuRoutes } from './bambu/routes.js'
 import { createShortcutsProvider } from './providers/shortcuts.js'
 import { createServiceStatusProvider } from './providers/service-status.js'
-import { findInstance } from './config/instances.js'
+import { findInstance, findInstances } from './config/instances.js'
 import { BYTES_CSP, isByteRoute } from './http/headers.js'
 import { isAllowedHost, isReadMethod } from './http/guard.js'
 import { LOGGER_OPTIONS } from './http/logging.js'
@@ -129,7 +130,11 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   const installedApps = new InstalledApps()
   const appIcons = new AppIcons({ dir: join(opts.dataDir, 'icons', 'apps'), apps: installedApps })
 
-  const tracker = new ClaudeTracker({ filePath: join(opts.dataDir, 'claude-sessions.json') })
+  // The sound is a widget setting the *core* acts on: an iframe cannot start audio nobody
+  // clicked on, and the moment worth hearing about is the one where the dashboard is not in
+  // front of you. The first placed tile that chose a sound is the one that gets it.
+  const attention = createAttention({ instances: () => findInstances(store.get(), 'claude-sessions') })
+  const tracker = new ClaudeTracker({ filePath: join(opts.dataDir, 'claude-sessions.json'), onAttention: attention })
   await tracker.load()
   const usage = new ClaudeUsage({ filePath: join(opts.dataDir, 'claude-usage.json'), transcriptsDir: opts.claudeTranscriptsDir ?? join(homedir(), '.claude', 'projects') })
   await usage.load()

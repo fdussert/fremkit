@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { findInstance, noInstances } from '../src/config/instances.js'
+import { findInstance, findInstances, noInstances } from '../src/config/instances.js'
 import { ConfigSchema, type Config } from '../src/config/schema.js'
 
 const config = (): Config => ConfigSchema.parse({
@@ -14,6 +14,7 @@ const config = (): Config => ConfigSchema.parse({
     ] },
     { id: 'second', name: 'Deux', widgets: [
       { instanceId: 'clock-1', widgetId: 'clock', x: 0, y: 0, w: 16, h: 4, settings: {} },
+      { instanceId: 'sc-2', widgetId: 'shortcuts', x: 0, y: 8, w: 16, h: 8, settings: { buttons: [] } },
     ] },
   ],
 })
@@ -41,6 +42,20 @@ describe('findInstance', () => {
   })
   it('answers null for an id nothing carries', () => {
     for (const id of ['ghost', '', 'SC-1']) expect(findInstance(config(), id), id).toBeNull()
+  })
+})
+
+describe('findInstances', () => {
+  it('lists every placed tile of one widget, pages first then the bar', () => {
+    // The other question a provider asks: not "what did *this* tile save" but "does any tile of
+    // mine want something" — a setting the core acts on has nowhere else to live.
+    expect(findInstances(config(), 'shortcuts').map((i) => i.settings.buttons)).toEqual([
+      [{ kind: 'app', target: 'Calculator' }], [],
+    ])
+    expect(findInstances(config(), 'service-status')).toHaveLength(1)
+  })
+  it('answers an empty list for a widget no page places', () => {
+    expect(findInstances(config(), 'claude-sessions')).toEqual([])
   })
 })
 

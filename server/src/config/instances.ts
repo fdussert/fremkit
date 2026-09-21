@@ -30,6 +30,27 @@ export function findInstance(config: Config, instanceId: string): InstanceView |
 }
 
 /**
+ * Every placed instance of one widget, in the order the dashboard holds them.
+ *
+ * The other question a provider asks: not "what did *this* tile save" but "does any tile of mine
+ * want something". A setting that configures the core rather than the tile — a sound played while
+ * the dashboard is not even in front of you — has nowhere else to live, and the first tile that
+ * expressed an opinion is the one that gets it.
+ */
+export function findInstances(config: Config, widgetId: string): InstanceView[] {
+  const out: InstanceView[] = []
+  for (const page of config.pages) {
+    for (const widget of page.widgets) {
+      if (widget.widgetId === widgetId) out.push({ widgetId, settings: widget.settings })
+    }
+  }
+  for (const widget of config.display.navWidgets ?? []) {
+    if (widget.widgetId === widgetId) out.push({ widgetId, settings: widget.settings })
+  }
+  return out
+}
+
+/**
  * How a provider reads the dashboard: one instance at a time, by id.
  *
  * A function rather than the store itself, so a provider can be built in a test with a literal
