@@ -173,6 +173,26 @@ describe('homey provider', () => {
     expect(snap.devices.filter((d) => d.zoneName).map((d) => d.id)).toEqual(['dev-legacy-1'])
   })
 
+  it('says unauthorized, not offline, when the Homey refuses the key', async () => {
+    let refuse = false
+    const provider = createHomeyProvider(ctx, {
+      fetchFn: vi.fn(async (input: any) => {
+        if (refuse) return new Response('{"error":"unauthorized"}', { status: 401 })
+        const path = new URL(String(input)).pathname
+        return HAPPY[path] ? HAPPY[path]() : new Response('', { status: 404 })
+      }) as unknown as typeof fetch,
+    })
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const first = await provider.poll!() as HomeySnapshot
+    refuse = true
+    const second = await provider.poll!() as HomeySnapshot
+    expect(second.error).toBe('unauthorized')
+    expect(second.devices).toEqual(first.devices)
+    // The log line carries the status and nothing that could be a key.
+    expect(String(warn.mock.calls[0][0])).toContain('HTTP 401')
+    warn.mockRestore()
+  })
+
   it('keeps the last snapshot and says offline when the Homey stops answering', async () => {
     let up = true
     const provider = createHomeyProvider(ctx, {

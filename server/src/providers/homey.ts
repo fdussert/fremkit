@@ -28,6 +28,11 @@ import { readJsonCapped } from '../net/json.js'
  */
 
 /** One request may take this long. Short on purpose: the Homey is on the same LAN. */
+/** An HTTP status from the Homey, kept as a number so the poll can tell a refused key apart. */
+class HomeyHttpError extends Error {
+  constructor(readonly status: number) { super(`HTTP ${status}`); this.name = 'HomeyHttpError' }
+}
+
 export const HOMEY_TIMEOUT_MS = 5_000
 /** Device values move while someone watches them, so the snapshot is refreshed often. */
 const POLL_EVERY_MS = 10_000
@@ -298,7 +303,7 @@ export function createHomeyProvider(ctx: ConnectionProviderContext, deps: HomeyP
     const res = await fetchFn(`${base}${path}`, { headers, signal: AbortSignal.timeout(HOMEY_TIMEOUT_MS) })
     if (!res.ok) {
       await res.body?.cancel().catch(() => { /* already closed */ })
-      throw new Error(`HTTP ${res.status}`)
+      throw new HomeyHttpError(res.status)
     }
     return readJsonCapped(res)
   }
@@ -353,7 +358,10 @@ export function createHomeyProvider(ctx: ConnectionProviderContext, deps: HomeyP
         failed = true
         // The message is a status or a network code; it never carries the key or the URL.
         console.warn(`[homey:${ctx.id}] poll failed (${(err as Error).message}); retrying in ${RETRY_AFTER_FAILURE_MS / 1000} s`)
-        return { ...last, error: 'offline' }
+        // A refused key is not "offline": the Homey answered, and what it wants is a new key —
+        // which the widget can only say if it is told.
+        const unauthorized = err instanceof HomeyHttpError && (err.status === 401 || err.status === 403)
+        return { ...last, error: unauthorized ? 'unauthorized' : 'offline' }
       }
     },
 
