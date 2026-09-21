@@ -10,6 +10,12 @@ Anything that changes what the dashboard, the admin or a widget can do gets a li
 
 ## Unreleased
 
+### Added
+- A registry package says what each version changed, and the admin shows it: under the chip on a
+  card with an update waiting, and beside the permissions in the install, update and *Update all*
+  dialogs. An update several versions behind lists every version it is taking. The text is the
+  package's own `CHANGELOG.md` entry, carried by the registry as plain text and rendered as text.
+
 ## 0.2.0 — 2026-09-21
 
 The first release after publication. Fremkit went public on 2026-09-18 with the widgets it had;

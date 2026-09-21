@@ -14,6 +14,7 @@
 import { computed } from 'vue'
 import BaseButton from '../shared/ui/BaseButton.vue'
 import BaseCard from '../shared/ui/BaseCard.vue'
+import ChangeNotes from './ChangeNotes.vue'
 import { pick, useI18n } from '../shared/i18n'
 import { useMarketplaceStore } from './marketplace'
 import { useAdminStore } from './store'
@@ -50,6 +51,13 @@ const inUse = computed(() => {
   return chosen === undefined ? props.theme.inUse : chosen === props.theme.id
 })
 
+/** The entries an update brings: as on a widget's card, everything down to the installed one. */
+const sinceInstalled = computed(() => {
+  if (!props.theme.updateAvailable) return []
+  const at = props.theme.history.findIndex((e) => e.version === props.theme.installedVersion)
+  return at === -1 ? props.theme.history : props.theme.history.slice(0, at)
+})
+
 const busy = computed(() => store.state.busy === props.theme.id)
 const locked = computed(() => store.state.busy !== null || store.state.updatingAll)
 </script>
@@ -68,6 +76,7 @@ const locked = computed(() => store.state.busy !== null || store.state.updatingA
       </strong>
       <small>{{ pick(theme.description) }}</small>
       <small class="meta">{{ meta }}</small>
+      <ChangeNotes :changes="theme.changes" :history="sinceInstalled" />
     </div>
     <div class="act">
       <span v-if="theme.shadowsBuiltin" class="why">{{ t('admin.market.builtinTheme') }}</span>

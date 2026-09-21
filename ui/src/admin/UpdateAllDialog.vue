@@ -15,6 +15,7 @@ import { computed } from 'vue'
 import BaseButton from '../shared/ui/BaseButton.vue'
 import BaseIcon from '../shared/ui/BaseIcon.vue'
 import BaseModal from '../shared/ui/BaseModal.vue'
+import ChangeNotes from './ChangeNotes.vue'
 import { pick, useI18n } from '../shared/i18n'
 import { channelFamilies } from './permissions'
 import type { ConnectionDecl, MarketplaceWidget, WidgetPermissionSet } from '../shared/types'
@@ -55,11 +56,20 @@ function carriage(c: ConnectionDecl): string {
   return ''
 }
 
+/** Everything a widget's update brings: the documented versions above the one installed. */
+function sinceInstalled(w: MarketplaceWidget): { version: string; changes: string }[] {
+  const at = w.history.findIndex((e) => e.version === w.installedVersion)
+  return at === -1 ? w.history : w.history.slice(0, at)
+}
+
 const rows = computed(() => props.entries.map((e) => ({
   id: e.widget.id,
   name: pick(e.widget.name),
   version: e.widget.version,
   groups: groups(e.added),
+  changes: e.widget.changes,
+  // Down to the version installed, so a widget three behind lists the three it is taking.
+  notes: sinceInstalled(e.widget),
   // A declaration that is new or changed. It is the reason this dialog cannot be a list of
   // channel names: agreeing here is agreeing that the server will hold a credential.
   connection: e.added.connection,
@@ -78,6 +88,9 @@ const secretLabel = (c: ConnectionDecl): string => {
 
     <div v-for="row in rows" :key="row.id" class="entry">
       <strong>{{ row.name }} <span class="v">v{{ row.version }}</span></strong>
+      <!-- What the new version says it changed, beside what it asks for. The list answers
+           "what am I agreeing to"; without this it answers only half of it. -->
+      <ChangeNotes :changes="row.changes" :history="row.notes" say-when-empty />
       <p v-if="!row.groups.length && !row.connection" class="none">{{ t('admin.market.noNewPermission') }}</p>
       <div v-for="g in row.groups" :key="g.key" class="group">
         <span class="lbl"><BaseIcon :name="g.icon" :size="14" />{{ t(`admin.permissions.${g.key}`) }}</span>

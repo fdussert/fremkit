@@ -9,6 +9,7 @@
  */
 import { computed } from 'vue'
 import BaseButton from '../shared/ui/BaseButton.vue'
+import ChangeNotes from './ChangeNotes.vue'
 import BaseCard from '../shared/ui/BaseCard.vue'
 import BaseIcon from '../shared/ui/BaseIcon.vue'
 import { pick, useI18n } from '../shared/i18n'
@@ -36,6 +37,20 @@ const asksMore = computed(() => {
   const p = result.value?.newPermissions
   return Boolean(p && (p.subscriptions.length || p.commands.length || p.network.length))
 })
+/**
+ * The entries an update would bring: every documented version down to the installed one.
+ *
+ * A dashboard two versions behind is accepting both of them, and only the newest entry would say
+ * so. Cut by name rather than by comparing versions — the index lists them newest first, and the
+ * installed version is either in that list or older than all of it, in which case all of it is
+ * new. Nothing is shown for a widget that is not installed: there is no "since" to count from.
+ */
+const sinceInstalled = computed(() => {
+  if (!props.widget.updateAvailable) return []
+  const at = props.widget.history.findIndex((e) => e.version === props.widget.installedVersion)
+  return at === -1 ? props.widget.history : props.widget.history.slice(0, at)
+})
+
 const noPermissions = computed(() => {
   const p = props.widget.permissions
   return !p.subscriptions.length && !p.commands.length && !p.network.length
@@ -65,6 +80,10 @@ const noPermissions = computed(() => {
           <span v-if="widget.permissions.network.length">{{ t('admin.permissions.network.short', { n: widget.permissions.network.length }) }}</span>
         </template>
       </p>
+      <!-- Under the chip, because "v1.2.0 available" is only half of what somebody needs to
+           decide. On an update the earlier entries come too: a dashboard two versions behind is
+           accepting both of them. On a card for something not installed, only the latest. -->
+      <ChangeNotes :changes="widget.changes" :history="sinceInstalled" />
       <p v-if="result" class="note" :class="result.ok ? 'ok' : 'warn'">
         {{ result.ok
           ? t(store.state.resultsAre === 'install' ? 'admin.market.installedTo' : 'admin.market.updatedTo',

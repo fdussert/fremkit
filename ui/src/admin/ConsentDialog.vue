@@ -21,6 +21,7 @@ import { computed } from 'vue'
 import BaseButton from '../shared/ui/BaseButton.vue'
 import BaseIcon from '../shared/ui/BaseIcon.vue'
 import BaseModal from '../shared/ui/BaseModal.vue'
+import ChangeNotes from './ChangeNotes.vue'
 import { pick, useI18n } from '../shared/i18n'
 import { channelFamilies } from './permissions'
 import type { ConsentPrompt } from './marketplace'
@@ -66,6 +67,18 @@ const secretLabel = computed(() => {
 /** The declaration is new to this dialog; an unchanged one is context, not an ask. */
 const connectionIsNew = computed(() => props.prompt.added.connection !== undefined)
 
+/**
+ * The entries this install or update brings, newest first, down to the version already there.
+ *
+ * On a first install that is the whole file: nothing of it has been seen. On an update it stops
+ * at the installed version, because the ones below it are history rather than a decision.
+ */
+const notes = computed(() => {
+  const history = props.prompt.widget.history
+  const at = history.findIndex((e) => e.version === props.prompt.widget.installedVersion)
+  return at === -1 ? history : history.slice(0, at)
+})
+
 const added = computed(() => groups(props.prompt.added))
 const all = computed(() => groups(props.prompt.all))
 /** On a first install the difference *is* everything, so showing both lists would repeat it. */
@@ -80,6 +93,11 @@ const title = computed(() => t(props.prompt.update ? 'admin.market.consentUpdate
       {{ t(prompt.update ? 'admin.market.consentUpdateLead' : 'admin.market.consentInstallLead',
            { version: prompt.widget.version }) }}
     </p>
+
+    <!-- Beside the permissions, not instead of them: they say what the version *may* do, and
+         this says what is different about it. Says so even when there is nothing, because a
+         silent gap reads as "no changes" rather than "the author wrote none". -->
+    <ChangeNotes :changes="prompt.widget.changes" :history="notes" say-when-empty />
 
     <p v-if="!added.length" class="none">{{ t('admin.permissions.none') }}</p>
     <div v-for="g in added" :key="g.key" class="group">
