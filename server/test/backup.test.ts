@@ -288,10 +288,10 @@ describe('POST /api/restore and the secrets already on this machine', () => {
 
   it('drops the secret when the archive gives the id another type', async () => {
     const { reenter, stored } = await restoreWith([
-      { id: 'gh-x1z9', type: 'homey', name: 'Maison', fields: { host: 'https://198.51.100.9' } },
+      { id: 'gh-x1z9', type: 'bambu', name: 'Imprimante', fields: { host: '198.51.100.9', serial: 'P1', model: 'X1C' } },
     ])
     expect(stored['gh-x1z9/token']).toBeUndefined()
-    expect(reenter).toEqual([{ id: 'gh-x1z9', name: 'Maison', type: 'homey' }])
+    expect(reenter).toEqual([{ id: 'gh-x1z9', name: 'Imprimante', type: 'bambu' }])
   })
 
   it('forgets the secret of a connection the restore drops', async () => {

@@ -140,9 +140,9 @@ each connection's colour beside it when the type has a colour field.
 **`pick`** — a multi-select whose choices are read live from a connection rather than typed.
 
 ```json
-"connection": { "type": "connection", "connectionType": "homey", "label": "Connection" },
-"devices": { "type": "pick", "label": { "fr": "Appareils", "en": "Devices" },
-             "connection": "connection", "source": "devices", "default": [] }
+"connection": { "type": "connection", "connectionType": "synology", "label": "Connection" },
+"volumes": { "type": "pick", "label": { "fr": "Volumes", "en": "Volumes" },
+             "connection": "connection", "source": "volumes", "default": [] }
 ```
 
 `connection` names the sibling setting of type `connection` holding the connection id, and
@@ -151,6 +151,11 @@ each connection's colour beside it when the type has a colour field.
 option's `group`, with a filter above eight choices. The widget reads an array of option **ids**,
 so renaming a device in its own app does not empty the dashboard. A connection type offers sources
 by implementing `options()`; a type that implements none has no `pick` setting pointed at it.
+
+**A connection a widget *declares* serves no sources**, and so cannot feed a `pick`: a declaration
+says which requests the host will accept, not how to turn one of them into a list of choices. A
+widget on a declared connection names its ids in a `list` instead, or offers an "everything"
+switch with a filter. `homey-devices` does both.
 
 **`list`** — any number of items of one shape, added, removed and reordered in the admin.
 
@@ -272,7 +277,7 @@ document.documentElement.style.setProperty('--h', Fremkit.size.px.height + 'px')
 `system`, `processes`, `volume`, `spotify`, `mutedeck`, `clipboard`, `shortcuts`, `cleanshot`,
 `network`, `battery`, `service-status`, `config`, `claude-sessions`, `claude-usage`,
 `claude-account`, `dock`, plus one per connection: `azure-devops:<connectionId>`,
-`bambu:<connectionId>`, `github:<connectionId>`, `homey:<connectionId>`,
+`bambu:<connectionId>`, `github:<connectionId>`, `synology:<connectionId>`,
 and `calendar:<connectionId>` for an ICS connection.
 
 A manifest may declare a whole family with a `:*` suffix — `"subscriptions": ["azure-devops:*"]` —
@@ -425,9 +430,9 @@ drops the widget's subscriptions and stops answering it, for good. Re-render fro
 already have, or ask the host. (A rescan that recreates the frame is a different thing and is
 fine.)
 
-**A widget that declares `homey:*` can drive every settable device on that Homey** — a switch, a
-dimmer, a thermostat — and one that declares `shortcuts` can press the buttons configured on its
-own tile. The admin shows what each widget asks for; that is the list to read before installing
+**A widget that declares `bambu:*` can drive every printer on that connection** — start it, stop
+it, move the head — and one that declares `shortcuts` can press the buttons configured on its own
+tile. The admin shows what each widget asks for; that is the list to read before installing
 one from elsewhere.
 
 ## Compact widgets
@@ -463,7 +468,7 @@ channel, no settings), `clock` (a `list`, localised formatting, two compact widt
 `calendar` (several connections at once, localised dates), `shortcuts` (a `list` of typed items,
 commands, suggestions read from the machine).
 
-For a connection, a `pick` and a compact mode in one widget, read
+For a declared connection, a compact mode and a widget that fetches everything it draws, read
 [`homey-devices`](https://github.com/fdussert/fremkit-sietch/tree/main/widgets/homey-devices) on
 the registry; for an image stream and nested state,
 [`bambu-job`](https://github.com/fdussert/fremkit-sietch/tree/main/widgets/bambu-job).

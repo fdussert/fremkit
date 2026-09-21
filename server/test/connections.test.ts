@@ -479,7 +479,6 @@ describe('the real connection types bind their secrets', () => {
     const bindings = Object.fromEntries(defaultConnectionTypes().map((t) => [t.id, t.secretBindings ?? []]))
     expect(bindings).toEqual({
       github: ['host'],
-      homey: ['host'],
       bambu: ['host', 'serial'],
       // The password, the one-time code and the device token are issued for one NAS.
       synology: ['host'],

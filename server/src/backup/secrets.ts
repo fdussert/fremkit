@@ -60,7 +60,7 @@ export interface RestoreSecretPlan {
    * dropped their keychain items — and the old side of every rebinding.
    *
    * Both sides are needed because which keys exist is a property of the *type*: an archive that
-   * turns a `github` id into a `homey` one would otherwise have `gh/apiKey` deleted while `gh/token`
+   * turns a `github` id into a `bambu` one would otherwise have `gh/apiKey` deleted while `gh/token`
    * — the PAT — stayed behind for the next archive to claim.
    */
   removed: Connection[]

@@ -89,11 +89,11 @@ function stable(value: unknown): string {
 /**
  * The entries of `asked` that `granted` does not cover, which is what an update has to show.
  *
- * Exact strings, deliberately. `homey:*` covers every Homey connection and `homey:abc` covers
+ * Exact strings, deliberately. `synology:*` covers every Synology connection and `synology:abc` covers
  * one, so a grant of the wildcard does cover the narrower ask — but reasoning about that here
  * would mean re-implementing the channel matcher on the wrong side of a security boundary, and
  * getting it subtly wrong is how a widget ends up with more than the user agreed to. An update
- * that narrows `homey:*` to `homey:abc` therefore asks again. That is one extra dialog in a case
+ * that narrows `synology:*` to `synology:abc` therefore asks again. That is one extra dialog in a case
  * nobody has hit, against a class of mistake that is silent.
  */
 function added(granted: string[], asked: string[]): string[] {

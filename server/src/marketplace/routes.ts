@@ -75,7 +75,7 @@ const InstallBody = z.object({
    * It used to be a boolean, and that was the hole: the dialog is drawn from the *index* entry,
    * the record was written from the *package* manifest, and only the package is hashed. A
    * registry advertising `subscriptions: ["system"]` and shipping a zip asking for
-   * `["system", "homey:*"]` plus a network host had all of it recorded as consented the moment
+   * `["system", "synology:*"]` plus a network host had all of it recorded as consented the moment
    * the button was pressed — the user agreed to one list and granted another.
    *
    * So the client sends the set it rendered, the server checks the package's ask against *that*

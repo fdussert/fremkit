@@ -12,7 +12,6 @@ of fields, configured once in the admin's **Connections** dialog and referenced 
 | [Azure DevOps](#azure-devops) | organisation, project, personal access token | `ado-pipelines` (on the sietch) |
 | [Bambu Lab](#bambu-lab) | IP address, serial number, access code, model | `bambu-job` (on the sietch) |
 | [GitHub](#github) | API host, personal access token, repositories | `github-inbox`, `github-actions` (on the sietch) |
-| [Homey Pro](#homey-pro) | address, API key | `homey-devices`, `homey-flows` (on the sietch) |
 | [ICS calendar](#ics-calendars) | calendar address, colour | `calendar` |
 | [Synology](#synology) | address, DSM account, password | `synology-storage`, `synology-system` (on the sietch) |
 
@@ -233,31 +232,30 @@ state instead.
 Used by [`github-inbox`](widgets.md#github-inbox) and
 [`github-actions`](widgets.md#github-actions), both on the sietch.
 
-## Homey Pro
+## Homey
 
-| Field | Secret | What it is |
-|---|---|---|
-| `host` | no | The Homey's IP address, or its `homey-xxxx.local` name |
-| `apiKey` | **yes** | A local API key |
+There is no Homey connection type in Fremkit any more: both Homey widgets — `homey-devices` and
+`homey-flows`, on the sietch — **declare** the connection they need. The address, the key and the
+exact requests each one may make come from the widget's own manifest, the consent dialog shows
+them before anything is installed, and the key lives in the keychain like every other secret. See
+[Connections a widget declares](#connections-a-widget-declares) and
+[writing-widgets.md](writing-widgets.md#declaring-a-connection).
 
-**Getting the key.** In the Homey app, Settings → General → API Keys → create a key. Tick at least
+Why it is no longer code: a Homey is one bearer token sent to a host on the local network, which
+is exactly what a declaration expresses. Keeping a coded type for it also cost the user a second
+connection — a Homey invalidates the previous API key whenever a new one is issued, so a key made
+for the devices widget quietly broke the one made for the flows widget. Both declarations now
+describe the same shape, so the admin offers to reuse the connection you already have and one key
+serves both.
+
+**Getting the key.** In the Homey app, Settings → General → API Keys → create a key with
 **Devices** and **Flows** in read *and* control mode — read alone lists everything but refuses
-every tap. Add **Zones** (read) if you want zone names on the device tiles and in the device
-picker; without it the tiles still work, they just lose the grouping. The **System** scope is not
-needed: the connection test falls back to the devices endpoint when it is missing.
+every tap. Add **Zones** (read) if you want zone names on the device tiles; without it the tiles
+still work, they just lose the grouping.
 
-Fremkit talks to the Homey's own local Web API over plain http inside the LAN and never to Athom's
-cloud. The key is sent as a bearer token, stored as a secret, and never logged, echoed back or put
-in a URL. A Homey Pro (2023) is the model this was written against.
-
-Every ten seconds Fremkit reads the devices, the flows and the Advanced Flows. The snapshot keeps
-the capabilities a tile can draw — `onoff`, `dim`, `target_temperature` and every `measure_*` and
-`alarm_*` reading — with their current values, units and ranges. A poll that fails keeps the last
-snapshot on screen, dimmed, and retries after five seconds. Advanced Flows and flow folders only
-exist on recent firmware; their absence costs a label, not the connection.
-
-Used by [`homey-devices`](widgets.md#homey-devices) and
-[`homey-flows`](widgets.md#homey-flows), both on the sietch.
+**Upgrading.** A Homey connection made with the old coded type is migrated when the server starts:
+same connection, same name, same address, same key — the widget instances keep pointing at it and
+there is nothing to redo. See `server/src/config/migrate.ts`.
 
 ## Synology
 

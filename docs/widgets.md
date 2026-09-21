@@ -45,8 +45,8 @@ Their settings are documented below like any other, because the widget is the sa
 | [cleanshot](#cleanshot) | Big buttons for CleanShot X captures | — | — | 12 × 6 |
 | [github-actions](#github-actions) | Running and finished GitHub Actions workflows | GitHub | — | 24 × 10 |
 | [github-inbox](#github-inbox) | GitHub notifications, review requests, pull requests | GitHub | 5 cells | 20 × 10 |
-| [homey-devices](#homey-devices) | Lights, plugs and sensors | Homey Pro | 6 cells | 24 × 8 |
-| [homey-flows](#homey-flows) | Buttons that run flows | Homey Pro | — | 16 × 8 |
+| [homey-devices](#homey-devices) | Lights, plugs and sensors | declared | 6 cells | 24 × 8 |
+| [homey-flows](#homey-flows) | Buttons that run flows | declared | — | 16 × 8 |
 | [mutedeck](#mutedeck) | Meeting controls | — | — | 8 × 4 |
 | [synology-storage](https://github.com/fdussert/fremkit-sietch) | Volumes, disk health and temperature | Synology | 5 cells | 16 × 8 |
 | [synology-system](https://github.com/fdussert/fremkit-sietch) | CPU, memory, network and uptime of a NAS | Synology | 5 cells | 16 × 8 |
@@ -520,15 +520,16 @@ Minimum size 12 × 5, default 20 × 10. Compact width 5 cells.
 
 *Homey devices* — a grid of device tiles: a large toggle for a switchable device, a slider for a
 dimmable one, the main reading for a sensor, a badge for each raised alarm. An unavailable device
-is dimmed. Needs a [Homey Pro connection](connections.md#homey-pro).
+is dimmed. Brings its own [Homey connection](connections.md#homey) — the same shape as the flows
+widget's, so one API key serves both.
 
 Minimum size 8 × 4, default 24 × 8. Compact width 6 cells.
 
 | Setting | Type | Default | Scope | What it is |
 |---|---|---|---|---|
-| `connection` | connection (`homey`) | — | both | Which Homey |
-| `all` | boolean | `false` | both | Show every device instead of the picked ones |
-| `devices` | pick (`devices` of `connection`) | `[]` | both | The devices to draw, picked live from the Homey and stored as ids, so a rename in the Homey app changes nothing |
+| `connection` | connection (`decl:homey-devices:homey-devices`) | — | both | Which Homey |
+| `all` | boolean | `false` | both | Show every device instead of the listed ones |
+| `deviceIds` | list of `id` | `[]` | both | The devices to draw, named by id. There is no picker: its options came from a coded connection type and a declared connection has none. A selection made with the old picker (`devices`) is still read |
 | `zone` | string | `""` | tile | Keep only devices of this zone |
 | `max` | number | `12` | tile | How many devices to draw |
 | `showZone` | boolean | `true` | tile | Show each device's zone |
@@ -537,14 +538,14 @@ Minimum size 8 × 4, default 24 × 8. Compact width 6 cells.
 ## homey-flows
 
 *Homey flows* — one large button per flow, plain or advanced, that runs it on tap with a brief
-confirmation. A flow switched off in the Homey app is dimmed and refuses the tap. Needs a
-[Homey Pro connection](connections.md#homey-pro).
+confirmation. A flow switched off in the Homey app is dimmed and refuses the tap. Brings its own
+[Homey connection](connections.md#homey).
 
 Minimum size 8 × 4, default 16 × 8.
 
 | Setting | Type | Default | Scope | What it is |
 |---|---|---|---|---|
-| `connection` | connection (`homey`) | — | both | Which Homey |
+| `connection` | connection (`decl:homey-flows:homey-flows`) | — | both | Which Homey |
 | `all` | boolean | `false` | both | Show every flow instead of the picked ones |
 | `flows` | pick (`flows` of `connection`) | `[]` | both | The flows to draw, picked live and stored as ids |
 | `folder` | string | `""` | both | Keep only flows of this folder |

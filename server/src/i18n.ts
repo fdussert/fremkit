@@ -194,14 +194,6 @@ const fr = {
     'Connecté à GitHub en tant que {login} · jeton à granularité fine : notifications indisponibles, revues et Actions OK',
   'github.privateRepo': 'privé',
 
-  // connections/types/homey.ts
-  'homey.invalidAddress': 'adresse invalide : une IP ou un nom d’hôte est attendu',
-  'homey.unreachable': 'Homey injoignable',
-  'homey.unauthorized': 'clé API refusée (portées Appareils et Flows attendues)',
-  'homey.unexpected': 'réponse inattendue (HTTP {status})',
-  'homey.connected': 'Homey joignable ({name}, v{version})',
-  'homey.connectedDevices': 'Homey joignable ({devices} appareils)',
-
   // providers/bambu.ts — `stg_cur`, the printer's current stage
   'bambu.stage.-1': 'Au repos',
   'bambu.stage.0': 'Impression',
@@ -225,10 +217,8 @@ const fr = {
   // proxy/routes.ts
   'claude.invalidDismiss': 'identifiant de session invalide',
   'github.invalidCommand': 'commande invalide',
-  'homey.invalidCommand': 'commande invalide',
   'volume.invalidLevel': 'niveau de volume invalide',
   'volume.invalidMute': 'valeur de sourdine invalide',
-  'homey.notWritable': 'cette capacité n’est pas modifiable',
   'serviceStatus.unknownInstance': 'widget d’état de service inconnu',
   'serviceStatus.noServices': 'aucun service enregistré',
   'shortcuts.unknownInstance': 'widget de raccourcis inconnu',
@@ -442,13 +432,6 @@ const en: Record<MessageKey, string> = {
     'Connected to GitHub as {login} · fine-grained token: notifications unavailable, reviews and Actions OK',
   'github.privateRepo': 'private',
 
-  'homey.invalidAddress': 'invalid address: an IP or a host name is expected',
-  'homey.unreachable': 'Homey unreachable',
-  'homey.unauthorized': 'API key refused (Devices and Flows scopes expected)',
-  'homey.unexpected': 'unexpected response (HTTP {status})',
-  'homey.connected': 'Homey reachable ({name}, v{version})',
-  'homey.connectedDevices': 'Homey reachable ({devices} devices)',
-
   'bambu.stage.-1': 'Idle',
   'bambu.stage.0': 'Printing',
   'bambu.stage.1': 'Preheating the bed',
@@ -468,10 +451,8 @@ const en: Record<MessageKey, string> = {
 
   'claude.invalidDismiss': 'invalid session id',
   'github.invalidCommand': 'invalid command',
-  'homey.invalidCommand': 'invalid command',
   'volume.invalidLevel': 'invalid volume level',
   'volume.invalidMute': 'invalid mute value',
-  'homey.notWritable': 'that capability cannot be written',
   'serviceStatus.unknownInstance': 'unknown service-status widget',
   'serviceStatus.noServices': 'no services saved',
   'shortcuts.unknownInstance': 'unknown shortcuts widget',

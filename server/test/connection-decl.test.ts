@@ -130,9 +130,9 @@ describe('the shape of a declaration', () => {
     // The id is namespaced whatever happens; the *label* is what the user reads on the form
     // where they type a credential.
     for (const name of [
-      'Homey Pro', 'homey pro', 'GitHub', 'Synology', { fr: 'Calendrier ICS', en: 'X' },
+      'Bambu Lab', 'bambu lab', 'GitHub', 'Synology', { fr: 'Calendrier ICS', en: 'X' },
       // The ids too, which is what the docs and every settings schema call them.
-      'homey', 'Homey', 'HOMEY', 'Home-y', 'home y', 'bambu', 'ics', 'azure-devops', 'Azure DevOps',
+      'bambu', 'Bambu', 'BAMBU', 'Bam-bu', 'bam bu', 'ics', 'azure-devops', 'Azure DevOps',
       // And the same with an accent, since that is one keystroke away from the real thing.
       'Sýnology',
     ]) {
@@ -141,8 +141,10 @@ describe('the shape of a declaration', () => {
   })
 
   it('leaves a name that merely mentions one alone', () => {
-    // "Homey Flows" is honest: it says what it is for, and it is not the built-in type.
-    for (const name of ['Homey Flows', 'My Homey lights', { fr: 'Homey (flows)', en: 'Homey (flows)' }]) {
+    // "Bambu print" is honest: it says what it is for, and it is not the built-in type.
+    // `Homey` is in this list rather than the one above because the coded Homey type is gone:
+    // both Homey widgets declare their own connection now, so the name is theirs to use.
+    for (const name of ['Bambu print', 'My Bambu printer', 'Homey', { fr: 'Homey (flows)', en: 'Homey (flows)' }]) {
       expect(parse(decl({ name })).success, JSON.stringify(name)).toBe(true)
     }
   })

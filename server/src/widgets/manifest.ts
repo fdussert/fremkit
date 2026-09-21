@@ -205,16 +205,16 @@ export const CONNECTION_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'] as c
  *
  * Both, because a label of `Homey` is as misleading as `Homey Pro` — the id is what the code
  * calls it and what a reader of the docs will have seen. Compared on a *slug* rather than on the
- * string, so `Homey`, `homey`, `Home-y` and `HOMEY` are one and the same answer: no.
+ * string, so `Synology`, `synology`, `Syno-logy` and `SYNOLOGY` are one and the same answer: no.
  *
  * It is about the label alone. The type id is namespaced with the widget's own id whatever
  * happens, so nothing here is protecting a namespace — it is protecting what the user reads on
  * the form where they type a credential.
  */
 const CODED_TYPE_LABELS = [
-  'azure devops', 'bambu lab', 'github', 'homey pro', 'ics calendar', 'calendrier ics', 'synology',
+  'azure devops', 'bambu lab', 'github', 'ics calendar', 'calendrier ics', 'synology',
   // The ids, which is what `docs/connections.md` and every settings schema call them.
-  'azure-devops', 'bambu', 'homey', 'ics',
+  'azure-devops', 'bambu', 'ics',
 ]
 const CODED_TYPE_SLUGS = new Set(CODED_TYPE_LABELS.map(nameSlug))
 

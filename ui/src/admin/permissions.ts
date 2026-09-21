@@ -31,7 +31,7 @@ export function channelFamily(channel: string): string {
 /**
  * The families a list of channel patterns covers, deduplicated and sorted.
  *
- * A widget declaring `homey:*` and `homey:abc` is asking for one thing — the Homey family — and
+ * A widget declaring `synology:*` and `synology:abc` is asking for one thing — the Synology family — and
  * showing it twice would only make the list harder to read.
  */
 export function channelFamilies(channels: string[]): string[] {
