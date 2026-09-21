@@ -2,6 +2,7 @@
 export const fr: Record<string, string> = {
   'common.loading': 'Chargement…',
   'common.close': 'Fermer',
+  'common.confirm': 'Confirmer ?',
   'common.cancel': 'Annuler',
   'common.reset': 'Réinitialiser',
   'common.duplicate': 'Dupliquer',
@@ -25,7 +26,6 @@ export const fr: Record<string, string> = {
   'admin.pages.title': 'Pages',
   'admin.pages.add': 'Ajouter une page',
   'admin.pages.rename': 'Renommer',
-  'admin.pages.confirmRemove': 'Supprimer la page « {name} » ?',
 
   'admin.library.title': 'Widgets',
   'admin.library.category.ai': 'IA',
@@ -177,6 +177,7 @@ export const fr: Record<string, string> = {
   'admin.inspector.screen.backup.restore': 'Restaurer…',
   'admin.inspector.screen.backup.hint': 'L’archive contient la configuration et les fonds d’écran, jamais les secrets : ceux-ci restent dans le trousseau macOS. Comme ils sont associés à l’identifiant de chaque connexion, une restauration sur ce Mac les retrouve ; sur une autre machine ils devront être ressaisis, et la liste s’affiche après la restauration.',
   'admin.inspector.screen.restore.confirm': 'Restaurer cette sauvegarde remplace le tableau de bord actuel — pages, widgets, connexions et fonds d’écran. Les secrets ne sont pas dans l’archive : ceux qui manquent ensuite seront listés. Continuer ?',
+  'admin.inspector.screen.restore.confirmButton': 'Remplacer le tableau de bord ?',
   'admin.inspector.screen.restore.done': 'Restauré : {pages} page(s), {backgrounds} fond(s) d’écran.',
   'admin.inspector.screen.restore.nothingToReenter': 'Aucun secret à ressaisir : le trousseau a retrouvé les siens.',
   'admin.inspector.screen.restore.reenter': 'Secrets à ressaisir dans Connexions :',
@@ -211,7 +212,6 @@ export const fr: Record<string, string> = {
   'declared.orphan': 'déclaré par un widget qui n’est plus installé',
   'admin.connections.add': 'Ajouter',
   'admin.connections.noTypes': 'Aucun type de connexion disponible.',
-  'admin.connections.confirmRemove': 'Supprimer la connexion « {name} » ?',
   'admin.connections.form.name': 'Nom',
   'admin.connections.form.secretWarning': 'Vider le champ efface le secret enregistré.',
   'admin.connections.form.replace': 'Modifier',

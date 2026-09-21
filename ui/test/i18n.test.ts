@@ -32,7 +32,7 @@ describe('translate', () => {
   })
 
   it('interpolates {name} parameters', () => {
-    expect(translate('en', 'admin.pages.confirmRemove', { name: 'Home' })).toBe('Delete the page “Home”?')
+    expect(translate('en', 'admin.market.installedAt', { version: '1.2.0' })).toBe('installed v1.2.0')
     expect(translate('fr', 'admin.inspector.widget.minSize', { w: 8, h: 4 })).toBe('Minimum 8×4 cellules.')
   })
 

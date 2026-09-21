@@ -16,6 +16,7 @@ import BackgroundPicker from './BackgroundPicker.vue'
 import NavWidgetsEditor from './NavWidgetsEditor.vue'
 import { surfaceOpacity } from '../shared/background'
 import { pick, useI18n, type Locale } from '../shared/i18n'
+import { useConfirm } from '../shared/useConfirm'
 import { BUILTIN_THEME, useThemes } from '../shared/theme'
 import { ADMIN_GESTURES, DEFAULT_ADMIN_GESTURE, NAV_HEIGHTS, navHeightOf,
   type AdminGesture, type Background, type NavHeight } from '../shared/types'
@@ -73,13 +74,17 @@ const restoring = ref(false)
 const restored = ref<RestoreResult | null>(null)
 const restoreError = ref('')
 
+const confirm = useConfirm()
+function confirmRestore(): void {
+  confirm.ask('restore', () => restoreInput.value?.click())
+}
+
 async function onRestoreFile(event: Event): Promise<void> {
   const input = event.target as HTMLInputElement
   const file = input.files?.[0]
   // Cleared either way, so picking the same file twice still fires a change event.
   input.value = ''
   if (!file) return
-  if (!window.confirm(t('admin.inspector.screen.restore.confirm'))) return
   restoring.value = true
   restored.value = null
   restoreError.value = ''
@@ -228,12 +233,17 @@ function setBackground(patch: Partial<Background>): void {
     <BaseButton @click="api.downloadBackup()">
       <BaseIcon name="download" :size="16" />{{ t('admin.inspector.screen.backup.download') }}
     </BaseButton>
-    <BaseButton :disabled="restoring" @click="restoreInput?.click()">
+    <!-- Two taps: the first says what a restore does, the second opens the file picker. -->
+    <BaseButton v-if="confirm.armed('restore')" variant="danger" :disabled="restoring" @click="confirmRestore()">
+      {{ t('admin.inspector.screen.restore.confirmButton') }}
+    </BaseButton>
+    <BaseButton v-else :disabled="restoring" @click="confirmRestore()">
       <BaseIcon name="upload" :size="16" />{{ t('admin.inspector.screen.backup.restore') }}
     </BaseButton>
   </div>
   <input ref="restoreInput" type="file" accept=".zip,application/zip" class="hidden" @change="onRestoreFile" />
-  <p class="ro">{{ t('admin.inspector.screen.backup.hint') }}</p>
+  <p v-if="confirm.armed('restore')" class="ro warn">{{ t('admin.inspector.screen.restore.confirm') }}</p>
+  <p v-else class="ro">{{ t('admin.inspector.screen.backup.hint') }}</p>
   <p v-if="restoreError" class="bad">{{ restoreError }}</p>
   <template v-if="restored">
     <p class="ok">{{ t('admin.inspector.screen.restore.done', { pages: restored.pages, backgrounds: restored.backgrounds }) }}</p>
@@ -258,6 +268,7 @@ function setBackground(patch: Partial<Background>): void {
 
 <style scoped>
 .ro { margin: 0 0 var(--space-2); font-size: var(--fs-sm); color: var(--text-muted); }
+.ro.warn { color: var(--danger); }
 .row { display: flex; gap: var(--space-2); margin-bottom: var(--space-2); }
 .hidden { display: none; }
 .bad { margin: 0 0 var(--space-2); font-size: var(--fs-sm); color: var(--danger); white-space: pre-wrap; }

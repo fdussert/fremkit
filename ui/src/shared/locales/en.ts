@@ -2,6 +2,7 @@
 export const en: Record<string, string> = {
   'common.loading': 'Loading…',
   'common.close': 'Close',
+  'common.confirm': 'Confirm?',
   'common.cancel': 'Cancel',
   'common.reset': 'Reset',
   'common.duplicate': 'Duplicate',
@@ -25,7 +26,6 @@ export const en: Record<string, string> = {
   'admin.pages.title': 'Pages',
   'admin.pages.add': 'Add a page',
   'admin.pages.rename': 'Rename',
-  'admin.pages.confirmRemove': 'Delete the page “{name}”?',
 
   'admin.library.title': 'Widgets',
   'admin.library.category.ai': 'AI',
@@ -177,6 +177,7 @@ export const en: Record<string, string> = {
   'admin.inspector.screen.backup.restore': 'Restore…',
   'admin.inspector.screen.backup.hint': 'The archive holds the configuration and the backgrounds, never the secrets: those stay in the macOS keychain. Because they are keyed by connection id, a restore on this Mac finds them again; on another machine they have to be entered again, and the list is shown after the restore.',
   'admin.inspector.screen.restore.confirm': 'Restoring this backup replaces the current dashboard — pages, widgets, connections and backgrounds. Secrets are not in the archive; any that turn out to be missing afterwards are listed. Continue?',
+  'admin.inspector.screen.restore.confirmButton': 'Replace the dashboard?',
   'admin.inspector.screen.restore.done': 'Restored: {pages} page(s), {backgrounds} background(s).',
   'admin.inspector.screen.restore.nothingToReenter': 'No secret to enter again: the keychain still had them.',
   'admin.inspector.screen.restore.reenter': 'Secrets to enter again under Connections:',
@@ -211,7 +212,6 @@ export const en: Record<string, string> = {
   'declared.orphan': 'declared by a widget that is no longer installed',
   'admin.connections.add': 'Add',
   'admin.connections.noTypes': 'No connection type available.',
-  'admin.connections.confirmRemove': 'Delete the connection “{name}”?',
   'admin.connections.form.name': 'Name',
   'admin.connections.form.secretWarning': 'Emptying the field deletes the stored secret.',
   'admin.connections.form.replace': 'Change',

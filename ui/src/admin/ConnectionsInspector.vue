@@ -5,6 +5,7 @@ import BaseCard from '../shared/ui/BaseCard.vue'
 import BaseIcon from '../shared/ui/BaseIcon.vue'
 import ConnectionForm from './ConnectionForm.vue'
 import { useI18n } from '../shared/i18n'
+import { useConfirm } from '../shared/useConfirm'
 import { useConnectionsStore } from './connections'
 import { useAdminStore } from './store'
 
@@ -59,9 +60,10 @@ function close(): void {
   editingId.value = ''
   s.clearError()
 }
-async function remove(id: string, name: string): Promise<void> {
-  if (!window.confirm(t('admin.connections.confirmRemove', { name }))) return
-  await s.remove(id).catch(() => { /* the banner shows the 409 */ })
+const confirm = useConfirm()
+function remove(id: string): void {
+  // Two taps, no dialog: the kiosk's web view shows none. The banner shows a 409.
+  confirm.ask(id, () => s.remove(id).catch(() => { /* the banner shows the 409 */ }))
 }
 </script>
 
@@ -83,7 +85,10 @@ async function remove(id: string, name: string): Promise<void> {
           <small v-if="orphan(c.type)">{{ t('declared.orphan') }}</small>
           <small v-else>{{ typeName(c.type) }}</small>
         </div>
-        <BaseButton variant="icon" :title="t('common.remove')" @click.stop="remove(c.id, c.name)">
+        <BaseButton v-if="confirm.armed(c.id)" variant="danger" :title="t('common.confirm')" @click.stop="remove(c.id)">
+          {{ t('common.confirm') }}
+        </BaseButton>
+        <BaseButton v-else variant="icon" :title="t('common.remove')" @click.stop="remove(c.id)">
           <BaseIcon name="trash-2" :size="14" />
         </BaseButton>
       </BaseCard>

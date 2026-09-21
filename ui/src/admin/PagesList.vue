@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import BaseButton from '../shared/ui/BaseButton.vue'
 import BaseIcon from '../shared/ui/BaseIcon.vue'
 import { useI18n } from '../shared/i18n'
+import { useConfirm } from '../shared/useConfirm'
 import { useAdminStore } from './store'
 
 const s = useAdminStore()
@@ -26,8 +27,9 @@ function commitName(i: number, e: Event): void {
   if (value) s.renamePage(i, value)
   editing.value = null
 }
-function confirmRemove(i: number, name: string): void {
-  if (window.confirm(t('admin.pages.confirmRemove', { name }))) s.removePage(i)
+const confirm = useConfirm()
+function confirmRemove(i: number): void {
+  confirm.ask(`page:${i}`, () => s.removePage(i))
 }
 </script>
 
@@ -43,7 +45,8 @@ function confirmRemove(i: number, name: string): void {
         <BaseButton variant="icon" :title="t('common.moveUp')" :disabled="i === 0" @click.stop="s.movePage(i, -1)"><BaseIcon name="chevron-up" :size="14" /></BaseButton>
         <BaseButton variant="icon" :title="t('common.moveDown')" :disabled="i === s.state.config!.pages.length - 1" @click.stop="s.movePage(i, 1)"><BaseIcon name="chevron-down" :size="14" /></BaseButton>
         <BaseButton variant="icon" :title="t('common.duplicate')" @click.stop="s.duplicatePage(i)"><BaseIcon name="copy" :size="14" /></BaseButton>
-        <BaseButton variant="icon" :title="t('common.remove')" :disabled="s.state.config!.pages.length <= 1" @click.stop="confirmRemove(i, p.name)"><BaseIcon name="trash-2" :size="14" /></BaseButton>
+        <BaseButton v-if="confirm.armed(`page:${i}`)" variant="danger" :title="t('common.confirm')" @click.stop="confirmRemove(i)">{{ t('common.confirm') }}</BaseButton>
+        <BaseButton v-else variant="icon" :title="t('common.remove')" :disabled="s.state.config!.pages.length <= 1" @click.stop="confirmRemove(i)"><BaseIcon name="trash-2" :size="14" /></BaseButton>
       </li>
     </ul>
   </section>
