@@ -1,6 +1,6 @@
 import { readFile, writeFile, rename, copyFile, mkdir, access } from 'node:fs/promises'
 import { dirname } from 'node:path'
-import { ConfigSchema, DEFAULT_CONFIG, type Config } from './schema.js'
+import { CONFIG_VERSION, ConfigSchema, DEFAULT_CONFIG, type Config } from './schema.js'
 import { migrateConfig } from './migrate.js'
 import { normalizeInstances } from './normalize.js'
 
@@ -61,7 +61,7 @@ export class ConfigStore {
     }
 
     try {
-      const needsMigration = raw?.version !== 2
+      const needsMigration = raw?.version !== CONFIG_VERSION
       this.config = normalizeInstances(migrateConfig(raw))
       // write() copies the original to .bak first, so the user's v1 file survives the rewrite.
       if (needsMigration) await this.write()

@@ -1,7 +1,8 @@
 import { BUILTIN_THEME } from '../themes/theme.js'
 import { z } from 'zod'
-import { ConfigSchema, defaultLocale, WIDGET_ID_RE, type Config } from './schema.js'
+import { CONFIG_VERSION, ConfigSchema, defaultLocale, WIDGET_ID_RE, type Config } from './schema.js'
 import { defaultSecretsBackend } from '../secrets/index.js'
+import type { SecretStore } from '../secrets/types.js'
 import { tr } from '../i18n.js'
 
 /** v1 used a 32x8 grid of 80px cells; v2 halves the cell and doubles every coordinate. */
@@ -63,6 +64,35 @@ function renameFieldValues(config: Config): Config {
   }
 }
 
+/**
+ * The Homey connection, from a type written into Fremkit to one the widget declares.
+ *
+ * `homey` was a coded connection type here, with a provider polling a channel. It did nothing a
+ * declaration cannot — one bearer header to a host on the LAN — and having it in the core cost
+ * the user a second Homey connection, because `homey-flows` already declared its own and a Homey
+ * invalidates the previous API key whenever a new one is issued. Both widgets now declare the
+ * same shape, so one key serves both.
+ *
+ * The connection itself is kept: same id, same name, same address. Only its `type` moves, and
+ * the id is what a widget instance stores in `settings.connection`, so nothing on a dashboard
+ * has to be re-picked. The key moves too, but not here — see `migrateHomeySecret`, because the
+ * secret store is somewhere this function has no business reaching.
+ */
+export const HOMEY_CODED_TYPE = 'homey'
+export const HOMEY_DECLARED_TYPE = 'decl:homey-devices:homey-devices'
+/** The coded type called it `apiKey`; the declaration calls it `token`. */
+export const HOMEY_OLD_SECRET = 'apiKey'
+export const HOMEY_NEW_SECRET = 'token'
+
+function declareHomey(config: Config): Config {
+  if (!config.connections.some((c) => c.type === HOMEY_CODED_TYPE)) return config
+  return {
+    ...config,
+    connections: config.connections.map((c) =>
+      c.type === HOMEY_CODED_TYPE ? { ...c, type: HOMEY_DECLARED_TYPE } : c),
+  }
+}
+
 /** The widget whose gauges come from the Claude account usage the `privacy` opt-in covers. */
 const CLAUDE_USAGE_WIDGET = 'claude-usage'
 
@@ -88,17 +118,27 @@ function adoptPrivacy(config: Config, raw: unknown): Config {
 }
 
 /**
- * Normalise any accepted config file to v2. A v2 file is validated as-is, a v1 file (or one
- * without a version) is scaled up, any other version throws so the caller can recover.
+ * Normalise any accepted config file to v3.
+ *
+ * A v3 file is validated as-is. A v2 file is the same shape with a Homey connection that still
+ * names a coded type, so it is read through the v2 schema, rewritten, and stamped v3. A v1 file
+ * (or one without a version) is scaled up and goes through the same rewrite. Any other version
+ * throws so the caller can recover.
  */
 export function migrateConfig(raw: unknown): Config {
   const version = (raw as { version?: unknown } | null)?.version
-  if (version === 2) return renameFieldValues(adoptPrivacy(ConfigSchema.parse(raw), raw))
+  if (version === CONFIG_VERSION) return renameFieldValues(adoptPrivacy(ConfigSchema.parse(raw), raw))
+  if (version === 2) {
+    // The only difference between v2 and v3 is the Homey connection's type, so a v2 file is
+    // parsed by stamping it and letting the current schema do the rest.
+    const stamped = ConfigSchema.parse({ ...(raw as object), version: CONFIG_VERSION })
+    return declareHomey(renameFieldValues(adoptPrivacy(stamped, raw)))
+  }
   if (version !== undefined && version !== 1) throw new Error(tr(undefined, 'config.unknownVersion', { version: String(version) }))
   const v1 = V1Schema.parse(raw)
   const s = MIGRATION_SCALE
   const migrated: Config = {
-    version: 2,
+    version: CONFIG_VERSION,
     display: {
       cols: v1.display.cols * s,
       rows: v1.display.rows * s,
@@ -124,5 +164,31 @@ export function migrateConfig(raw: unknown): Config {
       })),
     })),
   }
-  return renameFieldValues(adoptPrivacy(migrated, raw))
+  return declareHomey(renameFieldValues(adoptPrivacy(migrated, raw)))
+}
+
+/**
+ * Moves a migrated Homey connection's API key to the field name the declaration uses.
+ *
+ * Separate from `migrateConfig` because the secret store is asynchronous and lives behind a
+ * backend the config layer knows nothing about. Idempotent, and safe to run on every start: a
+ * connection whose key is already under `token` is left alone, and one with nothing under
+ * `apiKey` costs a read that answers null.
+ *
+ * It also has to run after a *restore*: a backup carries no secrets, so a restored archive
+ * brings back a connection whose key is still sitting in the keychain under the old field name.
+ */
+export async function migrateHomeySecret(config: Config, secrets: SecretStore): Promise<number> {
+  let moved = 0
+  for (const connection of config.connections) {
+    if (connection.type !== HOMEY_DECLARED_TYPE) continue
+    const already = await secrets.get(`${connection.id}/${HOMEY_NEW_SECRET}`)
+    if (already !== null) continue
+    const old = await secrets.get(`${connection.id}/${HOMEY_OLD_SECRET}`)
+    if (old === null) continue
+    await secrets.set(`${connection.id}/${HOMEY_NEW_SECRET}`, old)
+    await secrets.delete(`${connection.id}/${HOMEY_OLD_SECRET}`)
+    moved += 1
+  }
+  return moved
 }

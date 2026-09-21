@@ -11,6 +11,7 @@ import type { ConnectionTypeRegistry } from '../connections/registry.js'
 import type { SecretStore } from '../secrets/index.js'
 import { readZip, writeZip, ZipError } from './zip.js'
 import { applyRestoreSecretPlan, restoreSecretPlan } from './secrets.js'
+import { migrateHomeySecret } from '../config/migrate.js'
 import { tr } from '../i18n.js'
 
 /**
@@ -246,6 +247,12 @@ export async function backupRoutes(
       req.log.warn({ err }, 'restore could not save the config')
       return reply.code(400).send({ errors: [tr(store.get().locale, 'backup.badConfig')] })
     }
+    // A backup carries no secrets, so a restored Homey connection's key is still sitting in the
+    // keychain under the field name the coded type used. Move it before anything asks whether it
+    // is there — otherwise the answer names a connection whose key never went anywhere.
+    await migrateHomeySecret(saved, opts.secrets).catch((err: unknown) => {
+      req.log.warn({ err }, 'restore could not move the Homey key to its new field')
+    })
     await opts.onRestored?.(saved)
 
     // Only the connections whose secret is actually absent: on the same Mac the keychain items

@@ -216,7 +216,7 @@ describe('dock routes', () => {
   beforeEach(async () => {
     dataDir = await mkdtemp(join(tmpdir(), 'fremkit-dockapp-'))
     await writeFile(join(dataDir, 'fremkit.json'), JSON.stringify({
-      version: 2,
+      version: 3,
       display: { cols: 64, rows: 16, cell: 40, autoCycleSeconds: 0 },
       connections: [], secrets: { backend: 'file' },
       pages: [{ id: 'home', name: 'Accueil', widgets: [] }],

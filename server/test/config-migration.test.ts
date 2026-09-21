@@ -2,7 +2,8 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mkdtemp, readdir, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { migrateConfig } from '../src/config/migrate.js'
+import { HOMEY_DECLARED_TYPE, migrateConfig, migrateHomeySecret } from '../src/config/migrate.js'
+import type { SecretStore } from '../src/secrets/types.js'
 import { ConfigStore } from '../src/config/store.js'
 import { DEFAULT_CONFIG } from '../src/config/schema.js'
 
@@ -15,7 +16,7 @@ const v1 = {
 describe('migrateConfig', () => {
   it('doubles the grid and every instance, and fills the new fields', () => {
     const c = migrateConfig(v1)
-    expect(c.version).toBe(2)
+    expect(c.version).toBe(3)
     expect(c.display).toEqual({ cols: 64, rows: 16, cell: 40, autoCycleSeconds: 30, theme: 'fremkit' })
     expect(c.pages[0].widgets[0]).toEqual({
       instanceId: 'clock-1', widgetId: 'clock', x: 8, y: 2, w: 16, h: 4,
@@ -41,11 +42,11 @@ describe('ConfigStore migration', () => {
   let dir: string
   beforeEach(async () => { dir = await mkdtemp(join(tmpdir(), 'fremkit-mig-')) })
 
-  it('rewrites a v1 file as v2 and keeps the original as .bak', async () => {
+  it('rewrites a v1 file as v3 and keeps the original as .bak', async () => {
     const file = join(dir, 'fremkit.json')
     await writeFile(file, JSON.stringify(v1, null, 2))
     const cfg = await new ConfigStore(file).load()
-    expect(cfg.version).toBe(2)
+    expect(cfg.version).toBe(3)
     expect(JSON.parse(await readFile(file, 'utf8')).display.cell).toBe(40)
     expect(JSON.parse(await readFile(file + '.bak', 'utf8'))).toEqual(v1)
   })
@@ -217,5 +218,120 @@ describe('marketplace consent', () => {
       version: 2, pages: [{ id: 'p', name: 'P', widgets: [] }],
       marketplace: { installed: { demo: { version: '1.0.0', registry: 'r', installedAt: 'x' } } },
     })).toThrow()
+  })
+})
+
+describe('the Homey connection, v2 → v3', () => {
+  /**
+   * `homey` was a connection type written into Fremkit, with a provider polling a channel. It did
+   * nothing a declaration cannot — one bearer header to a host on the LAN — and it cost the user
+   * a second Homey connection, because `homey-flows` already declared its own and a Homey
+   * invalidates the previous API key whenever a new one is issued.
+   */
+  const v2 = (over: Record<string, unknown> = {}) => ({
+    version: 2,
+    connections: [{ id: 'homey-1', type: 'homey', name: 'Maison', fields: { host: '192.0.2.30' } }],
+    pages: [{ id: 'home', name: 'Accueil', widgets: [
+      { instanceId: 'hd-1', widgetId: 'homey-devices', x: 0, y: 0, w: 24, h: 8, settings: { connection: 'homey-1', all: true } },
+    ] }],
+    ...over,
+  })
+
+  it('moves the type and leaves everything else where it was', () => {
+    const cfg = migrateConfig(v2())
+    expect(cfg.version).toBe(3)
+    expect(cfg.connections[0]).toMatchObject({
+      id: 'homey-1', type: HOMEY_DECLARED_TYPE, name: 'Maison', fields: { host: '192.0.2.30' },
+    })
+  })
+
+  it('leaves the widget pointing at the same connection', () => {
+    // The id is what an instance stores, and it does not change — so nothing has to be re-picked
+    // on a dashboard that was already working.
+    const cfg = migrateConfig(v2())
+    expect(cfg.pages[0].widgets[0].settings).toEqual({ connection: 'homey-1', all: true })
+  })
+
+  it('touches no other connection', () => {
+    const cfg = migrateConfig(v2({
+      connections: [
+        { id: 'homey-1', type: 'homey', name: 'Maison', fields: { host: '192.0.2.30' } },
+        { id: 'gh-1', type: 'github', name: 'GitHub', fields: {} },
+        { id: 'flows-1', type: 'decl:homey-flows:homey-flows', name: 'Homey', fields: { host: '192.0.2.30' } },
+      ],
+    }))
+    expect(cfg.connections.map((c) => c.type)).toEqual([
+      HOMEY_DECLARED_TYPE, 'github', 'decl:homey-flows:homey-flows',
+    ])
+  })
+
+  it('is idempotent: a v3 file is already done', () => {
+    const once = migrateConfig(v2())
+    expect(migrateConfig(once)).toEqual(once)
+  })
+
+  it('refuses a version it does not know', () => {
+    expect(() => migrateConfig({ version: 4, pages: [{ id: 'p', name: 'P', widgets: [] }] })).toThrow()
+  })
+})
+
+describe('the Homey key', () => {
+  /** A secret store in memory, keyed exactly as the real ones are: `<connectionId>/<field>`. */
+  function store(seed: Record<string, string> = {}): SecretStore & { all: Record<string, string> } {
+    const all = { ...seed }
+    return {
+      all,
+      get: async (k) => (Object.hasOwn(all, k) ? all[k] : null),
+      set: async (k, v) => { all[k] = v },
+      delete: async (k) => { delete all[k] },
+    }
+  }
+  const migrated = () => migrateConfig({
+    version: 2,
+    connections: [{ id: 'homey-1', type: 'homey', name: 'Maison', fields: { host: '192.0.2.30' } }],
+    pages: [{ id: 'p', name: 'P', widgets: [] }],
+  })
+
+  it('survives the migration under the name the declaration uses', async () => {
+    // The coded type called it `apiKey`, the declaration calls it `token`. Without this the user
+    // is asked to paste a key that is already on their Mac.
+    const secrets = store({ 'homey-1/apiKey': 'abc123' })
+    expect(await migrateHomeySecret(migrated(), secrets)).toBe(1)
+    expect(secrets.all).toEqual({ 'homey-1/token': 'abc123' })
+  })
+
+  it('runs again on every start without doing anything twice', async () => {
+    const secrets = store({ 'homey-1/apiKey': 'abc123' })
+    const config = migrated()
+    await migrateHomeySecret(config, secrets)
+    expect(await migrateHomeySecret(config, secrets)).toBe(0)
+    expect(secrets.all).toEqual({ 'homey-1/token': 'abc123' })
+  })
+
+  it('never overwrites a key that is already there', async () => {
+    // A connection created fresh under the declared type, whose key has nothing to do with
+    // whatever is left under the old name.
+    const secrets = store({ 'homey-1/apiKey': 'old', 'homey-1/token': 'current' })
+    expect(await migrateHomeySecret(migrated(), secrets)).toBe(0)
+    expect(secrets.all['homey-1/token']).toBe('current')
+  })
+
+  it('leaves a connection with no key alone', async () => {
+    const secrets = store()
+    expect(await migrateHomeySecret(migrated(), secrets)).toBe(0)
+    expect(secrets.all).toEqual({})
+  })
+
+  it('touches no other connection’s secrets', async () => {
+    const secrets = store({ 'homey-1/apiKey': 'abc', 'gh-1/apiKey': 'ghp', 'flows-1/token': 'flow' })
+    await migrateHomeySecret(migrateConfig({
+      version: 2,
+      connections: [
+        { id: 'homey-1', type: 'homey', name: 'Maison', fields: { host: '192.0.2.30' } },
+        { id: 'gh-1', type: 'github', name: 'GitHub', fields: {} },
+      ],
+      pages: [{ id: 'p', name: 'P', widgets: [] }],
+    }), secrets)
+    expect(secrets.all).toEqual({ 'homey-1/token': 'abc', 'gh-1/apiKey': 'ghp', 'flows-1/token': 'flow' })
   })
 })

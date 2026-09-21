@@ -62,7 +62,7 @@ const otherType: ConnectionType = {
 // must not follow whatever language the machine running the suite would pick. `buildEn` covers
 // the other side.
 const CONFIG = {
-  version: 2,
+  version: 3,
   locale: 'fr',
   display: { cols: 64, rows: 16, cell: 40, autoCycleSeconds: 0 },
   connections: [],

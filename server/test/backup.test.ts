@@ -12,7 +12,7 @@ import { DEFAULT_BACKGROUND } from '../src/backgrounds/seed.js'
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64')
 
 const CONFIG = {
-  version: 2,
+  version: 3,
   locale: 'fr',
   display: { cols: 64, rows: 16, cell: 40, autoCycleSeconds: 0 },
   connections: [{ id: 'gh-x1z9', type: 'github', name: 'Travail', fields: { host: '' } }],
@@ -58,13 +58,13 @@ describe('GET /api/backup', () => {
     const res = await app.inject({ url: '/api/backup' })
     const entries = zipOf(res)
     const config = JSON.parse(entries.find((e) => e.name === CONFIG_ENTRY)!.data.toString('utf8'))
-    expect(config.version).toBe(2)
+    expect(config.version).toBe(3)
     expect(config.connections[0]).toMatchObject({ id: 'gh-x1z9', type: 'github', name: 'Travail' })
     // The keychain is the only place a secret lives; nothing in the archive may look like one.
     const whole = Buffer.concat(entries.map((e) => e.data)).toString('utf8')
     expect(whole).not.toMatch(/token|apiKey|accessCode|"pat"/)
     const manifest = JSON.parse(entries.find((e) => e.name === MANIFEST_ENTRY)!.data.toString('utf8'))
-    expect(manifest).toMatchObject({ secrets: 'excluded', configVersion: 2 })
+    expect(manifest).toMatchObject({ secrets: 'excluded', configVersion: 3 })
     expect(manifest.fremkitVersion).toMatch(/^\d+\.\d+\.\d+$/)
   })
 
@@ -141,7 +141,7 @@ describe('POST /api/restore', () => {
     const res = await post(archive)
     expect(res.statusCode).toBe(200)
     const restored = (await app.inject({ url: '/api/config' })).json()
-    expect(restored.version).toBe(2)
+    expect(restored.version).toBe(3)
     // v1 used 80 px cells on a 32x8 grid; v2 halves the cell and doubles the coordinates.
     expect(restored.display).toMatchObject({ cols: 64, rows: 16, cell: 40 })
     expect(restored.pages[0].widgets[0]).toMatchObject({ x: 2, y: 2, w: 16, h: 4 })

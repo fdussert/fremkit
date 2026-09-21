@@ -3,7 +3,7 @@ import { findInstance, findInstances, noInstances } from '../src/config/instance
 import { ConfigSchema, type Config } from '../src/config/schema.js'
 
 const config = (): Config => ConfigSchema.parse({
-  version: 2,
+  version: 3,
   display: {
     cols: 64, rows: 16, cell: 40, autoCycleSeconds: 0,
     navWidgets: [{ instanceId: 'nav-1', widgetId: 'service-status', settings: { services: [{ kind: 'ping', name: 'GW', url: '127.0.0.1' }] } }],

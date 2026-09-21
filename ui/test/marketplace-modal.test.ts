@@ -56,7 +56,7 @@ const MANIFEST: WidgetManifest = {
 
 function config(): Config {
   return {
-    version: 2,
+    version: 3,
     display: { cols: 64, rows: 16, cell: 40, autoCycleSeconds: 0 },
     connections: [], secrets: { backend: 'file' }, locale: 'en',
     privacy: { claudeAccountUsage: false }, marketplace: { installed: {} },

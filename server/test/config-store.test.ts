@@ -34,7 +34,7 @@ describe('ConfigStore', () => {
     await store.load()
     const seen: unknown[] = []
     store.onChange((c) => seen.push(c))
-    const next = { version: 2, pages: [{ id: 'p2', name: 'Deux' }] }
+    const next = { version: 3, pages: [{ id: 'p2', name: 'Deux' }] }
     const saved = await store.save(next)
     expect(saved.pages[0].id).toBe('p2')
     expect(store.get().pages[0].id).toBe('p2')
@@ -45,13 +45,13 @@ describe('ConfigStore', () => {
   it('save rejects an invalid config and keeps the old one', async () => {
     const store = new ConfigStore(join(dir, 'fremkit.json'))
     await store.load()
-    await expect(store.save({ version: 2, pages: [] })).rejects.toThrow()
+    await expect(store.save({ version: 3, pages: [] })).rejects.toThrow()
     expect(store.get()).toEqual(DEFAULT_CONFIG)
   })
   it('recovers from the .bak when the main file is corrupt', async () => {
     const file = join(dir, 'fremkit.json')
     await writeFile(file, '{ not json')
-    await writeFile(file + '.bak', JSON.stringify({ version: 2, pages: [{ id: 'saved', name: 'Sauvée' }] }))
+    await writeFile(file + '.bak', JSON.stringify({ version: 3, pages: [{ id: 'saved', name: 'Sauvée' }] }))
     const err = vi.spyOn(console, 'error').mockImplementation(() => {})
     const cfg = await new ConfigStore(file).load()
     err.mockRestore()
@@ -107,7 +107,7 @@ describe('ConfigStore', () => {
     const store = new ConfigStore(file)
     await store.load()
     expect(store.degraded).toBe(true)
-    await writeFile(file, JSON.stringify({ version: 2, pages: [{ id: 'ok', name: 'OK' }] }))
+    await writeFile(file, JSON.stringify({ version: 3, pages: [{ id: 'ok', name: 'OK' }] }))
     expect((await store.load()).pages[0].id).toBe('ok')
     err.mockRestore()
     expect(store.degraded).toBe(false)

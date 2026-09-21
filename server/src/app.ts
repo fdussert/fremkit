@@ -53,6 +53,7 @@ import { bambuRoutes } from './bambu/routes.js'
 import { createShortcutsProvider } from './providers/shortcuts.js'
 import { createServiceStatusProvider } from './providers/service-status.js'
 import { findInstance, findInstances } from './config/instances.js'
+import { migrateHomeySecret } from './config/migrate.js'
 import { BYTES_CSP, isByteRoute } from './http/headers.js'
 import { isAllowedHost, isReadMethod } from './http/guard.js'
 import { LOGGER_OPTIONS } from './http/logging.js'
@@ -160,6 +161,13 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   registry.register(createShortcutsProvider(undefined, instances))
   registry.register(createServiceStatusProvider({}, instances))
   const secrets = createSecretStore(store.get().secrets.backend, opts.dataDir)
+  // v2 → v3 moved the Homey connection to the type its widget declares, and the declaration
+  // calls the key `token` where the coded type called it `apiKey`. The config half of that is in
+  // `migrateConfig`; this is the half that needs the secret store. Idempotent, so it costs one
+  // read per Homey connection on a start that has nothing to do.
+  await migrateHomeySecret(store.get(), secrets).catch((err: unknown) => {
+    console.error('could not move the Homey key to its new field:', (err as Error).message)
+  })
   const connectionTypes = new ConnectionTypeRegistry(opts.connectionTypes ?? defaultConnectionTypes())
   const connections = new ConnectionManager({ registry, types: connectionTypes, secrets })
   /**

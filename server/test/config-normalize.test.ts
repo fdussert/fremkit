@@ -7,7 +7,7 @@ import { migrateAppearance, normalizeInstances, parseCityString } from '../src/c
 import { ConfigSchema } from '../src/config/schema.js'
 
 const clock = (settings: Record<string, unknown>) => ({
-  version: 2,
+  version: 3,
   pages: [{ id: 'home', name: 'Accueil', widgets: [{ instanceId: 'clock-1', widgetId: 'clock', x: 0, y: 0, w: 16, h: 4, settings }] }],
 })
 const citiesOf = (config: { pages: { widgets: { settings: Record<string, unknown> }[] }[] }): unknown =>
@@ -33,7 +33,7 @@ describe('parseCityString', () => {
 describe('migrateAppearance', () => {
   /** One instance carrying the legacy keys, parsed exactly as a file on disk would be. */
   const parse = (extra: Record<string, unknown>) => ConfigSchema.parse({
-    version: 2,
+    version: 3,
     pages: [{ id: 'home', name: 'Accueil', widgets: [{ instanceId: 'w-1', widgetId: 'clock', x: 0, y: 0, w: 16, h: 4, ...extra }] }],
   }).pages[0].widgets[0]
 
@@ -80,7 +80,7 @@ describe('migrateAppearance', () => {
 describe('normalizeInstances', () => {
   it('converts every legacy appearance of a loaded config, on all pages', () => {
     const config = normalizeInstances(ConfigSchema.parse({
-      version: 2,
+      version: 3,
       pages: [
         { id: 'a', name: 'A', widgets: [{ instanceId: 'w-1', widgetId: 'clock', x: 0, y: 0, w: 16, h: 4, appearance: 'transparent' }] },
         { id: 'b', name: 'B', widgets: [{ instanceId: 'w-2', widgetId: 'clock', x: 0, y: 0, w: 16, h: 4, appearance: 'accent', accentStyle: 'outline' }] },
@@ -109,7 +109,7 @@ describe('normalizeInstances', () => {
     const list = [{ label: 'Tokyo', timezone: 'Asia/Tokyo', hour12: true, seconds: true }]
     expect(citiesOf(normalizeInstances(ConfigSchema.parse(clock({ cities: list }))))).toEqual(list)
     const other = ConfigSchema.parse({
-      version: 2,
+      version: 3,
       pages: [{ id: 'home', name: 'Accueil', widgets: [{ instanceId: 'w-1', widgetId: 'weather', x: 0, y: 0, w: 4, h: 2, settings: { cities: 'NYC=America/New_York' } }] }],
     })
     expect(citiesOf(normalizeInstances(other))).toBe('NYC=America/New_York')

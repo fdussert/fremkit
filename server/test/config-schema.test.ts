@@ -6,20 +6,20 @@ const manifests = new Map([['clock', { minSize: [8, 4] as [number, number] }]])
 
 describe('ConfigSchema', () => {
   it('accepts the default config and fills display defaults', () => {
-    const parsed = ConfigSchema.parse({ version: 2, pages: [{ id: 'p', name: 'P' }] })
+    const parsed = ConfigSchema.parse({ version: 3, pages: [{ id: 'p', name: 'P' }] })
     expect(parsed.display).toEqual({ cols: 64, rows: 16, cell: 40, autoCycleSeconds: 0, theme: 'fremkit' })
     expect(parsed.pages[0].widgets).toEqual([])
   })
   it('rejects a config without pages', () => {
-    expect(() => ConfigSchema.parse({ version: 2, pages: [] })).toThrow()
+    expect(() => ConfigSchema.parse({ version: 3, pages: [] })).toThrow()
   })
   it('rejects a bad widgetId', () => {
-    expect(() => ConfigSchema.parse({ version: 2, pages: [{ id: 'p', name: 'P', widgets: [{ instanceId: 'a', widgetId: 'Bad Id', x: 0, y: 0, w: 1, h: 1 }] }] })).toThrow()
+    expect(() => ConfigSchema.parse({ version: 3, pages: [{ id: 'p', name: 'P', widgets: [{ instanceId: 'a', widgetId: 'Bad Id', x: 0, y: 0, w: 1, h: 1 }] }] })).toThrow()
   })
   const withAccent = (accentColor: unknown) =>
-    ConfigSchema.parse({ version: 2, pages: [{ id: 'p', name: 'P', widgets: [{ instanceId: 'a', widgetId: 'clock', x: 0, y: 0, w: 1, h: 1, accentColor }] }] })
+    ConfigSchema.parse({ version: 3, pages: [{ id: 'p', name: 'P', widgets: [{ instanceId: 'a', widgetId: 'clock', x: 0, y: 0, w: 1, h: 1, accentColor }] }] })
   it('leaves accentColor absent by default', () => {
-    const parsed = ConfigSchema.parse({ version: 2, pages: [{ id: 'p', name: 'P', widgets: [{ instanceId: 'a', widgetId: 'clock', x: 0, y: 0, w: 1, h: 1 }] }] })
+    const parsed = ConfigSchema.parse({ version: 3, pages: [{ id: 'p', name: 'P', widgets: [{ instanceId: 'a', widgetId: 'clock', x: 0, y: 0, w: 1, h: 1 }] }] })
     expect(parsed.pages[0].widgets[0].accentColor).toBeUndefined()
   })
   it('accepts an #rrggbb accentColor in either case', () => {
@@ -29,9 +29,9 @@ describe('ConfigSchema', () => {
     for (const color of ['#fff', '2f6feb', '#2f6feb80', 'red', '', 0x2f6feb]) expect(() => withAccent(color)).toThrow()
   })
   const withAccentStyle = (accentStyle: unknown) =>
-    ConfigSchema.parse({ version: 2, pages: [{ id: 'p', name: 'P', widgets: [{ instanceId: 'a', widgetId: 'clock', x: 0, y: 0, w: 1, h: 1, accentStyle }] }] })
+    ConfigSchema.parse({ version: 3, pages: [{ id: 'p', name: 'P', widgets: [{ instanceId: 'a', widgetId: 'clock', x: 0, y: 0, w: 1, h: 1, accentStyle }] }] })
   it('leaves accentStyle absent by default, so an old instance keeps the filled look', () => {
-    const parsed = ConfigSchema.parse({ version: 2, pages: [{ id: 'p', name: 'P', widgets: [{ instanceId: 'a', widgetId: 'clock', x: 0, y: 0, w: 1, h: 1 }] }] })
+    const parsed = ConfigSchema.parse({ version: 3, pages: [{ id: 'p', name: 'P', widgets: [{ instanceId: 'a', widgetId: 'clock', x: 0, y: 0, w: 1, h: 1 }] }] })
     expect(parsed.pages[0].widgets[0].accentStyle).toBeUndefined()
   })
   it('accepts both accent styles', () => {
@@ -41,9 +41,9 @@ describe('ConfigSchema', () => {
     for (const style of ['Fill', 'border', '', 1]) expect(() => withAccentStyle(style)).toThrow()
   })
   const withWidgetBackground = (background: unknown) =>
-    ConfigSchema.parse({ version: 2, pages: [{ id: 'p', name: 'P', widgets: [{ instanceId: 'a', widgetId: 'clock', x: 0, y: 0, w: 1, h: 1, background }] }] })
+    ConfigSchema.parse({ version: 3, pages: [{ id: 'p', name: 'P', widgets: [{ instanceId: 'a', widgetId: 'clock', x: 0, y: 0, w: 1, h: 1, background }] }] })
   it('leaves the instance background absent by default', () => {
-    const parsed = ConfigSchema.parse({ version: 2, pages: [{ id: 'p', name: 'P', widgets: [{ instanceId: 'a', widgetId: 'clock', x: 0, y: 0, w: 1, h: 1 }] }] })
+    const parsed = ConfigSchema.parse({ version: 3, pages: [{ id: 'p', name: 'P', widgets: [{ instanceId: 'a', widgetId: 'clock', x: 0, y: 0, w: 1, h: 1 }] }] })
     expect(parsed.pages[0].widgets[0].background).toBeUndefined()
   })
   it('accepts a full instance background', () => {
@@ -67,9 +67,9 @@ describe('ConfigSchema', () => {
     for (const dim of [-0.1, 0.91, 1, '0.5']) expect(() => withWidgetBackground({ image: 'a.png', dim })).toThrow()
   })
   const withOpacity = (opacity: unknown) =>
-    ConfigSchema.parse({ version: 2, pages: [{ id: 'p', name: 'P', widgets: [{ instanceId: 'a', widgetId: 'clock', x: 0, y: 0, w: 1, h: 1, opacity }] }] })
+    ConfigSchema.parse({ version: 3, pages: [{ id: 'p', name: 'P', widgets: [{ instanceId: 'a', widgetId: 'clock', x: 0, y: 0, w: 1, h: 1, opacity }] }] })
   it('leaves the instance opacity absent by default, so an old tile stays solid', () => {
-    const parsed = ConfigSchema.parse({ version: 2, pages: [{ id: 'p', name: 'P', widgets: [{ instanceId: 'a', widgetId: 'clock', x: 0, y: 0, w: 1, h: 1 }] }] })
+    const parsed = ConfigSchema.parse({ version: 3, pages: [{ id: 'p', name: 'P', widgets: [{ instanceId: 'a', widgetId: 'clock', x: 0, y: 0, w: 1, h: 1 }] }] })
     expect(parsed.pages[0].widgets[0].opacity).toBeUndefined()
   })
   it('accepts an opacity across the whole 0–1 range', () => {
@@ -79,9 +79,9 @@ describe('ConfigSchema', () => {
     for (const opacity of [1.5, -0.1, '0.5', null]) expect(() => withOpacity(opacity)).toThrow()
   })
   const withNavOpacity = (navOpacity: unknown) =>
-    ConfigSchema.parse({ version: 2, display: { navOpacity }, pages: [{ id: 'p', name: 'P' }] })
+    ConfigSchema.parse({ version: 3, display: { navOpacity }, pages: [{ id: 'p', name: 'P' }] })
   it('leaves display.navOpacity absent by default, so an old file keeps a solid bar', () => {
-    expect(ConfigSchema.parse({ version: 2, pages: [{ id: 'p', name: 'P' }] }).display.navOpacity).toBeUndefined()
+    expect(ConfigSchema.parse({ version: 3, pages: [{ id: 'p', name: 'P' }] }).display.navOpacity).toBeUndefined()
   })
   it('accepts a nav bar opacity across the whole 0–1 range', () => {
     for (const navOpacity of [0, 0.3, 1]) expect(withNavOpacity(navOpacity).display.navOpacity).toBe(navOpacity)
@@ -90,9 +90,9 @@ describe('ConfigSchema', () => {
     for (const navOpacity of [1.5, -0.1, '0.3', null]) expect(() => withNavOpacity(navOpacity)).toThrow()
   })
   const withNavHeight = (navHeight: unknown) =>
-    ConfigSchema.parse({ version: 2, display: { navHeight }, pages: [{ id: 'p', name: 'P' }] })
+    ConfigSchema.parse({ version: 3, display: { navHeight }, pages: [{ id: 'p', name: 'P' }] })
   it('leaves display.navHeight absent by default, so an old file keeps the 80 px bar untouched', () => {
-    expect(ConfigSchema.parse({ version: 2, pages: [{ id: 'p', name: 'P' }] }).display.navHeight).toBeUndefined()
+    expect(ConfigSchema.parse({ version: 3, pages: [{ id: 'p', name: 'P' }] }).display.navHeight).toBeUndefined()
   })
   it('accepts both nav bar heights', () => {
     for (const height of [80, 40]) expect(withNavHeight(height).display.navHeight).toBe(height)
@@ -101,9 +101,9 @@ describe('ConfigSchema', () => {
     for (const height of [0, 60, 100, '40', null]) expect(() => withNavHeight(height)).toThrow()
   })
   const withBackground = (background: unknown) =>
-    ConfigSchema.parse({ version: 2, display: { background }, pages: [{ id: 'p', name: 'P' }] })
+    ConfigSchema.parse({ version: 3, display: { background }, pages: [{ id: 'p', name: 'P' }] })
   it('leaves display.background absent by default', () => {
-    expect(ConfigSchema.parse({ version: 2, pages: [{ id: 'p', name: 'P' }] }).display.background).toBeUndefined()
+    expect(ConfigSchema.parse({ version: 3, pages: [{ id: 'p', name: 'P' }] }).display.background).toBeUndefined()
   })
   it('accepts a full background', () => {
     expect(withBackground({ color: '#101820', image: 'dunes.webp', fit: 'contain' }).display.background)
@@ -128,7 +128,7 @@ describe('ConfigSchema', () => {
 describe('validateLayout', () => {
   // Pinned to French: these assertions are about the wording, so they must not follow the
   // machine's own language. The English side is covered by its own test below.
-  const base = () => ConfigSchema.parse({ version: 2, locale: 'fr', pages: [{ id: 'p', name: 'P', widgets: [] }] })
+  const base = () => ConfigSchema.parse({ version: 3, locale: 'fr', pages: [{ id: 'p', name: 'P', widgets: [] }] })
   it('returns no error for a valid layout', () => {
     const c = base(); c.pages[0].widgets.push({ instanceId: 'a', widgetId: 'clock', x: 0, y: 0, w: 16, h: 4, showTitle: true, settings: {} })
     expect(validateLayout(c, manifests)).toEqual([])
@@ -158,7 +158,7 @@ describe('validateLayout', () => {
     expect(validateLayout(c, manifests)).toEqual(['page p: instanceId a dupliqué'])
   })
   it('answers in English when the config asks for it', () => {
-    const c = ConfigSchema.parse({ version: 2, locale: 'en', pages: [{ id: 'p', name: 'P', widgets: [] }] })
+    const c = ConfigSchema.parse({ version: 3, locale: 'en', pages: [{ id: 'p', name: 'P', widgets: [] }] })
     c.pages[0].widgets.push({ instanceId: 'a', widgetId: 'clock', x: 0, y: 0, w: 8, h: 4, showTitle: true, settings: {} })
     c.pages[0].widgets.push({ instanceId: 'a', widgetId: 'clock', x: 16, y: 0, w: 8, h: 4, showTitle: true, settings: {} })
     expect(validateLayout(c, manifests)).toEqual(['page p: duplicate instanceId a'])
@@ -172,11 +172,11 @@ describe('navWidgets', () => {
     ['plain', { minSize: [8, 4] as [number, number] }],
   ])
   const withNav = (navWidgets: unknown[]) =>
-    ConfigSchema.parse({ version: 2, locale: 'fr', display: { navWidgets }, pages: [{ id: 'p', name: 'P', widgets: [] }] })
+    ConfigSchema.parse({ version: 3, locale: 'fr', display: { navWidgets }, pages: [{ id: 'p', name: 'P', widgets: [] }] })
 
   it('is absent when the bar carries none', () => {
-    expect(ConfigSchema.parse({ version: 2, pages: [{ id: 'p', name: 'P', widgets: [] }] }).display.navWidgets).toBeUndefined()
-    expect(validateNavWidgets(ConfigSchema.parse({ version: 2, pages: [{ id: 'p', name: 'P', widgets: [] }] }), navManifests)).toEqual([])
+    expect(ConfigSchema.parse({ version: 3, pages: [{ id: 'p', name: 'P', widgets: [] }] }).display.navWidgets).toBeUndefined()
+    expect(validateNavWidgets(ConfigSchema.parse({ version: 3, pages: [{ id: 'p', name: 'P', widgets: [] }] }), navManifests)).toEqual([])
   })
   it('accepts a widget that declares a compact rendering, on the left by default', () => {
     const c = withNav([{ instanceId: 'clock-1', widgetId: 'clock' }])
@@ -207,7 +207,7 @@ describe('navWidgets', () => {
   })
   it('answers in English when the config asks for it', () => {
     const c = ConfigSchema.parse({
-      version: 2, locale: 'en',
+      version: 3, locale: 'en',
       display: { navWidgets: [{ instanceId: 'a', widgetId: 'plain' }] },
       pages: [{ id: 'p', name: 'P', widgets: [] }],
     })
@@ -226,7 +226,7 @@ describe('validateLayout against a converted v1 manifest', () => {
   const legacy = ManifestSchema.parse({ id: 'clock', name: 'Horloge', version: '1.0.0', sizes: [[8, 2], [4, 2], [8, 4]] })
   const converted = new Map([['clock', { minSize: legacy.minSize }]])
   const layout = (w: number, h: number) =>
-    ConfigSchema.parse({ version: 2, locale: 'fr', pages: [{ id: 'p', name: 'P', widgets: [{ instanceId: 'a', widgetId: 'clock', x: 0, y: 0, w, h }] }] })
+    ConfigSchema.parse({ version: 3, locale: 'fr', pages: [{ id: 'p', name: 'P', widgets: [{ instanceId: 'a', widgetId: 'clock', x: 0, y: 0, w, h }] }] })
 
   it('converts sizes to a doubled minimum', () => {
     expect(legacy.minSize).toEqual([8, 4])
@@ -240,7 +240,7 @@ describe('validateLayout against a converted v1 manifest', () => {
 })
 
 describe('connections in the config', () => {
-  const base = { version: 2 as const, locale: 'fr' as const, display: { cols: 64, rows: 16, cell: 40, autoCycleSeconds: 0 }, pages: [{ id: 'home', name: 'Accueil', widgets: [] }] }
+  const base = { version: 3 as const, locale: 'fr' as const, display: { cols: 64, rows: 16, cell: 40, autoCycleSeconds: 0 }, pages: [{ id: 'home', name: 'Accueil', widgets: [] }] }
 
   it('defaults connections to an empty list and picks a secrets backend', () => {
     const parsed = ConfigSchema.parse(base)
@@ -279,7 +279,7 @@ describe('connections in the config', () => {
 })
 
 describe('locale', () => {
-  const base = { version: 2, pages: [{ id: 'p', name: 'P' }] }
+  const base = { version: 3, pages: [{ id: 'p', name: 'P' }] }
 
   it('reads French from a French system locale and English from anything else', () => {
     for (const l of ['fr', 'fr-FR', 'FR-ca']) expect(defaultLocale(l)).toBe('fr')

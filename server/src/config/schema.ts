@@ -298,8 +298,16 @@ export const MarketplaceSchema = z.object({
 }).prefault({})
 export type MarketplaceState = z.infer<typeof MarketplaceSchema>
 
+/**
+ * The version a config file written today carries.
+ *
+ * v1 → v2 halved the cell and doubled every coordinate. v2 → v3 moved the Homey connection from
+ * the coded `homey` type to the one `homey-devices` declares; see `migrate.ts`.
+ */
+export const CONFIG_VERSION = 3
+
 export const ConfigSchema = z.object({
-  version: z.literal(2),
+  version: z.literal(CONFIG_VERSION),
   display: DisplaySchema.prefault({}),
   connections: z.array(ConnectionSchema).default([]),
   secrets: SecretsSchema.prefault({}),
@@ -317,7 +325,7 @@ export type WidgetInstance = z.infer<typeof WidgetInstanceSchema>
 export type NavWidget = z.infer<typeof NavWidgetSchema>
 
 export const DEFAULT_CONFIG: Config = {
-  version: 2,
+  version: CONFIG_VERSION,
   display: {
     cols: 64, rows: 16, cell: 40, autoCycleSeconds: 0, theme: BUILTIN_THEME,
     // The shipped wallpaper, seeded into the background library at start. Referenced like any

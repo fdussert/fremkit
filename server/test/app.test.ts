@@ -29,9 +29,9 @@ describe('config routes', () => {
     expect(res.json().pages[0].id).toBe('home')
   })
   it('PUT /api/config validates shape and layout', async () => {
-    const bad = await app.inject({ method: 'PUT', url: '/api/config', payload: { version: 2, pages: [] } })
+    const bad = await app.inject({ method: 'PUT', url: '/api/config', payload: { version: 3, pages: [] } })
     expect(bad.statusCode).toBe(400)
-    const overlapping = (locale: 'fr' | 'en') => ({ version: 2, locale, pages: [{ id: 'p', name: 'P', widgets: [
+    const overlapping = (locale: 'fr' | 'en') => ({ version: 3, locale, pages: [{ id: 'p', name: 'P', widgets: [
       { instanceId: 'a', widgetId: 'clock', x: 0, y: 0, w: 16, h: 4 }, { instanceId: 'b', widgetId: 'clock', x: 8, y: 2, w: 16, h: 4 } ] }] })
     const overlap = await app.inject({ method: 'PUT', url: '/api/config', payload: overlapping('fr') })
     expect(overlap.statusCode).toBe(400)
@@ -40,7 +40,7 @@ describe('config routes', () => {
     const overlapEn = await app.inject({ method: 'PUT', url: '/api/config', payload: overlapping('en') })
     expect(overlapEn.statusCode).toBe(400)
     expect(overlapEn.json().errors[0]).toMatch(/overlaps/)
-    const ok = await app.inject({ method: 'PUT', url: '/api/config', payload: { version: 2, pages: [{ id: 'p', name: 'P', widgets: [{ instanceId: 'a', widgetId: 'clock', x: 0, y: 0, w: 16, h: 4 }] }] } })
+    const ok = await app.inject({ method: 'PUT', url: '/api/config', payload: { version: 3, pages: [{ id: 'p', name: 'P', widgets: [{ instanceId: 'a', widgetId: 'clock', x: 0, y: 0, w: 16, h: 4 }] }] } })
     expect(ok.statusCode).toBe(200)
     expect((await app.inject({ url: '/api/config' })).json().pages[0].id).toBe('p')
   })
@@ -53,7 +53,7 @@ describe('config routes', () => {
   it('reports a healthy store and lets a normal PUT through', async () => {
     expect((await app.inject({ url: '/api/config/status' })).json()).toEqual({ degraded: false })
     expect((await app.inject({ url: '/api/config' })).headers['x-fremkit-degraded']).toBeUndefined()
-    const ok = await app.inject({ method: 'PUT', url: '/api/config', payload: { version: 2, pages: [{ id: 'p', name: 'P', widgets: [] }] } })
+    const ok = await app.inject({ method: 'PUT', url: '/api/config', payload: { version: 3, pages: [{ id: 'p', name: 'P', widgets: [] }] } })
     expect(ok.statusCode).toBe(200)
   })
   it('refuses to save, and never writes, while the config on disk cannot be read', async () => {
@@ -66,7 +66,7 @@ describe('config routes', () => {
     err.mockRestore()
     expect((await app.inject({ url: '/api/config' })).headers['x-fremkit-degraded']).toBe('1')
     expect((await app.inject({ url: '/api/config/status' })).json()).toEqual({ degraded: true })
-    const put = await app.inject({ method: 'PUT', url: '/api/config', payload: { version: 2, pages: [{ id: 'p', name: 'P', widgets: [] }] } })
+    const put = await app.inject({ method: 'PUT', url: '/api/config', payload: { version: 3, pages: [{ id: 'p', name: 'P', widgets: [] }] } })
     expect(put.statusCode).toBe(409)
     // A degraded store has no user config to read a language from, so it answers in the one the
     // machine would have picked.
@@ -76,7 +76,7 @@ describe('config routes', () => {
 })
 
 describe('the request gate', () => {
-  const page = { version: 2, pages: [{ id: 'p', name: 'P', widgets: [] }] }
+  const page = { version: 3, pages: [{ id: 'p', name: 'P', widgets: [] }] }
 
   it('refuses every request whose Host is not one of ours', async () => {
     for (const host of ['evil.example', 'evil.example:4242', 'fremkit.local']) {

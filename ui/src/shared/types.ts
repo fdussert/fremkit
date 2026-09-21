@@ -78,7 +78,7 @@ export interface Privacy {
 }
 
 export interface Config {
-  version: 2; display: Display; connections: Connection[]
+  version: 3; display: Display; connections: Connection[]
   secrets: { backend: SecretsBackend }
   locale?: Locale
   privacy: Privacy
