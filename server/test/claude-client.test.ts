@@ -55,6 +55,20 @@ describe('what the tracker keeps', () => {
     })
   })
 
+  it('does not take another session’s process just because it shares the checkout', () => {
+    // Two claudes in one folder: the person's, and the agent they launched. The scan found both.
+    const tracker = new ClaudeTracker()
+    tracker.syncProcesses([
+      { pid: 1000, cwd: '/Users/alice/projects/fremkit', startedAt: 1 },
+      { pid: 2000, cwd: '/Users/alice/projects/fremkit', startedAt: 2 },
+    ])
+    tracker.handle(ev({ client: { ...ORCA, pid: 2000 } }))
+    expect(tracker.pidOf('s1')).toBe(2000)
+    // The placeholder for 1000 is still there; only 2000 became s1.
+    const ids = tracker.snapshot().sessions.map((x) => x.sessionId).sort()
+    expect(ids).toEqual(['proc:1000', 's1'])
+  })
+
   it('never publishes the raw client', () => {
     const tracker = new ClaudeTracker()
     tracker.handle(ev({ client: ORCA }))

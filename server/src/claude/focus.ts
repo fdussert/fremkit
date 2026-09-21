@@ -35,6 +35,34 @@ export async function ttyOfProcess(pid: number, reader: Reader = read): Promise<
 }
 
 /**
+ * What a process's own environment says about where it lives — the same variables the hook
+ * reads from inside the session, read from outside with `ps eww`. That is what makes a session
+ * a scan found, or one whose hook reported nothing, as reachable as a reported one: the Orca
+ * pane handle, the terminal program, the tty. Only the named variables are kept; the rest of
+ * the environment is never looked at, and nothing here is logged.
+ */
+export async function clientOfProcess(pid: number, reader: Reader = read): Promise<SessionClient | undefined> {
+  let out: string
+  try { out = await reader('/bin/ps', ['eww', '-o', 'command=', '-p', String(pid)]) } catch { return undefined }
+  const pick = (name: string): string | undefined => {
+    const m = new RegExp(`(?:^|\\s)${name}=([^\\s]{1,200})`).exec(out)
+    return m?.[1]
+  }
+  const bundleId = pick('__CFBundleIdentifier')
+  const program = pick('TERM_PROGRAM')
+  const terminal = pick('ORCA_TERMINAL_HANDLE')
+  const tty = await ttyOfProcess(pid, reader)
+  if (!bundleId && !program && !terminal) return undefined
+  return {
+    ...(bundleId && BUNDLE_RE.test(bundleId) ? { bundleId } : {}),
+    ...(program ? { program } : {}),
+    pid,
+    ...(tty ? { tty } : {}),
+    ...(terminal && ORCA_TERMINAL_RE.test(terminal) ? { orca: { terminal } } : {}),
+  }
+}
+
+/**
  * The application a process runs under, found by walking up its parents until one of them is
  * a `.app` bundle: `claude` → `zsh` → `login` → `Orca Helper.app` → the bundle's `Info.plist`.
  *
@@ -157,13 +185,19 @@ export async function focusClient(
 ): Promise<FocusResult> {
   try {
     if (!client?.bundleId && pid) {
-      // No report from a hook: the process tree still says which application owns the session,
-      // and `ps` still knows its tty — enough to pick the exact tab in a terminal.
-      const bundleId = await appOfProcess(pid, reader)
-      const tty = await ttyOfProcess(pid, reader)
-      if (bundleId === 'com.googlecode.iterm2') return await focusTty(ITERM_SCRIPT, tty, bundleId, runner)
-      if (bundleId === 'com.apple.Terminal') return await focusTty(TERMINAL_SCRIPT, tty, bundleId, runner)
-      return await focusApp(bundleId ?? undefined, runner)
+      // No report from a hook: the process's own environment says the same things the hook
+      // would have — the exact Orca pane, the terminal, the tty. Failing that, the process tree
+      // still says which application owns it.
+      const fromEnv = await clientOfProcess(pid, reader)
+      if (fromEnv && (fromEnv.orca?.terminal || fromEnv.program)) {
+        client = fromEnv
+      } else {
+        const bundleId = await appOfProcess(pid, reader)
+        const tty = fromEnv?.tty ?? await ttyOfProcess(pid, reader)
+        if (bundleId === 'com.googlecode.iterm2') return await focusTty(ITERM_SCRIPT, tty, bundleId, runner)
+        if (bundleId === 'com.apple.Terminal') return await focusTty(TERMINAL_SCRIPT, tty, bundleId, runner)
+        return await focusApp(bundleId ?? undefined, runner)
+      }
     }
     if (!client) return { ok: false, reason: 'unknownClient' }
     const kind = kindOf(client)

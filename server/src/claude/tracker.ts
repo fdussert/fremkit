@@ -396,10 +396,14 @@ export class ClaudeTracker {
     return s ? s.client : undefined
   }
 
-  /** The session's process, from its hook or from the scan that found it. */
+  /**
+   * The session's process. The hook's word first: it ran *inside* the session and walked up to
+   * its own `claude`. The scan's pid is a guess by working directory, and two sessions in the
+   * same checkout — a person and the agent they launched — make that guess wrong half the time.
+   */
   pidOf(sessionId: string): number | undefined {
     const s = this.sessions.get(sessionId)
-    return s?.pid ?? s?.client?.pid
+    return s?.client?.pid ?? s?.pid
   }
 
   /**
@@ -485,8 +489,13 @@ export class ClaudeTracker {
       s = { sessionId: id, project: basename(cwd) || cwd || id, cwd, state: 'idle', since: t, lastEventAt: t, subagents: 0 }
       // A discovered placeholder for the same cwd is now a real, named session:
       // drop it immediately rather than waiting for the next syncProcesses().
+      // Only when the hook did not say which process it is: two sessions in one checkout share a
+      // cwd, and the hook's own pid — when it has one — is the one that is certainly right.
+      const reported = event.client?.pid
       for (const [key, existing] of this.sessions) {
-        if (existing.discovered && existing.cwd === cwd) { s.pid = existing.pid; this.sessions.delete(key); break }
+        if (!existing.discovered || existing.cwd !== cwd) continue
+        if (reported !== undefined && existing.pid !== reported) continue
+        s.pid = existing.pid; this.sessions.delete(key); break
       }
       this.sessions.set(id, s)
     }
