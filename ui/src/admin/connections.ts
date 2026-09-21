@@ -146,8 +146,11 @@ export function createConnectionsStore(deps: { api: ConnectionsApi; uid?: () => 
     },
 
     suggestId(typeId): string {
-      let candidate = `${typeId}-${uid()}`
-      while (state.connections.some((c) => c.id === candidate)) candidate = `${typeId}-${uid()}`
+      // A connection id is `[a-z0-9-]` only. A coded type's id already is; a declared type's
+      // (`decl:<widget>:<name>`) is not, so it is reduced to its last segment, made safe.
+      const stem = (typeId.split(':').pop() ?? typeId).toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '') || 'connection'
+      let candidate = `${stem}-${uid()}`
+      while (state.connections.some((c) => c.id === candidate)) candidate = `${stem}-${uid()}`
       return candidate
     },
   }

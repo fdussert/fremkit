@@ -47,6 +47,8 @@ describe('connections store', () => {
     const store = createConnectionsStore({ api: fakeApi(), uid: () => 'k3m1' })
     await store.load()
     expect(store.suggestId('azure-devops')).toBe('azure-devops-k3m1')
+    // A declared type's id carries colons, which a connection id may not.
+    expect(store.suggestId('decl:homey-flows:homey-flows')).toBe('homey-flows-k3m1')
   })
 
   it('reloads after a save and keeps the error message of a failed one', async () => {
