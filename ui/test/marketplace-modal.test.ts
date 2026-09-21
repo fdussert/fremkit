@@ -29,7 +29,7 @@ function widget(over: Partial<MarketplaceWidget> = {}): MarketplaceWidget {
     installed: true, installedVersion: '1.0.0', updateAvailable: true,
     sdkTooNew: false, consentNeeded: false,
     newPermissions: { subscriptions: [], commands: [], network: [] },
-    shadowsBuiltin: false, placedOn: [],
+    shadowsBuiltin: false, history: [], placedOn: [],
     ...over,
   }
 }
@@ -467,7 +467,7 @@ describe('themes in the panel', () => {
       tokens: { accent: '#58a6ff', bg: '#0d1117', surface: '#161b22', text: '#e6edf3' },
       size: 900, publishedAt: '2026-09-18T12:00:00.000Z',
       installed: false, installedVersion: null, updateAvailable: false,
-      shadowsBuiltin: false, inUse: false,
+      shadowsBuiltin: false, inUse: false, history: [],
       ...over,
     }
   }

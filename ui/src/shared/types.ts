@@ -414,6 +414,15 @@ export interface MarketplaceWidget {
   /** A built-in already owns this id, so it can never be installed. */
   shadowsBuiltin: boolean
   /**
+   * What this version changed, as plain text from the package's changelog.
+   *
+   * **Rendered as text, never as markup.** The registry strips the markdown, but this is a
+   * string that came over the network from a file somebody wrote in a pull request.
+   */
+  changes?: string
+  /** What each version documented, newest first, this one included. Empty when none did. */
+  history: { version: string; changes: string }[]
+  /**
    * The pages an instance of this widget sits on, by name. Empty for almost every row.
    *
    * Non-empty on a widget that is *not* installed means a tile somewhere paints as missing —
@@ -447,6 +456,8 @@ export interface MarketplaceTheme {
   shadowsBuiltin: boolean
   /** The screen is painted with it; removing it is refused until another is chosen. */
   inUse: boolean
+  changes?: string
+  history: { version: string; changes: string }[]
 }
 
 export interface MarketplaceResponse {

@@ -137,6 +137,36 @@ describe('GET /api/marketplace', () => {
     expect((await app.inject({ url: '/api/marketplace' })).json().widgets[0].category).toBe('home')
   })
 
+  it('passes the changelog entry through, and builds the history from it', async () => {
+    // Somebody two versions behind is being asked to accept both; showing only the newer one
+    // makes an update read as smaller than it is.
+    await app.close()
+    const zip = packageOf()
+    await build({ zip, index: { ...indexFor(zip), widgets: [{
+      ...(indexFor(zip).widgets as Record<string, unknown>[])[0],
+      version: '1.2.0',
+      changes: 'Newest.',
+      previous: [
+        { version: '1.1.0', url: `https://${HOST}/widgets/demo-1.1.0.zip`, sha256: sha256(zip), size: zip.byteLength, changes: 'Middle.' },
+        { version: '1.0.0', url: `https://${HOST}/widgets/demo-1.0.0.zip`, sha256: sha256(zip), size: zip.byteLength },
+      ],
+    }] } })
+    const row = (await app.inject({ url: '/api/marketplace' })).json().widgets[0]
+    expect(row.changes).toBe('Newest.')
+    // Newest first, and the version nobody wrote anything about is left out rather than shown
+    // as a blank line.
+    expect(row.history).toEqual([
+      { version: '1.2.0', changes: 'Newest.' },
+      { version: '1.1.0', changes: 'Middle.' },
+    ])
+  })
+
+  it('answers an empty history for a package that documented nothing', async () => {
+    const row = (await app.inject({ url: '/api/marketplace' })).json().widgets[0]
+    expect(row.changes).toBeUndefined()
+    expect(row.history).toEqual([])
+  })
+
   it('names the pages a widget is placed on, installed or not', async () => {
     // The whole point of the field: a dashboard built before a widget moved to the registry has
     // a tile of it, painted as missing, and this is what lets the admin offer the install.

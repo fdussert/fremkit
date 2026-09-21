@@ -36,11 +36,26 @@ const PackageUrl = z.url()
 /** A link the admin renders. Not a registry file, so https and nothing else. */
 const HttpsUrl = z.url({ protocol: /^https$/ })
 
+/**
+ * What a version changed, as the registry extracted it from the package's `CHANGELOG.md`.
+ *
+ * **Plain text, and it has to stay that way.** The registry strips the markdown — a link keeps
+ * its text and loses its URL, a raw tag is dropped — but this is a string from the network, so
+ * it is rendered as text on this side and never as markup. Capped here too: the registry caps
+ * it at 500, and a registry that stopped doing so would not get to decide how much of somebody
+ * else's prose lands in the admin.
+ *
+ * Optional, because an index published before changelogs existed has none — and because a
+ * package that never wrote one is not an error, only a card with nothing to say.
+ */
+const ChangesSchema = z.string().max(500)
+
 const DownloadSchema = z.object({
   version: z.string().regex(SEMVER_RE),
   url: PackageUrl,
   sha256: Sha256Schema,
   size: z.number().int().min(1),
+  changes: ChangesSchema.optional(),
 })
 export type Download = z.infer<typeof DownloadSchema>
 
@@ -86,6 +101,8 @@ export const IndexWidgetSchema = z.object({
   sha256: Sha256Schema,
   url: PackageUrl,
   publishedAt: z.iso.datetime(),
+  /** What this version changed; the one thing the person pressing Update is asking about. */
+  changes: ChangesSchema.optional(),
   previous: z.array(DownloadSchema).default([]),
 })
 export type IndexWidget = z.infer<typeof IndexWidgetSchema>
@@ -124,6 +141,7 @@ export const IndexThemeSchema = z.object({
   sha256: Sha256Schema,
   url: PackageUrl,
   publishedAt: z.iso.datetime(),
+  changes: ChangesSchema.optional(),
   previous: z.array(DownloadSchema).default([]),
 })
 export type IndexTheme = z.infer<typeof IndexThemeSchema>

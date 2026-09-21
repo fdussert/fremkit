@@ -39,7 +39,7 @@ function widget(): MarketplaceWidget {
     publishedAt: '2026-09-19T08:00:00.000Z',
     installed: false, installedVersion: null, updateAvailable: false,
     sdkTooNew: false, consentNeeded: true, newPermissions: NONE,
-    shadowsBuiltin: false, placedOn: [],
+    shadowsBuiltin: false, history: [], placedOn: [],
   }
 }
 

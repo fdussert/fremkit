@@ -129,6 +129,14 @@ export interface MarketplaceEntry extends IndexWidget {
   /** A built-in already owns this id, so it can never be installed. */
   shadowsBuiltin: boolean
   /**
+   * What each version documented, newest first, this one included.
+   *
+   * Built from `changes` and `previous[]` so a card can show more than the latest line: somebody
+   * two versions behind is being asked to accept both, and only seeing the newer one is how an
+   * update reads as smaller than it is. Empty for a package that documented nothing.
+   */
+  history: { version: string; changes: string }[]
+  /**
    * The pages this widget is placed on, by name — empty for almost every row.
    *
    * A dashboard can hold an instance of a widget that is not installed: the widget moved to the
@@ -153,6 +161,21 @@ export interface MarketplaceThemeEntry extends IndexTheme {
   shadowsBuiltin: boolean
   /** True while the screen is painted with it: removing it is refused until another is chosen. */
   inUse: boolean
+  /** What each version documented, newest first; see `MarketplaceEntry.history`. */
+  history: { version: string; changes: string }[]
+}
+
+/**
+ * Every version of an entry that said something, newest first.
+ *
+ * The current one then the carried releases, in the order the index lists them — the registry
+ * writes `previous[]` newest first, and the versions with nothing written down are left out
+ * rather than shown as blanks.
+ */
+function historyOf(entry: { version: string; changes?: string; previous: { version: string; changes?: string }[] }): { version: string; changes: string }[] {
+  return [{ version: entry.version, changes: entry.changes }, ...entry.previous]
+    .filter((r): r is { version: string; changes: string } => Boolean(r.changes))
+    .map((r) => ({ version: r.version, changes: r.changes }))
 }
 
 function themeEntryFor(theme: IndexTheme, config: Config, themes: ThemeCatalog): MarketplaceThemeEntry {
@@ -168,6 +191,7 @@ function themeEntryFor(theme: IndexTheme, config: Config, themes: ThemeCatalog):
     updateAvailable: installed && compareSemver(theme.version, record.version) > 0,
     shadowsBuiltin: local?.source === 'builtin',
     inUse: config.display.theme === theme.id,
+    history: historyOf(theme),
   }
 }
 
@@ -212,6 +236,7 @@ function entryFor(widget: IndexWidget, config: Config, catalog: WidgetCatalog): 
     consentNeeded: !isEmpty(added),
     newPermissions: added,
     shadowsBuiltin: local?.source === 'builtin',
+    history: historyOf(widget),
     placedOn: usedBy(config, widget.id),
   }
 }

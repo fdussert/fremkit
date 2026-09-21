@@ -250,6 +250,39 @@ describe('the development override', () => {
   })
 })
 
+describe('what a version says it changed', () => {
+  it('reads the entry the registry extracted', async () => {
+    const { registry } = make(JSON.stringify(index({ widgets: [widget({ changes: 'Added a thing.' })] })))
+    expect((await registry.index()).widgets[0].changes).toBe('Added a thing.')
+  })
+
+  it('reads an index published before changelogs existed', async () => {
+    // A package that never wrote one is not an error either — only a card with nothing to say.
+    const { registry } = make(JSON.stringify(index()))
+    expect((await registry.index()).widgets[0].changes).toBeUndefined()
+  })
+
+  it('keeps the entry each carried release went out with', async () => {
+    const withHistory = widget({
+      previous: [{ version: '0.9.0', url: `https://${HOST}/widgets/demo-0.9.0.zip`, sha256: HASH, size: 10, changes: 'The one before.' }],
+    })
+    const { registry } = make(JSON.stringify(index({ widgets: [withHistory] })))
+    expect((await registry.index()).widgets[0].previous[0].changes).toBe('The one before.')
+  })
+
+  it('refuses an entry longer than the registry is allowed to publish', async () => {
+    // A registry that stopped capping does not get to decide how much of somebody else's prose
+    // lands in the admin.
+    const long = index({ widgets: [widget({ changes: 'x'.repeat(501) })] })
+    await expect(make(JSON.stringify(long)).registry.index()).rejects.toThrow(RegistryError)
+  })
+
+  it('refuses one that is not a string at all', async () => {
+    const bad = index({ widgets: [widget({ changes: { fr: 'a', en: 'b' } })] })
+    await expect(make(JSON.stringify(bad)).registry.index()).rejects.toThrow(RegistryError)
+  })
+})
+
 describe('the category of an entry', () => {
   it('reads what the registry published', async () => {
     const { registry } = make(JSON.stringify(index({ widgets: [widget({ category: 'home' })] })))
