@@ -91,6 +91,7 @@ function reset(): void {
   m.state.kind = 'widget'
   m.state.themes = []
   m.state.installMissingOpen = false
+  m.state.leftover = null
   m.state.resultsAre = 'update'
   m.setView('available')
   // BaseSection remembers which shelves are open in localStorage, module scope, across mounts.
@@ -560,6 +561,42 @@ describe('themes in the panel', () => {
   it('says the registry has no theme rather than showing the widget message', async () => {
     const wrapper = await panel([])
     expect(wrapper.find('.note').text()).toMatch(/thème publié|theme published/)
+    wrapper.unmount()
+  })
+})
+
+describe('the prompt after a widget is removed', () => {
+  it('lists the connections it left, each unticked, and only deletes what is ticked', async () => {
+    serve(answer([]))
+    const wrapper = mount(MarketplacePanel, { attachTo: document.body })
+    await settle()
+    const m = useMarketplaceStore()
+    m.state.leftover = {
+      widgetId: 'homey-flows',
+      connections: [
+        { id: 'homey-x1', name: 'Homey Pro', remove: false },
+        { id: 'homey-x2', name: 'Homey du garage', remove: false },
+      ],
+    }
+    await wrapper.vm.$nextTick()
+
+    const rows = wrapper.findAll('.leftover')
+    expect(rows).toHaveLength(2)
+    expect(rows[0].text()).toContain('Homey Pro')
+    // Off by default: the widget is gone either way, and a key is not deleted by a decision
+    // about a widget.
+    expect(rows.every((r) => !(r.find('input').element as HTMLInputElement).checked)).toBe(true)
+
+    await rows[0].find('input').setValue(true)
+    expect(m.state.leftover?.connections[0].remove).toBe(true)
+    wrapper.unmount()
+  })
+
+  it('draws nothing when the removal left nothing behind', async () => {
+    serve(answer([]))
+    const wrapper = mount(MarketplacePanel, { attachTo: document.body })
+    await settle()
+    expect(wrapper.find('.leftover').exists()).toBe(false)
     wrapper.unmount()
   })
 })

@@ -78,10 +78,17 @@ export const api = {
     }
     return json<{ ok: true; id: string; version: string }>(res)
   },
+  /**
+   * Removes a widget or a theme.
+   *
+   * The answer names the connections the widget's declared type owned: they are *not* deleted —
+   * a credential the user entered is theirs to keep, and reinstalling finds it where it was —
+   * so the admin can offer to delete them, which is a second decision and a second request.
+   */
   uninstallWidget: (id: string, kind: 'widget' | 'theme' = 'widget') =>
     fetch('/api/marketplace/uninstall', {
       method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id, kind }),
-    }).then((r) => json<{ ok: true; id: string }>(r)),
+    }).then((r) => json<{ ok: true; id: string; connections?: { id: string; name: string }[] }>(r)),
   /**
    * Updates every waiting widget at once. Answers 200 with one result per widget even when some
    * failed, so the caller paints them per row rather than showing the first error.

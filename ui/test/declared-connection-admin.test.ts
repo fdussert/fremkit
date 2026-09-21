@@ -13,6 +13,7 @@ import ConnectionForm from '../src/admin/ConnectionForm.vue'
 import ConnectionsInspector from '../src/admin/ConnectionsInspector.vue'
 import { useConnectionsStore } from '../src/admin/connections'
 import { useAdminStore } from '../src/admin/store'
+import { useMarketplaceStore } from '../src/admin/marketplace'
 import type { ConnectionSummary, ConnectionTypeInfo, WidgetManifest } from '../src/shared/types'
 
 const DECL_TYPE: ConnectionTypeInfo = {
@@ -53,6 +54,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  useMarketplaceStore().state.leftover = null
   const s = useConnectionsStore()
   s.state.types = []
   s.state.connections = []
@@ -146,5 +148,77 @@ describe('the list of connections', () => {
     await wrapper.vm.$nextTick()
     expect(wrapper.find('form.form').exists()).toBe(false)
     wrapper.unmount()
+  })
+})
+
+describe('what an uninstall leaves behind', () => {
+  const answer = (connections: { id: string; name: string }[]) => ({
+    registry: 'r', generatedAt: null, widgets: [], themes: [], offline: false, sdk: 1, connections,
+  })
+
+  /** A server that removes the widget and names the connections its type owned. */
+  function serveUninstall(connections: { id: string; name: string }[]): { deleted: string[] } {
+    const deleted: string[] = []
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === '/api/marketplace/uninstall') {
+        return new Response(JSON.stringify({ ok: true, id: 'homey-flows', connections }),
+          { headers: { 'content-type': 'application/json' } })
+      }
+      if (url.startsWith('/api/connections/') && init?.method === 'DELETE') {
+        deleted.push(url.slice('/api/connections/'.length))
+        return new Response(null, { status: 204 })
+      }
+      const body = url === '/api/marketplace' ? answer([])
+        : url === '/api/widgets' ? { widgets: {}, errors: [], sources: {}, asks: {} }
+        : url.startsWith('/api/themes') ? { themes: {}, errors: [] }
+        : url === '/api/connections' ? [] : url === '/api/connections/types' ? [] : {}
+      return new Response(JSON.stringify(body), { headers: { 'content-type': 'application/json' } })
+    }))
+    return { deleted }
+  }
+
+  async function settle(): Promise<void> {
+    for (let i = 0; i < 6; i++) await new Promise<void>((r) => setTimeout(r, 0))
+  }
+
+  it('asks about them, and deletes only what was ticked', async () => {
+    const { deleted } = serveUninstall([
+      { id: 'homey-x1', name: 'Homey Pro' },
+      { id: 'homey-x2', name: 'Homey du garage' },
+    ])
+    const m = useMarketplaceStore()
+    await m.uninstall('homey-flows')
+    await settle()
+
+    expect(m.state.leftover?.connections.map((c) => c.name)).toEqual(['Homey Pro', 'Homey du garage'])
+    // Off by default: the widget is gone either way, and a credential is not deleted by a
+    // decision about a widget.
+    expect(m.state.leftover?.connections.every((c) => !c.remove)).toBe(true)
+
+    m.state.leftover!.connections[1].remove = true
+    await m.applyLeftover()
+    await settle()
+    expect(deleted).toEqual(['homey-x2'])
+    expect(m.state.leftover).toBeNull()
+  })
+
+  it('keeps every one when the prompt is dismissed', async () => {
+    const { deleted } = serveUninstall([{ id: 'homey-x1', name: 'Homey Pro' }])
+    const m = useMarketplaceStore()
+    await m.uninstall('homey-flows')
+    await settle()
+    m.state.leftover!.connections[0].remove = true
+    m.dismissLeftover()
+    await settle()
+    expect(deleted).toEqual([])
+    expect(m.state.leftover).toBeNull()
+  })
+
+  it('asks nothing when the widget owned no connection', async () => {
+    serveUninstall([])
+    const m = useMarketplaceStore()
+    await m.uninstall('clock')
+    await settle()
+    expect(m.state.leftover).toBeNull()
   })
 })

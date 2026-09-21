@@ -16,6 +16,7 @@ import BaseButton from '../shared/ui/BaseButton.vue'
 import BaseIcon from '../shared/ui/BaseIcon.vue'
 import BaseInput from '../shared/ui/BaseInput.vue'
 import BaseSection from '../shared/ui/BaseSection.vue'
+import BaseModal from '../shared/ui/BaseModal.vue'
 import BaseSegmented from '../shared/ui/BaseSegmented.vue'
 import ConsentDialog from './ConsentDialog.vue'
 import MarketplaceRow from './MarketplaceRow.vue'
@@ -139,6 +140,21 @@ const empty = computed(() => {
       </div>
     </template>
 
+    <!-- Asked after the removal, not before it: the widget is gone either way, and a
+         credential is not deleted by a decision about a widget. -->
+    <BaseModal v-if="store.state.leftover" :title="t('admin.market.leftoverTitle')" :width="480"
+      :close-label="t('admin.market.leftoverKeep')" @close="store.dismissLeftover()">
+      <p class="lead">{{ t('admin.market.leftoverLead') }}</p>
+      <label v-for="c in store.state.leftover.connections" :key="c.id" class="leftover">
+        <input v-model="c.remove" type="checkbox" />
+        <span>{{ t('admin.market.leftoverDelete', { name: c.name }) }}</span>
+      </label>
+      <div class="actions">
+        <BaseButton variant="secondary" @click="store.dismissLeftover()">{{ t('admin.market.leftoverKeep') }}</BaseButton>
+        <BaseButton variant="primary" @click="store.applyLeftover()">{{ t('common.apply') }}</BaseButton>
+      </div>
+    </BaseModal>
+
     <ConsentDialog v-if="store.state.consent" :prompt="store.state.consent"
       @accept="store.accept()" @cancel="store.cancel()" />
     <UpdateAllDialog v-else-if="store.state.updateAllOpen" :entries="store.updateAllPrompt.value"
@@ -161,6 +177,10 @@ const empty = computed(() => {
   border: 1px solid var(--accent); background: var(--surface-2); }
 .placed span { flex: 1; min-width: 0; }
 .list { display: flex; flex-direction: column; gap: var(--space-2); }
+.lead { margin: 0 0 var(--space-3); font-size: var(--fs-sm); }
+.leftover { display: flex; align-items: center; gap: var(--space-2); font-size: var(--fs-sm);
+  padding: var(--space-1) 0; cursor: pointer; }
+.actions { display: flex; justify-content: flex-end; gap: var(--space-2); margin-top: var(--space-4); }
 /* The row's own look lives in MarketplaceRow; `note` stays because the panel prints its own. */
 .note { margin: 0; font-size: var(--fs-xs); color: var(--text-dim); }
 .note.warn { color: var(--danger); }

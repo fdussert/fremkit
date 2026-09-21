@@ -14,13 +14,14 @@ import { ConsentRequiredError, api as realApi } from '../shared/api'
 import { pick, t } from '../shared/i18n'
 import { useAdminStore } from './store'
 import { useThemes } from '../shared/theme'
+import { useConnectionsStore } from './connections'
 import type { MarketplaceResponse, MarketplaceTheme, MarketplaceWidget, WidgetPermissionSet } from '../shared/types'
 
 export interface MarketplaceApi {
   getMarketplace(): Promise<MarketplaceResponse>
   refreshMarketplace(): Promise<MarketplaceResponse>
   installWidget(id: string, opts?: { consent?: WidgetPermissionSet | false; version?: string; update?: boolean; kind?: MarketKind }): Promise<{ ok: true; id: string; version: string }>
-  uninstallWidget(id: string, kind?: MarketKind): Promise<{ ok: true; id: string }>
+  uninstallWidget(id: string, kind?: MarketKind): Promise<{ ok: true; id: string; connections?: { id: string; name: string }[] }>
   updateAllWidgets(consent: Record<string, WidgetPermissionSet | false>): Promise<{ results: ({ id: string } & UpdateResult)[] }>
   installMissingWidgets(consent: Record<string, WidgetPermissionSet | false>): Promise<{ results: ({ id: string } & UpdateResult)[] }>
 }
@@ -119,6 +120,14 @@ export interface MarketplaceState {
   updateAllOpen: boolean
   /** The "install the missing ones" dialog is open. Same dialog, a different series behind it. */
   installMissingOpen: boolean
+  /**
+   * What an uninstall left behind: the connections its declared type owned, and whether the
+   * user ticked each one for deletion.
+   *
+   * Asked *after* the removal rather than before it, because it is a different question — the
+   * widget is gone either way, and a credential is not deleted by a decision about a widget.
+   */
+  leftover: { widgetId: string; connections: { id: string; name: string; remove: boolean }[] } | null
 }
 
 /** What one widget's update came to. `newPermissions` means it was never attempted. */
@@ -169,6 +178,9 @@ export interface MarketplaceStore {
   accept(): Promise<void>
   cancel(): void
   uninstall(id: string): Promise<void>
+  /** Deletes the connections ticked in the leftover prompt, and closes it. */
+  applyLeftover(): Promise<void>
+  dismissLeftover(): void
   /** Installs or updates a theme. No dialog: there is nothing in a file of tokens to consent to. */
   installTheme(theme: MarketplaceTheme, update?: boolean): Promise<void>
   uninstallTheme(id: string): Promise<void>
@@ -176,6 +188,8 @@ export interface MarketplaceStore {
 
 export interface MarketplaceDeps {
   api?: MarketplaceApi
+  /** How a leftover connection is deleted. The connections store owns that call, not this one. */
+  deleteConnection?: (id: string) => Promise<void>
   /** Called after anything that changes what is installed, so the library picks it up. */
   onChanged?: () => void | Promise<void>
 }
@@ -205,7 +219,7 @@ export function createMarketplaceStore(deps: MarketplaceDeps = {}): MarketplaceS
     widgets: [], themes: [], registry: null, loaded: false, loading: false, offline: false,
     busy: null, error: '', search: '', view: 'available', kind: 'widget',
     consent: null, results: {}, resultsAre: 'update', updatingAll: false, updateAllOpen: false,
-    installMissingOpen: false,
+    installMissingOpen: false, leftover: null,
   })
 
   /** Placed on a screen, listed by the registry, and not here. */
@@ -456,8 +470,30 @@ export function createMarketplaceStore(deps: MarketplaceDeps = {}): MarketplaceS
     },
 
     async uninstall(id: string): Promise<void> {
-      await run(id, () => api.uninstallWidget(id))
+      let left: { id: string; name: string }[] = []
+      await run(id, async () => {
+        const answer = await api.uninstallWidget(id)
+        left = answer.connections ?? []
+      })
+      // Only when the removal actually happened, and only when there is something to ask about.
+      if (!state.error && left.length) {
+        state.leftover = { widgetId: id, connections: left.map((c) => ({ ...c, remove: false })) }
+      }
     },
+
+    async applyLeftover(): Promise<void> {
+      const pending = state.leftover
+      state.leftover = null
+      if (!pending) return
+      for (const connection of pending.connections.filter((c) => c.remove)) {
+        // One at a time, and a failure on one does not keep the others. The banner in
+        // Connections says why if the server refused.
+        await deps.deleteConnection?.(connection.id).catch(() => { /* reported there */ })
+      }
+      await deps.onChanged?.()
+    },
+
+    dismissLeftover(): void { state.leftover = null },
 
     /**
      * Installs or updates a theme, straight away.
@@ -497,7 +533,11 @@ export function useMarketplaceStore(): MarketplaceStore {
       onChanged: async () => {
         await useAdminStore().rescan()
         await useThemes().rescan()
+        // The list of connections changes when a leftover is deleted, and the types change when
+        // a declared one goes with its widget.
+        await useConnectionsStore().load().catch(() => { /* its own banner says why */ })
       },
+      deleteConnection: (id) => useConnectionsStore().remove(id),
     })
   }
   return singleton
