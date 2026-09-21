@@ -74,6 +74,15 @@ describe('when a sound is played', () => {
   })
 })
 
+describe('the manifest and the server agree on the sounds', () => {
+  it('offers exactly the sounds the server will play, plus none', async () => {
+    const { readFile } = await import('node:fs/promises')
+    const manifest = JSON.parse(await readFile(new URL('../../widgets/claude-sessions/manifest.json', import.meta.url), 'utf8'))
+    const options: string[] = manifest.settingsSchema.sound.options.map((o: { value: string } | string) => typeof o === 'string' ? o : o.value)
+    expect(options.filter((o) => o !== 'none').sort()).toEqual([...SOUNDS].sort())
+  })
+})
+
 describe('what the tiles asked for', () => {
   const ask = { hook_event_name: 'PreToolUse', tool_name: 'AskUserQuestion', tool_input: { questions: [{ question: 'Which one?' }] } }
 

@@ -153,7 +153,9 @@
     } else {
       qEl.hidden = true
     }
-    var line = lineFor(s, now), lineEl = card.querySelector('.line')
+    // A refusal to go to the window outlives the next render, which would otherwise erase it
+    // within the second.
+    var line = (failedUntil[s.id] > now) ? Fremkit.t(L.noWindow) : lineFor(s, now), lineEl = card.querySelector('.line')
     lineEl.textContent = line; lineEl.hidden = !line
     card.querySelector('.meta').innerHTML = metaFor(s, now)
     var footHtml = footFor(s), footEl = card.querySelector('.foot')
@@ -234,15 +236,17 @@
    * to ask for it at all. A refusal is shown on the card for a few seconds rather than swallowed
    * — "nothing happened" is exactly the state this whole thing exists to get rid of.
    */
+  var failedUntil = {}
   function goTo(id, card) {
+    function refused() {
+      failedUntil[id] = Date.now() + 4000
+      var line = card.querySelector('.line')
+      line.textContent = Fremkit.t(L.noWindow); line.hidden = false
+    }
     Fremkit.sendCommand('claude-sessions', 'focus', { sessionId: id }).then(function (r) {
       if (r && r.ok) return
-      var line = card.querySelector('.line')
-      line.textContent = Fremkit.t(L.noWindow); line.hidden = false
-    }, function () {
-      var line = card.querySelector('.line')
-      line.textContent = Fremkit.t(L.noWindow); line.hidden = false
-    })
+      refused()
+    }, refused)
   }
   var maxShown = 0, onlyWaiting = false, hideDone = true, groupByClient = false
   function applySettings(s) {
