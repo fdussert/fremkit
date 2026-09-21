@@ -20,6 +20,8 @@ Anything that changes what the dashboard, the admin or a widget can do gets a li
 - **Claude sessions can chime.** One of the macOS system sounds when a session starts waiting,
   for a question or for any prompt, played by Fremkit rather than by the widget so you hear it
   when the dashboard is not in front of you. At most one every five seconds.
+- A ▶ beside the sound setting plays the chosen sound once, so you pick it by ear. (Any
+  widget can offer the same on an `enum` setting: `preview` in its manifest names the command.)
 - Three more settings on the Claude sessions widget: show only what is waiting, hide finished
   sessions after 30 minutes (on by default), and group the board by application.
 

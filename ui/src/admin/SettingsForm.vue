@@ -52,6 +52,16 @@ function onNumber(k: string, value: string | number): void {
 }
 
 const { t } = useI18n()
+
+/** The one preview in flight, by field key, so the ▶ cannot be hammered while a sound plays. */
+const previewing = ref<string | null>(null)
+async function preview(k: string, f: SettingField): Promise<void> {
+  if (!f.preview) return
+  previewing.value = k
+  try { await useSocket().command(f.preview.channel, f.preview.command, { value: val(k) }) }
+  catch { /* the provider said no, or the socket is down: nothing to show but the silence */ }
+  finally { previewing.value = null }
+}
 const admin = useAdminStore()
 const connections = useConnectionsStore()
 const hasConnectionField = computed(() => Object.values(fields.value)
@@ -517,10 +527,17 @@ const itemText = (item: Record<string, unknown>, key: string, field: ListItemFie
         @update:model-value="onNumber(k, $event)" />
       <input v-else-if="f.type === 'color'" class="color" type="color" :value="String(val(k) ?? '#000000')"
         @change="emit('change', k, ($event.target as HTMLInputElement).value)" />
-      <select v-else-if="f.type === 'enum'" :value="String(val(k) ?? '')"
-        @change="emit('change', k, ($event.target as HTMLSelectElement).value)">
-        <option v-for="o in f.options" :key="optionValue(o)" :value="optionValue(o)">{{ pick(optionLabel(o)) }}</option>
-      </select>
+      <div v-else-if="f.type === 'enum'" class="enumRow">
+        <select :value="String(val(k) ?? '')"
+          @change="emit('change', k, ($event.target as HTMLSelectElement).value)">
+          <option v-for="o in f.options" :key="optionValue(o)" :value="optionValue(o)">{{ pick(optionLabel(o)) }}</option>
+        </select>
+        <!-- A preview sends the chosen value to the provider, which decides what showing it means. -->
+        <BaseButton v-if="f.preview" variant="icon" :title="t('admin.settings.preview')" :disabled="previewing === k"
+          @click="preview(k, f)">
+          <BaseIcon name="play" :size="16" />
+        </BaseButton>
+      </div>
       <BaseInput v-else-if="f.type === 'timezone'" lazy :list="TIMEZONE_LIST_ID" :invalid="badTimezone(val(k))"
         :title="badTimezone(val(k)) ? t('admin.settings.timezone.unknown') : undefined"
         :model-value="String(val(k) ?? '')" @update:model-value="emit('change', k, String($event).trim())" />
@@ -546,6 +563,8 @@ select, .color { width: 100%; box-sizing: border-box; font: inherit; font-size: 
 .color { padding: 2px; height: 32px; }
 /* Mirrors BaseField, which cannot be used where the slot holds interactive labels of its own. */
 .field { display: flex; flex-direction: column; gap: var(--space-1); margin-bottom: var(--space-3); }
+.enumRow { display: flex; align-items: center; gap: var(--space-2); }
+.enumRow > select { flex: 1; min-width: 0; }
 .lbl { display: flex; flex-direction: column; gap: var(--space-1);
   font-size: var(--fs-xs); color: var(--text-muted); text-transform: uppercase; letter-spacing: .06em; }
 .lbl select { text-transform: none; letter-spacing: normal; }

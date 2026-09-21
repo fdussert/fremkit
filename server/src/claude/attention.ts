@@ -27,6 +27,20 @@ export const SOUNDS = [
 ] as const
 export type SoundName = typeof SOUNDS[number]
 
+export function isSoundName(v: unknown): v is SoundName {
+  return typeof v === 'string' && (SOUNDS as readonly string[]).includes(v)
+}
+
+/**
+ * Plays one of the sounds, now, whatever the tiles say — the admin's preview button. The name
+ * has to come out of the list; anything else is refused before a path exists.
+ */
+export async function playSound(name: unknown, runner: Runner = run): Promise<boolean> {
+  if (!isSoundName(name)) return false
+  try { await runner('/usr/bin/afplay', [`/System/Library/Sounds/${name}.aiff`]) } catch { return false }
+  return true
+}
+
 /** What the sound is for: a question the assistant asked, or that and a permission prompt. */
 export type SoundOn = 'question' | 'attention'
 
@@ -89,6 +103,6 @@ export function createAttention(opts: AttentionOptions): (event: AttentionEvent)
     if (t - lastAt < gap) return
     lastAt = t
     // The name came out of the closed list above, so the path cannot be anything else.
-    void runner('/usr/bin/afplay', [`/System/Library/Sounds/${pick.sound}.aiff`]).catch(() => { /* muted, missing, busy */ })
+    void playSound(pick.sound, runner)
   }
 }

@@ -11,6 +11,7 @@
     "hideDone": { "type": "boolean", "label": { "fr": "Masquer les sessions terminées après 30 min", "en": "Hide finished sessions after 30 min" }, "default": true },
     "groupByClient": { "type": "boolean", "label": { "fr": "Grouper par application", "en": "Group by application" }, "default": false },
     "sound": { "type": "enum", "label": { "fr": "Son quand une session attend", "en": "Sound when a session waits" }, "default": "none",
+      "preview": { "channel": "claude-sessions", "command": "preview" },
       "options": [
         { "value": "none", "label": { "fr": "Aucun", "en": "None" } },
         { "value": "Basso", "label": { "fr": "Basso", "en": "Basso" } },

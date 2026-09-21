@@ -252,6 +252,7 @@ export const en: Record<string, string> = {
   'admin.settings.list.add': 'Add',
   'admin.settings.list.empty': 'Nothing yet.',
   'admin.settings.timezone.unknown': 'Unknown time zone',
+  'admin.settings.preview': 'Preview',
 
   'admin.store.degraded': 'Cannot read the configuration on disk: fix data/fremkit.json then restart the server.',
   'admin.store.lastPage': 'At least one page is required',

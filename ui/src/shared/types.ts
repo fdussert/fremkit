@@ -149,6 +149,8 @@ export interface SettingField {
   scope?: SettingScope
   default?: unknown
   options?: SettingOption[]
+  /** `enum` only: a provider command the admin sends with the chosen value, as a preview. */
+  preview?: { channel: string; command: string }
   /**
    * For `connection` and `connections` fields: which connection type the admin offers.
    * `connection` stores one id, `connections` an array of them.

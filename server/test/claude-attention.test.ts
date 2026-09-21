@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { ClaudeTracker } from '../src/claude/tracker.js'
-import { SOUNDS, createAttention } from '../src/claude/attention.js'
+import { SOUNDS, createAttention, playSound } from '../src/claude/attention.js'
 import type { InstanceView } from '../src/config/instances.js'
 
 /**
@@ -71,6 +71,19 @@ describe('when a sound is played', () => {
     tracker.handle(ev({ hook_event_name: 'UserPromptSubmit' }))
     tracker.handle(ev())
     expect(h.played).toHaveLength(2)
+  })
+})
+
+describe('playSound, the preview', () => {
+  it('plays a listed sound and refuses anything else before a path exists', async () => {
+    const calls: string[][] = []
+    const runner = async (cmd: string, args: string[]) => { calls.push([cmd, ...args]) }
+    expect(await playSound('Glass', runner)).toBe(true)
+    expect(calls).toEqual([['/usr/bin/afplay', '/System/Library/Sounds/Glass.aiff']])
+    for (const bad of ['../../etc/passwd', 'Glass.aiff', 'glass', '', undefined, 42]) {
+      expect(await playSound(bad, runner), String(bad)).toBe(false)
+    }
+    expect(calls).toHaveLength(1)
   })
 })
 

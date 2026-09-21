@@ -5,6 +5,7 @@ import { listClaudeProcesses, type ClaudeProcess } from './processes.js'
 import { z } from 'zod'
 import { tr } from '../i18n.js'
 import { focusClient, type Runner as FocusRunner } from './focus.js'
+import { playSound, type Runner } from './attention.js'
 
 export { createClaudeAccountProvider } from './account.js'
 
@@ -15,6 +16,8 @@ export interface ClaudeSessionsProviderOptions {
   now?: () => number
   /** Injectable for tests: what actually runs `osascript`, `open` and the Orca CLI. */
   focusRunner?: FocusRunner
+  /** Injected by the tests; production runs `afplay`. */
+  soundRunner?: Runner
 }
 
 /** A session id is a non-empty string; nothing else can be dismissed. */
@@ -58,6 +61,18 @@ export function createClaudeSessionsProvider(tracker: ClaudeTracker, opts: Claud
         // not a failure of the command.
         if (!session) return { ok: false, reason: 'unknownSession' }
         return await focusClient(tracker.clientOf(parsed.data.sessionId), session.cwd, opts.focusRunner)
+      },
+      /**
+       * The admin's ▶ beside the sound setting: play the chosen sound once, now. Local callers
+       * only — it runs a program — and the value has to be one of the listed sounds, or `none`,
+       * which plays nothing and answers ok.
+       */
+      preview: async (payload, ctx) => {
+        if (!ctx?.loopback) return { ok: false, error: tr(undefined, 'provider.localOnly') }
+        const value = (payload as { value?: unknown } | undefined)?.value
+        if (value === 'none') return { ok: true }
+        const played = await playSound(value, opts.soundRunner)
+        return played ? { ok: true } : { ok: false, reason: 'unknownSound' }
       },
       dismiss: async (payload) => {
         const parsed = DismissPayloadSchema.safeParse(payload)

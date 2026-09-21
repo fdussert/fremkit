@@ -93,6 +93,12 @@ export const SettingFieldSchema = z.object({
   default: z.unknown().optional(),
   options: z.array(SettingOptionSchema).optional(),
   /**
+   * `enum` fields only: a command the admin may send with the chosen value, to hear or see it
+   * before saving — a sound, say. The channel has to be one the widget may command, and the
+   * provider decides what the command does with the value; the admin only offers a ▶ button.
+   */
+  preview: z.object({ channel: z.lazy(() => ChannelSchema), command: z.string().regex(/^[a-zA-Z][a-zA-Z0-9_-]{0,40}$/) }).optional(),
+  /**
    * `connection` and `connections` fields only: which connection type the admin offers.
    * `connection` stores one id, `connections` an array of them.
    */

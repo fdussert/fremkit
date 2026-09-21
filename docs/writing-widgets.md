@@ -121,6 +121,11 @@ language changes.
           "default": "normal" }
 ```
 
+An `enum` may carry a `preview`: `{ "channel": "<one of the widget's commands>", "command":
+"<name>" }`. The admin then shows a ▶ beside the select and, when pressed, sends that command
+with `{ value: <the chosen value> }` — the provider decides what previewing means (the Claude
+sessions widget plays the sound). The provider validates the value like any command payload.
+
 **`timezone`** — a searchable text field backed by the browser's IANA zone list, red while the
 typed zone is not one of them.
 
