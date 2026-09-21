@@ -1,3 +1,4 @@
+import { isDeclaredType, parseDeclaredHost } from './declared.js'
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { CONNECTION_ID_RE, type Config, type Connection, type Locale } from '../config/schema.js'
@@ -16,6 +17,18 @@ import { tr } from '../i18n.js'
 const RESERVED_IDS = new Set(['types'])
 
 const usableId = (id: string): boolean => CONNECTION_ID_RE.test(id) && !RESERVED_IDS.has(id)
+
+/**
+ * Whether this save must be refused because its address is not an address.
+ *
+ * Only for a declared type: a coded one's `host` means whatever its own code decides, and some
+ * have none at all. Its own function so the rule can be tested directly — a declared type only
+ * exists while a widget that declares it is installed, which a connections test has no way to
+ * arrange.
+ */
+export function rejectsHost(type: string, fields: Record<string, string> | undefined): boolean {
+  return isDeclaredType(type) && parseDeclaredHost(fields?.host ?? '') === null
+}
 
 const BodySchema = z.object({
   type: z.string().min(1),
@@ -138,6 +151,13 @@ export async function connectionRoutes(
 
     const type = types.get(parsed.data.type)
     if (!type) return reply.code(400).send({ errors: [tr(locale(), 'connections.unknownType', { type: parsed.data.type })] })
+
+    // A declared type's `host` is where the credential is sent, and the widget wrote the label
+    // beside the box. Refused on the way in, so a string that is not a host never reaches the
+    // config, the Test button or the proxy.
+    if (rejectsHost(parsed.data.type, parsed.data.fields)) {
+      return reply.code(409).send({ errors: [tr(locale(), 'connections.badHost')] })
+    }
 
     const existing = store.get().connections.find((c) => c.id === id)
     // Retyping an id in place would orphan the old type's secrets under the same id; the user

@@ -85,6 +85,52 @@ export function basicUserField(decl: ConnectionDecl): string | undefined {
 }
 
 /**
+ * What the user typed into the `host` field, once it is certain to be only a host.
+ *
+ * `hostname` is the name the private-address rules judge; `authority` is what goes into the URL,
+ * with the port and the brackets an IPv6 address needs.
+ */
+export interface DeclaredHost { hostname: string; authority: string }
+
+/**
+ * Parses the `host` field, or refuses it.
+ *
+ * This is the one input on this whole path that the *user* types and the *widget* writes the
+ * label, the placeholder and the hint for. "Paste this address" is therefore the attack, and the
+ * string had better be a host and nothing else — the previous hand-rolled split let all of these
+ * through:
+ *
+ * - `10.0.0.1:x@evil.example` — read as private, sent to `evil.example`, key in the clear;
+ * - `user:pw@evil.example` — userinfo carrying whatever the widget asked for;
+ * - `10.0.0.1/../x` — a path prefix in front of the allow-listed path, so the matcher and the
+ *   service disagree about what was asked for;
+ * - `10.0.0.1?a=b` — the declared path lands in the query string.
+ *
+ * So: parse it as a URL, and refuse it unless every other component is empty *and* the host the
+ * parser produces is the string that was typed. That second half is what makes this safe rather
+ * than clever — anything the parser dropped, moved or normalised away means the string was not
+ * a host, and there is no need to reason about which of those it was.
+ */
+export function parseDeclaredHost(raw: string): DeclaredHost | null {
+  const trimmed = (raw ?? '').trim()
+  if (!trimmed || trimmed.length > 300) return null
+  // A URL parser accepts a surprising amount of whitespace by stripping it; refused up front so
+  // the comparison below is about shape rather than about what got trimmed.
+  if (/[\s\u0000-\u001f\u007f]/.test(trimmed)) return null
+
+  let url: URL
+  try { url = new URL(`https://${trimmed}`) } catch { return null }
+  if (url.username !== '' || url.password !== '') return null
+  if (url.pathname !== '/' || url.search !== '' || url.hash !== '') return null
+  // The whole of the check: what the parser ended up with has to be what was typed. A trailing
+  // slash, a default port, an escaped character, a second `@` — anything at all — fails here.
+  if (url.host !== trimmed.toLowerCase()) return null
+  if (!url.hostname) return null
+
+  return { hostname: url.hostname.replace(/^\[(.*)\]$/, '$1'), authority: url.host }
+}
+
+/**
  * The scheme a request to this host actually uses.
  *
  * `http` is declared for LAN devices and is refused anywhere else: a declaration that asked for
@@ -92,21 +138,14 @@ export function basicUserField(decl: ConnectionDecl): string | undefined {
  * whatever the author intended. A private host is the one case where there is no certificate to
  * be had, so it is the one case where the exception exists.
  */
-export function schemeFor(decl: ConnectionDecl, host: string): 'https' | 'http' {
+export function schemeFor(decl: ConnectionDecl, host: DeclaredHost): 'https' | 'http' {
   if (decl.scheme !== 'http') return 'https'
-  return isPrivateLiteral(hostname(host)) ? 'http' : 'https'
-}
-
-/** The host without a port, which is what the private-address rules are about. */
-export function hostname(host: string): string {
-  const trimmed = host.trim().replace(/^\[(.+)\]$/, '$1')
-  if (trimmed.includes(':') && !trimmed.includes('::')) return trimmed.split(':')[0]
-  return trimmed
+  return isPrivateLiteral(host.hostname) ? 'http' : 'https'
 }
 
 /** `scheme://host` with nothing else: the path is appended by the caller, already checked. */
-export function originOf(decl: ConnectionDecl, host: string): string {
-  return `${schemeFor(decl, host)}://${host.trim()}`
+export function originOf(decl: ConnectionDecl, host: DeclaredHost): string {
+  return `${schemeFor(decl, host)}://${host.authority}`
 }
 
 /**
@@ -168,8 +207,12 @@ async function runTest(
   deps: DeclaredTypeDeps,
   locale?: Locale,
 ): Promise<TestResult> {
-  const host = (fields.host ?? '').trim()
-  if (!host) return { ok: false, error: tr(locale, 'declared.noHost') }
+  const raw = (fields.host ?? '').trim()
+  if (!raw) return { ok: false, error: tr(locale, 'declared.noHost') }
+  // Refused before the declaration's `test` is even looked at: a string that is not a host is
+  // wrong whether or not there is anything to test.
+  const host = parseDeclaredHost(raw)
+  if (!host) return { ok: false, error: tr(locale, 'declared.badHost') }
   if (!decl.test) return { ok: true, detail: tr(locale, 'declared.noTest') }
 
   const doFetch = deps.fetch ?? fetch

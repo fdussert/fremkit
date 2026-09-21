@@ -8,7 +8,7 @@ import { grantedFor } from '../marketplace/consent.js'
 import { resolvesToPrivate } from '../net/private.js'
 import { isCrossSiteFetch } from '../http/guard.js'
 import { findInstance } from '../config/instances.js'
-import { authFor, declaredTypeId, isDeclaredType, originOf, secretField, slugText } from '../connections/declared.js'
+import { authFor, declaredTypeId, isDeclaredType, originOf, parseDeclaredHost, secretField, slugText } from '../connections/declared.js'
 import { ConnCache, allowedRequest, checkHeaders, checkPath } from './conn.js'
 import { tr } from '../i18n.js'
 import { WIDGET_ID_RE, type Config } from '../config/schema.js'
@@ -211,8 +211,10 @@ export async function proxyRoutes(app: FastifyInstance, opts: ProxyOptions): Pro
       return reply.code(403).send({ error: tr(undefined, 'proxy.requestNotDeclared', { method, path }) })
     }
 
-    const host = (connection.fields.host ?? '').trim()
-    if (!host) return reply.code(409).send({ error: tr(undefined, 'proxy.unconfigured') })
+    // The one field the user types and the widget writes the label for. Not a host means no
+    // request at all: see `parseDeclaredHost`.
+    const host = parseDeclaredHost(connection.fields.host ?? '')
+    if (!host) return reply.code(409).send({ error: tr(undefined, 'proxy.badHost') })
 
     const cacheMs = method === 'GET' ? (allowed.cacheMs ?? 0) : 0
     if (cacheMs > 0) {

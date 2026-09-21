@@ -8,10 +8,11 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
   authFor, declaredBy, declaredFromCatalog, declaredType, declaredTypeId,
-  isDeclaredType, originOf, schemeFor, slugText, syncDeclaredTypes,
+  isDeclaredType, originOf, parseDeclaredHost, schemeFor, slugText, syncDeclaredTypes,
 } from '../src/connections/declared.js'
 import { ConnectionDeclSchema, type ConnectionDecl } from '../src/widgets/manifest.js'
 import { ConnectionTypeRegistry } from '../src/connections/registry.js'
+import { rejectsHost } from '../src/connections/routes.js'
 import type { ConnectionType } from '../src/connections/types.js'
 
 const decl = (over: Record<string, unknown> = {}): ConnectionDecl => ConnectionDeclSchema.parse({
@@ -95,25 +96,68 @@ describe('where the secret goes', () => {
   })
 })
 
+describe('the host field, which is the one string the user types', () => {
+  it('takes a name, an address, a port and an IPv6 literal', () => {
+    expect(parseDeclaredHost('192.168.1.10')).toEqual({ hostname: '192.168.1.10', authority: '192.168.1.10' })
+    expect(parseDeclaredHost('192.168.1.10:9123')).toEqual({ hostname: '192.168.1.10', authority: '192.168.1.10:9123' })
+    expect(parseDeclaredHost('nas.local:5001')).toEqual({ hostname: 'nas.local', authority: 'nas.local:5001' })
+    // Brackets are how an IPv6 address carries a port; the hostname the rules judge has none.
+    expect(parseDeclaredHost('[::1]:8080')).toEqual({ hostname: '::1', authority: '[::1]:8080' })
+    // Accepted and lower-cased, which is what a URL does with a host anyway.
+    expect(parseDeclaredHost('EXAMPLE.COM')).toEqual({ hostname: 'example.com', authority: 'example.com' })
+  })
+
+  it('refuses everything that is not only a host', () => {
+    // Each of these got through the hand-rolled split this replaced. The first is the whole
+    // reason it matters: read as private, so `http` is honoured, and sent to `evil.example`
+    // with the user's key in the clear.
+    for (const raw of [
+      '10.0.0.1:x@evil.example',
+      'user:pw@evil.example',
+      '10.0.0.1/../x',
+      '10.0.0.1?a=b',
+      '10.0.0.1#f',
+      'a b',
+      'a\r\nb',
+      'evil.example/',
+      'http://evil.example',
+      '',
+      '  ',
+      'x'.repeat(400),
+    ]) {
+      expect(parseDeclaredHost(raw), JSON.stringify(raw)).toBeNull()
+    }
+  })
+})
+
 describe('the scheme a request really uses', () => {
+  const at = (raw: string) => parseDeclaredHost(raw)!
+
   it('is https unless the declaration asked for http', () => {
-    expect(schemeFor(decl(), '192.168.1.10')).toBe('https')
-    expect(schemeFor(decl({ scheme: 'http' }), '192.168.1.10')).toBe('http')
+    expect(schemeFor(decl(), at('192.168.1.10'))).toBe('https')
+    expect(schemeFor(decl({ scheme: 'http' }), at('192.168.1.10'))).toBe('http')
   })
 
   it('refuses to send a key over plain http to a public host, whatever the author declared', () => {
     // The exception exists because a LAN device has no certificate to be had. It is not a way
     // to take somebody's API key off TLS on the open internet.
-    expect(schemeFor(decl({ scheme: 'http' }), 'api.example.com')).toBe('https')
-    expect(schemeFor(decl({ scheme: 'http' }), '203.0.113.5')).toBe('https')
+    expect(schemeFor(decl({ scheme: 'http' }), at('api.example.com'))).toBe('https')
+    expect(schemeFor(decl({ scheme: 'http' }), at('203.0.113.5'))).toBe('https')
     for (const host of ['192.168.1.10', '10.0.0.4', '127.0.0.1', '[::1]', '172.16.0.1']) {
-      expect(schemeFor(decl({ scheme: 'http' }), host), host).toBe('http')
+      expect(schemeFor(decl({ scheme: 'http' }), at(host)), host).toBe('http')
     }
   })
 
-  it('keeps the port and strips it only to judge the address', () => {
-    expect(originOf(decl({ scheme: 'http' }), '192.168.1.10:9123')).toBe('http://192.168.1.10:9123')
-    expect(originOf(decl(), 'api.example.com')).toBe('https://api.example.com')
+  it('judges the address the parser produced, not the string that was typed', () => {
+    // `10.0.0.1:x@evil.example` used to read as `10.0.0.1` — private, so plain http — while the
+    // request went to `evil.example`. There is no such string to judge any more.
+    expect(parseDeclaredHost('10.0.0.1:x@evil.example')).toBeNull()
+  })
+
+  it('keeps the port and strips the brackets only to judge the address', () => {
+    expect(originOf(decl({ scheme: 'http' }), at('192.168.1.10:9123'))).toBe('http://192.168.1.10:9123')
+    expect(originOf(decl(), at('api.example.com'))).toBe('https://api.example.com')
+    expect(originOf(decl({ scheme: 'http' }), at('[::1]:8080'))).toBe('http://[::1]:8080')
   })
 })
 
@@ -257,5 +301,23 @@ describe('when the registry is refreshed', () => {
     record = { connection: decl }
     sync()
     expect(registry.get('decl:homey-flows:homey-flows')).toBeDefined()
+  })
+})
+
+describe('the guard the connection save applies', () => {
+  it('refuses a declared type whose address is not an address', () => {
+    // The route's own expression, as a function: a declared type exists only while a widget
+    // that declares it is installed, so the route cannot be reached from a connections test.
+    for (const host of ['10.0.0.1:x@evil.example', 'user:pw@evil.example', '10.0.0.1/../x', '10.0.0.1?a=b', '']) {
+      expect(rejectsHost('decl:w:thing', { host }), host).toBe(true)
+    }
+    expect(rejectsHost('decl:w:thing', { host: '192.168.1.40:9123' })).toBe(false)
+    expect(rejectsHost('decl:w:thing', undefined)).toBe(true)
+  })
+
+  it('leaves a coded type alone, whose host means whatever its own code decides', () => {
+    // An ICS calendar's "host" is a whole URL; a Bambu has none at all.
+    expect(rejectsHost('ics', { host: 'https://example.com/cal.ics?x=1' })).toBe(false)
+    expect(rejectsHost('bambu', {})).toBe(false)
   })
 })

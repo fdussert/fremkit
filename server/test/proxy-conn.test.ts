@@ -427,6 +427,60 @@ describe('the per-connection cache', () => {
   })
 })
 
+describe('a host that is not a host', () => {
+  /** The connection's `host` field, as the user typed it — and as the widget invited them to. */
+  const withHost = (raw: string): Config => {
+    const cfg = config()
+    cfg.connections = [{ id: 'homey-x1', type: TYPE, name: 'Homey', fields: { host: raw } }]
+    return cfg
+  }
+
+  const ask = (raw: string) => app({ cfg: withHost(raw) }).inject({
+    method: 'POST', url: '/api/proxy/homey-flows/conn',
+    payload: { instanceId: 'flows-1', method: 'GET', path: '/api/manager/flow/flow' } as never,
+  })
+
+  it('makes no request at all, and says so without quoting the string', async () => {
+    // `10.0.0.1:x@evil.example` was read as the private `10.0.0.1` — so plain http was allowed
+    // — while the key went to `evil.example`. The widget writes the label, the placeholder and
+    // the hint beside that box, so "paste this address" is the whole attack.
+    for (const raw of ['10.0.0.1:x@evil.example', 'user:pw@evil.example', '10.0.0.1/../x', '10.0.0.1?a=b']) {
+      const res = await ask(raw)
+      expect(res.statusCode, raw).toBe(409)
+      expect(res.body).not.toContain('evil.example')
+      expect(res.body).not.toContain(SECRET)
+      expect(calls, raw).toHaveLength(0)
+    }
+  })
+
+  it('still serves the addresses people really type', async () => {
+    // `app()` gives each case its own recorder, so the assertion is per address.
+    for (const [raw, expected] of [
+      ['192.168.1.40', '192.168.1.40'],
+      ['192.168.1.40:9123', '192.168.1.40:9123'],
+      ['nas.local:5001', 'nas.local:5001'],
+      ['EXAMPLE.COM', 'example.com'],
+    ]) {
+      const res = await ask(raw)
+      expect(res.statusCode, raw).toBe(200)
+      expect(calls[0].url.host, raw).toBe(expected)
+    }
+  })
+
+  it('sends an IPv6 literal to the address it names', async () => {
+    const res = await ask('[::1]:8080')
+    expect(res.statusCode).toBe(200)
+    expect(calls[0].url.host).toBe('[::1]:8080')
+  })
+
+  it('refuses whitespace and a header-splitting attempt', async () => {
+    for (const raw of ['a b', 'a\r\nb', '']) {
+      expect((await ask(raw)).statusCode, JSON.stringify(raw)).toBe(409)
+      expect(calls).toHaveLength(0)
+    }
+  })
+})
+
 describe('a connection shared with another widget', () => {
   /** `flows-1` is bound to a connection that belongs to *another* widget's declared type. */
   function shared(sharedConnections: string[]): Config {
