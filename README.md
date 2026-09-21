@@ -8,6 +8,10 @@ your 3D printer, your smart home; you arrange them by dragging them around in a 
 admin, and you drive them by touch through a native macOS helper. Widgets are plain HTML folders,
 so writing one takes a manifest and an `index.html` — no build step, no framework.
 
+**No iCUE, no third-party driver, no kernel extension.** The helper talks to the Edge's touch
+panel over USB HID itself. Quit iCUE and Touchscreen Gestures if you run them — Fremkit
+replaces them, it does not sit beside them.
+
 ![The dashboard on the Xeneon Edge](docs/images/dashboard.png)
 
 ![The admin editor](docs/images/admin.png)
@@ -44,6 +48,9 @@ The name is the Fremen survival kit from *Dune*.
 - **A widget SDK** that is a folder, a JSON file and an HTML page.
 
 ## Requirements
+
+Nothing from Corsair: no iCUE, no driver. The helper opens the touch panel itself, so iCUE and
+Touchscreen Gestures must not be running (the panel takes one owner).
 
 - macOS 13 or later, Apple silicon
 - Xcode Command Line Tools (for the helper's Swift build)
