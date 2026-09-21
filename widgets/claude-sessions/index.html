@@ -43,6 +43,13 @@
   .foot .sep{color:var(--text-muted, #8b93a0)}
   .foot .ctx{flex:1;height:6px;border-radius:3px;background:var(--surface-3, #252a32);overflow:hidden}.foot .ctx>i{display:block;height:100%}
   .ok{background:var(--ok, #2fb36b)}.warn{background:#f0a020}.hot{background:var(--danger, #d9463f)}
+  .go{position:absolute;top:6px;right:6px;width:44px;height:44px;min-height:44px;display:flex;align-items:center;justify-content:center;padding:0;border-radius:10px;background:transparent;color:var(--text-muted, #8b93a0);font-size:calc(20px * var(--text-scale, 1));line-height:1}
+  .go:active{background:var(--accent, #d9b36a);color:var(--on-accent,#0b0d10)}
+  .card.permission .go{color:#f0a020}
+  /* The button sits over the top-right corner, so the badge stops short of it. */
+  .card .head{padding-right:44px}
+  .client{font-size:calc(11px * var(--text-scale, 1));color:var(--text-muted, #8b93a0);border:1px solid var(--border-strong, #3a404a);border-radius:6px;padding:0 5px;white-space:nowrap}
+  .group{grid-column:1/-1;font-size:calc(12px * var(--text-scale, 1));text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted, #8b93a0);padding:6px 2px 0}
   .q{font-size:calc(14px * var(--text-scale, 1));color:var(--text, #e6e8eb);white-space:normal}.q b{display:block;font-size:calc(12px * var(--text-scale, 1));color:#f0a020;text-transform:uppercase;letter-spacing:.06em}.q ul{margin:2px 0 0 16px;padding:0;color:#c3c8d0;font-size:calc(13px * var(--text-scale, 1))}
 </style>
 </head>
@@ -70,7 +77,10 @@
     doneOne: { fr: '1 terminée', en: '1 finished' },
     doneMany: { fr: '{n} terminées', en: '{n} finished' },
     commitOne: { fr: '1 commit', en: '1 commit' },
-    commitMany: { fr: '{n} commits', en: '{n} commits' }
+    commitMany: { fr: '{n} commits', en: '{n} commits' },
+    go: { fr: 'Aller à la session', en: 'Go to the session' },
+    noWindow: { fr: 'fenêtre introuvable', en: 'cannot find its window' },
+    ungrouped: { fr: 'Application inconnue', en: 'Unknown application' }
   }
   var LABELS = { working: L.working, permission: L.permission, done: L.done, error: L.error, idle: L.idle }
   var sessions = [], today = null, nodes = {}
@@ -116,7 +126,7 @@
   function build(s) {
     var card = document.createElement('div')
     card.setAttribute('data-id', s.sessionId)
-    card.innerHTML = '<div class="head"><span class="title"></span><span class="badge"></span></div><div class="where"></div><div class="q"></div><div class="line"></div><div class="meta"></div><div class="foot"></div>'
+    card.innerHTML = '<div class="head"><span class="title"></span><span class="badge"></span><span class="client"></span></div><button class="go" type="button"></button><div class="where"></div><div class="q"></div><div class="line"></div><div class="meta"></div><div class="foot"></div>'
     return card
   }
   function update(card, s, now) {
@@ -124,6 +134,16 @@
     if (s.discovered) card.setAttribute('data-discovered', '1'); else card.removeAttribute('data-discovered')
     card.querySelector('.title').textContent = s.title || s.project
     card.querySelector('.badge').textContent = LABELS[s.state] ? Fremkit.t(LABELS[s.state]) : s.state
+    // Which application the session lives in, as the server named it. Two panes of the same
+    // folder are the same project and the same branch; this is what tells them apart.
+    var clientEl = card.querySelector('.client')
+    clientEl.textContent = s.client ? s.client.label : ''
+    clientEl.hidden = !s.client
+    // A placeholder found by scanning processes has no hook, so nothing knows where it lives.
+    var goEl = card.querySelector('.go')
+    goEl.textContent = '\u2197'
+    goEl.setAttribute('aria-label', Fremkit.t(L.go))
+    goEl.hidden = !s.client
     var where = s.branch ? s.project + '@' + s.branch : (s.title ? s.project : ''), whereEl = card.querySelector('.where')
     whereEl.textContent = where; whereEl.hidden = !where
     var qEl = card.querySelector('.q')
@@ -148,28 +168,91 @@
       commits: plural(t.commits, L.commitOne, L.commitMany),
     })
   }
+  /** How long a finished session stays on the board when "hide finished" is on. */
+  var HIDE_AFTER_MS = 30 * 60 * 1000
+  /**
+   * The sessions this tile is meant to show.
+   *
+   * The count in the header stays the real total: a filter is about what is worth looking at,
+   * not about pretending the others are not running.
+   */
+  function visible(now) {
+    var out = sessions
+    if (onlyWaiting) out = out.filter(function (s) { return s.state === 'permission' })
+    if (hideDone) out = out.filter(function (s) {
+      return !((s.state === 'done' || s.state === 'idle') && now - s.lastEventAt > HIDE_AFTER_MS)
+    })
+    return out
+  }
+  /** Rows to draw: a card per session, and a heading before each run when grouping is on. */
+  function rows(list) {
+    if (!groupByClient) return list.map(function (s) { return { key: 'c:' + s.sessionId, session: s } })
+    var byLabel = {}, order = []
+    list.forEach(function (s) {
+      var label = s.client ? s.client.label : Fremkit.t(L.ungrouped)
+      if (!byLabel[label]) { byLabel[label] = []; order.push(label) }
+      byLabel[label].push(s)
+    })
+    var out = []
+    order.forEach(function (label) {
+      out.push({ key: 'g:' + label, group: label })
+      byLabel[label].forEach(function (s) { out.push({ key: 'c:' + s.sessionId, session: s } ) })
+    })
+    return out
+  }
   function render() {
     var el = document.getElementById('cards'), now = Date.now(), seen = {}
     document.getElementById('count').textContent = sessions.length ? '· ' + sessions.length : ''
     document.getElementById('stats').textContent = today ? statsFor(today) : ''
+    // The count above keeps the real total; the list itself honours the filters and "max".
+    var list = visible(now)
+    if (maxShown > 0) list = list.slice(0, maxShown)
     var empty = document.getElementById('empty')
-    if (!sessions.length) {
+    if (!list.length) {
       if (!empty) { empty = document.createElement('div'); empty.id = 'empty'; empty.className = 'muted'; el.appendChild(empty) }
       empty.textContent = Fremkit.t(L.empty)
     } else if (empty) { empty.remove() }
-    // The count above keeps the real total; the list itself honours the "max" setting.
-    var shown = maxShown > 0 ? sessions.slice(0, maxShown) : sessions
-    shown.forEach(function (s, i) {
-      var card = nodes[s.sessionId]
-      if (!card) { card = build(s); nodes[s.sessionId] = card }
-      update(card, s, now)
-      if (el.children[i] !== card) el.insertBefore(card, el.children[i] || null)
-      seen[s.sessionId] = true
+    rows(list).forEach(function (row, i) {
+      var node = nodes[row.key]
+      if (row.group !== undefined) {
+        if (!node) { node = document.createElement('div'); node.className = 'group'; nodes[row.key] = node }
+        node.textContent = row.group
+      } else {
+        if (!node) { node = build(row.session); nodes[row.key] = node }
+        update(node, row.session, now)
+      }
+      if (el.children[i] !== node) el.insertBefore(node, el.children[i] || null)
+      seen[row.key] = true
     })
-    Object.keys(nodes).forEach(function (id) { if (!seen[id]) { nodes[id].remove(); delete nodes[id] } })
+    Object.keys(nodes).forEach(function (key) { if (!seen[key]) { nodes[key].remove(); delete nodes[key] } })
   }
-  var maxShown = 0
-  function applySettings(s) { var n = Number((s || {}).max); maxShown = isFinite(n) && n > 0 ? Math.floor(n) : 0 }
+  /**
+   * Ask the host to bring the session's window forward.
+   *
+   * The widget sends a session id and nothing else: where that session lives is something the
+   * server holds and this tile has never been told, which is what makes a sandboxed iframe able
+   * to ask for it at all. A refusal is shown on the card for a few seconds rather than swallowed
+   * — "nothing happened" is exactly the state this whole thing exists to get rid of.
+   */
+  function goTo(id, card) {
+    Fremkit.sendCommand('claude-sessions', 'focus', { sessionId: id }).then(function (r) {
+      if (r && r.ok) return
+      var line = card.querySelector('.line')
+      line.textContent = Fremkit.t(L.noWindow); line.hidden = false
+    }, function () {
+      var line = card.querySelector('.line')
+      line.textContent = Fremkit.t(L.noWindow); line.hidden = false
+    })
+  }
+  var maxShown = 0, onlyWaiting = false, hideDone = true, groupByClient = false
+  function applySettings(s) {
+    s = s || {}
+    var n = Number(s.max); maxShown = isFinite(n) && n > 0 ? Math.floor(n) : 0
+    onlyWaiting = s.onlyWaiting === true
+    // On by default, so an absent setting is not "off" — an older instance keeps the new default.
+    hideDone = s.hideDone !== false
+    groupByClient = s.groupByClient === true
+  }
   Fremkit.whenReady(function () {
     document.documentElement.lang = Fremkit.locale
     applySettings(Fremkit.settings)
@@ -179,8 +262,11 @@
     setInterval(render, 1000)
     document.getElementById('cards').addEventListener('click', function (e) {
       var card = e.target.closest('.card'); if (!card || card.getAttribute('data-discovered')) return
-      var st = card.getAttribute('data-state')
-      if (st === 'done' || st === 'idle' || st === 'error') Fremkit.sendCommand('claude-sessions', 'dismiss', { sessionId: card.getAttribute('data-id') })
+      var id = card.getAttribute('data-id'), st = card.getAttribute('data-state')
+      // The arrow goes to the session from any card; a card that is *waiting* goes there when
+      // touched anywhere, because at that moment there is nothing else to want from it.
+      if (e.target.closest('.go') || st === 'permission') return goTo(id, card)
+      if (st === 'done' || st === 'idle' || st === 'error') Fremkit.sendCommand('claude-sessions', 'dismiss', { sessionId: id })
     })
   })
 </script></body></html>

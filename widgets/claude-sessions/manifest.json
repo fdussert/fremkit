@@ -1,10 +1,36 @@
 { "id": "claude-sessions",
   "name": { "fr": "Sessions Claude", "en": "Claude sessions" },
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": { "fr": "Sessions Claude Code en direct", "en": "Live Claude Code sessions" },
   "category": "ai",
   "icon": "message-square", "minSize": [16, 4], "defaultSize": [16, 8],
   "subscriptions": ["claude-sessions"], "commands": ["claude-sessions"],
   "settingsSchema": {
-    "max": { "type": "number", "label": { "fr": "Sessions affichées (0 = toutes)", "en": "Sessions shown (0 = all)" }, "default": 0 }
+    "max": { "type": "number", "label": { "fr": "Sessions affichées (0 = toutes)", "en": "Sessions shown (0 = all)" }, "default": 0 },
+    "onlyWaiting": { "type": "boolean", "label": { "fr": "N’afficher que les sessions qui attendent", "en": "Show only sessions waiting for you" }, "default": false },
+    "hideDone": { "type": "boolean", "label": { "fr": "Masquer les sessions terminées après 30 min", "en": "Hide finished sessions after 30 min" }, "default": true },
+    "groupByClient": { "type": "boolean", "label": { "fr": "Grouper par application", "en": "Group by application" }, "default": false },
+    "sound": { "type": "enum", "label": { "fr": "Son quand une session attend", "en": "Sound when a session waits" }, "default": "none",
+      "options": [
+        { "value": "none", "label": { "fr": "Aucun", "en": "None" } },
+        { "value": "Basso", "label": { "fr": "Basso", "en": "Basso" } },
+        { "value": "Blow", "label": { "fr": "Blow", "en": "Blow" } },
+        { "value": "Bottle", "label": { "fr": "Bottle", "en": "Bottle" } },
+        { "value": "Frog", "label": { "fr": "Frog", "en": "Frog" } },
+        { "value": "Funk", "label": { "fr": "Funk", "en": "Funk" } },
+        { "value": "Glass", "label": { "fr": "Glass", "en": "Glass" } },
+        { "value": "Hero", "label": { "fr": "Hero", "en": "Hero" } },
+        { "value": "Morse", "label": { "fr": "Morse", "en": "Morse" } },
+        { "value": "Ping", "label": { "fr": "Ping", "en": "Ping" } },
+        { "value": "Pop", "label": { "fr": "Pop", "en": "Pop" } },
+        { "value": "Purr", "label": { "fr": "Purr", "en": "Purr" } },
+        { "value": "Sosumi", "label": { "fr": "Sosumi", "en": "Sosumi" } },
+        { "value": "Submarine", "label": { "fr": "Submarine", "en": "Submarine" } },
+        { "value": "Tink", "label": { "fr": "Tink", "en": "Tink" } }
+      ] },
+    "soundOn": { "type": "enum", "label": { "fr": "Jouer le son pour", "en": "Play the sound for" }, "default": "attention",
+      "options": [
+        { "value": "attention", "label": { "fr": "Une question ou une permission", "en": "A question or a permission" } },
+        { "value": "question", "label": { "fr": "Une question seulement", "en": "A question only" } }
+      ] }
   } }
