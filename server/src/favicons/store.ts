@@ -21,7 +21,22 @@ export const MAX_REDIRECTS = 3
  * written go first.
  */
 export const MAX_CACHED_ICONS = 200
+/**
+ * How long an origin that yielded no icon is left alone before it is asked again.
+ *
+ * The widget retries a missing icon every half minute, so without this a link to a site with no
+ * icon — or one behind a login — would cost the site a page read and an icon read every thirty
+ * seconds for as long as the dashboard shows it.
+ */
+export const FAILED_TTL_MS = 15 * 60 * 1000
 const TIMEOUT_MS = 5_000
+/**
+ * What the page request asks for. `*` and nothing else makes some sites — a login page in
+ * front of a workspace, say — answer with whatever they like, or refuse with a 406; asked for
+ * HTML first, the same page answers with its `<head>` and the icons it declares.
+ */
+const HTML_ACCEPT = 'text/html,application/xhtml+xml;q=0.9,*/*;q=0.8'
+const IMAGE_ACCEPT = 'image/*,*/*;q=0.8'
 
 /**
  * Content types we accept, and the extension each is stored under.
@@ -113,6 +128,8 @@ export class FaviconStore {
   private readonly isPrivate: PrivateCheck
   /** One refresh per origin at a time, so a row of buttons on one site makes one fetch. */
   private readonly inFlight = new Map<string, Promise<FaviconIcon | null>>()
+  /** origin -> when it last yielded nothing; not asked again before `FAILED_TTL_MS` has passed. */
+  private readonly failedAt = new Map<string, number>()
 
   constructor(opts: { dir: string; fetchImpl?: FetchLike; now?: () => number; isPrivate?: PrivateCheck }) {
     this.dir = opts.dir
@@ -141,6 +158,9 @@ export class FaviconStore {
   async get(origin: string): Promise<FaviconIcon | null> {
     const cached = await this.readCached(origin)
     if (cached && isFresh(cached.mtimeMs, this.now())) return cached.icon
+    // Nothing cached and a recent failure: the answer is still "no icon", and the site is spared.
+    const failed = this.failedAt.get(origin)
+    if (!cached && failed !== undefined && this.now() - failed < FAILED_TTL_MS) return null
     const pending = this.inFlight.get(origin) ?? this.refresh(origin)
     this.inFlight.set(origin, pending)
     try {
@@ -155,10 +175,12 @@ export class FaviconStore {
   private async refresh(origin: string): Promise<FaviconIcon | null> {
     try {
       const icon = await this.resolve(origin)
-      if (!icon) return null
+      if (!icon) { this.failedAt.set(origin, this.now()); return null }
       await this.write(origin, icon)
+      this.failedAt.delete(origin)
       return icon
     } catch {
+      this.failedAt.set(origin, this.now())
       return null
     }
   }
@@ -167,7 +189,7 @@ export class FaviconStore {
   private async resolve(origin: string): Promise<FaviconIcon | null> {
     let declared: string | null = null
     try {
-      const page = await this.request(origin + '/')
+      const page = await this.request(origin + '/', HTML_ACCEPT)
       if (page && /text\/html|application\/xhtml/i.test(page.res.headers.get('content-type') ?? '')) {
         const html = await readCapped(page.res, MAX_HTML_BYTES, true)
         if (html) declared = pickIconHref(html.toString('utf8'), page.finalUrl)
@@ -185,7 +207,7 @@ export class FaviconStore {
 
   private async fetchIcon(url: string): Promise<FaviconIcon | null> {
     let got: { res: Response; finalUrl: string } | null
-    try { got = await this.request(url) } catch { return null }
+    try { got = await this.request(url, IMAGE_ACCEPT) } catch { return null }
     if (!got) return null
     const { res } = got
     if (!res.ok) { void res.body?.cancel().catch(() => {}); return null }
@@ -211,7 +233,7 @@ export class FaviconStore {
    * the page, the icon the page declared, the `/favicon.ico` fallback — and every hop after it,
    * with one rule in one place.
    */
-  private async request(url: string): Promise<{ res: Response; finalUrl: string } | null> {
+  private async request(url: string, accept: string): Promise<{ res: Response; finalUrl: string } | null> {
     let current = url
     for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
       let host: string
@@ -220,7 +242,7 @@ export class FaviconStore {
       const res = await this.fetchImpl(current, {
         redirect: 'manual',
         signal: AbortSignal.timeout(TIMEOUT_MS),
-        headers: { 'user-agent': USER_AGENT, accept: '*/*' },
+        headers: { 'user-agent': USER_AGENT, accept },
       })
       if (![301, 302, 303, 307, 308].includes(res.status)) return { res, finalUrl: current }
       const location = res.headers.get('location')

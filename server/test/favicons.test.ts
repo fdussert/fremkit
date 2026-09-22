@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import Fastify from 'fastify'
 import { pickIconHref, largestSize } from '../src/favicons/pick.js'
-import { FaviconStore, cacheKey, extensionFor, isFresh, sniffImageType, FAVICON_TTL_MS, MAX_ICON_BYTES, MAX_CACHED_ICONS } from '../src/favicons/store.js'
+import { FaviconStore, cacheKey, extensionFor, isFresh, sniffImageType, FAILED_TTL_MS, FAVICON_TTL_MS, MAX_ICON_BYTES, MAX_CACHED_ICONS } from '../src/favicons/store.js'
 import { faviconRoutes } from '../src/favicons/routes.js'
 
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64')
@@ -215,6 +215,48 @@ describe('FaviconStore', () => {
     calls.length = 0
     expect((await store.get('https://example.com'))?.body.equals(PNG)).toBe(true)
     expect(calls.length).toBeGreaterThan(0)
+  })
+})
+
+describe('FaviconStore and a site that negotiates', () => {
+  it('asks the page for HTML: a site that answers 406 to */* still yields the icon it declares', async () => {
+    // Seen on a workspace login page: `Accept: */*` got a 406 with a text/calendar body; asked for
+    // text/html the same page answered with its <head> and its icons.
+    const calls: { url: string; accept: string }[] = []
+    const fetchImpl = async (input: string, init?: RequestInit): Promise<Response> => {
+      const accept = String((init?.headers as Record<string, string>)?.accept ?? '')
+      calls.push({ url: input, accept })
+      if (input === 'https://ws.example.com/') {
+        if (!accept.startsWith('text/html')) return new Response('BEGIN:VCALENDAR', { status: 406, headers: { 'content-type': 'text/calendar' } })
+        return new Response('<link rel="icon" href="https://cdn.example.com/i.png">', { status: 200, headers: { 'content-type': 'text/html' } })
+      }
+      if (input === 'https://cdn.example.com/i.png') return new Response(new Uint8Array(PNG), { status: 200, headers: { 'content-type': 'image/png' } })
+      return new Response(null, { status: 404 })
+    }
+    const store = new FaviconStore({ dir, fetchImpl, isPrivate: PUBLIC })
+    const icon = await store.get('https://ws.example.com')
+    expect(icon?.contentType).toBe('image/png')
+    expect(calls[0].accept.startsWith('text/html')).toBe(true)
+    expect(calls[1].accept.startsWith('image/')).toBe(true)
+  })
+
+  it('remembers an origin that yielded nothing, and asks again only after FAILED_TTL_MS', async () => {
+    let now = 1_000_000
+    const calls: string[] = []
+    const routes: Record<string, Route> = {}
+    const store = new FaviconStore({ dir, fetchImpl: fakeFetch(routes, calls), now: () => now, isPrivate: PUBLIC })
+    expect(await store.get('https://none.example.com')).toBeNull()
+    const asked = calls.length
+    expect(asked).toBeGreaterThan(0)
+    // The widget's retry, half a minute later: answered from memory, the site not touched.
+    now += 30_000
+    expect(await store.get('https://none.example.com')).toBeNull()
+    expect(calls.length).toBe(asked)
+    // Past the grace period the site is asked again — and this time it has an icon.
+    now += FAILED_TTL_MS
+    routes['https://none.example.com/favicon.ico'] = { type: 'image/png', body: PNG }
+    expect((await store.get('https://none.example.com'))?.contentType).toBe('image/png')
+    expect(calls.length).toBeGreaterThan(asked)
   })
 })
 
