@@ -4,9 +4,19 @@ import { t, useI18n } from './i18n'
 import { isHexColor, tileText } from './color'
 import { useAppliedTheme, useThemeColors } from './theme'
 import { channelAllowed, mergeSettings, type AccentMode, type NavSlot, type WidgetInstance, type WidgetManifest, type WidgetSize } from './types'
-import { FrameTrust, connRequest, fetchTarget, nonEmptyString, stampInstance } from './widgetMessages'
+import { FrameTrust, connRequest, faviconTarget, fetchTarget, nonEmptyString, stampInstance } from './widgetMessages'
 
 export type BridgeState = 'loading' | 'ready' | 'error'
+
+/** A blob as a `data:` URL, the one form of an image a sandboxed frame can show without fetching. */
+function dataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result))
+    reader.onerror = () => reject(reader.error ?? new Error('unreadable'))
+    reader.readAsDataURL(blob)
+  })
+}
 
 export interface BridgeOptions {
   /**
@@ -164,6 +174,23 @@ export function useWidgetBridge(
         if (!url) { reply(id, undefined, t('bridge.badRequest')); break }
         fetch(`/api/proxy/${encodeURIComponent(instance().widgetId)}?url=${encodeURIComponent(url)}`, { method: 'GET' })
           .then(async (r) => reply(id, { status: r.status, headers: { 'content-type': r.headers.get('content-type') }, body: await r.text() }))
+          .catch((e: Error) => reply(id, undefined, e.message))
+        break
+      }
+      case 'fremkit:favicon': {
+        // The widget cannot load `/api/favicon` itself: its frame is sandboxed without
+        // `allow-same-origin`, so its origin is opaque and the browser labels its own <img>
+        // request cross-site — exactly what the route refuses from a foreign page. This page is
+        // the server's own origin, so it fetches the icon and hands it over as a data URL.
+        const id = str(m.id)
+        if (!id) break
+        const origin = faviconTarget(m)
+        if (!origin) { reply(id, undefined, t('bridge.badRequest')); break }
+        fetch(`/api/favicon?url=${encodeURIComponent(origin)}`)
+          .then(async (r) => {
+            if (!r.ok) { reply(id, undefined, t('bridge.noIcon')); return }
+            reply(id, await dataUrl(await r.blob()))
+          })
           .catch((e: Error) => reply(id, undefined, e.message))
         break
       }

@@ -267,6 +267,7 @@ export const en: Record<string, string> = {
   'admin.store.pageCopy': '{name} (copy)',
 
   'bridge.badRequest': 'invalid widget request',
+  'bridge.noIcon': 'no icon for this site',
   'bridge.channelNotAllowed': 'channel not allowed: {channel}',
 
   'socket.unknownError': 'unknown error',

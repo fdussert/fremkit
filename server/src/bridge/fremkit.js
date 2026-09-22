@@ -202,6 +202,17 @@
       })
     },
     /**
+     * The favicon of the site `url` is on, as a `data:` URL to put in an `<img>`; rejects when
+     * the site has none the server keeps (an SVG, a private address, a site that is down).
+     *
+     * Not a URL to fetch: a widget's frame has an opaque origin, so the browser labels an `<img
+     * src="/api/favicon…">` from here as cross-site and the server refuses it, like it would from
+     * any other page. The host makes the request from its own origin and hands the bytes over.
+     */
+    favicon: function (url) {
+      return request({ type: 'fremkit:favicon', url: url })
+    },
+    /**
      * Escapes a string for HTML.
      *
      * Almost everything a widget draws is remote data it did not write: a volume name, a calendar

@@ -21,7 +21,9 @@ export async function faviconRoutes(app: FastifyInstance, opts: { dir: string; s
   app.get<{ Querystring: { url?: string } }>('/api/favicon', async (req, reply) => {
     if (!isLoopbackAddress(req.ip)) return reply.code(403).send()
     // A page on another site can embed this as an <img> and send no Origin at all, which would
-    // make the server go and fetch whatever host that page named.
+    // make the server go and fetch whatever host that page named. A widget's own <img> looks the
+    // same — its sandboxed frame has an opaque origin, which is cross-site to everything — so a
+    // widget goes through `Fremkit.favicon()` and the host page makes this request instead.
     if (isCrossSiteFetch(req.headers)) return reply.code(403).send()
     const raw = req.query.url
     if (typeof raw !== 'string' || raw === '') return reply.code(400).send()

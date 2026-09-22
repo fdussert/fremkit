@@ -36,6 +36,13 @@ Anything that changes what the dashboard, the admin or a widget can do gets a li
 - Three more settings on the Claude sessions widget: show only what is waiting, hide finished
   sessions after 30 minutes (on by default), and group the board by application.
 
+### Fixed
+- Link buttons on the shortcuts widget show their favicon again. The cross-site refusal on the
+  favicon route (0.2.0) also caught the widget's own request, since a sandboxed widget frame
+  counts as another site; the host page now fetches the icon for it. A site that is down when the
+  dashboard loads gets its icon within a minute of coming back, instead of at the next reload.
+- For widget authors: `Fremkit.favicon(url)` is how a widget gets a site's icon now.
+
 ### Added
 - A registry package says what each version changed, and the admin shows it: under the chip on a
   card with an update waiting, and beside the permissions in the install, update and *Update all*

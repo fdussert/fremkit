@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { FrameTrust, fetchTarget, nonEmptyString, stampInstance } from '../src/shared/widgetMessages'
+import { FrameTrust, faviconTarget, fetchTarget, nonEmptyString, stampInstance } from '../src/shared/widgetMessages'
 
 describe('nonEmptyString', () => {
   it('accepts a non-empty string and nothing else', () => {
@@ -62,6 +62,18 @@ describe('fetchTarget', () => {
   it('refuses an init that is not an object', () => {
     expect(fetchTarget({ url: 'https://a.example/', init: 'GET' })).toBeNull()
     expect(fetchTarget({ url: 'https://a.example/', init: ['GET'] })).toBeNull()
+  })
+})
+
+describe('faviconTarget', () => {
+  it('keeps the origin and drops the path, which may carry a token', () => {
+    expect(faviconTarget({ url: 'https://app.example.com/inbox?token=abc#x' })).toBe('https://app.example.com')
+    expect(faviconTarget({ url: 'http://example.com:8080/' })).toBe('http://example.com:8080')
+  })
+  it('refuses anything that is not an http(s) link', () => {
+    for (const url of ['mailto:a@example.com', 'file:///etc/hosts', 'javascript:1', 'not a url', '', 42, null, undefined]) {
+      expect(faviconTarget({ url }), JSON.stringify(url)).toBeNull()
+    }
   })
 })
 

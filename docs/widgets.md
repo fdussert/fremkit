@@ -293,7 +293,8 @@ In the admin, the *Target* box of an application row offers the applications ins
 machine as you type — `/Applications` and its subfolders, `~/Applications`, and the system ones.
 It is a suggestion, not a list: any name can still be typed.
 
-A link button draws the site's own favicon. The server reads the page at the origin and takes the
+A link button draws the site's own favicon, asked for through the host page (`Fremkit.favicon`)
+and retried every thirty seconds while the site does not answer. The server reads the page at the origin and takes the
 icon it declares — an `apple-touch-icon` first, a plain `icon`/`shortcut icon` second, the largest
 declared `sizes` breaking the tie — and falls back to `/favicon.ico` when the page declares none.
 A site that serves its icon as `application/octet-stream` or with no type at all, which is common

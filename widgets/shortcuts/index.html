@@ -106,17 +106,28 @@
    * Only http(s) links have one — a `mailto:` keeps the glyph — and a site with no icon, or one
    * the server could not fetch, falls back to the glyph as soon as the image fails to load.
    */
-  function favicon(spec) {
+  function favicon(button, spec) {
     if (!/^https?:\/\//i.test(spec.target)) return glyph(spec.kind)
-    var img = document.createElement('img')
-    img.className = 'art'
-    img.alt = ''
-    img.src = '/api/favicon?url=' + encodeURIComponent(spec.target)
-    img.addEventListener('error', function () {
-      if (!img.parentNode) return
-      img.parentNode.replaceChild(glyph(spec.kind), img)
-    })
-    return img
+    var art = glyph(spec.kind)
+    // Through the host, never as an <img src="/api/favicon…">: this frame's origin is opaque and
+    // the server refuses what looks like a foreign page's request. A site that is down when the
+    // dashboard loads (right after a boot, say) is asked again until its icon lands.
+    function attempt() {
+      Fremkit.favicon(spec.target).then(function (src) {
+        if (!art.parentNode) return
+        var img = document.createElement('img')
+        img.className = 'art'
+        img.alt = ''
+        img.src = src
+        art.parentNode.replaceChild(img, art)
+        art = img
+      }, function () {
+        if (!art.parentNode) return
+        button.retryTimer = setTimeout(attempt, ICON_RETRY_MS)
+      })
+    }
+    attempt()
+    return art
   }
 
   /**
@@ -125,7 +136,7 @@
    */
   function artwork(button, spec) {
     if (settings.showIcons === false) return glyph(spec.kind)
-    if (spec.kind === 'url') return favicon(spec)
+    if (spec.kind === 'url') return favicon(button, spec)
     if (spec.kind !== 'app') return glyph(spec.kind)
     var bundleId = bundleIdFor(spec.target)
     if (!bundleId) return glyph(spec.kind)

@@ -224,6 +224,7 @@ Fremkit.whenReady(() => {
 | `subscribe(channel, cb)` | Listens to a data channel. Returns an unsubscribe function; the host stops relaying a channel once its last listener is gone |
 | `sendCommand(channel, name, payload)` | Sends a command. Returns a promise |
 | `fetch(url, init)` | GET through the server's proxy. Only the host in `permissions.network` is reachable; `body` and `credentials` are ignored |
+| `favicon(url)` | The icon of the site `url` is on, as a `data:` URL for an `<img>`; rejects when there is none. Ask this rather than loading `/api/favicon` in an `<img>`: a widget's frame has an opaque origin, so the server sees that request as cross-site and refuses it |
 | `t(dict, params)` | Resolves a `{ fr, en }` table entry and interpolates `{name}` placeholders |
 | `onSettings(cb)` | Fires when the admin edits the settings, without a reload. Returns an off function |
 | `onLocale(cb)` | Fires when the language changes. Returns an off function |

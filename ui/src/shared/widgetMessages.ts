@@ -12,6 +12,21 @@ export function nonEmptyString(value: unknown): string | null {
 }
 
 /**
+ * The origin a `fremkit:favicon` request is about, or null.
+ *
+ * A widget hands over the link it holds; the host forwards the origin alone. The server keys its
+ * cache by origin anyway, and the path — which can carry a token or a private page — then never
+ * leaves the widget at all. Only http(s): a `file:` or `mailto:` link has no favicon.
+ */
+export function faviconTarget(message: { url?: unknown }): string | null {
+  const url = nonEmptyString(message.url)
+  if (!url) return null
+  let parsed: URL
+  try { parsed = new URL(url) } catch { return null }
+  return parsed.protocol === 'http:' || parsed.protocol === 'https:' ? parsed.origin : null
+}
+
+/**
  * Puts *this* frame's instanceId on a command payload, whatever the widget wrote there.
  *
  * Commands that act on the user's behalf — pressing a saved shortcut button, probing saved
