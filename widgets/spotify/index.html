@@ -5,7 +5,15 @@
   .wrap{box-sizing:border-box;height:100%;padding:14px 18px;position:relative;display:flex;flex-direction:column;justify-content:center;gap:6px}
   .big{font-size:calc(44px * var(--text-scale, 1));font-weight:600;line-height:1}
   .bar{height:8px;border-radius:4px;background:var(--surface-3, #252a32);overflow:hidden}
-  .bar>i{display:block;height:100%;background:var(--accent, #d9b36a);width:0;transition:width .4s}
+  /* Scaled rather than resized: the position only arrives once a second, so the fill glides
+     across that second on the compositor instead of stepping on each answer. The 1s is the
+     provider's poll: `intervalMs` in server/src/providers/spotify.ts, and `POLL_MS` below. */
+  .bar>i{display:block;height:100%;width:100%;background:var(--accent, #d9b36a);
+    transform:scaleX(0);transform-origin:left center;transition:transform 1s linear}
+  /* A new track, a seek or a pause: there is nothing to glide across, so it lands where it is. */
+  .bar>i.snap{transition:none}
+  /* The glide runs for as long as music plays. Asked for less motion, the fill steps instead. */
+  @media (prefers-reduced-motion:reduce){.bar>i{transition:none}}
   .row{display:flex;justify-content:space-between;font-size:calc(15px * var(--text-scale, 1))}
   .muted{color:var(--text-muted, #8b93a0)}
   button{font:inherit;border:0;border-radius:10px;background:var(--surface-3, #252a32);color:var(--text, #e6e8eb);padding:10px 14px;font-size:calc(18px * var(--text-scale, 1))}
@@ -19,29 +27,89 @@
   html.accent-fill .bar>i{background:var(--on-surface,#0b0d10)}
 </style>
 <style>
-  /* The iframe's own viewport is exactly the tile, so vw/vh/vmin track the tile size directly. */
-  .wrap{flex-direction:row;align-items:center;justify-content:center;gap:clamp(10px,3vw,20px);padding:clamp(10px,3vh,18px) clamp(12px,3vw,20px)}
-  /* Cover: grows with tile height but never wider than ~40% of the tile, capped so it stays sane on huge tiles. */
-  #art{flex:0 0 auto;width:min(40vw,calc(100vh - 28px),300px);height:min(40vw,calc(100vh - 28px),300px);border-radius:10px;background:var(--surface-3, #252a32);object-fit:cover}
-  .info{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:center;gap:clamp(2px,1vh,6px)}
-  #title{font-size:calc(clamp(14px,5vh,26px) * var(--text-scale, 1));font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  #artist{font-size:calc(clamp(11px,3vh,16px) * var(--text-scale, 1));white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .info .bar{height:clamp(4px,1.4vh,8px);border-radius:4px;margin-top:clamp(4px,1vh,8px)}
+  /*
+   * The iframe's own viewport is exactly the tile, so vw/vh/vmin track the tile size directly.
+   *
+   * One grid, three arrangements. The cover, the song and the transport never move in the
+   * document; only the areas they sit in do. `.info` is a real box in the row — which is what
+   * keeps the cover from pushing the song and the buttons apart when it is the taller of the
+   * two — and steps out of the way with `display:contents` in the other two, so its children
+   * become areas of their own.
+   */
+  .wrap{display:grid;align-content:center;
+    column-gap:clamp(10px,3vw,20px);row-gap:0;
+    padding:clamp(10px,3vh,18px) clamp(12px,3vw,20px);
+    grid-template-columns:auto minmax(0,1fr);
+    grid-template-rows:minmax(0,1fr);
+    grid-template-areas:"art info"}
+  /* As tall as the row allows, and square: the height drives it, `aspect-ratio` gives the width,
+     and the same cap on both keeps it square when the cap is what binds rather than the height. */
+  #art{grid-area:art;align-self:center;justify-self:start;height:100%;width:auto;aspect-ratio:1/1;
+    max-width:min(46vw,300px);max-height:min(46vw,300px);
+    border-radius:10px;background:var(--surface-3, #252a32);object-fit:cover}
+  .info{grid-area:info;min-width:0;display:flex;flex-direction:column;justify-content:center}
+  .song{min-width:0;display:flex;flex-direction:column;gap:clamp(2px,1vh,6px)}
+  .rest{min-width:0;display:flex;flex-direction:column}
+  /*
+   * Type reads from whichever dimension the tile has to spare, and is held back by the other.
+   *
+   * Height alone left a 950×280 tile with a 21px title while it had room for thirty. Width alone
+   * would give a 2560×120 banner a 76px one, which does not fit under it — hence the inner
+   * `min`, which lets the width raise the size only as far as the height can carry it.
+   */
+  #title{font-size:calc(clamp(14px,max(6vh,min(3vw,20vh)),40px) * var(--text-scale, 1));font-weight:600;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #artist{font-size:calc(clamp(11px,max(3.4vh,min(1.6vw,11vh)),22px) * var(--text-scale, 1));
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  /* Thick enough to read as a track from across the room, and clear of the buttons: at 4px under
+     a 4px gap it looked like an underline on the transport rather than a bar of its own. */
+  .rest .bar{height:clamp(5px,1.8vh,12px);border-radius:999px;margin-top:clamp(4px,2.6vh,18px)}
   /* Transport under the song: wide, tall buttons that a finger can hit without aiming. */
   .controls{display:flex;gap:clamp(8px,1.5vw,14px);margin-top:clamp(4px,1.2vh,10px)}
   .controls button{flex:1;min-height:44px;font-size:calc(clamp(20px,6vh,34px) * var(--text-scale, 1));line-height:1;padding:clamp(8px,2vh,16px) 0;border-radius:clamp(8px,1.8vh,14px)}
-  /* Below 12 cells (480px) wide there is no room for cover + text + buttons side by side: stack them. */
-  @media (max-width:480px){
-    .wrap{flex-direction:column;text-align:center}
-    #art{width:min(60vw,45vh,220px);height:min(60vw,45vh,220px)}
-    .info{align-items:stretch;width:100%}
+  /*
+   * Wide enough for a title beside the cover, and tall enough that the row would leave a hole:
+   * the cover moves beside the song alone and the transport takes the whole width underneath.
+   *
+   * The two numbers are where the row stops working. Under 440px the title has nowhere to go
+   * beside a cover; under 340px of height the cover left in the top row would be smaller than
+   * the one the row was already giving, so the row stays. Above both, the row's right-hand
+   * column carries about 190px of content against a cover of 300 — the hole this closes.
+   */
+  @media (min-height:340px) and (min-width:440px){
+    .wrap{grid-template-areas:"art song" "rest rest";grid-template-rows:minmax(0,1fr) auto;
+      row-gap:clamp(4px,1.2vh,10px)}
+    .info{display:contents}
+    .song{grid-area:song;align-self:center}
+    .rest{grid-area:rest}
+    #art{max-width:min(40vw,320px);max-height:min(40vw,320px)}
+  }
+  /*
+   * Squarer than that, or taller than wide, and the cover is the point: it goes on top, alone,
+   * taking the height the song and the transport leave. Through the grid rather than by
+   * subtracting a guessed number, since the type and the buttons are sized in vh and any guess
+   * would drift.
+   */
+  @media (min-height:300px) and (max-aspect-ratio:23/20){
+    .wrap{grid-template-columns:minmax(0,1fr);grid-template-areas:"art" "song" "rest";
+      grid-template-rows:minmax(0,1fr) auto auto;justify-items:center;text-align:center}
+    .info{display:contents}
+    .song{grid-area:song;align-self:auto}
+    .rest{grid-area:rest}
+    /* The row is what is left over, so the height drives it here too; capping both sides by the
+       same width-derived number is what keeps it square when the width is what binds. */
+    #art{justify-self:center;height:100%;min-height:0;
+      max-width:min(calc(100vw - 40px),460px);max-height:min(calc(100vw - 40px),460px)}
+    .song,.rest{width:100%}
     #title,#artist{white-space:normal;overflow-wrap:anywhere}
   }
 </style></head><body><div class="wrap">
 <img id="art" alt="">
-<div class="info"><div id="title"></div><div id="artist" class="muted"></div>
+<div class="info">
+<div class="song"><div id="title"></div><div id="artist" class="muted"></div></div>
+<div class="rest">
 <div class="controls"><button id="prev">⏮</button><button id="pp">⏯</button><button id="next">⏭</button></div>
-<div class="bar"><i id="bar"></i></div></div>
+<div class="bar"><i id="bar"></i></div></div></div>
 </div>
 <script>
   var L = {
@@ -56,14 +124,57 @@
       document.documentElement.lang = Fremkit.locale
       var d = last
       if (!d) { t.textContent = Fremkit.t(L.closed); return }
-      if (d.error) { t.textContent = Fremkit.t(L.error); a.textContent = ''; img.removeAttribute('src'); return }
-      if (!d.available) { t.textContent = Fremkit.t(L.closed); a.textContent = ''; img.removeAttribute('src'); return }
-      if (d.state === 'stopped') { t.textContent = Fremkit.t(L.stopped); a.textContent = ''; return }
+      if (d.error) { t.textContent = Fremkit.t(L.error); a.textContent = ''; img.removeAttribute('src'); clearBar(); return }
+      if (!d.available) { t.textContent = Fremkit.t(L.closed); a.textContent = ''; img.removeAttribute('src'); clearBar(); return }
+      if (d.state === 'stopped') { t.textContent = Fremkit.t(L.stopped); a.textContent = ''; clearBar(); return }
       t.textContent = d.title; a.textContent = d.artist + ' · ' + d.album
       if (d.artwork && img.src !== d.artwork) img.src = d.artwork
-      document.getElementById('bar').style.width = (d.durationMs ? d.positionMs / d.durationMs * 100 : 0) + '%'
+      renderBar(d)
       document.getElementById('pp').textContent = d.state === 'playing' ? '⏸' : '▶'
     }
+    /**
+     * How far apart two positions arrive. The provider polls Spotify once a second, and a bar
+     * that moved only when an answer landed read as a step every second — so while the track
+     * plays the fill is sent to where it will be at the *next* answer, and takes that second to
+     * get there. Each answer then corrects the aim, so drift never accumulates.
+     *
+     * The same second as `intervalMs` in server/src/providers/spotify.ts and as the fill's `1s`
+     * transition above: change one, change all three.
+     */
+    var POLL_MS = 1000
+    var lastKey = null
+    var lastPositionMs = 0
+    var wasPlaying = false
+
+    function renderBar(d) {
+      var bar = document.getElementById('bar')
+      var here = d.durationMs ? Math.min(1, d.positionMs / d.durationMs) : 0
+      var key = d.title + '\u001f' + d.album
+      // Backwards, another track, or a pause — which lands behind a fill aimed a second ahead:
+      // gliding there would run the fill the wrong way for a second.
+      var snap = key !== lastKey || d.positionMs < lastPositionMs - 250 || (wasPlaying && d.state !== 'playing')
+      lastKey = key
+      lastPositionMs = d.positionMs
+      wasPlaying = d.state === 'playing'
+      if (snap) {
+        bar.className = 'snap'
+        bar.style.transform = 'scaleX(' + here + ')'
+        void bar.offsetWidth  // the reflow that makes the transition below start from here
+        bar.className = ''
+      }
+      var ahead = d.state === 'playing' && d.durationMs
+        ? Math.min(1, (d.positionMs + POLL_MS) / d.durationMs) : here
+      bar.style.transform = 'scaleX(' + ahead + ')'
+    }
+
+    /** No position to show: the fill empties at once, and whatever plays next lands rather than glides up from zero. */
+    function clearBar() {
+      var bar = document.getElementById('bar')
+      bar.className = 'snap'
+      bar.style.transform = 'scaleX(0)'
+      lastKey = null
+    }
+
     render()
     Fremkit.onLocale(render)
     Fremkit.subscribe('spotify', function (d) { last = d; render() })

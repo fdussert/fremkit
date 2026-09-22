@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { parseVolume, createVolumeProvider } from '../src/providers/volume.js'
-import { parseSpotify, createSpotifyProvider, OPEN_PROGRAM, SPOTIFY_BUNDLE_ID } from '../src/providers/spotify.js'
+import { parseSpotify, createSpotifyProvider, OPEN_PROGRAM, SPOTIFY_BUNDLE_ID, STATE } from '../src/providers/spotify.js'
 import { createMutedeckProvider } from '../src/providers/mutedeck.js'
 
 describe('volume', () => {
@@ -21,8 +21,29 @@ describe('volume', () => {
 describe('spotify', () => {
   it('parses the delimited state', () => {
     // The separator is an ASCII unit separator: a track name can contain any printable text.
-    const s = parseSpotify(['playing', 'Song', 'Artist', 'Album', 'https://i.scdn.co/x', '215000', '12.5', '80'].join('\x1f'))
+    const s = parseSpotify(['playing', 'Song', 'Artist', 'Album', 'https://i.scdn.co/x', '215000', '12500', '80'].join('\x1f'))
     expect(s).toEqual({ available: true, state: 'playing', title: 'Song', artist: 'Artist', album: 'Album', artwork: 'https://i.scdn.co/x', durationMs: 215000, positionMs: 12500, volume: 80 })
+  })
+
+  /**
+   * The bug this guards: AppleScript writes a real with the decimal separator of the Mac's number
+   * format, so where that is a comma `player position` answered `69,724998`, `Number()` made NaN
+   * of it, and the progress bar never moved. Both ends hold now: the script asks for a whole
+   * number of milliseconds, and a real that gets through anyway, comma and all, is read as the
+   * number it is and rounded to the millisecond.
+   */
+  it('reads a real written with a decimal comma as whole milliseconds, not NaN', () => {
+    const french = (position: string) =>
+      parseSpotify(['playing', 'Song', 'Artist', 'Album', '', '215000', position, '80'].join('\x1f')).positionMs
+    expect(french('69724,998')).toBe(69725)
+    // What AppleScript actually writes for a real from 10 000 up: the comma, and an exponent.
+    expect(french('6,9724998E+4')).toBe(69725)
+  })
+  it('asks Spotify for a whole number of milliseconds, with operators alone', () => {
+    // `div` and not `round`, a Standard Additions command that Spotify would have to load: see `STATE`.
+    expect(STATE).toContain('((player position) * 1000) div 1')
+    expect(STATE).not.toContain('round (')
+    expect(STATE).not.toContain('sep & (player position)')
   })
   it('reports unavailable when Spotify is not running', async () => {
     const run = vi.fn(async (script: string) => (script.includes('System Events') ? 'false' : ''))
