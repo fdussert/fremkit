@@ -37,6 +37,9 @@ Anything that changes what the dashboard, the admin or a widget can do gets a li
   sessions after 30 minutes (on by default), and group the board by application.
 
 ### Fixed
+- Spotify's progress bar moves: on a Mac whose number format uses a decimal comma the position
+  read as nothing, and the bar sat at zero. It now glides across each second instead of stepping,
+  lands at once on a seek, a new track or a pause, and empties when Spotify closes (@mcouzinet, #4).
 - Link buttons on the shortcuts widget show their favicon again. The cross-site refusal on the
   favicon route (0.2.0) also caught the widget's own request, since a sandboxed widget frame
   counts as another site; the host page now fetches the icon for it. A site that is down when the
@@ -44,6 +47,8 @@ Anything that changes what the dashboard, the admin or a widget can do gets a li
 - For widget authors: `Fremkit.favicon(url)` is how a widget gets a site's icon now.
 
 ### Changed
+- The Spotify tile fits its shape: a row when wide, the transport under the cover and the song
+  from 440 × 340, a column when square or taller; minimum size 8 × 4 (@mcouzinet, #4).
 - Shortcut buttons fill the tile: the rows share its height, and the icons and labels grow
   with them, down to a finger-sized minimum past which the grid scrolls as before.
 
