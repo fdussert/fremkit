@@ -309,10 +309,10 @@
       rerenderIfResolutionChanged()
     })
     // Every installed application, not only the ones in the Dock: a button pointing at something
-    // the user never docked still gets its real icon.
+    // the user never docked still gets its real icon. Asked of the host, which can reach the
+    // route: this frame is served with `connect-src 'none'`, so its own fetch goes nowhere.
     function loadInstalled() {
-      fetch('/api/apps/installed')
-        .then(function (r) { return r.ok ? r.json() : [] })
+      Fremkit.installedApps()
         .then(function (list) {
           installed = Array.isArray(list) ? list : []
           rerenderIfResolutionChanged()

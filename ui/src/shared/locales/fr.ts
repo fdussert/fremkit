@@ -268,6 +268,7 @@ export const fr: Record<string, string> = {
 
   'bridge.badRequest': 'requête du widget invalide',
   'bridge.noIcon': 'pas d’icône pour ce site',
+  'bridge.noApps': 'liste des applications indisponible',
   'bridge.channelNotAllowed': 'canal non autorisé : {channel}',
 
   'socket.unknownError': 'erreur inconnue',

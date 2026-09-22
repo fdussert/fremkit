@@ -287,7 +287,9 @@ host, depending on the kind.
 shortcut. A tap lights the button and answers with a brief ✓ or ✗. Application buttons draw the
 app's real icon: the one the native helper uploaded when it is in the Dock, and otherwise one the
 server extracts from the installed bundle itself (`sips`, cached under `data/icons/apps/`), so an
-application that has never been docked still shows its icon. The kind's glyph is the last resort.
+application that has never been docked still shows its icon. The name on the button is matched
+against the installed applications, asked for through the host page (`Fremkit.installedApps`), to
+find the bundle identifier that icon is filed under. The kind's glyph is the last resort.
 
 In the admin, the *Target* box of an application row offers the applications installed on this
 machine as you type — `/Applications` and its subfolders, `~/Applications`, and the system ones.

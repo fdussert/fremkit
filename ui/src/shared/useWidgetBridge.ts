@@ -194,6 +194,21 @@ export function useWidgetBridge(
           .catch((e: Error) => reply(id, undefined, e.message))
         break
       }
+      case 'fremkit:apps': {
+        // Same reason as the favicon above, one step earlier: the widget's frame is served with
+        // `connect-src 'none'`, so its own fetch never leaves the page. The route answers the
+        // name, the bundle id and the file name of each application — what a widget needs to
+        // turn a name the user typed into the icon it asks for — and no filesystem path.
+        const id = str(m.id)
+        if (!id) break
+        fetch('/api/apps/installed')
+          .then(async (r) => {
+            if (!r.ok) { reply(id, undefined, t('bridge.noApps')); return }
+            reply(id, await r.json())
+          })
+          .catch((e: Error) => reply(id, undefined, e.message))
+        break
+      }
     }
   }
 
