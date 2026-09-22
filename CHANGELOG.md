@@ -37,6 +37,9 @@ Anything that changes what the dashboard, the admin or a widget can do gets a li
   sessions after 30 minutes (on by default), and group the board by application.
 
 ### Fixed
+- The Claude limits widget shows today's tokens and its hourly histogram again. It reached for the
+  bridge's escaping helper by the wrong name, so every render threw where the footer begins and
+  everything under the gauges stayed empty (@mcouzinet, #5).
 - Spotify's progress bar moves: on a Mac whose number format uses a decimal comma the position
   read as nothing, and the bar sat at zero. It now glides across each second instead of stepping,
   lands at once on a seek, a new track or a pause, and empties when Spotify closes (@mcouzinet, #4).

@@ -130,7 +130,7 @@
       parts.push(Fremkit.t(L.today, { tokens: tokens(total), sessions: sessions })
         + (t.costUsd ? Fremkit.t(L.cost, { amount: dec(t.costUsd, 2) }) : ''))
     }
-    foot.innerHTML = parts.map(esc).join('<br>')
+    foot.innerHTML = parts.map(Fremkit.esc).join('<br>')
     var histrow = document.getElementById('histrow'), hist = document.getElementById('hist'), histlbl = document.getElementById('histlbl')
     if (data && data.today && data.today.hourly && Fremkit.size.h >= 4) {
       histrow.hidden = false
