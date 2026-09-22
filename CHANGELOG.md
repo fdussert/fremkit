@@ -43,7 +43,13 @@ Anything that changes what the dashboard, the admin or a widget can do gets a li
   dashboard loads gets its icon within a minute of coming back, instead of at the next reload.
 - For widget authors: `Fremkit.favicon(url)` is how a widget gets a site's icon now.
 
+### Changed
+- Shortcut buttons fill the tile: the rows share its height, and the icons and labels grow
+  with them, down to a finger-sized minimum past which the grid scrolls as before.
+
 ### Added
+- Shortcut buttons can be drawn with no background, on the tile's accent, or on a colour of
+  your choosing (the text picks black or white to stay readable).
 - A registry package says what each version changed, and the admin shows it: under the chip on a
   card with an update waiting, and beside the permissions in the install, update and *Update all*
   dialogs. An update several versions behind lists every version it is taking. The text is the

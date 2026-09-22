@@ -1,6 +1,6 @@
 { "id": "shortcuts",
   "name": { "fr": "Raccourcis", "en": "Shortcuts" },
-  "version": "1.2.1",
+  "version": "1.3.0",
   "description": { "fr": "Gros boutons tactiles qui ouvrent une application, un lien ou un raccourci",
                    "en": "Big touch buttons that open an application, a link or a shortcut" },
   "category": "productivity",
@@ -23,5 +23,13 @@
       } },
     "columns": { "type": "number", "default": 4, "label": { "fr": "Colonnes", "en": "Columns" } },
     "showIcons": { "type": "boolean", "default": true,
-      "label": { "fr": "Icônes des applications et des sites", "en": "Application and site icons" } }
+      "label": { "fr": "Icônes des applications et des sites", "en": "Application and site icons" } },
+    "background": { "type": "enum", "default": "tinted",
+      "label": { "fr": "Fond des boutons", "en": "Button background" },
+      "options": [{ "value": "tinted", "label": { "fr": "Teinté", "en": "Tinted" } },
+                  { "value": "accent", "label": { "fr": "Couleur d’accent", "en": "Accent colour" } },
+                  { "value": "custom", "label": { "fr": "Couleur choisie", "en": "Chosen colour" } },
+                  { "value": "none", "label": { "fr": "Aucun", "en": "None" } }] },
+    "color": { "type": "color", "default": "#d9b36a",
+      "label": { "fr": "Couleur choisie (fond « Couleur choisie »)", "en": "Chosen colour (for the “Chosen colour” background)" } }
   } }

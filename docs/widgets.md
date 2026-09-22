@@ -321,13 +321,16 @@ Only three kinds exist, and none of them is a shell: `app` runs `open -a <name>`
 shell metacharacter, or a `file:` or `javascript:` address, is refused — and runs the program with
 an argument list, never through a shell.
 
-Minimum size 8 × 4, default 16 × 8.
+Minimum size 8 × 4, default 16 × 8. The rows share the tile's height — two rows of buttons are
+tall, with icons to match — down to a finger-sized minimum, past which the grid scrolls.
 
 | Setting | Type | Default | Scope | What it is |
 |---|---|---|---|---|
 | `buttons` | list of `{ label, kind, target }` | `[]` | both | One row per button, in the order drawn |
 | `columns` | number | `4` | both | How many buttons per row |
 | `showIcons` | boolean | `true` | both | Draw the icon of an application button, and the site's favicon for a link |
+| `background` | `tinted` / `accent` / `custom` / `none` | `tinted` | both | What the buttons are drawn on: a translucent tint, the tile's accent, the colour below, or nothing |
+| `color` | colour | `#d9b36a` | both | The buttons' colour when `background` is `custom`; the text on it is black or white, whichever reads |
 
 A `buttons` row holds `label` (what the button says; the target is used when it is empty), `kind`
 (*Application*, *Link* or *Shortcut*) and `target` (the application name, with suggestions from the
