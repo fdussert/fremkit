@@ -147,6 +147,8 @@ describe('WidgetCatalog', () => {
     const battery = cat.get('battery')!
     expect(battery.subscriptions).toEqual(['battery'])
     expect([battery.minSize, battery.defaultSize]).toEqual([[8, 4], [8, 6]])
+    const spotify = cat.get('spotify')!
+    expect([spotify.minSize, spotify.defaultSize]).toEqual([[8, 4], [16, 5]])
     const status = cat.get('service-status')!
     expect(status.subscriptions).toEqual([])
     expect(status.commands).toEqual(['service-status'])

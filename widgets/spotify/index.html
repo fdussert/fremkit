@@ -6,11 +6,14 @@
   .big{font-size:calc(44px * var(--text-scale, 1));font-weight:600;line-height:1}
   .bar{height:8px;border-radius:4px;background:var(--surface-3, #252a32);overflow:hidden}
   /* Scaled rather than resized: the position only arrives once a second, so the fill glides
-     across that second on the compositor instead of stepping on each answer. */
+     across that second on the compositor instead of stepping on each answer. The 1s is the
+     provider's poll: `intervalMs` in server/src/providers/spotify.ts, and `POLL_MS` below. */
   .bar>i{display:block;height:100%;width:100%;background:var(--accent, #d9b36a);
     transform:scaleX(0);transform-origin:left center;transition:transform 1s linear}
-  /* A new track, or a seek: there is nothing to glide across, so it lands where it is. */
+  /* A new track, a seek or a pause: there is nothing to glide across, so it lands where it is. */
   .bar>i.snap{transition:none}
+  /* The glide runs for as long as music plays. Asked for less motion, the fill steps instead. */
+  @media (prefers-reduced-motion:reduce){.bar>i{transition:none}}
   .row{display:flex;justify-content:space-between;font-size:calc(15px * var(--text-scale, 1))}
   .muted{color:var(--text-muted, #8b93a0)}
   button{font:inherit;border:0;border-radius:10px;background:var(--surface-3, #252a32);color:var(--text, #e6e8eb);padding:10px 14px;font-size:calc(18px * var(--text-scale, 1))}
@@ -121,9 +124,9 @@
       document.documentElement.lang = Fremkit.locale
       var d = last
       if (!d) { t.textContent = Fremkit.t(L.closed); return }
-      if (d.error) { t.textContent = Fremkit.t(L.error); a.textContent = ''; img.removeAttribute('src'); return }
-      if (!d.available) { t.textContent = Fremkit.t(L.closed); a.textContent = ''; img.removeAttribute('src'); return }
-      if (d.state === 'stopped') { t.textContent = Fremkit.t(L.stopped); a.textContent = ''; return }
+      if (d.error) { t.textContent = Fremkit.t(L.error); a.textContent = ''; img.removeAttribute('src'); clearBar(); return }
+      if (!d.available) { t.textContent = Fremkit.t(L.closed); a.textContent = ''; img.removeAttribute('src'); clearBar(); return }
+      if (d.state === 'stopped') { t.textContent = Fremkit.t(L.stopped); a.textContent = ''; clearBar(); return }
       t.textContent = d.title; a.textContent = d.artist + ' · ' + d.album
       if (d.artwork && img.src !== d.artwork) img.src = d.artwork
       renderBar(d)
@@ -134,19 +137,25 @@
      * that moved only when an answer landed read as a step every second — so while the track
      * plays the fill is sent to where it will be at the *next* answer, and takes that second to
      * get there. Each answer then corrects the aim, so drift never accumulates.
+     *
+     * The same second as `intervalMs` in server/src/providers/spotify.ts and as the fill's `1s`
+     * transition above: change one, change all three.
      */
     var POLL_MS = 1000
     var lastKey = null
     var lastPositionMs = 0
+    var wasPlaying = false
 
     function renderBar(d) {
       var bar = document.getElementById('bar')
       var here = d.durationMs ? Math.min(1, d.positionMs / d.durationMs) : 0
       var key = d.title + '\u001f' + d.album
-      // Backwards, or another track: gliding there would run the fill the wrong way for a second.
-      var snap = key !== lastKey || d.positionMs < lastPositionMs - 250
+      // Backwards, another track, or a pause — which lands behind a fill aimed a second ahead:
+      // gliding there would run the fill the wrong way for a second.
+      var snap = key !== lastKey || d.positionMs < lastPositionMs - 250 || (wasPlaying && d.state !== 'playing')
       lastKey = key
       lastPositionMs = d.positionMs
+      wasPlaying = d.state === 'playing'
       if (snap) {
         bar.className = 'snap'
         bar.style.transform = 'scaleX(' + here + ')'
@@ -156,6 +165,14 @@
       var ahead = d.state === 'playing' && d.durationMs
         ? Math.min(1, (d.positionMs + POLL_MS) / d.durationMs) : here
       bar.style.transform = 'scaleX(' + ahead + ')'
+    }
+
+    /** No position to show: the fill empties at once, and whatever plays next lands rather than glides up from zero. */
+    function clearBar() {
+      var bar = document.getElementById('bar')
+      bar.className = 'snap'
+      bar.style.transform = 'scaleX(0)'
+      lastKey = null
     }
 
     render()

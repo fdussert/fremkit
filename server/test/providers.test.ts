@@ -26,16 +26,24 @@ describe('spotify', () => {
   })
 
   /**
-   * The bug this guards: AppleScript writes a number with the Mac's own decimal separator, so on
-   * a French system `player position` answered `69,724998` and `Number()` made NaN of it — a
-   * progress bar stuck at zero for everyone outside an English locale. The script asks Spotify
-   * to round the position to whole milliseconds instead, and an integer has no separator.
+   * The bug this guards: AppleScript writes a real with the decimal separator of the Mac's number
+   * format, so where that is a comma `player position` answered `69,724998`, `Number()` made NaN
+   * of it, and the progress bar never moved. Both ends hold now: the script asks for a whole
+   * number of milliseconds, and a real that gets through anyway, comma and all, is read as the
+   * number it is and rounded to the millisecond.
    */
-  it('asks Spotify for a whole number of milliseconds, never a float', () => {
-    expect(STATE).toContain('round ((player position) * 1000)')
+  it('reads a real written with a decimal comma as whole milliseconds, not NaN', () => {
+    const french = (position: string) =>
+      parseSpotify(['playing', 'Song', 'Artist', 'Album', '', '215000', position, '80'].join('\x1f')).positionMs
+    expect(french('69724,998')).toBe(69725)
+    // What AppleScript actually writes for a real from 10 000 up: the comma, and an exponent.
+    expect(french('6,9724998E+4')).toBe(69725)
+  })
+  it('asks Spotify for a whole number of milliseconds, with operators alone', () => {
+    // `div` and not `round`, a Standard Additions command that Spotify would have to load: see `STATE`.
+    expect(STATE).toContain('((player position) * 1000) div 1')
+    expect(STATE).not.toContain('round (')
     expect(STATE).not.toContain('sep & (player position)')
-    const french = parseSpotify(['playing', 'Song', 'Artist', 'Album', '', '215000', '69,724998', '80'].join('\x1f'))
-    expect(Number.isNaN(french.positionMs)).toBe(true)
   })
   it('reports unavailable when Spotify is not running', async () => {
     const run = vi.fn(async (script: string) => (script.includes('System Events') ? 'false' : ''))

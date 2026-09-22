@@ -11,8 +11,10 @@ import { fileURLToPath } from 'node:url'
  */
 interface StubNode {
   textContent: string; className: string; title: string; onclick: (() => void) | null
-  style: Record<string, string> & { setProperty(name: string, value: string): void }
+  style: Record<string, string> & { transform: string; setProperty(name: string, value: string): void }
   childNodes: StubNode[]
+  /** Every transform the node was given, with the class it had at that moment, in order. */
+  writes: [string, string][]
 }
 
 interface Loaded {
@@ -33,9 +35,17 @@ async function loadWidget(settings: Record<string, unknown>, viewport: [number, 
   const commands: [string, string, unknown?][] = []
   const subscribers: ((data: unknown) => void)[] = []
   const node = () => {
+    // A setter rather than a field: a snap and a glide end on the same transform, and only the
+    // writes on the way there tell them apart.
+    let transform = ''
     const self = {
       textContent: '', className: '', title: '', src: '',
-      style: { setProperty(name: string, value: string) { (this as Record<string, unknown>)[name] = value } } as StubNode['style'],
+      writes: [] as [string, string][],
+      style: {
+        setProperty(name: string, value: string) { (this as Record<string, unknown>)[name] = value },
+        get transform() { return transform },
+        set transform(value: string) { transform = value; self.writes.push([self.className, value]) },
+      } as StubNode['style'],
       clientWidth: viewport[0] - 36,
       childNodes: [] as StubNode[],
       classList: { add: () => {}, remove: () => {}, toggle: () => {} },
@@ -168,6 +178,13 @@ describe('the spotify widget progress bar', () => {
   })
   const scale = (loaded: Loaded) =>
     Number(/scaleX\(([\d.]+)\)/.exec(loaded.nodes.get('bar')!.style.transform ?? '')?.[1])
+  /** What one answer does to the fill: each transform it is given, and the class it has then. */
+  const writesFor = (loaded: Loaded, data: Record<string, unknown>) => {
+    const bar = loaded.nodes.get('bar')!
+    bar.writes.length = 0
+    loaded.publish(data)
+    return bar.writes
+  }
 
   it('aims one poll ahead while the track plays', async () => {
     const loaded = await loadWidget({})
@@ -188,20 +205,41 @@ describe('the spotify widget progress bar', () => {
     expect(scale(loaded)).toBe(1)
   })
 
+  it('glides on an ordinary answer: one write, with the transition left on', async () => {
+    const loaded = await loadWidget({})
+    loaded.publish(playing(100_000))
+    expect(writesFor(loaded, playing(101_000))).toEqual([['', 'scaleX(0.51)']])
+  })
+
   it('snaps rather than glides when the track changes', async () => {
     const loaded = await loadWidget({})
     loaded.publish(playing(180_000))
-    loaded.publish(playing(1_000, { title: 'Another' }))
-    // The snap class is put on and taken off within the call; what it leaves is the new aim.
-    expect(loaded.nodes.get('bar')!.className).toBe('')
-    expect(scale(loaded)).toBeCloseTo(0.01, 5)
+    // Put down on the new track's position with the transition off, then sent on from there.
+    expect(writesFor(loaded, playing(1_000, { title: 'Another' })))
+      .toEqual([['snap', 'scaleX(0.005)'], ['', 'scaleX(0.01)']])
   })
 
   it('snaps on a seek backwards, and glides on one forwards', async () => {
     const loaded = await loadWidget({})
     loaded.publish(playing(100_000))
-    loaded.publish(playing(20_000))
-    expect(scale(loaded)).toBeCloseTo(0.105, 5)
+    expect(writesFor(loaded, playing(20_000))).toEqual([['snap', 'scaleX(0.1)'], ['', 'scaleX(0.105)']])
+    expect(writesFor(loaded, playing(150_000))).toEqual([['', 'scaleX(0.755)']])
+  })
+
+  it('snaps on a pause, which lands behind a fill aimed a second ahead', async () => {
+    const loaded = await loadWidget({})
+    loaded.publish(playing(100_000))
+    // Aimed at 101 s; the next answer is `paused` at 100.2 s. Gliding there runs the fill back.
+    expect(writesFor(loaded, playing(100_200, { state: 'paused' })))
+      .toEqual([['snap', 'scaleX(0.501)'], ['', 'scaleX(0.501)']])
+  })
+
+  it('empties at once when Spotify closes, and lands rather than glides when it plays again', async () => {
+    const loaded = await loadWidget({})
+    loaded.publish(playing(100_000))
+    expect(writesFor(loaded, { available: false })).toEqual([['snap', 'scaleX(0)']])
+    // The same track at the same place: from an empty bar, that is a jump and not a glide.
+    expect(writesFor(loaded, playing(100_000))).toEqual([['snap', 'scaleX(0.5)'], ['', 'scaleX(0.505)']])
   })
 
   it('draws an empty bar for a track with no duration at all', async () => {

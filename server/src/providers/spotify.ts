@@ -12,28 +12,39 @@ import { tr } from '../i18n.js'
 const SEP = '\x1f'
 const IS_RUNNING = 'tell application "System Events" to (name of processes) contains "Spotify"'
 /**
- * The position is rounded to milliseconds by AppleScript rather than read as the float it is.
+ * The position is made a whole number of milliseconds by AppleScript rather than read as the
+ * float it is.
  *
  * `player position` is the one fractional value here, and AppleScript writes a number with the
- * Mac's own decimal separator: on a French system it answers `69,724998`, which `Number()` reads
- * as NaN — and a NaN position is a progress bar that never moves. An integer has no separator to
- * get wrong. `duration` is already in milliseconds, and `sound volume` is already whole.
+ * decimal separator of the Mac's number format: where that is a comma it answers `69,724998`,
+ * which `Number()` reads as NaN — and a NaN position is a progress bar that never moves. An
+ * integer has no separator to get wrong. `duration` is already in milliseconds, and `sound
+ * volume` is already whole.
+ *
+ * With `div`, an operator, and not `round`, which is a Standard Additions command: inside a
+ * `tell` block a command goes to the target first, so `round` works only where Spotify agrees to
+ * load the addition, and one that refuses fails the whole script — a bar stuck at zero would
+ * become "Spotify error". An operator never leaves AppleScript. It truncates where `round`
+ * rounded, which under a millisecond nothing on the bar can show.
  */
 export const STATE = `tell application "Spotify"
   if player state is stopped then return "stopped"
   set sep to "${SEP}"
-  return (player state as string) & sep & (name of current track) & sep & (artist of current track) & sep & (album of current track) & sep & (artwork url of current track) & sep & (duration of current track) & sep & (round ((player position) * 1000)) & sep & (sound volume)
+  return (player state as string) & sep & (name of current track) & sep & (artist of current track) & sep & (album of current track) & sep & (artwork url of current track) & sep & (duration of current track) & sep & (((player position) * 1000) div 1) & sep & (sound volume)
 end tell`
 
 export function parseSpotify(raw: string) {
   const [state, title, artist, album, artwork, duration, position, volume] = raw.split(SEP)
+  // The script already sends integers; this is the second line of defence, so that a real which
+  // gets through anyway, decimal comma and all, still lands as a whole number rather than NaN.
+  const num = (v: string) => Math.round(Number(v.replace(',', '.')))
   return {
     available: true as const,
     state: state as 'playing' | 'paused' | 'stopped',
     title, artist, album, artwork,
-    durationMs: Number(duration),
-    positionMs: Number(position),
-    volume: Number(volume),
+    durationMs: num(duration),
+    positionMs: num(position),
+    volume: num(volume),
   }
 }
 
@@ -65,6 +76,8 @@ export function createSpotifyProvider(run: Runner = osascript, open: Opener = op
   const tell = (cmd: string) => run(`tell application "Spotify" to ${cmd}`).then(() => ({ ok: true }))
   return {
     channel: 'spotify',
+    // The widget's fill glides across exactly this second: `POLL_MS` and the `1s` transition in
+    // widgets/spotify/index.html say it again. Change the three together.
     intervalMs: 1000,
     async poll() {
       if ((await run(IS_RUNNING)) !== 'true') return { available: false }
