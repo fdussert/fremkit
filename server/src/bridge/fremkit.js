@@ -213,6 +213,17 @@
       return request({ type: 'fremkit:favicon', url: url })
     },
     /**
+     * The applications installed on this Mac, as `{ name, bundleId, file }` — enough to name one
+     * and to ask for its icon at `/api/apps/icon/<bundleId>`, and nothing about where it lives.
+     *
+     * Asked of the host for the same reason as a favicon, one step earlier: a widget's frame is
+     * served with `connect-src 'none'`, so a `fetch` from here never leaves the page at all. The
+     * host page makes the request from the server's own origin and hands the list over.
+     */
+    installedApps: function () {
+      return request({ type: 'fremkit:apps' })
+    },
+    /**
      * Escapes a string for HTML.
      *
      * Almost everything a widget draws is remote data it did not write: a volume name, a calendar

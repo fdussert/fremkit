@@ -225,6 +225,7 @@ Fremkit.whenReady(() => {
 | `sendCommand(channel, name, payload)` | Sends a command. Returns a promise |
 | `fetch(url, init)` | GET through the server's proxy. Only the host in `permissions.network` is reachable; `body` and `credentials` are ignored |
 | `favicon(url)` | The icon of the site `url` is on, as a `data:` URL for an `<img>`; rejects when there is none. Ask this rather than loading `/api/favicon` in an `<img>`: a widget's frame has an opaque origin, so the server sees that request as cross-site and refuses it |
+| `installedApps()` | The applications installed on this Mac, as `{ name, bundleId, file }` — enough to match a name the user typed and ask for its icon at `/api/apps/icon/<bundleId>`, and no filesystem path. Ask this rather than `fetch('/api/apps/installed')`: a widget's frame is served with `connect-src 'none'`, so its own request never leaves the page |
 | `t(dict, params)` | Resolves a `{ fr, en }` table entry and interpolates `{name}` placeholders |
 | `onSettings(cb)` | Fires when the admin edits the settings, without a reload. Returns an off function |
 | `onLocale(cb)` | Fires when the language changes. Returns an off function |

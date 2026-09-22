@@ -37,6 +37,13 @@ Anything that changes what the dashboard, the admin or a widget can do gets a li
   sessions after 30 minutes (on by default), and group the board by application.
 
 ### Fixed
+- Shortcut buttons draw the real icon of an application that is not in the Dock again. The widget
+  read the list of installed applications itself, which the `connect-src 'none'` its frame is
+  served with has always refused, so anything the user had never docked fell back to the kind's
+  glyph. The host page reads that list for it now, as it already does for a link's favicon
+  (@mcouzinet, #6).
+- For widget authors: `Fremkit.installedApps()` is how a widget turns an application name into the
+  bundle id its icon is filed under.
 - Spotify's progress bar moves: on a Mac whose number format uses a decimal comma the position
   read as nothing, and the bar sat at zero. It now glides across each second instead of stepping,
   lands at once on a seek, a new track or a pause, and empties when Spotify closes (@mcouzinet, #4).
