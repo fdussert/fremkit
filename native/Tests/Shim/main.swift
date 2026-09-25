@@ -71,6 +71,17 @@ let suites: [(String, () -> XCTestCase, [TestMethod])] = [
         ("testSignatureChangesWithTheBadgeAndWithTheRunningFlag", { ($0 as! DockBadgeParserTests).testSignatureChangesWithTheBadgeAndWithTheRunningFlag() }),
         ("testSignatureIgnoresTheDisplayNameOnly", { ($0 as! DockBadgeParserTests).testSignatureIgnoresTheDisplayNameOnly() }),
     ]),
+    ("WindowSweepTests", { WindowSweepTests() }, [
+        ("testFindsAWindowLostOnTheEdge", { ($0 as! WindowSweepTests).testFindsAWindowLostOnTheEdge() }),
+        ("testLeavesWindowsOnTheOtherDisplaysAlone", { ($0 as! WindowSweepTests).testLeavesWindowsOnTheOtherDisplaysAlone() }),
+        ("testTakesAWindowThatMerelyStraddlesTheBoundary", { ($0 as! WindowSweepTests).testTakesAWindowThatMerelyStraddlesTheBoundary() }),
+        ("testIgnoresTheHelpersOwnKioskWindow", { ($0 as! WindowSweepTests).testIgnoresTheHelpersOwnKioskWindow() }),
+        ("testIgnoresEverythingThatIsNotAnOrdinaryWindow", { ($0 as! WindowSweepTests).testIgnoresEverythingThatIsNotAnOrdinaryWindow() }),
+        ("testSkipsAnEntryMissingWhatItNeeds", { ($0 as! WindowSweepTests).testSkipsAnEntryMissingWhatItNeeds() }),
+        ("testKeepsTheOrderOfTheList", { ($0 as! WindowSweepTests).testKeepsTheOrderOfTheList() }),
+        ("testPresentListsEveryWindowWhateverItIs", { ($0 as! WindowSweepTests).testPresentListsEveryWindowWhateverItIs() }),
+        ("testARescuedWindowKeepsItsSizeAndLandsOnTheMainDisplay", { ($0 as! WindowSweepTests).testARescuedWindowKeepsItsSizeAndLandsOnTheMainDisplay() }),
+    ]),
     ("AdminPlacementTests", { AdminPlacementTests() }, [
         ("testAFrameOnTheLaptopIsLeftAlone", { ($0 as! AdminPlacementTests).testAFrameOnTheLaptopIsLeftAlone() }),
         ("testAFrameOnTheKioskDisplayIsMovedToTheLaptop", { ($0 as! AdminPlacementTests).testAFrameOnTheKioskDisplayIsMovedToTheLaptop() }),
