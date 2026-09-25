@@ -11,8 +11,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let poster = EventPoster()
     private var driver: TouchDriver?
     private var fence: MouseFence?
-    /// A future window fence can register here and share the dashboard visibility rule.
+    /// A fence registers here and shares the dashboard visibility rule.
     private var fenceUpdates: [(Bool) -> Void] = []
+    private var windows: WindowFence?
     private var dockBadges: DockBadges?
     private var watcher: EdgeDisplay.Watcher?
     private var kiosk: KioskWindow?
@@ -60,6 +61,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         fenceUpdates.append { [weak fence] active in
             if active { _ = fence?.start() }
             else { fence?.stop() }
+        }
+
+        let windows = WindowFence(edge: nil)
+        self.windows = windows
+        fenceUpdates.append { [weak windows] active in
+            if active { windows?.start() } else { windows?.stop() }
         }
 
         let dockBadges = DockBadges(port: config.port)
@@ -138,6 +145,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         server?.stopAndWait(timeout: 2)
         driver?.stop()
         fence?.stop()
+        windows?.stop()
         dockBadges?.stop()
         kiosk?.close()
     }
@@ -208,6 +216,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.edge = edge
         driver?.displayBounds = edge
         fence?.edge = edge
+        windows?.edge = edge
 
         if let edge {
             let frame = NSRect.fromCGDisplayBounds(edge, primaryHeight: NSRect.primaryScreenHeight)
