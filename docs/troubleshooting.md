@@ -14,6 +14,7 @@ and "Notifications: active" above the toggles, and *Log…* opens the supervised
 | "Touch: permission missing" | Input Monitoring not granted to *this build* of the helper | Add "Fremkit Helper" under Privacy & Security → Input Monitoring, then relaunch it |
 | "Touch: taken by another driver" | Touchscreen Gestures, another driver or a `--probe` run holds the panel | Quit it, and unload its launchd agent so it does not come back |
 | "Fence: permission missing" | Accessibility not granted | Add "Fremkit Helper" under Privacy & Security → Accessibility, then relaunch it |
+| A window vanished behind the dashboard | An application placed it on the Edge, where the kiosk covers it | The Edge fence brings it back within two seconds; if it stays there, the helper is missing Accessibility, or the fence is off in its menu |
 | Permissions reset after every rebuild | Ad-hoc signature: a new code identity each build | Run `scripts/create-signing-identity.sh`, rebuild, grant once more |
 | Printer unreachable (`EHOSTUNREACH`) while `ping` and `curl` work | Local Network not granted to the app that runs the server | Allow it under Privacy & Security → Local Network |
 | "Server: external" | Something already answers port 4242, so the helper steps aside | Expected under `pnpm dev`; otherwise stop the stray server, or turn *Manage the server* off |

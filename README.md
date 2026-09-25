@@ -36,7 +36,8 @@ The name is the Fremen survival kit from *Dune*.
 - **Connections** — named credential sets for outside services, with secrets kept in the macOS
   keychain rather than in the config file.
 - **A native helper** — a menu bar app that drives the Edge's touch panel with its own HID
-  driver, fences the mouse out of the display, shows the dashboard in a kiosk window and
+  driver, keeps the mouse and other applications' windows off the display, shows the dashboard
+  in a kiosk window and
   supervises the server.
 - **A widget marketplace** — *Sietch* in the admin installs widgets from a curated registry,
   showing what each one will be allowed to do and asking again when an update wants more.
@@ -109,7 +110,7 @@ admin window: an older copy ignores it.
 
 The dashboard then opens by itself on the Edge. If you would rather not run the helper at all,
 `pnpm start` serves everything and `pnpm kiosk` opens a full-screen Chrome window on the Edge —
-you lose the touch driver, the mouse fence and the Dock badges.
+you lose the touch driver, the Edge fence and the Dock badges.
 
 ## First run
 
@@ -213,9 +214,9 @@ the widget library and the widgets themselves, live, without a reload.
 
 **The helper, or a browser.** The dashboard is a web page: any browser can show it. The native
 helper adds what a browser cannot — its own HID driver for the Edge's touch panel, a fence that
-keeps the mouse cursor on your other displays, a kiosk window with no chrome and no cursor, the
+keeps the mouse cursor and other applications' windows on your other displays, a kiosk window with no chrome and no cursor, the
 Dock's notification badges, and supervision of the server. Its menu bar **F** shows what is
-running: *Open the admin*, *Admin in the browser*, *Reload the dashboard*, the *Touch* / *Mouse
+running: *Open the admin*, *Admin in the browser*, *Reload the dashboard*, the *Touch* / *Edge
 fence* / *Notifications* / *Manage the server* / *Launch at login* toggles, *Log…* and *Quit*,
 above state lines such as "Server: running" and "Touch: active".
 
@@ -350,7 +351,7 @@ pnpm helper:test
 |---|---|
 | `server/` | Fastify 5 on 127.0.0.1:4242 — config, widget catalog, providers, connections, secrets, the bridge, the WebSocket |
 | `ui/` | Vue 3 — the dashboard, the admin, and the code they share |
-| `native/` | The Swift helper — kiosk window, HID touch driver, mouse fence, admin window, Dock badges, server supervision |
+| `native/` | The Swift helper — kiosk window, HID touch driver, Edge fence, admin window, Dock badges, server supervision |
 | `widgets/` | One folder per widget |
 | `scripts/` | Setup, dev, the helper's build and tests, the signing identity, kiosk, the Claude Code hooks |
 | `data/` | Your configuration and its assets. Git-ignored |
