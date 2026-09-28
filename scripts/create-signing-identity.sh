@@ -60,24 +60,33 @@ with open(path, "w", encoding="utf-8") as handle:
     handle.write(text.replace(pattern, name))
 PY
 
+# macOS ships LibreSSL at /usr/bin/openssl, and the Security framework reads the bundle it
+# writes. An OpenSSL 3 in the PATH (Homebrew's, which comes first on most Macs with one) packages
+# it with algorithms `security import` refuses, and the import fails on the MAC check with a
+# message about a wrong password. `-legacy` is meant to cover that, but only works on a build
+# that ships the legacy provider, which Homebrew's does not.
+OPENSSL=openssl
+[ -x /usr/bin/openssl ] && OPENSSL=/usr/bin/openssl
+
+# A throwaway password rather than none: an empty one fails the same MAC check on current macOS,
+# whatever wrote the bundle. It lives as long as this script and goes no further.
+P12_PASSWORD="fremkit-$RANDOM$RANDOM$RANDOM"
+
 echo "==> generating the key and certificate (10 years)"
-openssl req -x509 -newkey rsa:2048 -nodes -sha256 -days 3650 \
+"$OPENSSL" req -x509 -newkey rsa:2048 -nodes -sha256 -days 3650 \
     -config "$WORK/openssl.cnf" \
     -keyout "$WORK/key.pem" -out "$WORK/cert.pem" >/dev/null 2>&1
 
 echo "==> packaging them as PKCS#12"
-openssl pkcs12 -export -legacy \
+"$OPENSSL" pkcs12 -export \
     -inkey "$WORK/key.pem" -in "$WORK/cert.pem" \
-    -name "$IDENTITY" -passout pass: -out "$WORK/identity.p12" >/dev/null 2>&1 \
-  || openssl pkcs12 -export \
-    -inkey "$WORK/key.pem" -in "$WORK/cert.pem" \
-    -name "$IDENTITY" -passout pass: -out "$WORK/identity.p12" >/dev/null 2>&1
+    -name "$IDENTITY" -passout "pass:$P12_PASSWORD" -out "$WORK/identity.p12" >/dev/null 2>&1
 
 echo "==> importing into the login keychain"
 # `-x` marks the private key non-extractable: it can sign, but it cannot be exported back out of
 # the keychain. Only codesign is allowed to use it — `security` itself was on that list, which
 # let any script dump the key with `security export`.
-security import "$WORK/identity.p12" -k "$KEYCHAIN" -P "" -x \
+security import "$WORK/identity.p12" -k "$KEYCHAIN" -P "$P12_PASSWORD" -x \
     -T /usr/bin/codesign >/dev/null
 
 echo "==> trusting it for code signing"
