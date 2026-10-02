@@ -11,6 +11,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let poster = EventPoster()
     private var driver: TouchDriver?
     private var fence: MouseFence?
+    private var windows: WindowFence?
     private var dockBadges: DockBadges?
     private var watcher: EdgeDisplay.Watcher?
     private var kiosk: KioskWindow?
@@ -56,6 +57,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         self.fence = fence
 
+        self.windows = WindowFence(edge: nil)
+
         let dockBadges = DockBadges(port: config.port)
         dockBadges.onState = { [weak self] state in
             self?.menu?.update { $0.dock = state }
@@ -80,7 +83,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         if config.touch { driver.start() }
-        if config.fence { fence.start() }
+        if config.fence {
+            fence.start()
+            windows?.start()
+        }
         if config.dock { dockBadges.start() }
 
         // An orphan from a crashed helper still holds the port and would be mistaken for an
@@ -132,6 +138,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         server?.stopAndWait(timeout: 2)
         driver?.stop()
         fence?.stop()
+        windows?.stop()
         dockBadges?.stop()
         kiosk?.close()
     }
@@ -186,6 +193,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.edge = edge
         driver?.displayBounds = edge
         fence?.edge = edge
+        windows?.edge = edge
 
         if let edge {
             let frame = NSRect.fromCGDisplayBounds(edge, primaryHeight: NSRect.primaryScreenHeight)
@@ -248,7 +256,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard let self else { return }
             self.config.fence = on
             self.saveConfig()
-            if on { self.fence?.start() } else { self.fence?.stop() }
+            if on {
+                self.fence?.start()
+                self.windows?.start()
+            } else {
+                self.fence?.stop()
+                self.windows?.stop()
+            }
             self.refreshMenu()
         }
 
