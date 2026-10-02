@@ -38,6 +38,12 @@ const TIMEOUT_MS = 5_000
  * front of a workspace, say — answer with whatever they like, or refuse with a 406; asked for
  * HTML first, the same page answers with its `<head>` and the icons it declares.
  */
+/**
+ * The user agent icons are asked with: Fremkit's own, in the form crawlers use. Some sites (a
+ * Microsoft portal, for one) answer a bare `fremkit/x.y.z` with a 403 — page and icon alike — and
+ * serve the same files to `Mozilla/5.0 (compatible; …)`. It still says who is asking.
+ */
+export const FAVICON_USER_AGENT = `Mozilla/5.0 (compatible; ${USER_AGENT})`
 const HTML_ACCEPT = 'text/html,application/xhtml+xml;q=0.9,*/*;q=0.8'
 const IMAGE_ACCEPT = 'image/*,*/*;q=0.8'
 
@@ -259,7 +265,7 @@ export class FaviconStore {
       const res = await this.fetchImpl(current, {
         redirect: 'manual',
         signal: AbortSignal.timeout(TIMEOUT_MS),
-        headers: { 'user-agent': USER_AGENT, accept },
+        headers: { 'user-agent': FAVICON_USER_AGENT, accept },
       })
       if (![301, 302, 303, 307, 308].includes(res.status)) return { res, finalUrl: current }
       const location = res.headers.get('location')

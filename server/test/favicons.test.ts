@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import Fastify from 'fastify'
 import { pickIconHref, largestSize } from '../src/favicons/pick.js'
-import { FaviconStore, cacheKey, extensionFor, isFresh, sniffImageType, FAILED_TTL_MS, FAVICON_TTL_MS, MAX_ICON_BYTES, MAX_CACHED_ICONS } from '../src/favicons/store.js'
+import { FaviconStore, cacheKey, extensionFor, isFresh, sniffImageType, FAILED_TTL_MS, FAVICON_TTL_MS, FAVICON_USER_AGENT, MAX_ICON_BYTES, MAX_CACHED_ICONS } from '../src/favicons/store.js'
 import { faviconRoutes } from '../src/favicons/routes.js'
 
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64')
@@ -238,6 +238,19 @@ describe('FaviconStore and a site that negotiates', () => {
     expect(icon?.contentType).toBe('image/png')
     expect(calls[0].accept.startsWith('text/html')).toBe(true)
     expect(calls[1].accept.startsWith('image/')).toBe(true)
+  })
+
+  it('asks with a crawler-style user agent that still names Fremkit', async () => {
+    // A Microsoft portal answered `fremkit/x.y.z` with a 403 and the same icon to this form.
+    const agents: string[] = []
+    const fetchImpl = async (_input: string, init?: RequestInit): Promise<Response> => {
+      agents.push(String((init?.headers as Record<string, string>)?.['user-agent'] ?? ''))
+      return new Response(new Uint8Array(PNG), { status: 200, headers: { 'content-type': 'image/png' } })
+    }
+    const store = new FaviconStore({ dir, fetchImpl, isPrivate: PUBLIC })
+    await store.getImage('https://portal.example.com/Content/favicon.ico')
+    expect(agents).toEqual([FAVICON_USER_AGENT])
+    expect(FAVICON_USER_AGENT).toMatch(/^Mozilla\/5\.0 \(compatible; fremkit\/\d/)
   })
 
   it('finds an icon declared past a long <head> of inlined styles', async () => {
