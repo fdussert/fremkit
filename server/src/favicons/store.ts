@@ -159,31 +159,45 @@ export class FaviconStore {
 
   /** The icon for an origin: cached while fresh, re-fetched after that, stale on failure. */
   async get(origin: string): Promise<FaviconIcon | null> {
-    const cached = await this.readCached(origin)
+    return this.cachedOr(origin, () => this.resolve(origin))
+  }
+
+  /**
+   * One image at an exact address — an icon the user picked by hand for a site that declares
+   * none — under the same rules as a site's icon: no private address on any hop, no SVG, an image
+   * type or bytes that are one, the size cap, a week in the cache.
+   */
+  async getImage(url: string): Promise<FaviconIcon | null> {
+    return this.cachedOr(url, () => this.fetchIcon(url))
+  }
+
+  /** `key` is the origin, or the exact image address; either is hashed into the file name. */
+  private async cachedOr(key: string, resolve: () => Promise<FaviconIcon | null>): Promise<FaviconIcon | null> {
+    const cached = await this.readCached(key)
     if (cached && isFresh(cached.mtimeMs, this.now())) return cached.icon
     // Nothing cached and a recent failure: the answer is still "no icon", and the site is spared.
-    const failed = this.failedAt.get(origin)
+    const failed = this.failedAt.get(key)
     if (!cached && failed !== undefined && this.now() - failed < FAILED_TTL_MS) return null
-    const pending = this.inFlight.get(origin) ?? this.refresh(origin)
-    this.inFlight.set(origin, pending)
+    const pending = this.inFlight.get(key) ?? this.refresh(key, resolve)
+    this.inFlight.set(key, pending)
     try {
       const fresh = await pending
       // Stale beats nothing: a site that is down for a day keeps showing the icon it had.
       return fresh ?? cached?.icon ?? null
     } finally {
-      this.inFlight.delete(origin)
+      this.inFlight.delete(key)
     }
   }
 
-  private async refresh(origin: string): Promise<FaviconIcon | null> {
+  private async refresh(key: string, resolve: () => Promise<FaviconIcon | null>): Promise<FaviconIcon | null> {
     try {
-      const icon = await this.resolve(origin)
-      if (!icon) { this.failedAt.set(origin, this.now()); return null }
-      await this.write(origin, icon)
-      this.failedAt.delete(origin)
+      const icon = await resolve()
+      if (!icon) { this.failedAt.set(key, this.now()); return null }
+      await this.write(key, icon)
+      this.failedAt.delete(key)
       return icon
     } catch {
-      this.failedAt.set(origin, this.now())
+      this.failedAt.set(key, this.now())
       return null
     }
   }

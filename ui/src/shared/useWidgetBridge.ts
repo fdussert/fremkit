@@ -4,7 +4,7 @@ import { t, useI18n } from './i18n'
 import { isHexColor, tileText } from './color'
 import { useAppliedTheme, useThemeColors } from './theme'
 import { channelAllowed, mergeSettings, type AccentMode, type NavSlot, type WidgetInstance, type WidgetManifest, type WidgetSize } from './types'
-import { FrameTrust, connRequest, faviconTarget, fetchTarget, nonEmptyString, stampInstance } from './widgetMessages'
+import { FrameTrust, connRequest, faviconTarget, fetchTarget, imageTarget, nonEmptyString, stampInstance } from './widgetMessages'
 
 export type BridgeState = 'loading' | 'ready' | 'error'
 
@@ -187,6 +187,21 @@ export function useWidgetBridge(
         const origin = faviconTarget(m)
         if (!origin) { reply(id, undefined, t('bridge.badRequest')); break }
         fetch(`/api/favicon?url=${encodeURIComponent(origin)}`)
+          .then(async (r) => {
+            if (!r.ok) { reply(id, undefined, t('bridge.noIcon')); return }
+            reply(id, await dataUrl(await r.blob()))
+          })
+          .catch((e: Error) => reply(id, undefined, e.message))
+        break
+      }
+      case 'fremkit:image': {
+        // An icon the user picked by its exact address, fetched like a favicon (see above) — but
+        // only an address found in this widget's own settings: the whole URL leaves the machine.
+        const id = str(m.id)
+        if (!id) break
+        const url = imageTarget(m, mergeSettings(manifest(), instance().settings))
+        if (!url) { reply(id, undefined, t('bridge.badRequest')); break }
+        fetch(`/api/favicon?image=${encodeURIComponent(url)}`)
           .then(async (r) => {
             if (!r.ok) { reply(id, undefined, t('bridge.noIcon')); return }
             reply(id, await dataUrl(await r.blob()))

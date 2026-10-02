@@ -64,8 +64,8 @@ describe('pickIconHref', () => {
   it('resolves a relative href against the page URL, and against <base> when there is one', () => {
     expect(pickIconHref(`<link rel="icon" href="icon.png">`, 'https://example.com/a/b/page.html'))
       .toBe('https://example.com/a/b/icon.png')
-    expect(pickIconHref(`<base href="https://cdn.example.com/assets/"><link rel="icon" href="icon.png">`, 'https://example.com/a/'))
-      .toBe('https://cdn.example.com/assets/icon.png')
+    expect(pickIconHref(`<base href="https://example.com/assets/"><link rel="icon" href="icon.png">`, 'https://example.com/a/'))
+      .toBe('https://example.com/assets/icon.png')
   })
   it('ignores links with no icon rel, a non-http scheme, or no href, and returns null when there is none', () => {
     expect(pickIconHref(`<link rel="stylesheet" href="/x.css">`, 'https://example.com/')).toBeNull()
@@ -187,8 +187,8 @@ describe('FaviconStore', () => {
   it('follows a redirect to the real icon', async () => {
     const store = new FaviconStore({ dir, isPrivate: PUBLIC, fetchImpl: fakeFetch({
       'https://example.com/': { type: 'text/html', body: '<link rel="icon" href="/i">' },
-      'https://example.com/i': { status: 301, location: 'https://cdn.example.com/i.png' },
-      'https://cdn.example.com/i.png': { type: 'image/png', body: PNG },
+      'https://example.com/i': { status: 301, location: 'https://example.com/i.png' },
+      'https://example.com/i.png': { type: 'image/png', body: PNG },
     }) })
     expect((await store.get('https://example.com'))?.body.equals(PNG)).toBe(true)
   })
@@ -228,9 +228,9 @@ describe('FaviconStore and a site that negotiates', () => {
       calls.push({ url: input, accept })
       if (input === 'https://ws.example.com/') {
         if (!accept.startsWith('text/html')) return new Response('BEGIN:VCALENDAR', { status: 406, headers: { 'content-type': 'text/calendar' } })
-        return new Response('<link rel="icon" href="https://cdn.example.com/i.png">', { status: 200, headers: { 'content-type': 'text/html' } })
+        return new Response('<link rel="icon" href="https://example.com/i.png">', { status: 200, headers: { 'content-type': 'text/html' } })
       }
-      if (input === 'https://cdn.example.com/i.png') return new Response(new Uint8Array(PNG), { status: 200, headers: { 'content-type': 'image/png' } })
+      if (input === 'https://example.com/i.png') return new Response(new Uint8Array(PNG), { status: 200, headers: { 'content-type': 'image/png' } })
       return new Response(null, { status: 404 })
     }
     const store = new FaviconStore({ dir, fetchImpl, isPrivate: PUBLIC })
@@ -332,6 +332,31 @@ describe('GET /api/favicon', () => {
     expect(res.headers['content-type']).toContain('image/png')
     expect(res.headers['cache-control']).toContain('max-age=86400')
     expect(Buffer.from(res.rawPayload).equals(PNG)).toBe(true)
+  })
+
+  it('serves one exact image with ?image=, keeping its path, and caches it apart from the site', async () => {
+    const calls: string[] = []
+    const store = new FaviconStore({ dir, isPrivate: PUBLIC, fetchImpl: fakeFetch({
+      'https://example.com/': { type: 'text/html', body: '<link rel="icon" href="/site.png">' },
+      'https://example.com/site.png': { type: 'image/png', body: Buffer.from('not the one') },
+      'https://example.com/a/exchange.ico': { type: 'image/png', body: PNG },
+    }, calls) })
+    const url = `/api/favicon?image=${encodeURIComponent('https://example.com/a/exchange.ico')}`
+    const res = await app(store).inject({ url })
+    expect(res.statusCode).toBe(200)
+    expect(Buffer.from(res.rawPayload).equals(PNG)).toBe(true)
+    expect(calls).toEqual(['https://example.com/a/exchange.ico'])
+    // The same rules as a site's icon: an HTML answer, an SVG or a private host is no image.
+    const none = new FaviconStore({ dir, isPrivate: PUBLIC, fetchImpl: fakeFetch({
+      'https://example.com/login': { type: 'text/html', body: '<html>' },
+      'https://example.com/i.svg': { type: 'image/svg+xml', body: '<svg/>' },
+    }) })
+    for (const image of ['https://example.com/login', 'https://example.com/i.svg', 'http://127.0.0.1:4242/api/config']) {
+      const refused = await app(none).inject({ url: `/api/favicon?image=${encodeURIComponent(image)}` })
+      expect(refused.statusCode, image).toBe(404)
+    }
+    const crossSite = await app(store).inject({ url, headers: { 'sec-fetch-site': 'cross-site' } })
+    expect(crossSite.statusCode).toBe(403)
   })
 
   it('answers a bodyless 404 when there is no icon', async () => {
@@ -459,8 +484,8 @@ describe('FaviconStore and private addresses', () => {
       dir, isPrivate,
       fetchImpl: fakeFetch({
         'https://example.com/': { type: 'text/html', body: '<link rel="icon" href="/icon.png">' },
-        'https://example.com/icon.png': { status: 302, location: 'https://cdn.example.com/i.png' },
-        'https://cdn.example.com/i.png': { type: 'image/png', body: PNG },
+        'https://example.com/icon.png': { status: 302, location: 'https://example.com/i.png' },
+        'https://example.com/i.png': { type: 'image/png', body: PNG },
       }),
     })
     expect(await store.get('https://example.com')).toMatchObject({ contentType: 'image/png' })

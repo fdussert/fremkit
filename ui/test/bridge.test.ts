@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { FrameTrust, faviconTarget, fetchTarget, nonEmptyString, stampInstance } from '../src/shared/widgetMessages'
+import { FrameTrust, faviconTarget, fetchTarget, imageTarget, nonEmptyString, stampInstance } from '../src/shared/widgetMessages'
 
 describe('nonEmptyString', () => {
   it('accepts a non-empty string and nothing else', () => {
@@ -74,6 +74,19 @@ describe('faviconTarget', () => {
     for (const url of ['mailto:a@example.com', 'file:///etc/hosts', 'javascript:1', 'not a url', '', 42, null, undefined]) {
       expect(faviconTarget({ url }), JSON.stringify(url)).toBeNull()
     }
+  })
+})
+
+describe('imageTarget', () => {
+  const settings = { buttons: [{ label: 'Mail', icon: ' https://cdn.example.com/a/mail.ico ' }], columns: 4 }
+  it('keeps the whole address when the widget settings hold it', () => {
+    expect(imageTarget({ url: 'https://cdn.example.com/a/mail.ico' }, settings)).toBe('https://cdn.example.com/a/mail.ico')
+  })
+  it('refuses an address the user never typed, or one that is not http(s)', () => {
+    expect(imageTarget({ url: 'https://cdn.example.com/a/mail.ico?leak=1' }, settings)).toBeNull()
+    expect(imageTarget({ url: 'https://evil.example.net/x.png' }, settings)).toBeNull()
+    expect(imageTarget({ url: 'file:///etc/hosts' }, { p: 'file:///etc/hosts' })).toBeNull()
+    expect(imageTarget({ url: 42 }, settings)).toBeNull()
   })
 })
 

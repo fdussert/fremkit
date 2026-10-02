@@ -49,6 +49,7 @@ Anything that changes what the dashboard, the admin or a widget can do gets a li
   counts as another site; the host page now fetches the icon for it. A site that is down when the
   dashboard loads gets its icon within a minute of coming back, instead of at the next reload.
 - For widget authors: `Fremkit.favicon(url)` is how a widget gets a site's icon now.
+  `Fremkit.image(url)` fetches an image whose address the user typed into the widget's settings.
 
 ### Changed
 - The Spotify tile fits its shape: a row when wide, the transport under the cover and the song
@@ -57,8 +58,8 @@ Anything that changes what the dashboard, the admin or a widget can do gets a li
   with them, down to a finger-sized minimum past which the grid scrolls as before.
 
 ### Added
-- A shortcut button can be given its own icon: an emoji, or the address of a site whose icon it
-  borrows — for a link whose site shows its icon only once you are signed in, or one on the LAN.
+- A shortcut button can be given its own icon: an emoji, the address of an image, or that of a
+  site whose icon it borrows — for a link whose site shows its icon only once you are signed in, or one on the LAN.
 - Shortcut buttons can be drawn with no background, on the tile's accent, or on a colour of
   your choosing (the text picks black or white to stay readable).
 - A registry package says what each version changed, and the admin shows it: under the chip on a

@@ -123,14 +123,16 @@
    * Only http(s) links have one — a `mailto:` keeps the glyph — and a site with no icon, or one
    * the server could not fetch, falls back to the glyph as soon as the image fails to load.
    */
-  function favicon(button, spec, site) {
+  function favicon(button, spec, site, exact) {
     if (!/^https?:\/\//i.test(site)) return glyph(spec.kind)
     var art = glyph(spec.kind)
     // Through the host, never as an <img src="/api/favicon…">: this frame's origin is opaque and
     // the server refuses what looks like a foreign page's request. A site that is down when the
     // dashboard loads (right after a boot, say) is asked again until its icon lands.
     function attempt() {
-      Fremkit.favicon(site).then(function (src) {
+      // An address the user typed as the icon is first taken as the image itself, then as a site.
+      var icon = exact ? Fremkit.image(site).catch(function () { return Fremkit.favicon(site) }) : Fremkit.favicon(site)
+      icon.then(function (src) {
         if (!art.parentNode) return
         var img = document.createElement('img')
         img.className = 'art'
@@ -149,8 +151,8 @@
 
   /**
    * The emoji the user chose for a button, standing in for any icon; the first two characters
-   * are kept. (A site's address there instead lends the button that site's icon, for a link whose
-   * own site only paints its icon once signed in.)
+   * are kept. (An address there instead is the image to draw — or, when it is no image, a site
+   * whose icon the button borrows — for a link whose own site only paints its icon once signed in.)
    */
   function emoji(text) { return Fremkit.el('span', 'art emoji', Array.from(text).slice(0, 2).join('')) }
 
@@ -163,7 +165,7 @@
     if (spec.icon && !site) return emoji(spec.icon)
     // Turning icons off fetches nothing, a chosen site's icon included.
     if (settings.showIcons === false) return glyph(spec.kind)
-    if (site) return favicon(button, spec, spec.icon)
+    if (site) return favicon(button, spec, spec.icon, true)
     if (spec.kind === 'url') return favicon(button, spec, spec.target)
     if (spec.kind !== 'app') return glyph(spec.kind)
     var bundleId = bundleIdFor(spec.target)

@@ -27,6 +27,29 @@ export function faviconTarget(message: { url?: unknown }): string | null {
 }
 
 /**
+ * The exact image address a `fremkit:image` message may have fetched, or null.
+ *
+ * Unlike a favicon, the whole address leaves the machine, path included — so the host fetches
+ * only an address the user typed into this widget's own settings. A widget cannot use it to send
+ * whatever it likes to whichever host it likes, one image request at a time.
+ */
+export function imageTarget(message: { url?: unknown }, settings: unknown): string | null {
+  const url = nonEmptyString(message.url)?.trim()
+  if (!url) return null
+  let parsed: URL
+  try { parsed = new URL(url) } catch { return null }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null
+  return settingsHold(settings, url) ? url : null
+}
+
+function settingsHold(value: unknown, wanted: string): boolean {
+  if (typeof value === 'string') return value.trim() === wanted
+  if (Array.isArray(value)) return value.some((v) => settingsHold(v, wanted))
+  if (value && typeof value === 'object') return Object.values(value).some((v) => settingsHold(v, wanted))
+  return false
+}
+
+/**
  * Puts *this* frame's instanceId on a command payload, whatever the widget wrote there.
  *
  * Commands that act on the user's behalf — pressing a saved shortcut button, probing saved

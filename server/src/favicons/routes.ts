@@ -12,20 +12,25 @@ import { isCrossSiteFetch } from '../http/guard.js'
  * request the widget already made. A failure answers a bodyless 404: no message that could
  * repeat the URL back to a caller, and nothing is ever logged — including by the request log
  * itself, whose serializer drops the query string (see http/logging.ts).
+ *
+ * `GET /api/favicon?image=…` is the exception that keeps the whole address: one image the user
+ * typed into a widget's settings, for a site whose pages declare no icon of their own. The host
+ * page only asks for an address it found in that widget's settings (`useWidgetBridge`).
  */
 export async function faviconRoutes(app: FastifyInstance, opts: { dir: string; store?: FaviconStore }): Promise<void> {
   const store = opts.store ?? new FaviconStore({ dir: opts.dir })
   // A cache written by an older version may hold SVG icons, which are no longer served.
   await store.purgeUnservable()
 
-  app.get<{ Querystring: { url?: string } }>('/api/favicon', async (req, reply) => {
+  app.get<{ Querystring: { url?: string; image?: string } }>('/api/favicon', async (req, reply) => {
     if (!isLoopbackAddress(req.ip)) return reply.code(403).send()
     // A page on another site can embed this as an <img> and send no Origin at all, which would
     // make the server go and fetch whatever host that page named. A widget's own <img> looks the
     // same — its sandboxed frame has an opaque origin, which is cross-site to everything — so a
     // widget goes through `Fremkit.favicon()` and the host page makes this request instead.
     if (isCrossSiteFetch(req.headers)) return reply.code(403).send()
-    const raw = req.query.url
+    const exact = typeof req.query.image === 'string'
+    const raw = exact ? req.query.image : req.query.url
     if (typeof raw !== 'string' || raw === '') return reply.code(400).send()
     let target: URL
     try { target = new URL(raw) } catch { return reply.code(400).send() }
@@ -35,7 +40,7 @@ export async function faviconRoutes(app: FastifyInstance, opts: { dir: string; s
     // refusal here, so the answer says nothing about the URL it was given.
     if (await resolvesToPrivate(target.hostname)) return reply.code(404).send()
 
-    const icon = await store.get(target.origin)
+    const icon = exact ? await store.getImage(target.toString()) : await store.get(target.origin)
     if (!icon) return reply.code(404).send()
     // A day: long enough that the grid does not re-ask on every render, short enough that a
     // refreshed cache reaches the dashboard without a restart.

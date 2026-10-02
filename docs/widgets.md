@@ -335,8 +335,9 @@ tall, with icons to match — down to a finger-sized minimum, past which the gri
 A `buttons` row holds `label` (what the button says; the target is used when it is empty), `kind`
 (*Application*, *Link* or *Shortcut*) and `target` (the application name, with suggestions from the
 installed applications, the address, or the shortcut's name as Shortcuts.app spells it). `icon` is
-optional and wins over the button's own icon: an emoji, drawn as it is, or the address of a site
-whose favicon the button borrows — for a link whose site only paints its icon once you are signed
+optional and wins over the button's own icon: an emoji, drawn as it is, the address of an image
+(PNG, ICO, … — no SVG, nothing on the LAN), or the address of a site whose favicon the button
+borrows — for a link whose site only paints its icon once you are signed
 in, or one on the LAN, which gets none of its own.
 
 ## spotify

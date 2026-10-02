@@ -213,6 +213,14 @@
       return request({ type: 'fremkit:favicon', url: url })
     },
     /**
+     * The image at exactly `url`, as a `data:` URL, under the same rules as `favicon` (no SVG,
+     * no private address). Only an address the user typed into this widget's settings is fetched;
+     * anything else rejects. For an icon picked by hand, where the site's own is not the one.
+     */
+    image: function (url) {
+      return request({ type: 'fremkit:image', url: url })
+    },
+    /**
      * Escapes a string for HTML.
      *
      * Almost everything a widget draws is remote data it did not write: a volume name, a calendar

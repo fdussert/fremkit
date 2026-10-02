@@ -1,6 +1,6 @@
 { "id": "shortcuts",
   "name": { "fr": "Raccourcis", "en": "Shortcuts" },
-  "version": "1.4.0",
+  "version": "1.4.1",
   "description": { "fr": "Gros boutons tactiles qui ouvrent une application, un lien ou un raccourci",
                    "en": "Big touch buttons that open an application, a link or a shortcut" },
   "category": "productivity",
@@ -21,8 +21,8 @@
           "label": { "fr": "Cible (nom d’app, http(s)/mailto, ou nom de raccourci)",
                      "en": "Target (app name, http(s)/mailto link, or shortcut name)" } },
         "icon": { "type": "string", "default": "",
-          "label": { "fr": "Icône (facultatif) : un emoji, ou l’adresse d’un site dont prendre l’icône",
-                     "en": "Icon (optional): an emoji, or the address of a site to take the icon from" } }
+          "label": { "fr": "Icône (facultatif) : un emoji, l’adresse d’une image, ou celle d’un site dont prendre l’icône",
+                     "en": "Icon (optional): an emoji, an image address, or a site to take the icon from" } }
       } },
     "columns": { "type": "number", "default": 4, "label": { "fr": "Colonnes", "en": "Columns" } },
     "showIcons": { "type": "boolean", "default": true,
