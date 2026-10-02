@@ -24,6 +24,8 @@
     color:var(--on-accent,#0b0d10);display:flex;align-items:center;justify-content:center;
     font-size:calc(calc(var(--art,34px) * .5) * var(--text-scale, 1));line-height:1}
   html.accent-fill .btn .glyph{background:var(--on-surface,#0b0d10);color:var(--accent,#d9b36a)}
+  /* An emoji the user chose stands on its own, with no disc behind it. */
+  .btn .emoji{font-size:calc(var(--art,34px) * .8);line-height:1}
   .btn .name{max-width:100%;font-size:calc(var(--body,15px) * var(--text-scale, 1));font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   /* The background setting: none, the accent, or a colour of the user's with its own text colour. */
   html.bg-none .btn{background:transparent}
@@ -76,7 +78,8 @@
         return {
           label: typeof b.label === 'string' ? b.label.trim() : '',
           kind: KINDS[b.kind] ? b.kind : 'app',
-          target: typeof b.target === 'string' ? b.target.trim() : ''
+          target: typeof b.target === 'string' ? b.target.trim() : '',
+          icon: typeof b.icon === 'string' ? b.icon.trim() : ''
         }
       })
       .filter(function (b) { return b.target !== '' })
@@ -120,14 +123,14 @@
    * Only http(s) links have one — a `mailto:` keeps the glyph — and a site with no icon, or one
    * the server could not fetch, falls back to the glyph as soon as the image fails to load.
    */
-  function favicon(button, spec) {
-    if (!/^https?:\/\//i.test(spec.target)) return glyph(spec.kind)
+  function favicon(button, spec, site) {
+    if (!/^https?:\/\//i.test(site)) return glyph(spec.kind)
     var art = glyph(spec.kind)
     // Through the host, never as an <img src="/api/favicon…">: this frame's origin is opaque and
     // the server refuses what looks like a foreign page's request. A site that is down when the
     // dashboard loads (right after a boot, say) is asked again until its icon lands.
     function attempt() {
-      Fremkit.favicon(spec.target).then(function (src) {
+      Fremkit.favicon(site).then(function (src) {
         if (!art.parentNode) return
         var img = document.createElement('img')
         img.className = 'art'
@@ -145,12 +148,23 @@
   }
 
   /**
+   * The emoji the user chose for a button, standing in for any icon; the first two characters
+   * are kept. (A site's address there instead lends the button that site's icon, for a link whose
+   * own site only paints its icon once signed in.)
+   */
+  function emoji(text) { return Fremkit.el('span', 'art emoji', Array.from(text).slice(0, 2).join('')) }
+
+  /**
    * The artwork of one button: the application's Dock icon when the server has one, and the
    * kind's glyph otherwise — rebuilt as an `<img>` every thirty seconds until an icon lands.
    */
   function artwork(button, spec) {
+    var site = /^https?:\/\//i.test(spec.icon)
+    if (spec.icon && !site) return emoji(spec.icon)
+    // Turning icons off fetches nothing, a chosen site's icon included.
     if (settings.showIcons === false) return glyph(spec.kind)
-    if (spec.kind === 'url') return favicon(button, spec)
+    if (site) return favicon(button, spec, spec.icon)
+    if (spec.kind === 'url') return favicon(button, spec, spec.target)
     if (spec.kind !== 'app') return glyph(spec.kind)
     var bundleId = bundleIdFor(spec.target)
     if (!bundleId) return glyph(spec.kind)

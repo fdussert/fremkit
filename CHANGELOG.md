@@ -57,6 +57,8 @@ Anything that changes what the dashboard, the admin or a widget can do gets a li
   with them, down to a finger-sized minimum past which the grid scrolls as before.
 
 ### Added
+- A shortcut button can be given its own icon: an emoji, or the address of a site whose icon it
+  borrows — for a link whose site shows its icon only once you are signed in, or one on the LAN.
 - Shortcut buttons can be drawn with no background, on the tile's accent, or on a colour of
   your choosing (the text picks black or white to stay readable).
 - A registry package says what each version changed, and the admin shows it: under the chip on a

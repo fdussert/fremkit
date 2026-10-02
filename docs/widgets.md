@@ -326,7 +326,7 @@ tall, with icons to match — down to a finger-sized minimum, past which the gri
 
 | Setting | Type | Default | Scope | What it is |
 |---|---|---|---|---|
-| `buttons` | list of `{ label, kind, target }` | `[]` | both | One row per button, in the order drawn |
+| `buttons` | list of `{ label, kind, target, icon }` | `[]` | both | One row per button, in the order drawn |
 | `columns` | number | `4` | both | How many buttons per row |
 | `showIcons` | boolean | `true` | both | Draw the icon of an application button, and the site's favicon for a link |
 | `background` | `tinted` / `accent` / `custom` / `none` | `tinted` | both | What the buttons are drawn on: a translucent tint, the tile's accent, the colour below, or nothing |
@@ -334,7 +334,10 @@ tall, with icons to match — down to a finger-sized minimum, past which the gri
 
 A `buttons` row holds `label` (what the button says; the target is used when it is empty), `kind`
 (*Application*, *Link* or *Shortcut*) and `target` (the application name, with suggestions from the
-installed applications, the address, or the shortcut's name as Shortcuts.app spells it).
+installed applications, the address, or the shortcut's name as Shortcuts.app spells it). `icon` is
+optional and wins over the button's own icon: an emoji, drawn as it is, or the address of a site
+whose favicon the button borrows — for a link whose site only paints its icon once you are signed
+in, or one on the LAN, which gets none of its own.
 
 ## spotify
 
