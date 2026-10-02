@@ -42,7 +42,8 @@ Anything that changes what the dashboard, the admin or a widget can do gets a li
   lands at once on a seek, a new track or a pause, and empties when Spotify closes (@mcouzinet, #4).
 - A link to a site that answers the icon request with anything but HTML — a workspace's login
   page, for one — gets its icon: the server asks the page for HTML first, as a browser does. A
-  site that yields no icon is left alone for fifteen minutes rather than asked on every retry.
+  site that yields no icon is left alone for fifteen minutes rather than asked on every retry. A
+  site whose icon is declared far down a long page head (a WordPress site, for one) gets it too.
 - Link buttons on the shortcuts widget show their favicon again. The cross-site refusal on the
   favicon route (0.2.0) also caught the widget's own request, since a sandboxed widget frame
   counts as another site; the host page now fetches the icon for it. A site that is down when the

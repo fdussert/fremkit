@@ -7,8 +7,11 @@ import { pickIconHref } from './pick.js'
 
 /** How long a cached icon is served without asking the site again. */
 export const FAVICON_TTL_MS = 7 * 24 * 60 * 60 * 1000
-/** Only the head of a page is read: the icon links live in `<head>`, and pages can be huge. */
-export const MAX_HTML_BYTES = 64 * 1024
+/**
+ * Only the head of a page is read: the icon links live in `<head>`, and pages can be huge. A
+ * WordPress head with its styles inlined puts the icons 90 kB in, hence the room.
+ */
+export const MAX_HTML_BYTES = 256 * 1024
 /** Largest icon accepted. Well above any real apple-touch-icon. */
 export const MAX_ICON_BYTES = 512 * 1024
 /** One hop for the site's own canonicalisation, a couple more for a CDN. */

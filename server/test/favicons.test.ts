@@ -240,6 +240,19 @@ describe('FaviconStore and a site that negotiates', () => {
     expect(calls[1].accept.startsWith('image/')).toBe(true)
   })
 
+  it('finds an icon declared past a long <head> of inlined styles', async () => {
+    // Seen on a WordPress site: the icon links sat 90 kB into the page, after the inlined CSS,
+    // and its /favicon.ico answered 200 with an empty body.
+    const head = '<style>' + 'a{color:red}'.repeat(8_000) + '</style>'
+    const routes: Record<string, Route> = {
+      'https://wp.example.com/': { type: 'text/html', body: Buffer.from(head + '<link rel="icon" href="/i.png">') },
+      'https://wp.example.com/i.png': { type: 'image/png', body: PNG },
+      'https://wp.example.com/favicon.ico': { type: 'image/x-icon', body: Buffer.alloc(0) },
+    }
+    const store = new FaviconStore({ dir, fetchImpl: fakeFetch(routes), isPrivate: PUBLIC })
+    expect((await store.get('https://wp.example.com'))?.contentType).toBe('image/png')
+  })
+
   it('remembers an origin that yielded nothing, and asks again only after FAILED_TTL_MS', async () => {
     let now = 1_000_000
     const calls: string[] = []
