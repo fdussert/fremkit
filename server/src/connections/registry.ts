@@ -21,6 +21,7 @@ export interface ConnectionTypeDescription {
   id: string; name: string; description: string; icon: string; fields: ConnectionFieldDescription[]
   /** The plain field keys a stored secret is tied to; see `ConnectionType.secretBindings`. */
   secretBindings: string[]
+  services?: { id: string; channelPrefix: string }[]
   /** The widget that declared this type, when it is a declared one. Absent for a coded type. */
   declaredBy?: string
 }
@@ -35,7 +36,21 @@ export class ConnectionTypeRegistry {
     for (const t of types) this.register(t)
   }
 
-  register(type: ConnectionType): void { this.types.set(type.id, type) }
+  register(type: ConnectionType): void {
+    if (type.services) {
+      if (type.createProvider || !type.services.length) throw new Error('invalid connection services')
+      if (this.secretKeys(type).length !== 1) throw new Error('service connections require one credential bundle')
+      const ids = new Set<string>()
+      const prefixes = new Set<string>()
+      for (const service of type.services) {
+        if (!/^[a-z][a-z0-9-]*$/.test(service.id) || !/^[a-z][a-z0-9-]*$/.test(service.channelPrefix)
+          || ids.has(service.id) || prefixes.has(service.channelPrefix)) throw new Error('invalid connection service')
+        ids.add(service.id)
+        prefixes.add(service.channelPrefix)
+      }
+    }
+    this.types.set(type.id, type)
+  }
   /** Used only for declared types: a coded one lives as long as the process does. */
   remove(id: string): void { this.types.delete(id) }
   get(id: string): ConnectionType | undefined { return this.types.get(id) }
@@ -59,6 +74,7 @@ export class ConnectionTypeRegistry {
       // The admin needs these to offer the secret again as soon as the user edits a bound field,
       // rather than letting them fill a form the server is bound to refuse.
       secretBindings: type.secretBindings ?? [],
+      ...(type.services ? { services: type.services.map(({ id, channelPrefix }) => ({ id, channelPrefix })) } : {}),
       fields: type.fields.map((f) => ({
         key: f.key,
         ...(f.secret === undefined ? {} : { secret: f.secret }),

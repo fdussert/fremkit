@@ -21,6 +21,8 @@ interface State {
   backoffMs: number
   lastJson: string | undefined
   inFlight: boolean
+  retired: boolean
+  lifecycle: number
 }
 
 export class ProviderRegistry {
@@ -43,7 +45,7 @@ export class ProviderRegistry {
     // away because the connection behind it was edited, so the replacement inherits them.
     const subscribers = previous?.subscribers ?? 0
     if (previous) this.teardown(previous, 'gone')
-    const state: State = { provider, subscribers, started: false, timer: null, backoffMs: 0, lastJson: undefined, inFlight: false }
+    const state: State = { provider, subscribers, started: false, timer: null, backoffMs: 0, lastJson: undefined, inFlight: false, retired: false, lifecycle: 0 }
     this.states.set(provider.channel, state)
     if (state.subscribers > 0) this.activate(state)
   }
@@ -58,13 +60,23 @@ export class ProviderRegistry {
 
   channels(): string[] { return [...this.states.keys()] }
 
+  /** Retire credentials before an async write while retaining subscriptions for replacement. */
+  suspend(channel: string): void {
+    const s = this.states.get(channel)
+    if (!s || s.retired) return
+    const subscribers = s.subscribers
+    s.retired = true
+    this.teardown(s, 'gone')
+    s.subscribers = subscribers
+  }
+
   has(channel: string): boolean { return this.states.has(channel) }
 
   addSubscriber(channel: string): void {
     const s = this.states.get(channel)
     if (!s) return
     s.subscribers++
-    if (s.subscribers === 1) this.activate(s)
+    if (s.subscribers === 1 && !s.retired) this.activate(s)
   }
 
   removeSubscriber(channel: string): void {
@@ -76,13 +88,15 @@ export class ProviderRegistry {
 
   async runCommand(channel: string, name: string, payload: unknown, ctx?: CommandContext): Promise<unknown> {
     const s = this.states.get(channel)
-    if (!s) throw new Error(`canal inconnu: ${channel}`)
+    if (!s || s.retired) throw new Error(`canal inconnu: ${channel}`)
     // Through `Object.hasOwn`: a command name comes from a widget's message, and a plain property
     // read would answer `constructor` or `toString` with something off Function.prototype.
     const commands = s.provider.commands
     const cmd = commands && Object.hasOwn(commands, name) ? commands[name] : undefined
     if (typeof cmd !== 'function') throw new Error(`commande inconnue: ${channel}.${name}`)
-    return cmd(payload, ctx)
+    const result = await cmd(payload, ctx)
+    if (!this.isCurrent(s)) throw new Error('connection retired')
+    return result
   }
 
   stop(): void {
@@ -110,7 +124,7 @@ export class ProviderRegistry {
    * polled for ever with the credentials the user had just changed.
    */
   private isCurrent(s: State): boolean {
-    return this.states.get(s.provider.channel) === s
+    return !s.retired && this.states.get(s.provider.channel) === s
   }
 
   /**
@@ -119,6 +133,7 @@ export class ProviderRegistry {
    * idempotent, since nothing stops a second registry from holding the same object.
    */
   private teardown(s: State, reason: 'idle' | 'gone'): void {
+    s.lifecycle++
     if (s.timer) { clearTimeout(s.timer); s.timer = null }
     // An in-flight poll is not a timer: zeroing this stops the orphan rescheduling itself even
     // before `isCurrent` gets a say, and keeps a torn-down state from being woken by a later
@@ -149,6 +164,7 @@ export class ProviderRegistry {
 
   private async tick(s: State): Promise<void> {
     if (!this.isCurrent(s) || s.subscribers === 0 || !s.provider.poll) return
+    const lifecycle = s.lifecycle
     s.inFlight = true
     let data: unknown
     try {
@@ -162,6 +178,11 @@ export class ProviderRegistry {
     }
     // Checked again after the await, not only before it: this is where the replacement happens.
     if (!this.isCurrent(s)) return
+    if (lifecycle !== s.lifecycle || s.subscribers === 0) {
+      // A subscriber returned while the previous lifecycle's poll was still settling.
+      if (s.subscribers > 0) this.schedule(s, 0)
+      return
+    }
     const json = JSON.stringify(data)
     if (json !== s.lastJson) {
       s.lastJson = json

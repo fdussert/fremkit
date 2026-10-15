@@ -35,6 +35,9 @@ export function useSocket(): Socket {
       try { m = JSON.parse(ev.data) }
       catch { console.warn('socket: invalid JSON message', ev.data); return }
       if (m.type === 'data' && m.channel) { last.set(m.channel, m.data); subs.get(m.channel)?.forEach((cb) => cb(m.data)) }
+      // Purge host replay state only. Already-delivered data belongs to the widget's own UI;
+      // no synthetic provider payload can safely reset every widget's private state.
+      else if (m.type === 'invalidate' && m.channel) last.delete(m.channel)
       else if (m.type === 'result' || m.type === 'error') {
         if (!m.id) return
         const p = pending.get(m.id)
@@ -45,6 +48,8 @@ export function useSocket(): Socket {
     }
     ws.onclose = () => {
       status.value = 'closed'
+      // Retirement messages may be missed while disconnected; only a fresh server replay counts.
+      last.clear()
       for (const p of pending.values()) p.reject(new Error(t('socket.lost')))
       pending.clear()
       setTimeout(connect, retryMs)

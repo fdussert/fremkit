@@ -97,6 +97,39 @@ export function useWidgetBridge(
   /** See widgetMessages.ts: the rules live there so they can be tested without a DOM. */
   const trust = new FrameTrust()
 
+  const allowed = (kind: 'subscriptions' | 'commands', channel: string): boolean => {
+    const m = manifest()
+    if (!m || !channelAllowed(m[kind] ?? [], channel)) return false
+    const family = channel.split(':')[0]
+    // These families always require explicit account selection, even if a widget removes its
+    // service setting. Defaults in a downloaded manifest never count as the user's selection.
+    const serviceFields = Object.entries(m.settingsSchema).filter(([, field]) => field.connectionService === family)
+    if (!['gmail', 'google-calendar', 'google-tasks'].includes(family) && !serviceFields.length) return true
+    return serviceFields.some(([key, field]) => {
+      if (field.type !== 'connection' && field.type !== 'connections') return false
+      const selected = instance().settings[key]
+      const ids = field.type === 'connections' && Array.isArray(selected) ? selected : [selected]
+      return ids.some((id) => typeof id === 'string' && /^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(id) && channel === family + ':' + id)
+    })
+  }
+  let authorizationVersion = 0
+  watch(() => {
+    const m = manifest()
+    // Only grants and connection selection change authority. Display settings must not
+    // discard valid in-flight replies; synchronous watching still catches A -> B -> A.
+    const connections = Object.entries(m?.settingsSchema ?? {})
+      .filter(([, field]) => field.type === 'connection' || field.type === 'connections')
+      .map(([key, field]) => [key, field.type, field.connectionType, field.connectionService, instance().settings[key]])
+    return JSON.stringify([m?.id, m?.subscriptions, m?.commands, connections])
+  }, () => {
+    authorizationVersion++
+    for (const [channel, unsubscribe] of unsubs) {
+      if (allowed('subscriptions', channel)) continue
+      unsubscribe()
+      unsubs.delete(channel)
+    }
+  }, { flush: 'sync' })
+
   function onLoad() {
     trust.onLoad(iframe.value?.getAttribute('src') ?? '')
     if (trust.trusted) return
@@ -128,9 +161,13 @@ export function useWidgetBridge(
         break
       case 'fremkit:subscribe': {
         const channel = str(m.channel)
-        if (!channel || !channelAllowed(manifest()?.subscriptions ?? [], channel)) break
+        if (!channel || !allowed('subscriptions', channel)) break
         if (unsubs.has(channel)) break
-        unsubs.set(channel, socket.subscribe(channel, (data) => post({ type: 'fremkit:data', channel, data })))
+        let live = true
+        const unsubscribe = socket.subscribe(channel, (data) => {
+          if (live && trust.trusted && allowed('subscriptions', channel)) post({ type: 'fremkit:data', channel, data })
+        })
+        unsubs.set(channel, () => { live = false; unsubscribe() })
         break
       }
       case 'fremkit:unsubscribe': {
@@ -147,9 +184,14 @@ export function useWidgetBridge(
         const name = str(m.name)
         if (!id) break
         if (!channel || !name) { reply(id, undefined, t('bridge.badRequest')); break }
-        if (!channelAllowed(manifest()?.commands ?? [], channel)) { reply(id, undefined, t('bridge.channelNotAllowed', { channel })); break }
+        if (!allowed('commands', channel)) { reply(id, undefined, t('bridge.channelNotAllowed', { channel })); break }
+        const version = authorizationVersion
         socket.command(channel, name, stampInstance(m.payload, instance().instanceId))
-          .then((r) => reply(id, r), (e: Error) => reply(id, undefined, e.message))
+          .then((r) => {
+            if (trust.trusted && version === authorizationVersion && allowed('commands', channel)) reply(id, r)
+          }, (e: Error) => {
+            if (trust.trusted && version === authorizationVersion && allowed('commands', channel)) reply(id, undefined, e.message)
+          })
         break
       }
       case 'fremkit:fetch': {

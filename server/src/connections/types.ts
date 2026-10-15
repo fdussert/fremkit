@@ -26,6 +26,32 @@ export interface ConnectionFieldSpec {
 
 export type TestResult = { ok: true; detail: string } | { ok: false; error: string }
 
+/** A credential snapshot belongs to one account generation and stays inside the server. */
+export interface ConnectionCredentials {
+  readonly revision: number
+  readonly secrets: Readonly<Record<string, string>>
+}
+
+/** Shared by all services of one account; never exposed to a widget. */
+export interface ConnectionAccount {
+  readonly signal: AbortSignal
+  request<T>(operation: (credentials: ConnectionCredentials, signal: AbortSignal) => Promise<T>): Promise<T>
+  /** One exchange per account revision. The callback must use the abort signal for network I/O. */
+  refresh(observedRevision: number, exchange: (credentials: ConnectionCredentials, signal: AbortSignal) => Promise<Record<string, string>>): Promise<ConnectionCredentials>
+}
+
+export interface ConnectionServiceContext extends ConnectionProviderContext {
+  serviceId: string
+  account: ConnectionAccount
+}
+
+export interface ConnectionService {
+  id: string
+  channelPrefix: string
+  /** Construction is inert. Open sockets and start polling only in Provider.start/poll. */
+  createProvider(ctx: ConnectionServiceContext): Provider
+}
+
 /** Everything a connection type needs to build its provider for one configured connection. */
 export interface ConnectionProviderContext {
   id: string
@@ -109,4 +135,6 @@ export interface ConnectionType {
   options?(source: string, fields: Record<string, string>, secrets: Record<string, string>, deps?: unknown): Promise<PickOption[]>
   /** Omitted by a type that only authenticates something and publishes no channel of its own. */
   createProvider?(ctx: ConnectionProviderContext): Provider
+  /** Independent channels sharing one account. Mutually exclusive with createProvider. */
+  services?: ConnectionService[]
 }

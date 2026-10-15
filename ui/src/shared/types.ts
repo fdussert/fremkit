@@ -156,6 +156,8 @@ export interface SettingField {
    * `connection` stores one id, `connections` an array of them.
    */
   connectionType?: string
+  /** Service channel family of a multi-service connection; selection never grants other services. */
+  connectionService?: string
   /**
    * For `pick` fields: the key of the sibling `connection` setting the choices are read from,
    * and which list of that connection to offer.
@@ -192,6 +194,7 @@ export const nextConnectionColor = (taken: number): string =>
   CONNECTION_COLORS[Math.abs(taken) % CONNECTION_COLORS.length]
 export interface ConnectionTypeInfo {
   id: string; name: string; description: string; icon: string; fields: ConnectionFieldSpec[]
+  services?: { id: string; channelPrefix: string }[]
   /**
    * The widget that declared this type, when a widget did. Absent on a type the core has code
    * for. The admin says so on the form: an API key field should name what asked for it.

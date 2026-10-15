@@ -103,6 +103,8 @@ export const SettingFieldSchema = z.object({
    * `connection` stores one id, `connections` an array of them.
    */
   connectionType: z.string().optional(),
+  /** Service family, narrowed to an explicitly selected account by the host bridge. */
+  connectionService: z.string().regex(/^[a-z][a-z0-9-]*$/).optional(),
   /**
    * `pick` fields only: the key of the sibling `connection` setting whose value says which
    * connection the choices are read from.
@@ -115,6 +117,9 @@ export const SettingFieldSchema = z.object({
   /** `list` fields only: how many items the user may add. Absent means no ceiling. */
   max: z.number().int().min(1).optional(),
 })
+  .refine((f) => f.connectionService === undefined || ((f.type === 'connection' || f.type === 'connections') && f.default === undefined), {
+    error: () => tr(undefined, 'manifest.connectionNeedsType'),
+  })
   .refine((f) => (f.type !== 'connection' && f.type !== 'connections') || typeof f.connectionType === 'string', {
     error: () => tr(undefined, 'manifest.connectionNeedsType'),
   })

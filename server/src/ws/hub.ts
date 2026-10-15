@@ -61,6 +61,12 @@ export class Hub {
    */
   forget(channel: string): void {
     this.lastValues.delete(channel)
+    // Browsers cache their own last value. Keep subscriptions, but forbid replay of the old
+    // generation. Older clients safely ignore this additional message type.
+    const message = JSON.stringify({ type: 'invalidate', channel })
+    for (const [socket, channels] of this.clients) {
+      if (channels.has(channel)) this.safeSend(socket, message)
+    }
   }
 
   broadcast(channel: string, data: unknown): void {

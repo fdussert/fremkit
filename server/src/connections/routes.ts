@@ -19,6 +19,14 @@ const RESERVED_IDS = new Set(['types'])
 
 const usableId = (id: string): boolean => CONNECTION_ID_RE.test(id) && !RESERVED_IDS.has(id)
 
+class ConnectionRemovalError extends Error {
+  constructor(readonly statusCode: number, message: string) { super(message) }
+}
+
+class ConnectionMutationError extends Error {
+  constructor(readonly errors: string[]) { super('invalid connection mutation') }
+}
+
 /**
  * Whether this save must be refused because its address is not an address.
  *
@@ -193,27 +201,49 @@ export async function connectionRoutes(
     if (errors.length) return reply.code(400).send({ errors })
 
     const connection: Connection = { id, type: parsed.data.type, name: parsed.data.name ?? existing?.name ?? id, fields: parsed.data.fields }
-    // The config goes first: a connection listed without its secret is a form the user finishes
-    // filling in, whereas a secret stored under an id no config mentions is an orphan nobody can
-    // see or clear. If the secret write then fails the config keeps the connection and we answer
-    // 500, so the admin retries the same PUT.
-    const next = await store.update((config) => {
-      const at = config.connections.findIndex((c) => c.id === id)
-      if (at >= 0) config.connections[at] = connection
-      else config.connections.push(connection)
+    // Temporarily remove the binding from both config copies before changing secrets. A crash
+    // during a batch must not pair a saved host with a mixture of old and new credentials.
+    let before = existing
+    let beforeIndex = store.get().connections.findIndex((c) => c.id === id)
+    let quarantined = false
+    const remove = () => store.update((config) => ({ ...config, connections: config.connections.filter((c) => c.id !== id) }))
+    const restore = (saved: Connection | undefined) => store.update((config) => {
+      config.connections = config.connections.filter((c) => c.id !== id)
+      if (saved) config.connections.splice(beforeIndex < 0 ? config.connections.length : beforeIndex, 0, saved)
       return config
     })
-
     try {
-      for (const [key, value] of Object.entries(submitted)) {
-        if (value === '') await secrets.delete(`${id}/${key}`)
-        else await secrets.set(`${id}/${key}`, value)
-      }
+      await manager.updateSecrets(connection, submitted, {
+        quarantine: async () => {
+          if (!quarantined) {
+            await store.update(async (config) => {
+              beforeIndex = config.connections.findIndex((c) => c.id === id)
+              before = config.connections[beforeIndex]
+              if (before && before.type !== connection.type) throw new ConnectionMutationError([tr(locale(), 'connections.typeImmutable')])
+              const currentSecrets = before ? await storedSecrets(before) : new Set<string>()
+              const currentErrors = [
+                ...types.validate(type, connection.fields, submitted, (key) => key in submitted ? submitted[key] !== '' : currentSecrets.has(key), locale()),
+                ...types.bindingErrors(type, connection.fields, submitted, before, (key) => currentSecrets.has(key), locale()),
+              ]
+              if (currentErrors.length) throw new ConnectionMutationError(currentErrors)
+              return { ...config, connections: config.connections.filter((c) => c.id !== id) }
+            })
+          } else await remove()
+          // ConfigStore keeps a fallback .bak: it must not retain the old binding either.
+          await remove()
+          quarantined = true
+        },
+        commit: () => restore(connection),
+        rollback: () => restore(before),
+      })
     } catch (err) {
+      if (err instanceof DegradedStoreError) throw err
+      await manager.sync(store.get().connections)
+      if (err instanceof ConnectionMutationError) return reply.code(400).send({ errors: err.errors })
       req.log.warn({ err }, 'secret write failed')
       return reply.code(500).send({ errors: [tr(locale(), 'connections.secretWriteFailed')] })
     }
-    await manager.sync(next.connections)
+    await manager.sync(store.get().connections)
     // The address or the credential may have changed, so everything cached for this connection
     // was fetched with the old one. A stale read is a request nobody would authorise now.
     connCache?.forget(id)
@@ -224,21 +254,29 @@ export async function connectionRoutes(
   app.delete<{ Params: { id: string } }>('/api/connections/:id', async (req, reply) => {
     const { id } = req.params
     if (!usableId(id)) return reply.code(400).send({ errors: [tr(locale(), 'connections.invalidId', { id })] })
-    const config = store.get()
-    const connection = config.connections.find((c) => c.id === id)
-    if (!connection) return reply.code(404).send({ error: tr(config.locale, 'connections.unknown') })
-
-    const uses = findConnectionUsers(config, catalog, id)
-    if (uses.length) {
-      const list = uses.map((u) => tr(config.locale, 'connections.usedByEntry', { widgetId: u.widgetId, page: u.page })).join(', ')
-      return reply.code(409).send({ error: tr(config.locale, 'connections.usedBy', { list }) })
+    try {
+      await manager.removeConnection(async () => {
+        let connection!: Connection
+        // Resolve the account and its users only after earlier PUT transactions have settled.
+        await store.update((config) => {
+          const saved = config.connections.find((c) => c.id === id)
+          if (!saved) throw new ConnectionRemovalError(404, tr(config.locale, 'connections.unknown'))
+          const uses = findConnectionUsers(config, catalog, id)
+          if (uses.length) {
+            const list = uses.map((u) => tr(config.locale, 'connections.usedByEntry', { widgetId: u.widgetId, page: u.page })).join(', ')
+            throw new ConnectionRemovalError(409, tr(config.locale, 'connections.usedBy', { list }))
+          }
+          connection = saved
+          return { ...config, connections: config.connections.filter((c) => c.id !== id) }
+        })
+        // Retire the backup binding before deleting credentials, just as during a PUT batch.
+        await store.update((config) => ({ ...config, connections: config.connections.filter((c) => c.id !== id) }))
+        return connection
+      }, () => store.get().connections)
+    } catch (err) {
+      if (err instanceof ConnectionRemovalError) return reply.code(err.statusCode).send({ error: err.message })
+      throw err
     }
-
-    // Config first here too: the connection stops being offered before its secrets go, so a
-    // failure halfway leaves unreachable secrets rather than a connection that cannot authenticate.
-    const next = await store.update((c) => ({ ...c, connections: c.connections.filter((x) => x.id !== id) }))
-    await manager.forget(connection)
-    await manager.sync(next.connections)
     connCache?.forget(id)
     return reply.code(204).send()
   })

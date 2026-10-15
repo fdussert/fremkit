@@ -11,6 +11,7 @@ Anything that changes what the dashboard, the admin or a widget can do gets a li
 ## Unreleased
 
 ### Changed
+- Support explicit service channels for multi-service accounts, with generation-safe credential replacement and widget authorization.
 - **Homey is a declared connection now.** The Homey connection type built into Fremkit is gone:
   both Homey widgets bring their own, so one API key serves the two of them. An existing Homey
   connection is migrated when the server starts — same name, same address, same key — and the
