@@ -99,6 +99,13 @@ export interface AdminStore {
   placeWidget(widgetId: string, rect: Rect): void
   addWidget(widgetId: string): void
   updateInstance(instanceId: string, patch: Partial<WidgetInstance>): void
+  /** How many tiles, across every page, wear the imported icon `name`. */
+  tileIconUsage(name: string): number
+  /**
+   * Takes the imported icon `name` off every tile that wears it, in one undo step, before the file
+   * itself is deleted. Returns how many tiles lost it; 0 records nothing.
+   */
+  removeTileIconEverywhere(name: string): number
   duplicateWidget(instanceId: string): void
   moveWidget(instanceId: string, targetPageIndex: number): void
   removeWidget(instanceId: string): void
@@ -110,6 +117,8 @@ export interface AdminStore {
 
 const uid = (): string => Math.random().toString(36).slice(2, 8)
 const rectOf = (w: WidgetInstance): Rect => ({ x: w.x, y: w.y, w: w.w, h: w.h })
+/** A tile wearing the imported file `name`, tinted or not. */
+const wearsFile = (w: WidgetInstance, name: string): boolean => w.icon?.kind === 'file' && w.icon.name === name
 
 /** JSON with sorted keys, so two configs differing only in key order compare equal. */
 function stable(value: unknown): string {
@@ -411,6 +420,19 @@ export function createAdminStore(deps: StoreDeps): AdminStore {
         const w = c.pages[state.pageIndex].widgets.find((x) => x.instanceId === instanceId)
         if (w) Object.assign(w, patch)
       })
+    },
+
+    tileIconUsage(name: string): number {
+      return (state.config?.pages ?? []).reduce((n, p) => n + p.widgets.filter((w) => wearsFile(w, name)).length, 0)
+    },
+
+    removeTileIconEverywhere(name: string): number {
+      const count = store.tileIconUsage(name)
+      if (!count) return 0
+      apply((c) => {
+        for (const p of c.pages) for (const w of p.widgets) if (wearsFile(w, name)) delete w.icon
+      })
+      return count
     },
 
     duplicateWidget(instanceId: string): void {

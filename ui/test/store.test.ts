@@ -681,3 +681,51 @@ describe('modals', () => {
     expect(store.state.selectedId).toBe('clock-1')
   })
 })
+
+describe('imported tile icons', () => {
+  const nas = { kind: 'file' as const, name: '1-nas.svg' }
+  async function loaded() {
+    const m = make({
+      getConfig: vi.fn(async () => {
+        const c = config()
+        c.pages[0].widgets[0].icon = nas
+        c.pages[0].widgets.push({ instanceId: 'clock-2', widgetId: 'clock', x: 16, y: 0, w: 16, h: 4, showTitle: true, settings: {}, icon: { kind: 'lucide', name: 'server' } })
+        c.pages.push({ id: 'two', name: 'Deux', widgets: [
+          { instanceId: 'clock-3', widgetId: 'clock', x: 0, y: 0, w: 16, h: 4, showTitle: true, settings: {}, icon: { ...nas, tint: false } },
+        ] })
+        return c
+      }),
+    })
+    await m.store.load()
+    return m
+  }
+
+  it('counts the tiles that use a file, on every page, ignoring pictograms', async () => {
+    const { store } = await loaded()
+    expect(store.tileIconUsage('1-nas.svg')).toBe(2)
+    expect(store.tileIconUsage('server')).toBe(0)
+    expect(store.tileIconUsage('2-other.svg')).toBe(0)
+  })
+  it('removes it from every tile in one save, and says how many', async () => {
+    const { store, api } = await loaded()
+    expect(store.removeTileIconEverywhere('1-nas.svg')).toBe(2)
+    await vi.advanceTimersByTimeAsync(SAVE_DEBOUNCE_MS)
+    expect(api.putConfig).toHaveBeenCalledTimes(1)
+    const saved = (api.putConfig as ReturnType<typeof vi.fn>).mock.calls[0][0] as Config
+    expect(saved.pages[0].widgets[0]).not.toHaveProperty('icon')
+    expect(saved.pages[1].widgets[0]).not.toHaveProperty('icon')
+    expect(saved.pages[0].widgets[1].icon).toEqual({ kind: 'lucide', name: 'server' })
+  })
+  it('is undone in one step', async () => {
+    const { store } = await loaded()
+    store.removeTileIconEverywhere('1-nas.svg')
+    store.undo()
+    expect(store.state.config!.pages[0].widgets[0].icon).toEqual(nas)
+    expect(store.state.config!.pages[1].widgets[0].icon).toEqual({ ...nas, tint: false })
+  })
+  it('records nothing when no tile uses it', async () => {
+    const { store } = await loaded()
+    expect(store.removeTileIconEverywhere('2-other.svg')).toBe(0)
+    expect(store.canUndo.value).toBe(false)
+  })
+})
