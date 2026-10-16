@@ -21,6 +21,7 @@ export interface RestoreResult {
   ok: true
   pages: number
   backgrounds: number
+  tileIcons: number
   reenterSecrets: { id: string; name: string; type: string }[]
 }
 export type ConnectionTestResult = { ok: true; detail: string } | { ok: false; error: string }

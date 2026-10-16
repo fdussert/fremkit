@@ -1,15 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { mkdtemp, mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
+import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { FastifyInstance } from 'fastify'
 import { buildApp } from '../src/app.js'
-import { backupFilename, CONFIG_ENTRY, MANIFEST_ENTRY, readBackup } from '../src/backup/routes.js'
+import { backupFilename, CONFIG_ENTRY, MANIFEST_ENTRY, readBackup, TILE_ICONS_PREFIX } from '../src/backup/routes.js'
 import { readZip, writeZip } from '../src/backup/zip.js'
 import { DEFAULT_BACKGROUND } from '../src/backgrounds/seed.js'
 
 /** A one-pixel PNG, which is what detectImageType has to accept. */
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64')
+const NAS_SVG = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect width="20" height="8" x="2" y="8"/></svg>')
 
 const CONFIG = {
   version: 3,
@@ -32,6 +33,8 @@ beforeEach(async () => {
   await writeFile(join(dir, 'fremkit.json'), JSON.stringify(CONFIG), 'utf8')
   await mkdir(join(dir, 'backgrounds'), { recursive: true })
   await writeFile(join(dir, 'backgrounds', 'photo.png'), PNG)
+  await mkdir(join(dir, 'tile-icons'), { recursive: true })
+  await writeFile(join(dir, 'tile-icons', '1-nas.svg'), NAS_SVG)
   app = await build(dir)
 })
 afterEach(async () => { await app.close() })
@@ -299,5 +302,28 @@ describe('POST /api/restore and the secrets already on this machine', () => {
     // behind under an id nothing used, waiting for an archive to claim it.
     const { stored } = await restoreWith([])
     expect(stored['gh-x1z9/token']).toBeUndefined()
+  })
+})
+
+describe('tile icons in a backup', () => {
+  it('archives the imported icons', async () => {
+    const names = zipOf(await app.inject({ url: '/api/backup' })).map((e) => e.name)
+    expect(names).toContain(`${TILE_ICONS_PREFIX}1-nas.svg`)
+  })
+  it('restores them beside the config', async () => {
+    const archive = Buffer.from((await app.inject({ url: '/api/backup' })).rawPayload)
+    await rm(join(dir, 'tile-icons'), { recursive: true, force: true })
+    const res = await post(archive)
+    expect(res.statusCode).toBe(200)
+    expect(res.json().tileIcons).toBe(1)
+    expect(await readFile(join(dir, 'tile-icons', '1-nas.svg'))).toEqual(NAS_SVG)
+  })
+  it('refuses an archive smuggling an active SVG, a JPEG or a bad name', () => {
+    const config = { name: CONFIG_ENTRY, data: Buffer.from(JSON.stringify(CONFIG)) }
+    for (const entry of [
+      { name: `${TILE_ICONS_PREFIX}1-x.svg`, data: Buffer.from('<svg onload="x"/>') },
+      { name: `${TILE_ICONS_PREFIX}1-x.png`, data: Buffer.from([0xff, 0xd8, 0xff, 0xe0, 1]) },
+      { name: `${TILE_ICONS_PREFIX}../../x.svg`, data: NAS_SVG },
+    ]) expect(() => readBackup(writeZip([config, entry], new Date())), entry.name).toThrow()
   })
 })

@@ -1,10 +1,11 @@
 import type { FastifyInstance } from 'fastify'
 import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { isSafeBackgroundName, type Config } from '../config/schema.js'
+import { isSafeBackgroundName, isSafeTileIconName, type Config } from '../config/schema.js'
 import { migrateConfig } from '../config/migrate.js'
 import { DegradedStoreError, type ConfigStore } from '../config/store.js'
 import { detectImageType, MAX_BACKGROUND_BYTES } from '../backgrounds/routes.js'
+import { checkTileIcon, MAX_TILE_ICON_BYTES, TILE_ICONS_DIR } from '../tile-icons/routes.js'
 import { isCrossSiteFetch } from '../http/guard.js'
 import { FREMKIT_VERSION } from '../version.js'
 import type { ConnectionTypeRegistry } from '../connections/registry.js'
@@ -17,8 +18,8 @@ import { tr } from '../i18n.js'
 /**
  * Taking the whole dashboard out and putting it back.
  *
- * What travels: the live config as the store has migrated it, and the background library. What
- * never travels: the secrets. They live in the macOS keychain, keyed by connection id, and the
+ * What travels: the live config as the store has migrated it, the background library and the
+ * imported tile icons. What never travels: the secrets. They live in the macOS keychain, keyed by connection id, and the
  * whole point of putting them there is that a file copied to a USB stick does not carry them.
  *
  * Keyed by connection id, though — and a restore keeps the ids. So on the same Mac the items are
@@ -31,6 +32,7 @@ import { tr } from '../i18n.js'
 /** Where things sit inside the archive. */
 export const CONFIG_ENTRY = 'fremkit.json'
 export const BACKGROUNDS_PREFIX = 'backgrounds/'
+export const TILE_ICONS_PREFIX = 'tile-icons/'
 export const MANIFEST_ENTRY = 'manifest.json'
 
 /** Largest archive accepted. The background library is the bulk of it. */
@@ -67,6 +69,7 @@ export function backupFilename(when: Date): string {
 export function readBackup(archive: Buffer): {
   config: Config
   backgrounds: { name: string; data: Buffer }[]
+  tileIcons: { name: string; data: Buffer }[]
 } {
   const entries = readZip(archive, { maxEntries: MAX_ENTRIES, maxTotalBytes: MAX_RESTORE_BYTES })
   const config = entries.find((e) => e.name === CONFIG_ENTRY)
@@ -79,8 +82,18 @@ export function readBackup(archive: Buffer): {
   try { migrated = migrateConfig(raw) } catch { throw new ZipError(tr(undefined, 'backup.badConfig')) }
 
   const backgrounds: { name: string; data: Buffer }[] = []
+  const tileIcons: { name: string; data: Buffer }[] = []
   for (const entry of entries) {
     if (entry.name === CONFIG_ENTRY || entry.name === MANIFEST_ENTRY) continue
+    if (entry.name.startsWith(TILE_ICONS_PREFIX)) {
+      if (entry.name.endsWith('/')) continue
+      const name = entry.name.slice(TILE_ICONS_PREFIX.length)
+      // The same gates as an upload: a file name, a size, and bytes that are an icon and run nothing.
+      if (!isSafeTileIconName(name)) throw new ZipError(tr(undefined, 'backup.badName'))
+      if (entry.data.byteLength > MAX_TILE_ICON_BYTES || !checkTileIcon(entry.data).ok) throw new ZipError(tr(undefined, 'backup.badTileIcon'))
+      tileIcons.push({ name, data: entry.data })
+      continue
+    }
     if (!entry.name.startsWith(BACKGROUNDS_PREFIX)) continue
     // A directory entry, which carries no bytes.
     if (entry.name.endsWith('/')) continue
@@ -90,7 +103,7 @@ export function readBackup(archive: Buffer): {
     if (!detectImageType(entry.data)) throw new ZipError(tr(undefined, 'backup.notAnImage'))
     backgrounds.push({ name, data: entry.data })
   }
-  return { config: migrated, backgrounds }
+  return { config: migrated, backgrounds, tileIcons }
 }
 
 /**
@@ -136,6 +149,7 @@ export async function backupRoutes(
 ): Promise<void> {
   const { store, dataDir } = opts
   const backgroundsDir = join(dataDir, 'backgrounds')
+  const tileIconsDir = join(dataDir, TILE_ICONS_DIR)
 
   /**
    * `GET /api/backup` — the whole dashboard as a zip.
@@ -166,6 +180,14 @@ export async function backupRoutes(
       try {
         const data = await readFile(join(backgroundsDir, name))
         entries.push({ name: BACKGROUNDS_PREFIX + name, data })
+      } catch { /* vanished between the listing and the read */ }
+    }
+    let iconNames: string[] = []
+    try { iconNames = await readdir(tileIconsDir) } catch { /* nothing imported yet */ }
+    for (const name of iconNames.sort()) {
+      if (!isSafeTileIconName(name)) continue
+      try {
+        entries.push({ name: TILE_ICONS_PREFIX + name, data: await readFile(join(tileIconsDir, name)) })
       } catch { /* vanished between the listing and the read */ }
     }
 
@@ -219,6 +241,8 @@ export async function backupRoutes(
     try {
       await mkdir(backgroundsDir, { recursive: true })
       for (const image of read.backgrounds) await writeFile(join(backgroundsDir, image.name), image.data)
+      await mkdir(tileIconsDir, { recursive: true })
+      for (const icon of read.tileIcons) await writeFile(join(tileIconsDir, icon.name), icon.data)
     } catch (err) {
       req.log.warn({ err }, 'restore could not write the backgrounds')
       return reply.code(500).send({ errors: [tr(store.get().locale, 'backup.writeFailed')] })
@@ -262,6 +286,7 @@ export async function backupRoutes(
       ok: true,
       pages: saved.pages.length,
       backgrounds: read.backgrounds.length,
+      tileIcons: read.tileIcons.length,
       reenterSecrets: await missingSecrets(saved, opts.types, opts.secrets),
     })
   })
