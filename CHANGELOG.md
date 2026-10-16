@@ -17,6 +17,11 @@ tagged `vX.Y.Z`.
   SVG, PNG or WebP, tinted to the theme or in its own colours. Under **/admin**, select a tile,
   then **Icon**. Fremkit ships no brand logos; the marks you import stay in your installation.
 
+### Fixed
+- **Backgrounds with dots at the end of their name.** A background uploaded from a file called,
+  say, "a..png" was saved under a name the dashboard then refused: it never showed in the
+  library and could not be deleted. It is now saved under a clean name.
+
 ## 0.3.0 — 2026-10-15
 
 ### Added
