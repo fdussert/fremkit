@@ -22,6 +22,7 @@ const fr = {
   // config/schema.ts — layout and connection checks
   'config.defaultPageName': 'Accueil',
   'config.backgroundName': 'nom de fichier invalide',
+  'config.tileIconName': 'nom d’icône invalide',
   'layout.duplicateInstance': 'page {page}: instanceId {instanceId} dupliqué',
   'layout.outsideGrid': 'page {page}: {instanceId} hors grille',
   'layout.tooSmall': 'page {page}: {instanceId} taille {w}×{h} plus petite que le minimum {minW}×{minH} de {widgetId}',
@@ -268,6 +269,7 @@ export type MessageKey = keyof typeof fr
 const en: Record<MessageKey, string> = {
   'config.defaultPageName': 'Home',
   'config.backgroundName': 'invalid file name',
+  'config.tileIconName': 'invalid icon name',
   'layout.duplicateInstance': 'page {page}: duplicate instanceId {instanceId}',
   'layout.outsideGrid': 'page {page}: {instanceId} outside the grid',
   'layout.tooSmall': 'page {page}: {instanceId} size {w}×{h} is smaller than the {minW}×{minH} minimum of {widgetId}',

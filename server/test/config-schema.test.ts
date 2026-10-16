@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { ConfigSchema, DEFAULT_CONFIG, MAX_NAV_WIDGETS, defaultLocale, validateConnections, validateLayout, validateNavWidgets, DisplaySchema, DEFAULT_ADMIN_GESTURE } from '../src/config/schema.js'
+import { ConfigSchema, DEFAULT_CONFIG, MAX_NAV_WIDGETS, defaultLocale, validateConnections, validateLayout, validateNavWidgets, DisplaySchema, DEFAULT_ADMIN_GESTURE, isSafeTileIconName } from '../src/config/schema.js'
 import { ManifestSchema } from '../src/widgets/manifest.js'
 
 const manifests = new Map([['clock', { minSize: [8, 4] as [number, number] }]])
@@ -322,5 +322,49 @@ describe('display.adminGesture', () => {
     expect(parsed.success).toBe(true)
     if (parsed.success) expect(parsed.data.adminGesture).toBeUndefined()
     expect(DEFAULT_ADMIN_GESTURE).toBe('both')
+  })
+})
+
+describe('tile icons', () => {
+  const withIcon = (icon: unknown) =>
+    ConfigSchema.parse({ version: 3, pages: [{ id: 'p', name: 'P', widgets: [{ instanceId: 'a', widgetId: 'clock', x: 0, y: 0, w: 1, h: 1, icon }] }] })
+
+  it('leaves icon absent on an existing file', () => {
+    const parsed = ConfigSchema.parse({ version: 3, pages: [{ id: 'p', name: 'P', widgets: [{ instanceId: 'a', widgetId: 'clock', x: 0, y: 0, w: 1, h: 1 }] }] })
+    expect(parsed.pages[0].widgets[0]).not.toHaveProperty('icon')
+  })
+  it('round-trips a pictogram and a file, tinted or not', () => {
+    for (const icon of [
+      { kind: 'lucide', name: 'server' },
+      { kind: 'file', name: '1729000000000-nas.svg' },
+      { kind: 'file', name: '1729000000000-logo.png', tint: false },
+    ]) expect(withIcon(icon).pages[0].widgets[0].icon).toEqual(icon)
+  })
+  it('accepts a well-formed pictogram name it does not know', () => {
+    // The choosable list lives in the UI; a name a later version dropped renders as no icon.
+    expect(withIcon({ kind: 'lucide', name: 'not-in-the-set' }).pages[0].widgets[0].icon).toEqual({ kind: 'lucide', name: 'not-in-the-set' })
+  })
+  it('refuses an unknown kind, a bad pictogram name, an unsafe file name and an explicit tint', () => {
+    for (const icon of [
+      { kind: 'emoji', name: 'x' },
+      { kind: 'lucide', name: 'Bad Name' },
+      { kind: 'lucide', name: 'a'.repeat(41) },
+      { kind: 'file', name: '../secret.svg' },
+      { kind: 'file', name: 'a/b.svg' },
+      { kind: 'file', name: '.hidden.svg' },
+      { kind: 'file', name: '1-photo.jpg' },
+      { kind: 'file', name: '1-nas.svg', tint: true },
+    ]) expect(() => withIcon(icon), JSON.stringify(icon)).toThrow()
+  })
+})
+
+describe('isSafeTileIconName', () => {
+  it('takes a stored name with an icon extension', () => {
+    expect(isSafeTileIconName('1729-nas.svg')).toBe(true)
+    expect(isSafeTileIconName('1729-nas.webp')).toBe(true)
+    expect(isSafeTileIconName('1729-nas.png')).toBe(true)
+  })
+  it('refuses anything else', () => {
+    for (const n of ['1729-nas.jpg', '1729-nas', '../x.svg', '.x.svg', 'a..svg', 42, '']) expect(isSafeTileIconName(n), String(n)).toBe(false)
   })
 })

@@ -45,6 +45,31 @@ export function isSafeBackgroundName(name: unknown): name is string {
 // against the locale in force then, instead of being frozen when this module loads.
 const BackgroundImageName = z.string().refine(isSafeBackgroundName, { error: () => tr(undefined, 'config.backgroundName') })
 
+/** The extensions an imported tile icon is stored under; the routes pick it from the real bytes. */
+export const TILE_ICON_EXT_RE = /\.(png|webp|svg)$/
+
+/**
+ * The gate every imported tile icon name goes through, in the config, the routes and the backup.
+ * The same rules as a background name — one file name, never a path — with the icon extensions.
+ */
+export function isSafeTileIconName(name: unknown): name is string {
+  return isSafeBackgroundName(name) && TILE_ICON_EXT_RE.test(name)
+}
+
+const TileIconFileName = z.string().refine(isSafeTileIconName, { error: () => tr(undefined, 'config.tileIconName') })
+
+/**
+ * The icon the frame draws before a tile's title. A pictogram name is checked for shape only: the
+ * choosable list lives in the UI, and a name a later version no longer has renders as no icon
+ * rather than making the whole file invalid. `tint` absent means the file is painted in the
+ * title colour; only `false`, its own colours, is ever stored.
+ */
+export const TileIconSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('lucide'), name: z.string().regex(/^[a-z0-9-]{1,40}$/) }),
+  z.object({ kind: z.literal('file'), name: TileIconFileName, tint: z.literal(false).optional() }),
+])
+export type TileIcon = z.infer<typeof TileIconSchema>
+
 /** Darkest overlay a widget image may carry: past this the image no longer reads as one. */
 export const MAX_WIDGET_DIM = 0.9
 /** Overlay opacity applied when a widget image carries no explicit `dim`. */
@@ -91,6 +116,8 @@ export const WidgetInstanceSchema = z.object({
    * tile — border included — fully see-through. Absent means a solid tile.
    */
   opacity: OpacitySchema.optional(),
+  /** Drawn by the frame before the title. Absent means no icon, which is the default. */
+  icon: TileIconSchema.optional(),
   /** @deprecated Converted and dropped by `normalizeInstances`; never written back out. */
   appearance: LegacyAppearanceSchema.optional(),
   /** @deprecated Converted and dropped by `normalizeInstances`; never written back out. */
