@@ -256,7 +256,7 @@ const fr = {
   'tileIcons.empty': 'icône vide',
   'tileIcons.tooLarge': 'icône trop grande (256 Ko maximum)',
   'tileIcons.unsupportedFormat': 'format non supporté (PNG, WebP ou SVG)',
-  'tileIcons.activeSvg': 'ce SVG contient du script ou des liens externes : exportez-le en simple dessin',
+  'tileIcons.activeSvg': 'ce SVG contient du script, des liens externes ou des caractères échappés : exportez-le en simple dessin',
   'tileIcons.unknown': 'icône inconnue',
 
   // widgets/routes.ts, proxy/routes.ts, bambu/routes.ts
@@ -499,7 +499,7 @@ const en: Record<MessageKey, string> = {
   'tileIcons.empty': 'empty icon',
   'tileIcons.tooLarge': 'icon too large (256 KB maximum)',
   'tileIcons.unsupportedFormat': 'unsupported format (PNG, WebP or SVG)',
-  'tileIcons.activeSvg': 'this SVG contains script or external links: export it as a plain drawing',
+  'tileIcons.activeSvg': 'this SVG contains script, external links or escaped characters: export it as a plain drawing',
   'tileIcons.unknown': 'unknown icon',
 
   'widgets.unknown': 'unknown widget',

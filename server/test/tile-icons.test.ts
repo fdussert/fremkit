@@ -121,6 +121,12 @@ describe('POST /api/tile-icons', () => {
     expect(active.json().error).not.toBe(tr(undefined, 'tileIcons.unsupportedFormat'))
     expect(await readdir(iconsDir()).catch(() => [])).toEqual([])
   })
+  it('says why it refuses an SVG with an escaped character in an attribute', async () => {
+    // A backslash is no script and no link: the message has to name it, or the user cannot fix it.
+    const res = await upload('x.svg', '<svg xmlns="http://www.w3.org/2000/svg"><rect style="fill:u\\72l(x)"/></svg>')
+    expect(res.statusCode).toBe(400)
+    expect(res.json().error).toMatch(/escaped|échappés/)
+  })
   it('refuses an icon over 256 KiB', async () => {
     const res = await upload('big.png', Buffer.concat([PNG, Buffer.alloc(MAX_TILE_ICON_BYTES)]))
     expect(res.statusCode).toBe(413)
