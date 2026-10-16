@@ -6,11 +6,13 @@
  * Imported icons are a small library shared by every tile, managed in place: import one and it is
  * applied at once; delete one and it is first taken off every tile that wears it. Deleting asks
  * twice (`useConfirm`), since a native confirm never shows in the kiosk's web view.
+ *
+ * The field is a `<div>` styled like `BaseField`, not a `BaseField`: that one is a `<label>`, and
+ * a label hands any tap on its caption or hint to its first button — here Add, which writes.
  */
 import { computed, ref, watch } from 'vue'
 import BaseButton from '../shared/ui/BaseButton.vue'
 import BaseCheckbox from '../shared/ui/BaseCheckbox.vue'
-import BaseField from '../shared/ui/BaseField.vue'
 import BaseIcon from '../shared/ui/BaseIcon.vue'
 import BaseSegmented from '../shared/ui/BaseSegmented.vue'
 import TileIcon from '../shared/TileIcon.vue'
@@ -48,7 +50,15 @@ const suggested = computed(() => (isChoosablePictogram(props.manifest?.icon) ? p
 const missing = computed(() => (loaded.value && current.value?.kind === 'file' && !files.value.includes(current.value.name) ? current.value.name : undefined))
 
 // Another tile selected: start closed, with nothing half-confirmed.
-watch(() => props.instance.instanceId, () => { open.value = false; error.value = ''; confirm.reset() })
+watch(() => props.instance.instanceId, close)
+// Title hidden: the picker goes with it, and does not come back open with the title.
+watch(() => props.instance.showTitle, close)
+
+function close(): void {
+  open.value = false
+  error.value = ''
+  confirm.reset()
+}
 
 function set(icon: Icon | undefined): void {
   s.updateInstance(props.instance.instanceId, { icon })
@@ -105,29 +115,37 @@ function remove(name: string): void {
   confirm.ask(`delete:${name}`, async () => {
     // References first, file second: a failed delete leaves an orphan file, which harms nothing.
     s.removeTileIconEverywhere(name)
-    try { await api.deleteTileIcon(name) } catch { /* already gone, or will be listed again */ }
+    error.value = ''
+    try {
+      await api.deleteTileIcon(name)
+    } catch (err) {
+      // Still on disk, so still listed: the user can try again, and knows why it failed.
+      error.value = err instanceof Error ? err.message : String(err)
+      return
+    }
     files.value = files.value.filter((n) => n !== name)
   })
 }
 </script>
 
 <template>
-  <BaseField :label="t('admin.tileIcon.label')" :hint="t(instance.showTitle ? 'admin.tileIcon.hint' : 'admin.tileIcon.needsTitle')">
+  <div class="field">
+    <span class="lbl">{{ t('admin.tileIcon.label') }}</span>
     <div class="row">
       <TileIcon v-if="current" class="preview" :icon="current" />
       <span v-else class="none">{{ t('admin.tileIcon.none') }}</span>
       <template v-if="instance.showTitle">
-        <BaseButton v-if="!current" data-action="add" @click="add"><BaseIcon name="plus" :size="16" />{{ t('admin.tileIcon.add') }}</BaseButton>
-        <template v-else>
-          <BaseButton data-action="change" @click="open ? (open = false) : openPicker()">{{ t(open ? 'admin.tileIcon.close' : 'admin.tileIcon.change') }}</BaseButton>
-          <BaseButton data-action="remove" @click="set(undefined)">{{ t('admin.tileIcon.remove') }}</BaseButton>
-        </template>
+        <BaseButton v-if="!current && !open" class="tap" data-action="add" @click="add"><BaseIcon name="plus" :size="16" />{{ t('admin.tileIcon.add') }}</BaseButton>
+        <!-- Shown whenever the picker is open, so it can always be closed, with or without an icon. -->
+        <BaseButton v-else class="tap" data-action="change" @click="open ? close() : openPicker()">{{ t(open ? 'admin.tileIcon.close' : 'admin.tileIcon.change') }}</BaseButton>
+        <BaseButton v-if="current" class="tap" data-action="remove" @click="set(undefined)">{{ t('admin.tileIcon.remove') }}</BaseButton>
       </template>
     </div>
-  </BaseField>
+    <span class="field-hint">{{ t(instance.showTitle ? 'admin.tileIcon.hint' : 'admin.tileIcon.needsTitle') }}</span>
+  </div>
 
   <div v-if="open && instance.showTitle" class="picker">
-    <BaseSegmented :model-value="tab" :options="TABS" @update:model-value="tab = $event as Tab" />
+    <BaseSegmented class="tabs" :model-value="tab" :options="TABS" @update:model-value="tab = $event as Tab" />
 
     <div v-if="tab === 'pictograms'" class="grid">
       <button type="button" class="cell" :class="{ on: !current }" :title="t('admin.tileIcon.none')" @click="set(undefined)">
@@ -156,7 +174,7 @@ function remove(name: string): void {
         <div v-if="missing" class="cell missing on" :title="missing">{{ t('admin.tileIcon.missing') }}</div>
       </div>
       <input ref="fileInput" class="input" type="file" accept=".png,.webp,.svg,image/png,image/webp,image/svg+xml" @change="onFile" />
-      <BaseButton :disabled="busy" @click="fileInput?.click()">
+      <BaseButton class="tap import" :disabled="busy" @click="fileInput?.click()">
         <BaseIcon name="upload" :size="16" />{{ t(busy ? 'admin.tileIcon.importing' : 'admin.tileIcon.import') }}
       </BaseButton>
       <p class="hint">{{ t('admin.tileIcon.importHint') }}</p>
@@ -169,6 +187,16 @@ function remove(name: string): void {
 </template>
 
 <style scoped>
+/* BaseField's look, on a <div> (see the comment at the top). */
+.field { display: flex; flex-direction: column; gap: var(--space-1); margin-bottom: var(--space-3); }
+.lbl { font-size: var(--fs-xs); color: var(--text-muted); text-transform: uppercase; letter-spacing: .06em; }
+.field-hint { font-size: var(--fs-xs); color: var(--text-dim); }
+/* Touch targets: everything tappable here is at least 44 px tall, on the strip as with a mouse. */
+.tap { min-height: 44px; }
+.import { align-self: flex-start; }
+.tabs :deep(button) { min-height: 44px; }
+/* `.picker` raises it above BaseCheckbox's own margin, whatever order the sheets load in. */
+.picker .tint { min-height: 44px; margin-bottom: 0; }
 .row { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); }
 .preview { width: 28px; height: 28px; color: var(--accent); }
 .none { font-size: var(--fs-sm); color: var(--text-muted); }

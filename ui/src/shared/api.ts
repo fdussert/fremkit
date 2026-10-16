@@ -60,8 +60,10 @@ export const api = {
   uploadTileIcon: (name: string, data: string) =>
     fetch('/api/tile-icons', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name, data }) })
       .then((r) => json<{ name: string }>(r)),
+  /** A 404 is a success: the icon is already gone, which is what the caller asked for. */
   deleteTileIcon: (name: string) =>
-    fetch(`/api/tile-icons/${encodeURIComponent(name)}`, { method: 'DELETE' }).then((r) => json<{ ok: boolean }>(r)),
+    fetch(`/api/tile-icons/${encodeURIComponent(name)}`, { method: 'DELETE' })
+      .then((r) => (r.status === 404 ? { ok: true } : json<{ ok: boolean }>(r))),
 
   /** The registry index merged with what this machine has installed. Never throws on offline. */
   getMarketplace: () => fetch('/api/marketplace').then((r) => json<MarketplaceResponse>(r)),
