@@ -142,6 +142,10 @@ describe('the Icon field', () => {
     await flushPromises()
     expect(w.find('.picker').exists()).toBe(false)
   })
+  it('says under the Tint box what tinting does to a file', async () => {
+    const w = await openOnFile()
+    expect(w.find('.tint + .tint-hint').text()).toMatch(/silhouette/i)
+  })
   it('switches a file back to tinted by dropping the key', async () => {
     tile('c-2').icon = { kind: 'file', name: '1-nas.svg', tint: false }
     const w = await openOnFile()

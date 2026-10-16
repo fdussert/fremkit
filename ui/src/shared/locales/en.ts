@@ -140,6 +140,7 @@ export const en: Record<string, string> = {
   'admin.tileIcon.tooLarge': 'Icon too large (256 KB maximum).',
   'admin.tileIcon.unreadable': 'This file could not be read.',
   'admin.tileIcon.tint': 'Tint with the title colour',
+  'admin.tileIcon.tintHint': "Tinting keeps only the icon's silhouette: untick to keep its colours and inner details.",
   'admin.tileIcon.missing': 'Missing',
   'admin.tileIcon.delete': 'Delete this icon',
   'admin.tileIcon.deleteConfirm': 'Confirm? Tiles using it: {count}',

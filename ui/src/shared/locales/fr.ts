@@ -140,6 +140,7 @@ export const fr: Record<string, string> = {
   'admin.tileIcon.tooLarge': 'Icône trop grande (256 Ko maximum).',
   'admin.tileIcon.unreadable': 'Ce fichier n’a pas pu être lu.',
   'admin.tileIcon.tint': 'Teinter avec la couleur du titre',
+  'admin.tileIcon.tintHint': "La teinte ne garde que la silhouette de l'icône : décochez pour garder ses couleurs et ses détails intérieurs.",
   'admin.tileIcon.missing': 'Introuvable',
   'admin.tileIcon.delete': 'Supprimer cette icône',
   'admin.tileIcon.deleteConfirm': 'Confirmer ? Tuiles concernées : {count}',

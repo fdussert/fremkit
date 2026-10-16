@@ -180,6 +180,7 @@ function remove(name: string): void {
       <p class="hint">{{ t('admin.tileIcon.importHint') }}</p>
       <BaseCheckbox v-if="current?.kind === 'file'" class="tint" :model-value="current.tint !== false"
         :label="t('admin.tileIcon.tint')" @update:model-value="setTint" />
+      <p v-if="current?.kind === 'file'" class="hint tint-hint">{{ t('admin.tileIcon.tintHint') }}</p>
     </template>
 
     <p v-if="error" class="err">{{ error }}</p>
@@ -210,6 +211,16 @@ function remove(name: string): void {
 /* Wider columns for files: the armed delete button has to say "Confirm?" and a count. */
 .grid.files { grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); }
 .file { display: flex; flex-direction: column; gap: 2px; }
+/* A file is shown in its own colours, and a black mark vanishes on a dark surface, a white one on
+   a light one: a fixed light/mid grey checkerboard, the same under every theme, lets any colour read. */
+.file .cell {
+  background-color: #d4d4d4;
+  background-image:
+    linear-gradient(45deg, #9e9e9e 25%, transparent 25%, transparent 75%, #9e9e9e 75%),
+    linear-gradient(45deg, #9e9e9e 25%, transparent 25%, transparent 75%, #9e9e9e 75%);
+  background-size: 12px 12px;
+  background-position: 0 0, 6px 6px;
+}
 .del { min-height: 44px; justify-content: center; font-size: var(--fs-xs); white-space: normal; text-align: center; }
 .thumb { width: 26px; height: 26px; }
 .input { display: none; }
