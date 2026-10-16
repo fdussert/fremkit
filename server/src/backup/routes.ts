@@ -38,8 +38,12 @@ export const MANIFEST_ENTRY = 'manifest.json'
 
 /** Largest archive accepted. The background library is the bulk of it. */
 export const MAX_RESTORE_BYTES = 50 * 1024 * 1024
-/** Most files an archive may hold: one config, one manifest, and a large but finite library. */
-const MAX_ENTRIES = 256
+/**
+ * Most files an archive may hold: one config, one manifest, and two large but finite libraries,
+ * the backgrounds and the tile icons. Icons are small and many; the byte cap above still bounds
+ * the whole.
+ */
+const MAX_ENTRIES = 1024
 
 /** What the manifest records. Informational — the restore trusts the config, not this. */
 export interface BackupManifest {

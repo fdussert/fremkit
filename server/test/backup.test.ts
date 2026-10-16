@@ -332,6 +332,13 @@ describe('tile icons in a backup', () => {
       [{ name: `${TILE_ICONS_PREFIX}../../x.svg`, data: NAS_SVG }, tr(undefined, 'backup.badTileIconName')],
     ] as const) expect(() => readBackup(writeZip([config, entry], new Date())), entry.name).toThrow(message)
   })
+  it('takes a library of a few hundred backgrounds and icons together', () => {
+    const config = { name: CONFIG_ENTRY, data: Buffer.from(JSON.stringify(CONFIG)) }
+    const icons = Array.from({ length: 300 }, (_, i) => ({ name: `${TILE_ICONS_PREFIX}${i}-x.svg`, data: NAS_SVG }))
+    const bgs = Array.from({ length: 300 }, (_, i) => ({ name: `backgrounds/${i}.png`, data: PNG }))
+    const read = readBackup(writeZip([config, ...icons, ...bgs], new Date()))
+    expect([read.tileIcons.length, read.backgrounds.length]).toEqual([300, 300])
+  })
   it('refuses an icon whose name claims another type than its bytes', () => {
     // The route serves an icon by its extension, so a `.svg` name on raster bytes would be
     // served as SVG — and RIFF…WEBP bytes can carry `<svg onload>` past the magic check.
