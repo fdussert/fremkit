@@ -14,11 +14,16 @@ describe('the choosable pictograms', () => {
     expect(TILE_ICONS).not.toContain('github')
   })
   it('include the icon every built-in widget suggests', () => {
+    let checked = 0
     for (const id of readdirSync(widgetsDir)) {
       let manifest: { icon?: string }
       try { manifest = JSON.parse(readFileSync(new URL(`${id}/manifest.json`, widgetsDir), 'utf8')) } catch { continue }
-      if (manifest.icon) expect(TILE_ICONS, `${id}: ${manifest.icon}`).toContain(manifest.icon)
+      if (!manifest.icon) continue
+      expect(TILE_ICONS, `${id}: ${manifest.icon}`).toContain(manifest.icon)
+      checked++
     }
+    // A moved widgets/ folder or unreadable manifests would otherwise pass having checked nothing.
+    expect(checked).toBeGreaterThanOrEqual(10)
   })
   it('are told apart from the admin tool icons and from prototype keys', () => {
     expect(isChoosablePictogram('server')).toBe(true)
