@@ -98,7 +98,7 @@ describe('the Icon field', () => {
     await w.find('.tint input').setValue(false)
     expect(tile('c-2').icon).toEqual({ kind: 'file', name: '1-nas.svg', tint: false })
   })
-  it('deletes an imported icon on the second tap, clearing it from every tile first', async () => {
+  it('deletes an imported icon on the second tap, then clears it from every tile', async () => {
     const w = mountFor('c-2')
     await w.find('[data-action="change"]').trigger('click')
     await flushPromises()
@@ -181,6 +181,8 @@ describe('the Icon field', () => {
     await flushPromises()
     expect(w.find('[data-delete="1-nas.svg"]').exists()).toBe(true)
     expect(w.find('.err').text()).toMatch(/refused 500/)
+    // The file is still there, so the tiles keep wearing it.
+    expect(tile('c-2').icon).toEqual({ kind: 'file', name: '1-nas.svg' })
   })
   it('drops a file the server no longer has without an error', async () => {
     deleteStatus = 404
@@ -191,6 +193,7 @@ describe('the Icon field', () => {
     await flushPromises()
     expect(w.find('[data-delete="1-nas.svg"]').exists()).toBe(false)
     expect(w.find('.err').exists()).toBe(false)
+    expect(tile('c-2').icon).toBeUndefined()
   })
   it('forgets a half-confirmed delete when another tile is selected', async () => {
     tile('c-1').icon = { kind: 'file', name: '1-nas.svg' }

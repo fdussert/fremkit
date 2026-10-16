@@ -4,7 +4,7 @@
  * written here; drawing is `TileIcon`'s, inside the frame, never the widget's.
  *
  * Imported icons are a small library shared by every tile, managed in place: import one and it is
- * applied at once; delete one and it is first taken off every tile that wears it. Deleting asks
+ * applied at once; delete one and, once the file is gone, it is taken off every tile that wore it. Deleting asks
  * twice (`useConfirm`), since a native confirm never shows in the kiosk's web view.
  *
  * The field is a `<div>` styled like `BaseField`, not a `BaseField`: that one is a `<label>`, and
@@ -113,16 +113,17 @@ async function onFile(e: Event): Promise<void> {
 
 function remove(name: string): void {
   confirm.ask(`delete:${name}`, async () => {
-    // References first, file second: a failed delete leaves an orphan file, which harms nothing.
-    s.removeTileIconEverywhere(name)
+    // File first, references second: a refused delete then changes nothing at all, rather than
+    // stripping the icon from tiles whose file is still there. A 404 counts as done (`api`).
     error.value = ''
     try {
       await api.deleteTileIcon(name)
     } catch (err) {
-      // Still on disk, so still listed: the user can try again, and knows why it failed.
+      // Still on disk, so still listed and still worn: the user can try again, and knows why.
       error.value = err instanceof Error ? err.message : String(err)
       return
     }
+    s.removeTileIconEverywhere(name)
     files.value = files.value.filter((n) => n !== name)
   })
 }
