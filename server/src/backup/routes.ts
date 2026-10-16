@@ -90,8 +90,12 @@ export function readBackup(archive: Buffer): {
       if (entry.name.endsWith('/')) continue
       const name = entry.name.slice(TILE_ICONS_PREFIX.length)
       // The same gates as an upload: a file name, a size, and bytes that are an icon and run nothing.
+      // An upload picks the extension from the bytes; here the archive picked it, and the route
+      // serves by extension, so the two must agree — else RIFF…WEBP bytes carrying `<svg onload>`
+      // under a `.svg` name would be served as an SVG nobody checked as one.
       if (!isSafeTileIconName(name)) throw new ZipError(tr(undefined, 'backup.badTileIconName'))
-      if (entry.data.byteLength > MAX_TILE_ICON_BYTES || !checkTileIcon(entry.data).ok) throw new ZipError(tr(undefined, 'backup.badTileIcon'))
+      const checked = entry.data.byteLength <= MAX_TILE_ICON_BYTES ? checkTileIcon(entry.data) : null
+      if (!checked?.ok || !name.endsWith('.' + checked.type.ext)) throw new ZipError(tr(undefined, 'backup.badTileIcon'))
       tileIcons.push({ name, data: entry.data })
       continue
     }

@@ -332,4 +332,18 @@ describe('tile icons in a backup', () => {
       [{ name: `${TILE_ICONS_PREFIX}../../x.svg`, data: NAS_SVG }, tr(undefined, 'backup.badTileIconName')],
     ] as const) expect(() => readBackup(writeZip([config, entry], new Date())), entry.name).toThrow(message)
   })
+  it('refuses an icon whose name claims another type than its bytes', () => {
+    // The route serves an icon by its extension, so a `.svg` name on raster bytes would be
+    // served as SVG — and RIFF…WEBP bytes can carry `<svg onload>` past the magic check.
+    const config = { name: CONFIG_ENTRY, data: Buffer.from(JSON.stringify(CONFIG)) }
+    const webpSvg = Buffer.concat([Buffer.from('RIFF\0\0\0\0WEBP'), Buffer.from('<svg onload="x"/>')])
+    expect(checkTileIcon(webpSvg).ok).toBe(true)
+    for (const entry of [
+      { name: `${TILE_ICONS_PREFIX}1-x.svg`, data: webpSvg },
+      { name: `${TILE_ICONS_PREFIX}1-x.svg`, data: PNG },
+      { name: `${TILE_ICONS_PREFIX}1-x.png`, data: NAS_SVG },
+    ]) expect(() => readBackup(writeZip([config, entry], new Date())), entry.name).toThrow(tr(undefined, 'backup.badTileIcon'))
+    const ok = readBackup(writeZip([config, { name: `${TILE_ICONS_PREFIX}1-x.png`, data: PNG }], new Date()))
+    expect(ok.tileIcons.map((i) => i.name)).toEqual(['1-x.png'])
+  })
 })
