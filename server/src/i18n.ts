@@ -249,6 +249,14 @@ const fr = {
   'backgrounds.emptyImage': 'image vide',
   'backgrounds.unknownImage': 'image inconnue',
 
+  // tile-icons/routes.ts
+  'tileIcons.missingData': 'données manquantes',
+  'tileIcons.empty': 'icône vide',
+  'tileIcons.tooLarge': 'icône trop grande (256 Ko maximum)',
+  'tileIcons.unsupportedFormat': 'format non supporté (PNG, WebP ou SVG)',
+  'tileIcons.activeSvg': 'ce SVG contient du script ou des liens externes : exportez-le en simple dessin',
+  'tileIcons.unknown': 'icône inconnue',
+
   // widgets/routes.ts, proxy/routes.ts, bambu/routes.ts
   'widgets.unknown': 'widget inconnu',
   'bambu.unknownConnection': 'connexion inconnue',
@@ -482,6 +490,13 @@ const en: Record<MessageKey, string> = {
   'backgrounds.unsupportedFormat': 'unsupported format (PNG, JPEG or WebP)',
   'backgrounds.emptyImage': 'empty image',
   'backgrounds.unknownImage': 'unknown image',
+
+  'tileIcons.missingData': 'missing data',
+  'tileIcons.empty': 'empty icon',
+  'tileIcons.tooLarge': 'icon too large (256 KB maximum)',
+  'tileIcons.unsupportedFormat': 'unsupported format (PNG, WebP or SVG)',
+  'tileIcons.activeSvg': 'this SVG contains script or external links: export it as a plain drawing',
+  'tileIcons.unknown': 'unknown icon',
 
   'widgets.unknown': 'unknown widget',
   'bambu.unknownConnection': 'unknown connection',
