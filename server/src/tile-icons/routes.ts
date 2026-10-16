@@ -18,16 +18,26 @@ export const MAX_TILE_ICON_BODY_BYTES = Math.ceil(MAX_TILE_ICON_BYTES * 4 / 3) +
 
 const SVG: ImageType = { ext: 'svg', contentType: 'image/svg+xml' }
 
-/** A text whose root element, past a BOM, an XML prolog and comments, is `<svg`. */
+/**
+ * A text whose root element, past a BOM, an XML prolog, comments and a DOCTYPE, is `<svg`. The
+ * DOCTYPE is skipped here only so that such a file reaches the active-content check and is told
+ * why it is refused, rather than hearing that it is not an SVG at all.
+ */
 function looksLikeSvg(text: string): boolean {
-  const rest = text.replace(/^\uFEFF/, '').replace(/^\s*(?:<\?xml[^>]*\?>\s*)?(?:<!--[\s\S]*?-->\s*)*/, '')
+  const rest = text
+    .replace(/^\uFEFF/, '')
+    .replace(/^\s*(?:<\?xml[^>]*\?>\s*)?(?:<!--[\s\S]*?-->\s*)*/, '')
+    .replace(/^<!DOCTYPE\b[^>[]*(?:\[[\s\S]*?\])?\s*>\s*(?:<!--[\s\S]*?-->\s*)*/i, '')
   return /^<svg[\s>/]/i.test(rest)
 }
 
 /**
- * What would make an SVG do anything but draw: script, event handlers, embedded documents,
- * entities, and any reference that leaves the file. Internal `#id` references are what
- * gradients and clip paths are made of, so those stay.
+ * What would make an SVG do anything but draw, in order: script, event handlers, embedded
+ * documents, a DOCTYPE or entity, any `href` that leaves the file, any `url()` that does, a CSS
+ * `@import`, an animation (`<set>`, `<animate…>`) that rewrites an `href` at run time, and a
+ * backslash in a stylesheet or in any attribute value — a CSS escape is how `u\72l(` and
+ * `@\69mport` would slip past the two rules before. Internal `#id` references are what gradients
+ * and clip paths are made of, so those stay.
  *
  * A refusal list, not a sanitiser: nothing is rewritten. The real defence is elsewhere — the host
  * only ever renders an icon as an `<img>` or a CSS mask, which run nothing, and the bytes are
@@ -42,6 +52,9 @@ const ACTIVE_SVG = [
   /\bhref\s*=\s*(?![\s"']*#)/i,
   /url\(\s*(?![\s"']*#)/i,
   /@import\b/i,
+  /<\s*(?:set|animate\w*)\b[^>]*\battributeName\s*=\s*["']?\s*(?:[a-z]+:)?href\b/i,
+  /<\s*style\b[^>]*>(?:(?!<\s*\/\s*style\b)[\s\S])*\\/i,
+  /=\s*(?:"[^"]*\\|'[^']*\\|[^\s"'>]*\\)/,
 ]
 export function svgHasActiveContent(text: string): boolean {
   return ACTIVE_SVG.some((re) => re.test(text))
@@ -84,7 +97,10 @@ export async function tileIconRoutes(app: FastifyInstance, opts: { dataDir: stri
       const checked = checkTileIcon(buf)
       if (!checked.ok) return reply.code(400).send({ error: tr(undefined, checked.reason === 'activeSvg' ? 'tileIcons.activeSvg' : 'tileIcons.unsupportedFormat') })
 
-      const name = safeBackgroundName(body.name, checked.type)
+      // The shared helper never yields a name the routes below refuse; checked again here
+      // because a file stored under such a name could never be listed, served or deleted.
+      let name = safeBackgroundName(body.name, checked.type)
+      if (!isSafeTileIconName(name)) name = safeBackgroundName(undefined, checked.type)
       await mkdir(dir, { recursive: true })
       await writeFile(pathOf(name), buf)
       return reply.code(201).send({ name })

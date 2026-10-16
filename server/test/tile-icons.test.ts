@@ -4,7 +4,10 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { FastifyInstance } from 'fastify'
 import { buildApp } from '../src/app.js'
-import { MAX_TILE_ICON_BYTES, checkTileIcon, svgHasActiveContent, tileIconContentType } from '../src/tile-icons/routes.js'
+import {
+  MAX_TILE_ICON_BODY_BYTES, MAX_TILE_ICON_BYTES, checkTileIcon, svgHasActiveContent, tileIconContentType,
+} from '../src/tile-icons/routes.js'
+import { tr } from '../src/i18n.js'
 
 const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3])
 const JPEG = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3])
@@ -44,6 +47,12 @@ describe('checkTileIcon', () => {
   it('refuses an SVG with active content', () => {
     expect(checkTileIcon(Buffer.from('<svg><script>alert(1)</script></svg>'))).toEqual({ ok: false, reason: 'activeSvg' })
   })
+  it('says a DOCTYPE SVG is active, not an unknown format, so the user gets the useful message', () => {
+    const publicId = '<?xml version="1.0"?>\n<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">\n<svg xmlns="http://www.w3.org/2000/svg"/>'
+    const subset = '<!-- x --><!DOCTYPE svg [<!ENTITY a "b">]>\n<!-- y --><svg/>'
+    expect(checkTileIcon(Buffer.from(publicId))).toEqual({ ok: false, reason: 'activeSvg' })
+    expect(checkTileIcon(Buffer.from(subset))).toEqual({ ok: false, reason: 'activeSvg' })
+  })
 })
 
 describe('svgHasActiveContent', () => {
@@ -63,10 +72,20 @@ describe('svgHasActiveContent', () => {
       '<svg><image href=https://example.com/x.png /></svg>',
       '<svg><rect fill="url(https://example.com/x)"/></svg>',
       '<svg><style>@import "https://example.com/x.css";</style></svg>',
+      '<svg><set attributeName="href" to="javascript:x"/></svg>',
+      '<svg><animate attributeName="xlink:href" values="https://example.com/x"/></svg>',
+      '<svg><animate begin="0s" attributeName = \' href\' values="#a;https://example.com/x"/></svg>',
+      '<svg><style>@\\69mport "https://example.com/x.css";</style></svg>',
+      '<svg><style><![CDATA[ rect { fill: u\\72l(https://example.com/x) } ]]></style></svg>',
+      '<svg><rect style="fill: u\\72l(https://example.com/x)"/></svg>',
+      "<svg><rect style='fill:u\\72l(https://example.com/x)'/></svg>",
+      '<svg><rect fill="u\\72l(https://example.com/x)"/></svg>',
     ]) expect(svgHasActiveContent(bad), bad).toBe(true)
   })
   it('lets internal references through', () => {
-    for (const ok of [SVG, '<svg><use href="#a"/></svg>', '<svg><use xlink:href = " #a"/></svg>', '<svg><rect fill="url(#g)"/></svg>', '<svg><text>one onion</text></svg>'])
+    for (const ok of [SVG, '<svg><use href="#a"/></svg>', '<svg><use xlink:href = " #a"/></svg>', '<svg><rect fill="url(#g)"/></svg>', '<svg><text>one onion</text></svg>',
+      '<svg><animate attributeName="opacity" values="0;1"/><set attributeName="fill" to="url(#g)"/></svg>',
+      '<svg><style>rect { fill: url(#g) }</style><rect style="stroke: red"/></svg>'])
       expect(svgHasActiveContent(ok), ok).toBe(false)
   })
 })
@@ -98,12 +117,30 @@ describe('POST /api/tile-icons', () => {
     expect(jpeg.json().error).toMatch(/SVG/)
     const active = await upload('x.svg', '<svg onload="x"/>')
     expect(active.statusCode).toBe(400)
+    expect(active.json().error).toBe(tr(undefined, 'tileIcons.activeSvg'))
+    expect(active.json().error).not.toBe(tr(undefined, 'tileIcons.unsupportedFormat'))
     expect(await readdir(iconsDir()).catch(() => [])).toEqual([])
   })
   it('refuses an icon over 256 KiB', async () => {
     const res = await upload('big.png', Buffer.concat([PNG, Buffer.alloc(MAX_TILE_ICON_BYTES)]))
     expect(res.statusCode).toBe(413)
     expect(await readdir(iconsDir()).catch(() => [])).toEqual([])
+  })
+  it('refuses a body above the route limit before decoding it', async () => {
+    const res = await app.inject({ method: 'POST', url: '/api/tile-icons', payload: { name: 'x.png', data: 'A'.repeat(MAX_TILE_ICON_BODY_BYTES) } })
+    expect(res.statusCode).toBe(413)
+    expect(await readdir(iconsDir()).catch(() => [])).toEqual([])
+  })
+  it('answers a name the other routes accept, whatever the client called the file', async () => {
+    for (const raw of ['a..png', 'a.', '-.svg', '..']) {
+      const res = await upload(raw, SVG)
+      expect(res.statusCode, raw).toBe(201)
+      const { name } = res.json()
+      expect((await app.inject({ url: '/api/tile-icons' })).json().names, raw).toContain(name)
+      expect((await app.inject({ url: `/api/tile-icons/${name}` })).statusCode, raw).toBe(200)
+      expect((await app.inject({ method: 'DELETE', url: `/api/tile-icons/${name}` })).statusCode, raw).toBe(200)
+    }
+    expect(await readdir(iconsDir())).toEqual([])
   })
 })
 
@@ -132,6 +169,15 @@ describe('GET /api/tile-icons/:name', () => {
     expect(res.headers['content-security-policy']).toBe("default-src 'none'; sandbox")
     expect(res.headers['x-content-type-options']).toBe('nosniff')
     expect(res.payload).toBe(SVG)
+  })
+  it('serves a PNG and a WebP under their own type', async () => {
+    for (const [file, bytes, type] of [['a.png', PNG, 'image/png'], ['a.webp', WEBP, 'image/webp']] as const) {
+      const { name } = (await upload(file, bytes)).json()
+      const res = await app.inject({ url: `/api/tile-icons/${name}` })
+      expect(res.headers['content-type'], file).toBe(type)
+      expect(res.headers['content-security-policy'], file).toBe("default-src 'none'; sandbox")
+      expect(res.rawPayload.equals(bytes), file).toBe(true)
+    }
   })
   it('404s on an unknown name and on traversal', async () => {
     await writeFile(join(dir, 'data', 'secret.svg'), 'top secret')
