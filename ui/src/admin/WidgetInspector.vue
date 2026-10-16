@@ -13,6 +13,7 @@ import BackgroundPicker from './BackgroundPicker.vue'
 import CopySettingsFrom from './CopySettingsFrom.vue'
 import MissingWidget from './MissingWidget.vue'
 import SettingsForm from './SettingsForm.vue'
+import TileIconPicker from './TileIconPicker.vue'
 import WidgetPermissions from './WidgetPermissions.vue'
 import { pick, useI18n } from '../shared/i18n'
 import { surfaceOpacity } from '../shared/background'
@@ -138,6 +139,7 @@ function moveToPage(): void {
     </BaseField>
     <BaseCheckbox :model-value="inst.showTitle" :label="t('admin.inspector.widget.showTitle')"
       @update:model-value="s.updateInstance(inst!.instanceId, { showTitle: $event })" />
+    <TileIconPicker :instance="inst" :manifest="manifest" />
 
     <BaseSection id="widget.background" :title="t('admin.inspector.widget.background')">
     <BaseCheckbox :model-value="showBg" :label="t('admin.inspector.widget.showBg')"

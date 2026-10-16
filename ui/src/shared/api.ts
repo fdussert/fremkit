@@ -54,6 +54,14 @@ export const api = {
       .then((r) => json<{ name: string }>(r)),
   deleteBackground: (name: string) =>
     fetch(`/api/backgrounds/${encodeURIComponent(name)}`, { method: 'DELETE' }).then((r) => json<{ ok: boolean }>(r)),
+  /** The icons imported for tile titles, sorted. */
+  listTileIcons: () => fetch('/api/tile-icons').then((r) => json<{ names: string[] }>(r)),
+  /** `data` is the raw file base64-encoded; the server answers with the name it stored it under. */
+  uploadTileIcon: (name: string, data: string) =>
+    fetch('/api/tile-icons', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name, data }) })
+      .then((r) => json<{ name: string }>(r)),
+  deleteTileIcon: (name: string) =>
+    fetch(`/api/tile-icons/${encodeURIComponent(name)}`, { method: 'DELETE' }).then((r) => json<{ ok: boolean }>(r)),
 
   /** The registry index merged with what this machine has installed. Never throws on offline. */
   getMarketplace: () => fetch('/api/marketplace').then((r) => json<MarketplaceResponse>(r)),

@@ -12,6 +12,11 @@ tagged `vX.Y.Z`.
 
 ## Unreleased
 
+### Added
+- **Tile icons.** A tile's title can show an icon: a pictogram from the built-in set, or your own
+  SVG, PNG or WebP, tinted to the theme or in its own colours. Under **/admin**, select a tile,
+  then **Icon**. Fremkit ships no brand logos; the marks you import stay in your installation.
+
 ## 0.3.0 — 2026-10-15
 
 ### Added
