@@ -117,7 +117,7 @@ export const fr: Record<string, string> = {
   'admin.tabs.screen': 'Écran',
   'admin.tabs.connections': 'Connexions',
 
-  'admin.inspector.widget.empty': "Sélectionne un widget sur l'aperçu.",
+  'admin.inspector.widget.empty': "Sélectionnez un widget sur l'aperçu.",
   'admin.inspector.widget.missing': 'Dossier du widget introuvable.',
   'admin.inspector.widget.onSietch': 'Il est sur le sietch : {name}',
   'admin.inspector.widget.notOnSietch': 'Le registre ne l’a pas non plus.',
