@@ -12,6 +12,14 @@ tagged `vX.Y.Z`.
 
 ## Unreleased
 
+### Fixed
+- **The pointer no longer gets stranded on the Edge.** The fence only ever acted on a pointer
+  that moved, so a cursor warped there by an application, or left behind by a display being
+  rearranged, simply stayed: the next click or scroll went to the dashboard instead of the window
+  you were looking at. The fence now also checks where the pointer really is, five times a
+  second, and pushes it back. That half works even without the Accessibility grant, since moving
+  the cursor needs no permission (@mcouzinet, #9).
+
 ## 0.3.0 — 2026-10-15
 
 ### Added

@@ -53,6 +53,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.driver = driver
 
         let fence = MouseFence(edge: nil)
+        // The driver parks the cursor on the panel for the length of a gesture and restores it
+        // itself; the patrol stands back while that is happening.
+        fence.cursorIsDriven = { [poster] in poster.isDrivingCursor }
         fence.onStateChange = { [weak self] state in
             self?.menu?.update { $0.fence = state }
         }

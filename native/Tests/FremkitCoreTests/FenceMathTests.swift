@@ -62,4 +62,30 @@ final class FenceMathTests: XCTestCase {
         XCTAssertEqual(FenceMath.clamp(CGPoint(x: 1950, y: -1309), edge: edge, last: nil, safe: around),
                        CGPoint(x: 1949, y: -1309))
     }
+
+    // MARK: - The patrol, which looks at a pointer that is not moving
+
+    func testPatrolPushesAPointerThatIsSimplyResting() {
+        // No event brought it here: an application warped it, or a display moved under it.
+        let last = CGPoint(x: 800, y: 400)
+        XCTAssertEqual(FenceMath.patrol(cursor: CGPoint(x: 3000, y: -900), edge: edge,
+                                        last: last, safe: primary, driven: false), last)
+    }
+
+    func testPatrolLeavesAPointerOnAnotherDisplayAlone() {
+        XCTAssertNil(FenceMath.patrol(cursor: CGPoint(x: 100, y: 100), edge: edge,
+                                      last: nil, safe: primary, driven: false))
+    }
+
+    func testPatrolStandsBackWhileAGestureOwnsTheCursor() {
+        // The driver puts the cursor on the panel on purpose and restores it afterwards.
+        XCTAssertNil(FenceMath.patrol(cursor: CGPoint(x: 3000, y: -900), edge: edge,
+                                      last: nil, safe: primary, driven: true))
+    }
+
+    func testPatrolDoesNothingWithoutAnEdgeOrAPosition() {
+        XCTAssertNil(FenceMath.patrol(cursor: CGPoint(x: 3000, y: -900), edge: nil,
+                                      last: nil, safe: primary, driven: false))
+        XCTAssertNil(FenceMath.patrol(cursor: nil, edge: edge, last: nil, safe: primary, driven: false))
+    }
 }
