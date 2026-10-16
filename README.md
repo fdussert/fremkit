@@ -180,6 +180,11 @@ dimming overlay, an accent colour, and an *accent mode* saying how much of the t
 paints: **none** leaves it to the widget's own highlights, **frame** colours the title bar and the
 border, **fill** colours the whole tile. The screen itself has a background colour and image too.
 
+**Tile icons.** A tile's title can carry an icon: pick a pictogram, or import your own SVG, PNG or
+WebP (256 KB at most) — the logo of your NAS, the mark of a service you use. Fremkit ships no
+third-party logos; what you import stays in your installation. An imported icon is tinted with
+the title colour by default, or keeps its own colours if you untick **Tint**.
+
 **The navigation bar.** The strip at the bottom of every page, 80 px or 40 px tall, as opaque as
 you like. Its middle is the page dots. Its two sides are free. **Hold the page dots, or double-tap
 them, to open the admin** — the Edge has no keyboard, so this is the way in from the screen.
