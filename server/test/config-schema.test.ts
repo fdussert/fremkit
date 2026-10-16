@@ -348,13 +348,20 @@ describe('tile icons', () => {
     for (const icon of [
       { kind: 'emoji', name: 'x' },
       { kind: 'lucide', name: 'Bad Name' },
+      { kind: 'lucide', name: '' },
       { kind: 'lucide', name: 'a'.repeat(41) },
       { kind: 'file', name: '../secret.svg' },
       { kind: 'file', name: 'a/b.svg' },
       { kind: 'file', name: '.hidden.svg' },
       { kind: 'file', name: '1-photo.jpg' },
+      // An upper-case extension: the server only ever stores the lower-case one, and serves by it.
+      { kind: 'file', name: '1-nas.SVG' },
       { kind: 'file', name: '1-nas.svg', tint: true },
     ]) expect(() => withIcon(icon), JSON.stringify(icon)).toThrow()
+  })
+  it('drops a tint carried by a pictogram, which is always tinted', () => {
+    // zod strips the key it does not know on that branch rather than refusing the tile.
+    expect(withIcon({ kind: 'lucide', name: 'server', tint: false }).pages[0].widgets[0].icon).toEqual({ kind: 'lucide', name: 'server' })
   })
 })
 
