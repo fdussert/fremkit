@@ -7,6 +7,8 @@ import { buildApp } from '../src/app.js'
 import { backupFilename, CONFIG_ENTRY, MANIFEST_ENTRY, readBackup, TILE_ICONS_PREFIX } from '../src/backup/routes.js'
 import { readZip, writeZip } from '../src/backup/zip.js'
 import { DEFAULT_BACKGROUND } from '../src/backgrounds/seed.js'
+import { checkTileIcon, MAX_TILE_ICON_BYTES } from '../src/tile-icons/routes.js'
+import { tr } from '../src/i18n.js'
 
 /** A one-pixel PNG, which is what detectImageType has to accept. */
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64')
@@ -318,12 +320,16 @@ describe('tile icons in a backup', () => {
     expect(res.json().tileIcons).toBe(1)
     expect(await readFile(join(dir, 'tile-icons', '1-nas.svg'))).toEqual(NAS_SVG)
   })
-  it('refuses an archive smuggling an active SVG, a JPEG or a bad name', () => {
+  it('refuses an archive smuggling an active SVG, a JPEG, an oversize icon or a bad name', () => {
     const config = { name: CONFIG_ENTRY, data: Buffer.from(JSON.stringify(CONFIG)) }
-    for (const entry of [
-      { name: `${TILE_ICONS_PREFIX}1-x.svg`, data: Buffer.from('<svg onload="x"/>') },
-      { name: `${TILE_ICONS_PREFIX}1-x.png`, data: Buffer.from([0xff, 0xd8, 0xff, 0xe0, 1]) },
-      { name: `${TILE_ICONS_PREFIX}../../x.svg`, data: NAS_SVG },
-    ]) expect(() => readBackup(writeZip([config, entry], new Date())), entry.name).toThrow()
+    // A plain drawing padded past the limit with a comment, so only its size is wrong.
+    const oversize = Buffer.concat([NAS_SVG, Buffer.from(`<!--${'x'.repeat(MAX_TILE_ICON_BYTES)}-->`)])
+    expect(checkTileIcon(oversize).ok).toBe(true)
+    for (const [entry, message] of [
+      [{ name: `${TILE_ICONS_PREFIX}1-x.svg`, data: Buffer.from('<svg onload="x"/>') }, tr(undefined, 'backup.badTileIcon')],
+      [{ name: `${TILE_ICONS_PREFIX}1-x.png`, data: Buffer.from([0xff, 0xd8, 0xff, 0xe0, 1]) }, tr(undefined, 'backup.badTileIcon')],
+      [{ name: `${TILE_ICONS_PREFIX}1-big.svg`, data: oversize }, tr(undefined, 'backup.badTileIcon')],
+      [{ name: `${TILE_ICONS_PREFIX}../../x.svg`, data: NAS_SVG }, tr(undefined, 'backup.badTileIconName')],
+    ] as const) expect(() => readBackup(writeZip([config, entry], new Date())), entry.name).toThrow(message)
   })
 })

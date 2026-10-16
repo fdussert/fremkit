@@ -19,8 +19,9 @@ import { tr } from '../i18n.js'
  * Taking the whole dashboard out and putting it back.
  *
  * What travels: the live config as the store has migrated it, the background library and the
- * imported tile icons. What never travels: the secrets. They live in the macOS keychain, keyed by connection id, and the
- * whole point of putting them there is that a file copied to a USB stick does not carry them.
+ * imported tile icons. What never travels: the secrets. They live in the macOS keychain, keyed by
+ * connection id, and the whole point of putting them there is that a file copied to a USB stick
+ * does not carry them.
  *
  * Keyed by connection id, though — and a restore keeps the ids. So on the same Mac the items are
  * still there and the connections work straight away, which is why the answer asks the store which
@@ -89,7 +90,7 @@ export function readBackup(archive: Buffer): {
       if (entry.name.endsWith('/')) continue
       const name = entry.name.slice(TILE_ICONS_PREFIX.length)
       // The same gates as an upload: a file name, a size, and bytes that are an icon and run nothing.
-      if (!isSafeTileIconName(name)) throw new ZipError(tr(undefined, 'backup.badName'))
+      if (!isSafeTileIconName(name)) throw new ZipError(tr(undefined, 'backup.badTileIconName'))
       if (entry.data.byteLength > MAX_TILE_ICON_BYTES || !checkTileIcon(entry.data).ok) throw new ZipError(tr(undefined, 'backup.badTileIcon'))
       tileIcons.push({ name, data: entry.data })
       continue
@@ -232,19 +233,20 @@ export async function backupRoutes(
       return reply.code(400).send({ errors: [message] })
     }
 
-    // The backgrounds first: the config may name one, and a dashboard that points at an image
-    // which is not there yet would paint a missing background for a moment. The cost is that a
-    // restore refused *after* this point — a config the store will not take — leaves the archive's
-    // images in the library beside the user's own. They are ordinary files in a list the Screen
-    // inspector shows, so the user can delete them; nothing references them, so nothing changes on
-    // screen. The other order would trade that for a visible flash on every successful restore.
+    // The backgrounds and the tile icons first: the config may name them, and a dashboard that
+    // points at an image which is not there yet would paint a missing background, or a title with a
+    // hole in it, for a moment. The cost is that a restore refused *after* this point — a config the
+    // store will not take — leaves the archive's images beside the user's own. They are ordinary
+    // files in lists the admin shows, so the user can delete them; nothing references them, so
+    // nothing changes on screen. The other order would trade that for a visible flash on every
+    // successful restore.
     try {
       await mkdir(backgroundsDir, { recursive: true })
       for (const image of read.backgrounds) await writeFile(join(backgroundsDir, image.name), image.data)
       await mkdir(tileIconsDir, { recursive: true })
       for (const icon of read.tileIcons) await writeFile(join(tileIconsDir, icon.name), icon.data)
     } catch (err) {
-      req.log.warn({ err }, 'restore could not write the backgrounds')
+      req.log.warn({ err }, 'restore could not write the backgrounds or the tile icons')
       return reply.code(500).send({ errors: [tr(store.get().locale, 'backup.writeFailed')] })
     }
 
