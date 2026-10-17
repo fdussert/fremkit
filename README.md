@@ -234,13 +234,16 @@ paints: **none** leaves it to the widget's own highlights, **frame** colours the
 border, **fill** colours the whole tile. The screen itself has a background colour and image too.
 
 **The navigation bar.** The strip at the bottom of every page, 80 px or 40 px tall, as opaque as
-you like. Its middle is the page dots. Its two sides are free. **Hold the page dots, or double-tap
-them, to open the admin** — the Edge has no keyboard, so this is the way in from the screen.
+you like. Its middle shows page dots by default. In *Screen → Pages in the bar*, choose scrolling names if you prefer them. The sides stay available for compact widgets. **Hold or double-tap
+a page button to open the admin** — the Edge has no keyboard, so this is the way in from the screen.
 *Screen → Open the admin from the bar* chooses between the two gestures, or accepts both, which
-is the default.
+is the default. When both gestures are enabled, a page tap waits briefly for a possible
+double tap. With only long press enabled, the page opens on release. The admin prevents a
+named-page layout that would hide compact widgets. A single page keeps its
+button so the admin shortcut remains available.
 
 **Compact widgets.** Widgets can live *in* the bar, in a left or a right cluster, in the order
-you set, as many as fit beside the page dots. A compact rendering is one readable line, as wide
+you set, as many as fit beside the page buttons. A compact rendering is one readable line, as wide
 as the widget's manifest asks for and as tall as the bar; the bar is its surface, so it has no
 title and no tile of its own. Ten of the built-ins have one: `clock`, `weather`, `pomodoro`,
 `cpu`, `memory`, `network`, `battery`, `calendar`, `claude-usage` and `service-status`. Registry

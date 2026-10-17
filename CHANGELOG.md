@@ -10,6 +10,13 @@ Anything that changes what the dashboard, the admin or a widget can do gets a li
 (`package.json`, `server/package.json`, `ui/package.json`, `server/src/version.ts`) and is
 tagged `vX.Y.Z`.
 
+## Unreleased
+
+### Added
+- **Choose page names in the Edge bar.** Screen can keep the familiar page dots or show scrolling
+  names with a current-page marker. Arrows move by a visible page, and the admin reserves room
+  for compact widgets. Page taps still work with the admin gestures.
+
 ## 0.4.1 — 2026-10-16
 
 ### Fixed

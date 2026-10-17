@@ -100,6 +100,12 @@ describe('ConfigSchema', () => {
   it('rejects any other nav bar height', () => {
     for (const height of [0, 60, 100, '40', null]) expect(() => withNavHeight(height)).toThrow()
   })
+  it('preserves dots for old configs and accepts an explicit named style', () => {
+    expect(ConfigSchema.parse({ version: 3, pages: [{ id: 'p', name: 'P' }] }).display.navStyle).toBeUndefined()
+    const config = { version: 3, display: { navStyle: 'names' }, pages: [{ id: 'p', name: 'P' }] }
+    expect(ConfigSchema.parse(config).display.navStyle).toBe('names')
+    expect(() => ConfigSchema.parse({ ...config, display: { navStyle: 'tabs' } })).toThrow()
+  })
   const withBackground = (background: unknown) =>
     ConfigSchema.parse({ version: 3, display: { background }, pages: [{ id: 'p', name: 'P' }] })
   it('leaves display.background absent by default', () => {

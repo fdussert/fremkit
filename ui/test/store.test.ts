@@ -564,13 +564,26 @@ describe('navigation bar widgets', () => {
     expect(store.state.toast).toMatch(/inconnu/)
   })
 
-  it('refuses a widget once the clusters would reach the page dots', async () => {
-    // 64 columns, 10 kept for the dots: ten 5-cell clocks fit (50), the eleventh (55) does not.
+  it('keeps the wider cluster visible beside centred page dots', async () => {
+    // Five 5-cell clocks plus gaps and padding fit; a sixth would clip the left cluster.
     const { store } = makeBar()
     await store.load()
     for (let i = 0; i < 11; i++) store.addNavWidget('clock')
-    expect(bar(store)).toHaveLength(10)
-    expect(store.state.toast).toMatch(/dots|points/)
+    expect(bar(store)).toHaveLength(5)
+    expect(store.state.toast).toMatch(/buttons|boutons/)
+    await vi.advanceTimersByTimeAsync(SAVE_DEBOUNCE_MS)
+  })
+
+  it('reserves more room for named pages and rejects a crowded style switch', async () => {
+    const { store } = makeBar()
+    await store.load()
+    store.apply((c) => {
+      c.pages = Array.from({ length: 12 }, (_, i) => ({ id: `page-${i}`, name: `Page ${i}`, widgets: [] }))
+      c.display.navStyle = 'names'
+    })
+    for (let i = 0; i < 5; i++) store.addNavWidget('clock')
+    expect(bar(store)).toHaveLength(4)
+    expect(store.state.toast).toMatch(/buttons|boutons/)
     await vi.advanceTimersByTimeAsync(SAVE_DEBOUNCE_MS)
   })
 
@@ -614,6 +627,30 @@ describe('navigation bar widgets', () => {
     store.addNavWidget('clock')
     const [id] = ids(store)
     store.updateNavWidget(id, { settings: { compactDate: true } })
+    expect(bar(store)[0].settings).toEqual({ compactDate: true })
+    await vi.advanceTimersByTimeAsync(SAVE_DEBOUNCE_MS)
+  })
+
+  it('lets an overfull legacy bar improve without blocking unrelated settings', async () => {
+    const { store } = makeBar()
+    await store.load()
+    store.apply((c) => {
+      c.display.navWidgets = Array.from({ length: 6 }, (_, i) => ({
+        instanceId: `clock-legacy-${i}`, widgetId: 'clock', slot: 'left' as const, settings: {},
+      }))
+    })
+
+    store.updateNavWidget('clock-legacy-0', { popup: true })
+    expect(bar(store)[0].popup).toBe(true)
+
+    store.updateNavWidget('clock-legacy-0', { settings: { compactDate: true } })
+    expect(bar(store)[0].settings).toEqual({})
+    expect(store.state.toast).toContain('Horloge')
+    expect(store.state.toast).not.toContain('clock-legacy-0')
+
+    store.updateNavWidget('clock-legacy-0', { slot: 'right' })
+    expect(bar(store)[0].slot).toBe('right')
+    store.updateNavWidget('clock-legacy-0', { settings: { compactDate: true } })
     expect(bar(store)[0].settings).toEqual({ compactDate: true })
     await vi.advanceTimersByTimeAsync(SAVE_DEBOUNCE_MS)
   })

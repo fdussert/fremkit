@@ -297,7 +297,7 @@ one. Rebuild and reinstall the helper.
 The click is spent activating an inactive app. Fixed in the kiosk window
 (`acceptsFirstMouse`) — rebuild and reinstall the helper.
 
-## Holding the page dots does not open the admin
+## Holding the page buttons does not open the admin
 
 The long press asks the helper to open its admin window over the `fremkit://admin` URL scheme,
 which LaunchServices only knows about once a helper bundle declaring it has been installed.

@@ -118,6 +118,7 @@ export type Background = z.infer<typeof BackgroundSchema>
  */
 export const NavHeightSchema = z.union([z.literal(80), z.literal(40)])
 export type NavHeight = z.infer<typeof NavHeightSchema>
+export const NavStyleSchema = z.enum(['dots', 'names'])
 
 /**
  * A sanity ceiling on the bar's widget count. The real limit is width: the admin refuses a
@@ -167,6 +168,8 @@ export const DisplaySchema = z.object({
   theme: z.string().regex(/^[a-z0-9_-]+$/).default(BUILTIN_THEME),
   /** Absent means 80: the default is stored as a missing key, never as a value. */
   navHeight: NavHeightSchema.optional(),
+  /** Absent preserves the existing page dots. */
+  navStyle: NavStyleSchema.optional(),
   /** Opacity of the navigation bar's background. Absent means a solid bar. */
   navOpacity: OpacitySchema.optional(),
   /**

@@ -46,12 +46,16 @@ export interface NavWidget {
 export interface Background { color?: string; image?: string; fit?: BackgroundFit }
 /** Mirrors the server schema: the two heights the navigation bar may take. */
 export type NavHeight = 80 | 40
+export type NavStyle = 'dots' | 'names'
+export const DEFAULT_NAV_STYLE: NavStyle = 'dots'
 export interface Display {
   cols: number; rows: number; cell: number; autoCycleSeconds: number
   /** Id of a theme in `themes/`; an unknown id paints the built-in one. */
   theme?: string
   /** Absent means `DEFAULT_NAV_HEIGHT`; the default is stored as a missing key. */
   navHeight?: NavHeight
+  /** Absent keeps the existing dot navigation. */
+  navStyle?: NavStyle
   /** Opacity of the navigation bar's background, 0–1; absent means solid. */
   navOpacity?: number
   /** The opacity a tile gets when it is added; absent means solid. */
@@ -286,8 +290,8 @@ export const navWidgetsIn = (display: Display, slot: NavSlot): NavWidget[] =>
 
 /** A sanity ceiling on the bar's widget count; mirrors the server's `MAX_NAV_WIDGETS`. */
 export const MAX_NAV_WIDGETS = 12
-/** Cells kept free in the middle of the bar for the page dots, whatever the clusters hold. */
-export const NAV_DOTS_RESERVE_CELLS = 10
+/** Minimum width retained for dot navigation. */
+export const NAV_CENTRE_RESERVE_CELLS = 10
 /**
  * The two settings that make a compact widget need more room than its manifest asks for, and
  * the width it then gets. A widget cannot resize its own iframe, so the rule lives on the host
@@ -313,9 +317,42 @@ export function navCellsUsed(display: Display, manifests: Record<string, WidgetM
   return navWidgetsOf(display).reduce((sum, w) => sum + compactWidth(manifests[w.widgetId], mergeSettings(manifests[w.widgetId], w.settings)), 0)
 }
 
-/** Whether one more compact widget of that width still leaves the dots their room. */
-export function navHasRoom(display: Display, manifests: Record<string, WidgetManifest>, width: number): boolean {
-  return navCellsUsed(display, manifests) + width <= display.cols - NAV_DOTS_RESERVE_CELLS
+/**
+ * The navigation stays centred between equally wide side tracks. Budget against the wider side,
+ * including its gaps and padding, or a full cluster can disappear behind the centre.
+ */
+export function navWiderClusterWidth(
+  display: Display,
+  manifests: Record<string, WidgetManifest>,
+  width = 0,
+  slot: NavSlot = 'left',
+): number {
+  const scale = navHeightOf(display) / DEFAULT_NAV_HEIGHT
+  const clusterWidth = (side: NavSlot): number => {
+    const widgets = navWidgetsIn(display, side)
+    const content = widgets.reduce((sum, widget) =>
+      sum + compactWidth(manifests[widget.widgetId], mergeSettings(manifests[widget.widgetId], widget.settings)) * display.cell, 0)
+    const count = widgets.length + (side === slot && width > 0 ? 1 : 0)
+    return content + (side === slot ? width * display.cell : 0)
+      + Math.max(0, count - 1) * 12 * scale + 24 * scale
+  }
+  return Math.max(clusterWidth('left'), clusterWidth('right'))
+}
+
+export function navHasRoom(
+  display: Display,
+  manifests: Record<string, WidgetManifest>,
+  width: number,
+  pageCount: number,
+  slot: NavSlot = 'left',
+): boolean {
+  const scale = navHeightOf(display) / DEFAULT_NAV_HEIGHT
+  const visibleNames = Math.min(Math.max(pageCount, 1), 5)
+  const centreWidth = display.navStyle === 'names'
+    ? (visibleNames * 120 + Math.max(0, visibleNames - 1) * 8) * scale
+      + (pageCount > visibleNames ? 112 : 0)
+    : NAV_CENTRE_RESERVE_CELLS * display.cell
+  return 2 * navWiderClusterWidth(display, manifests, width, slot) + centreWidth <= display.cols * display.cell
 }
 
 /**

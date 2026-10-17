@@ -474,7 +474,7 @@ There the frame draws no title and no surface — the bar is the surface — `Fr
 everything from `Fremkit.size.px.height`, which is the bar's height: 80 px or 40 px.
 
 `Fremkit.slot` is the cluster the widget sits in, and the matching `slot-left` / `slot-right`
-class is set on `<html>`. The right cluster is pushed against the page dots but each iframe keeps
+class is set on `<html>`. The right cluster is pushed against the page buttons but each iframe keeps
 its allotted width, so a right-hand widget aligns its own content to that edge:
 
 ```css

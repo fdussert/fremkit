@@ -19,8 +19,8 @@ import { pick, useI18n, type Locale } from '../shared/i18n'
 import { useConfirm } from '../shared/useConfirm'
 import { CONTRIBUTORS, MAINTAINER, REGISTRY_REPOSITORY, REPOSITORY, VERSION } from '../shared/credits'
 import { BUILTIN_THEME, useThemes } from '../shared/theme'
-import { ADMIN_GESTURES, DEFAULT_ADMIN_GESTURE, NAV_HEIGHTS, navHeightOf,
-  type AdminGesture, type Background, type NavHeight } from '../shared/types'
+import { ADMIN_GESTURES, DEFAULT_ADMIN_GESTURE, DEFAULT_NAV_STYLE, NAV_HEIGHTS, navHasRoom, navHeightOf,
+  type AdminGesture, type Background, type NavHeight, type NavStyle } from '../shared/types'
 import { useAdminStore } from './store'
 
 const s = useAdminStore()
@@ -130,6 +130,19 @@ const bg = computed<Background>(() => d.value.background ?? {})
 const navHeight = computed(() => navHeightOf(d.value))
 /** "80 px" and "40 px" read the same in both languages, so the labels need no dictionary entry. */
 const NAV_OPTIONS = NAV_HEIGHTS.map((h) => ({ value: String(h), label: `${h} px` }))
+const NAV_STYLE_OPTIONS = computed(() => (['dots', 'names'] as const).map((value) => ({
+  value, label: t(`admin.inspector.screen.navStyle.${value}`),
+})))
+function setNavStyle(value: string): void {
+  const next = value as NavStyle
+  const config = s.state.config!
+  const candidate = { ...config.display, navStyle: next }
+  if (!navHasRoom(candidate, s.state.manifests, 0, config.pages.length)) {
+    s.state.toast = t('admin.inspector.screen.navStyle.noRoom')
+    return
+  }
+  s.apply((c) => { c.display.navStyle = next === DEFAULT_NAV_STYLE ? undefined : next })
+}
 const kioskUrl = `${location.origin}/?kiosk=1`
 
 /** The slider works in whole percents; the config stores the 0–1 opacity itself. */
@@ -209,6 +222,10 @@ function setBackground(patch: Partial<Background>): void {
   <BaseField :label="t('admin.inspector.screen.navHeight')" :hint="t('admin.inspector.screen.navHeight.hint')">
     <BaseSegmented :model-value="String(navHeight)" :options="NAV_OPTIONS"
       @update:model-value="s.setNavHeight(Number($event) as NavHeight)" />
+  </BaseField>
+  <BaseField :label="t('admin.inspector.screen.navStyle')" :hint="t('admin.inspector.screen.navStyle.hint')">
+    <BaseSegmented :model-value="d.navStyle ?? DEFAULT_NAV_STYLE" :options="NAV_STYLE_OPTIONS"
+      @update:model-value="setNavStyle($event)" />
   </BaseField>
   <BaseField :label="t('admin.inspector.screen.adminGesture')"
     :hint="t('admin.inspector.screen.adminGesture.hint')">

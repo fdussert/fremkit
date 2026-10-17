@@ -88,7 +88,7 @@ onUnmounted(() => observer?.disconnect())
       <PageView v-if="s.page.value" :page="s.page.value" :display="display" :manifests="s.state.manifests" :edit="s.state.mode === 'edit'" />
       <NavBar :pages="s.state.config!.pages" :active="s.state.pageIndex" :height="navH"
         :opacity="display.navOpacity" :nav-widgets="navWidgetsOf(display)" :manifests="s.state.manifests"
-        :cell="display.cell" :edit="s.state.mode === 'edit'" @select="s.selectPage"
+        :cell="display.cell" :edit="s.state.mode === 'edit'" :nav-style="display.navStyle" @select="s.selectPage"
         @swipe="go" @tap="popover.toggle" />
       <!-- Test mode only: in Edit mode the overlay is inert, so no tap ever reaches here. -->
       <NavPopover v-if="popover.open.value"

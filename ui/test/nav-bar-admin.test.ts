@@ -26,7 +26,7 @@ function bar(adminGesture?: AdminGesture) {
     props: { pages: PAGES, active: 0, height: 64, ...(adminGesture ? { adminGesture } : {}) },
     attachTo: document.body,
   })
-  const dots = wrapper.find('.dots').element
+  const dots = wrapper.find('.page-list').element
   /** A pointer event as the page receives it: jsdom has no PointerEvent, and none of this reads one. */
   const down = (button = 0, x = 100, y = 30): void => {
     dots.dispatchEvent(new MouseEvent('pointerdown', { button, clientX: x, clientY: y, bubbles: true, cancelable: true }))
