@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vite-plus/test'
 import { crc32 } from 'node:zlib'
 import { ZipError, deflateForTest, readZip, writeZip } from '../src/backup/zip.js'
 

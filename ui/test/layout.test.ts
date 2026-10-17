@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect } from 'vite-plus/test'
 import { overlaps, fits, snapPoint, moveRect, resizeRect, firstFreeSpot, shrinkSizes, largestFreeSpot, fitAround, type Grid, type Rect } from '../src/admin/layout'
 
 const grid: Grid = { cols: 64, rows: 16 }

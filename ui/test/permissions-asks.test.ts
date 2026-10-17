@@ -12,7 +12,7 @@
  * rather than loaded — what is under test is what the template does with the state, not how the
  * state arrives.
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 import { mount } from '@vue/test-utils'
 import WidgetPermissions from '../src/admin/WidgetPermissions.vue'
 import WidgetLibrary from '../src/admin/WidgetLibrary.vue'

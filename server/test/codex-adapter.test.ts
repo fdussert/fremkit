@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi } from 'vite-plus/test'
 import { EventEmitter } from 'node:events'
 import { PassThrough } from 'node:stream'
 import { CodexReadClient, methodsFromSchema, safeChildEnv, createStdioTransport, discoverMethods } from '../src/codex/adapter.js'

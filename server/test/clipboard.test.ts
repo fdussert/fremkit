@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi } from 'vite-plus/test'
 import {
   createClipboardProvider, isSecret, capText, previewOf, characterClasses, isPrivatePasteboard,
   MAX_ENTRIES, MAX_TEXT_BYTES, PREVIEW_CHARS, MASKED_PREVIEW, SECRET_MIN_LENGTH,

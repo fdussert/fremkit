@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vite-plus/test'
 import { JsonTooLargeError, MAX_JSON_BYTES, readJsonCapped } from '../src/net/json.js'
 
 /** A streamed response, the way fetch gives one. */

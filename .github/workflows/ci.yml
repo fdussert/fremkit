@@ -22,21 +22,28 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Install pnpm
-        uses: pnpm/action-setup@v6
-
+      # The workspace scripts still run on Node: tsc, vue-tsc and Vitest are Node programs,
+      # and so is the server. Bun replaces pnpm here, not node.
       - name: Install Node
         uses: actions/setup-node@v7
         with:
           node-version: 22
-          cache: pnpm
 
-      - run: pnpm install --frozen-lockfile
+      # bun-version-file reads packageManager from package.json, so the version CI installs is
+      # the one the checkout pins.
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
 
-      - run: pnpm typecheck
+      - run: bun install --frozen-lockfile
+
+      - run: bun run typecheck
+
+      - run: bun run lint
 
       # The widget catalogue test reads the real widgets/ folder, so a broken
       # manifest fails here.
-      - run: pnpm test
+      - run: bun run test
 
-      - run: pnpm build
+      - run: bun run build

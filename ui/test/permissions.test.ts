@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vite-plus/test'
 import { channelFamilies, channelFamily, notGranted, widgetPermissions } from '../src/admin/permissions'
 import { iconSvg } from '../src/shared/icons'
 import type { WidgetManifest } from '../src/shared/types'

@@ -50,9 +50,9 @@ The reader examines at most 16 MiB on a cold file read and 512 KiB of new data o
 From the cloned repository root:
 
 ```bash
-pnpm --filter server exec vitest run test/codex-adapter.test.ts test/codex-provider.test.ts test/codex-local-chats.test.ts test/codex-observations.test.ts test/config-migration.test.ts --configLoader runner
-pnpm typecheck
-pnpm test
+bun run --filter server test test/codex-adapter.test.ts test/codex-provider.test.ts test/codex-local-chats.test.ts test/codex-observations.test.ts test/config-migration.test.ts --configLoader runner
+bun run typecheck
+bun run test
 ```
 
 The tests use injected transports, clocks and disposable local databases. They do not authenticate a real account, prove that Codex startup never refreshes credentials, navigate the desktop app or verify the native dashboard. Those runtime checks remain separate.

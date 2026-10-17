@@ -4,7 +4,7 @@
  * `nav-bar-admin.test.ts` — these used to read NavBar.vue and match regexes against its source,
  * which proved only that the file still said what it said.
  */
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vite-plus/test'
 import { ADMIN_REPEAT_MS, cancelsHold, DOUBLE_TAP_MS, DOUBLE_TAP_SLOP, HOLD_SLOP, isDoubleTap, startsHold } from '../src/dashboard/longPress'
 import { ADMIN_GESTURES, DEFAULT_ADMIN_GESTURE } from '../src/shared/types'
 

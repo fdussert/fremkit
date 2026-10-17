@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect } from 'vite-plus/test'
 import { categoryOf, groupByCategory } from '../src/admin/library'
 import type { WidgetManifest } from '../src/shared/types'
 

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vite-plus/test'
 import { access } from 'node:fs/promises'
 import { shippedPaths } from '../src/paths.js'
 

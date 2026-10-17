@@ -9,7 +9,7 @@
  * that coverage moved to the top bar's entry, and the column's side of it is now the chip that
  * opens the modal.
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 import { mount } from '@vue/test-utils'
 import WidgetLibrary from '../src/admin/WidgetLibrary.vue'
 import MarketplacePanel from '../src/admin/MarketplacePanel.vue'

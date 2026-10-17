@@ -15,7 +15,7 @@
 #                                tests only; scripts/release.sh never sets it).
 #   FREMKIT_BUILD_CACHE          where downloads are kept. Default ~/Library/Caches/Fremkit-build.
 #
-# This is not `pnpm helper:install`: the developer helper (scripts/build-helper.sh) stays a
+# This is not `bun run helper:install`: the developer helper (scripts/build-helper.sh) stays a
 # separate "Fremkit Helper.app" that runs the checkout's server, has no Sparkle and is what the
 # contributors' setup installs. Both share the bundle id dev.fremkit.helper.
 #
@@ -118,7 +118,7 @@ echo "==> fremkit-scan"
 
 # --- Server -------------------------------------------------------------------------------------
 echo "==> UI"
-pnpm --filter ui build >/dev/null
+bun run --filter ui build >/dev/null
 echo "==> server bundle"
 rm -rf "$WORK/server" && mkdir -p "$WORK/server"
 (cd server && node scripts/bundle.mjs "$REPO/$WORK/server/server.cjs")

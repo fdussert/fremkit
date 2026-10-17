@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vite-plus/test'
 import Fastify, { type FastifyInstance } from 'fastify'
 import { HELPER_ADMIN_URL, HELPER_BUNDLE_ID, HELPER_REVEAL_URL, helperRoutes, LSAPPINFO_PROGRAM, OPEN_PROGRAM, runningHelperPath, type Runner } from '../src/helper/routes.js'
 

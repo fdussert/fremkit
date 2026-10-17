@@ -7,7 +7,7 @@
  * field that offers to create the right connection rather than sending somebody to a list of
  * nine types; and a connection whose widget is gone, which stays — greyed, and still removable.
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 import { mount } from '@vue/test-utils'
 import ConnectionForm from '../src/admin/ConnectionForm.vue'
 import ConnectionsInspector from '../src/admin/ConnectionsInspector.vue'

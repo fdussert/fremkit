@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect } from 'vite-plus/test'
 import { ConfigSchema, DEFAULT_CONFIG, MAX_NAV_WIDGETS, defaultLocale, validateConnections, validateLayout, validateNavWidgets, DisplaySchema, DEFAULT_ADMIN_GESTURE } from '../src/config/schema.js'
 import { ManifestSchema } from '../src/widgets/manifest.js'
 

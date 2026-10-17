@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vite-plus/test'
 import { boundSecretsToReveal, buildSecretsPayload, createConnectionsStore } from '../src/admin/connections'
 import type { ConnectionSummary, ConnectionTypeInfo } from '../src/shared/types'
 

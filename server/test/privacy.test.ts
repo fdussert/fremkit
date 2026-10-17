@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect } from 'vite-plus/test'
 import { gateAccountEmail, withAccountEmail } from '../src/privacy.js'
 import { ConfigSchema, DEFAULT_CONFIG } from '../src/config/schema.js'
 

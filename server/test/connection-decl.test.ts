@@ -5,7 +5,7 @@
  * manifest arrives over the network: the proxy, the admin form and the consent dialog all read a
  * declaration that has already been through this file, and none of them re-checks its shape.
  */
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vite-plus/test'
 import { ConnectionDeclSchema, ConnectionPathSchema, ManifestSchema } from '../src/widgets/manifest.js'
 
 const decl = (over: Record<string, unknown> = {}): Record<string, unknown> => ({

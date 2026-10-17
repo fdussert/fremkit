@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect } from 'vite-plus/test'
 import { suggestApplies, type ListItemField } from '../src/shared/types'
 
 const field = (extra: Partial<ListItemField> = {}): ListItemField =>

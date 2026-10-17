@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect } from 'vite-plus/test'
 import {
   applyBudget, buildView, countNodes, findNode, pruneTree, resize, validateTree, DEFAULT_POLICY, type DiskNode,
 } from '../src/providers/disk-map-tree.js'

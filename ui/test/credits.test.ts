@@ -5,7 +5,7 @@
  */
 import { readFileSync } from 'node:fs'
 import { URL as NodeURL } from 'node:url'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vite-plus/test'
 import { CONTRIBUTORS, MAINTAINER } from '../src/shared/credits'
 
 const readme = readFileSync(new NodeURL('../../README.md', import.meta.url), 'utf8')

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vite-plus/test'
 import { MAX_INDEX_BYTES, Registry, RegistryError, releaseOf } from '../src/marketplace/registry.js'
 import type { RegistryIndex } from '../src/marketplace/index-schema.js'
 

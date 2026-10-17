@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi } from 'vite-plus/test'
 import { createMacTemperatureReader, parseMacTemperature } from '../src/providers/mac-thermals.js'
 
 const now = 1800000000000

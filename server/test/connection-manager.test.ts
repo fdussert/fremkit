@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vite-plus/test'
 import { ConnectionManager } from '../src/connections/manager.js'
 import { ConnectionTypeRegistry } from '../src/connections/registry.js'
 import type { ConnectionType } from '../src/connections/types.js'

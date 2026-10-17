@@ -30,24 +30,30 @@ docs/      This documentation
 ## Scripts
 
 ```sh
-pnpm dev          # server on 4242 + Vite on 5173 (dashboard http://localhost:5173, admin /admin)
-pnpm build        # ui + server
-pnpm start        # production: http://127.0.0.1:4242 and /admin
-pnpm test         # vitest, server + ui
-pnpm typecheck
-pnpm helper:build   # native/dist/Fremkit Helper.app
-pnpm helper:install
-pnpm helper:test
+bun run dev          # server on 4242 + Vite on 5173 (dashboard http://localhost:5173, admin /admin)
+bun run build        # ui + server
+bun run start        # production: http://127.0.0.1:4242 and /admin
+bun run test         # vp test, server + ui
+bun run typecheck
+bun run lint           # oxlint, whole repo
+bun run helper:build   # native/dist/Fremkit Helper.app
+bun run helper:install
+bun run helper:test
 ```
 
-`pnpm dev` exports `FREMKIT_DEV=1`, which is what puts the Vite origin
+`ui/` and `server/` are driven by [Vite+](https://vite.plus) (`vp`): `vp dev`, `vp build` and
+`vp test` read each package's `vite.config.ts`, and Vite, Vitest and Oxlint come from it
+instead of being dependencies of their own. The `vite` entry in `ui/package.json` is an alias to
+Vite+'s own copy of Vite, which is what the Vue plugin and `defineConfig` are typed against.
+
+`bun run dev` exports `FREMKIT_DEV=1`, which is what puts the Vite origin
 (`http://localhost:5173`, `http://127.0.0.1:5173`) on the list of origins the server accepts a
 WebSocket and a write from. Without it only `http://127.0.0.1:4242` and `http://localhost:4242`
 are trusted, plus the port `FREMKIT_PORT` moved a second checkout to. A production instance must
 not trust 5173: it is Vite's default port, so any unrelated project serving on it would be
-trusted to save this dashboard's config. Running Vite by hand (`pnpm --filter ui dev`) against a
-server started without the flag gives a dashboard whose WebSocket is refused — export
-`FREMKIT_DEV=1` for the server too.
+trusted to save this dashboard's config. Running the dev server by hand
+(`bun run --filter ui dev`) against a server started without the flag gives a dashboard whose
+WebSocket is refused — export `FREMKIT_DEV=1` for the server too.
 
 ### Installing from a registry you are building
 
@@ -63,7 +69,7 @@ pnpm build && npx serve dist -l 8080
 
 # in fremkit: a bench server that installs from it
 FREMKIT_DEV=1 FREMKIT_REGISTRY_URL=http://127.0.0.1:8080/index.json \
-  FREMKIT_PORT=4301 FREMKIT_DATA_DIR=/tmp/fremkit-bench pnpm start
+  FREMKIT_PORT=4301 FREMKIT_DATA_DIR=/tmp/fremkit-bench bun run start
 ```
 
 The index carries absolute URLs, and by default they are on the Pages origin — which a locally
@@ -85,7 +91,7 @@ address is the point; lowering the bar is not.
 must be an absolute path, and it is created on demand:
 
 ```sh
-FREMKIT_DATA_DIR=/tmp/fremkit-fresh pnpm start
+FREMKIT_DATA_DIR=/tmp/fremkit-fresh bun run start
 ```
 
 That is a from-scratch install on the live checkout: the dashboard, the connections and the
@@ -160,7 +166,7 @@ run:
 
 | Key | Default | What it is |
 |---|---|---|
-| `repoPath` | `~/fremkit` | the checkout whose server the helper supervises (`pnpm setup` writes the real path) |
+| `repoPath` | `~/fremkit` | the checkout whose server the helper supervises (`bun run setup` writes the real path) |
 | `url` | `http://127.0.0.1:4242/?kiosk=1` | what the kiosk window loads |
 | `adminUrl` | `http://127.0.0.1:4242/admin` | what the admin window loads |
 | `port` | `4242` | port watched to decide whether a server is already up |
@@ -202,8 +208,8 @@ delete it by hand if it grows.
 ## Pull requests
 
 Fork, branch, and open the pull request against `main`. Every pull request runs
-`.github/workflows/ci.yml` on Ubuntu with Node 22: `pnpm install --frozen-lockfile`, then
-`pnpm typecheck`, `pnpm test` and `pnpm build`. The widget catalogue test reads the real
+`.github/workflows/ci.yml` on Ubuntu with Node 22: `bun install --frozen-lockfile`, then
+`bun run typecheck`, `bun run lint`, `bun run test` and `bun run build`. The widget catalogue test reads the real
 `widgets/` folder, so a broken manifest fails the run.
 
 Locale parity *is* checked: `ui/test/i18n.test.ts` fails when a key exists on one side and not the
@@ -212,7 +218,7 @@ e-mail address, token — is anywhere in the diff, tests and fixtures included, 
 reads as well in one language as in the other. `.github/pull_request_template.md` asks about those
 instead.
 
-The Swift helper is not built by the CI: `pnpm helper:build` and `pnpm helper:test` need macOS, the
+The Swift helper is not built by the CI: `bun run helper:build` and `bun run helper:test` need macOS, the
 self-signed identity and the local TCC grants. Run them yourself when you touch `native/` and say
 so in the pull request.
 

@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest'
+import { describe, it, expect, afterEach, beforeEach, vi } from 'vite-plus/test'
 import { DICTIONARIES, locale, setLocale, t, translate } from '../src/shared/i18n'
 import { fr } from '../src/shared/locales/fr'
 import { en } from '../src/shared/locales/en'

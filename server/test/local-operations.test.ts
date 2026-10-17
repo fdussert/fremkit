@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect } from 'vite-plus/test'
 import { createDockerProvider, createLocalModelsProvider, resolveDockerBinary } from '../src/providers/local-operations.js'
 
 const container = (state = 'running') => JSON.stringify({ ID: 'abcd', Names: 'example', Image: 'example:latest', State: state, Status: state === 'running' ? 'Up' : 'Exited', Command: 'PRIVATE' })

@@ -5,7 +5,7 @@
  * actually uses, and what the generic Test button answers. Every assertion about a secret is an
  * assertion about `authFor`, which is the one place it is ever put into a request.
  */
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vite-plus/test'
 import {
   authFor, declaredBy, declaredFromCatalog, declaredType, declaredTypeId,
   isDeclaredType, originOf, parseDeclaredHost, sameConnectionShape, schemeFor, slugText, syncDeclaredTypes,

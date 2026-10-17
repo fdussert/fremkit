@@ -23,7 +23,7 @@ and "Notifications: active" above the toggles, and *Log…* opens the supervised
 | Permissions reset after every rebuild | Ad-hoc signature: a new code identity each build | Run `scripts/create-signing-identity.sh`, rebuild, grant once more |
 | The helper is ticked in Privacy & Security and still has no permission | One stale grant per past ad-hoc identity, which macOS keeps in its cache and matches before the new one | `tccutil reset ListenEvent dev.fremkit.helper && tccutil reset Accessibility dev.fremkit.helper`, relaunch the helper, and accept the two prompts. Removing and re-adding the app in the list does not clear those entries |
 | Printer unreachable (`EHOSTUNREACH`) while `ping` and `curl` work | Local Network not granted to the app that runs the server | Allow it under Privacy & Security → Local Network |
-| "Server: external" | Something already answers port 4242, so the helper steps aside | Expected under `pnpm dev`; otherwise stop the stray server, or turn *Manage the server* off |
+| "Server: external" | Something already answers port 4242, so the helper steps aside | Expected under `bun run dev`; otherwise stop the stray server, or turn *Manage the server* off |
 | The disk map says folders could not be read | macOS privacy protection (TCC) refuses the scan some folders | Give Fremkit (or Fremkit Helper, from a source install) **Full Disk Access**, then scan again — [details](#the-disk-map-says-folders-could-not-be-read) |
 | The disk map is slow and shows no files, "du (no helper)" | The server runs without the helper, or the helper predates the disk map | Rebuild and reinstall the helper — [details](#the-disk-map-uses-du) |
 
@@ -120,7 +120,7 @@ switch:
 6. In `~/.claude/settings.json`, point the Claude Code hook and status line at the app (see
    [claude-code.md](claude-code.md)).
 
-Going back is the same in reverse: quit Fremkit, run `pnpm setup` in the checkout (it writes
+Going back is the same in reverse: quit Fremkit, run `bun run setup` in the checkout (it writes
 `repoPath` again and installs the developer helper).
 
 ## Removing everything
@@ -202,7 +202,7 @@ runs inside whatever launched it. So the app to allow under System Settings → 
 
 - **Fremkit** (the app) or **Fremkit Helper** (a source install), when the helper manages the
   server (the normal case);
-- **your terminal** (Terminal, iTerm, Ghostty…), when you run `pnpm dev` yourself.
+- **your terminal** (Terminal, iTerm, Ghostty…), when you run `bun run dev` yourself.
 
 Without the grant, every connection to a LAN device fails as `EHOSTUNREACH`. This is the usual
 cause of a Bambu printer or a Homey that looks perfectly reachable.
@@ -233,7 +233,7 @@ See [connections.md](connections.md#the-chamber-camera).
 
 macOS protects some folders from every application that has not been given access, and the
 scanner that measures them runs on behalf of the app that started the server: **Fremkit Helper**
-under the helper, your terminal under `pnpm dev`. What it meets there:
+under the helper, your terminal under `bun run dev`. What it meets there:
 
 - **Refused without a question** — the data of Mail, Messages, Safari, Photos, HomeKit, cookies,
   Spotlight and several system services under `~/Library`, and the containers of other
@@ -269,11 +269,11 @@ the scanned folder is not entered, exactly like `du -x`.
 ## The disk map uses du
 
 Under the helper the server runs `fremkit-scan`, which the helper bundles and names in
-`FREMKIT_SCANNER`. When the variable is unset, not absolute or not an executable file — `pnpm dev`,
+`FREMKIT_SCANNER`. When the variable is unset, not absolute or not an executable file — `bun run dev`,
 a second checkout, a helper built before the disk map — the server falls back to
 `/usr/bin/du -k -x -d 5`: the same rings, but slower, folders only (no single files), and folders
 deeper than five levels are rescanned when you drill into them. Rebuild and reinstall the helper
-(`pnpm helper:build && pnpm helper:install`) to get the native scanner back.
+(`bun run helper:build && bun run helper:install`) to get the native scanner back.
 
 ## The calendar widget is empty or stale
 
@@ -304,7 +304,7 @@ which LaunchServices only knows about once a helper bundle declaring it has been
 A helper built before the scheme existed simply ignores the request. Reinstall it:
 
 ```sh
-pnpm helper:build && pnpm helper:install
+bun run helper:build && bun run helper:install
 ```
 
 Then quit the helper from the menu bar **F** and open it again from `~/Applications`. In an
@@ -313,7 +313,7 @@ ordinary browser the same press opens `/admin` in a new tab and needs no helper 
 ## The menu says "Server: external"
 
 Something already answers port 4242, so the helper steps aside rather than starting a second one.
-That is exactly right under `pnpm dev`. Otherwise stop the stray server, or turn *Manage the
+That is exactly right under `bun run dev`. Otherwise stop the stray server, or turn *Manage the
 server* off in the menu and run it yourself.
 
 ## Red banner in the admin, nothing saves

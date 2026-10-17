@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect } from 'vite-plus/test'
 import {
   isHexColor, luminance, onAccent, rgb, rgba, tileAccent, tileBody, tileText,
   ON_ACCENT_DARK, ON_ACCENT_LIGHT, THEME_ACCENT, THEME_SURFACE,

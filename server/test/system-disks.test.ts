@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vite-plus/test'
 import { normalizeDisks } from '../src/providers/system.js'
 
 describe('Mac disk availability', () => {

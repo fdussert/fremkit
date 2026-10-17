@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect } from 'vite-plus/test'
 import { parsePs, parseLsof, listClaudeProcesses } from '../src/claude/processes.js'
 
 const PS = `  1769 Fri 11 Sep 09:07:50 2026     /Users/alice/.local/bin/claude --chrome-native-host

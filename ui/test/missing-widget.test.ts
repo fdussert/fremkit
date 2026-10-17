@@ -8,7 +8,7 @@
  * id stays, because it is what the admin's inspector is searched by, but the block says what is
  * actually wrong.
  */
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vite-plus/test'
 import { mount } from '@vue/test-utils'
 import WidgetFrame from '../src/dashboard/WidgetFrame.vue'
 import CompactWidgetFrame from '../src/dashboard/CompactWidgetFrame.vue'

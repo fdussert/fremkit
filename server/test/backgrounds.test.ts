@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach } from 'vite-plus/test'
 import { mkdtemp, mkdir, readdir, readFile, writeFile, rm } from 'node:fs/promises'
 import { DEFAULT_BACKGROUND } from '../src/backgrounds/seed.js'
 

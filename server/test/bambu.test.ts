@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { createBambuProvider, mapState, mergePrint, toSnapshot, type BambuSnapshot } from '../src/providers/bambu.js'

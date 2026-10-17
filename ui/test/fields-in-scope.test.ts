@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect } from 'vite-plus/test'
 import { fieldsInScope, type SettingField } from '../src/shared/types'
 
 const field = (scope?: 'tile' | 'compact'): SettingField => ({ type: 'boolean', label: 'x', ...(scope ? { scope } : {}) })

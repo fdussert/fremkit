@@ -10,7 +10,7 @@
  *
  * Both stores are module singletons imported statically, so they are seeded and emptied by hand.
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 import { mount } from '@vue/test-utils'
 import MissingWidget from '../src/admin/MissingWidget.vue'
 import { useAdminStore } from '../src/admin/store'
