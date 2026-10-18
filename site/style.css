@@ -422,3 +422,17 @@ details p { margin: 0 0 22px; color: var(--muted); max-width: 640px; }
 .notfound .lede { margin-inline: auto; }
 .notfound .lede.fr { margin-top: 8px; font-size: 16px; color: var(--dim); }
 .notfound .hero-buttons { margin-top: 36px; }
+
+.legal { padding: 48px 0 80px; }
+.legal .brand { display: flex; width: fit-content; margin-bottom: 40px; }
+.legal h1 { font-size: clamp(40px, 6vw, 72px); }
+.legal .updated { margin-top: 16px; font-size: 14px; color: var(--dim); }
+.legal section { margin-top: 56px; }
+.legal h2 { font-size: clamp(26px, 3.4vw, 36px); max-width: none; }
+.legal h3 { margin-top: 32px; font-size: 22px; }
+.legal p, .legal li { color: var(--muted); line-height: 1.6; }
+.legal ul { padding-left: 20px; }
+.legal li { margin-top: 10px; }
+.legal strong { color: var(--text); font-weight: 600; }
+.legal a:not(.brand) { color: var(--accent); }
+.legal .fr { padding-top: 40px; border-top: 1px solid var(--border); }

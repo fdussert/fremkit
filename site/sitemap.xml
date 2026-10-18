@@ -6,4 +6,7 @@
     <xhtml:link rel="alternate" hreflang="fr" href="https://fremkit.app/?lang=fr"/>
     <xhtml:link rel="alternate" hreflang="x-default" href="https://fremkit.app/"/>
   </url>
+  <url>
+    <loc>https://fremkit.app/privacy</loc>
+  </url>
 </urlset>

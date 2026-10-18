@@ -74,7 +74,7 @@
     'f.q5': 'Pourquoi « Fremkit » ?', 'f.a5': 'C’est le kit de survie des Fremen dans Dune. Le registre s’appelle le Sietch pour la même raison.',
     'end.title': 'Donnez un <em>métier</em> à votre Edge.', 'end.sub': 'Clonez, lancez une commande, et mettez ce que vous vérifiez sans arrêt là où un coup d’œil suffit.', 'end.star': 'Étoile sur GitHub',
     'tag.ed': 'ÉDITEUR', 'tag.nb': 'BARRE DE NAVIGATION', 'tag.t': 'TACTILE', 'tag.th': 'THÈMES', 'tag.mp': 'SIETCH', 'tag.bk': 'SAUVEGARDE',
-    'foot.sec': 'Sécurité', 'foot.tm': 'Licence MIT. Corsair et Xeneon sont des marques de Corsair Gaming, Inc. Fremkit est un projet indépendant, ni affilié ni approuvé par Corsair.'
+    'foot.sec': 'Sécurité', 'foot.privacy': 'Confidentialité', 'foot.tm': 'Licence MIT. Corsair et Xeneon sont des marques de Corsair Gaming, Inc. Fremkit est un projet indépendant, ni affilié ni approuvé par Corsair.'
   }
   var EN_EXTRA = { copied: 'Copied', 'w.badgeCore': 'built in', 'w.conn': 'connection', 'w.offline': 'The registry cannot be reached right now: only the built-in widgets are listed.' }
 

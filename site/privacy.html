@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy · Fremkit</title>
+<meta name="description" content="What Fremkit and the Fremkit Companion browser extension read, where it goes, and what they keep.">
+<link rel="canonical" href="https://fremkit.app/privacy">
+<meta name="theme-color" content="#0b0d10">
+<link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body class="legal">
+<main class="wrap narrow">
+  <a class="brand" href="/"><img src="/assets/icon.svg" alt="" width="24" height="24"><span>Fremkit</span></a>
+  <p class="eyebrow"><span class="dot"></span><span>Privacy</span></p>
+  <h1>Your data <em>stays on your Mac.</em></h1>
+  <p class="lede">Fremkit runs on your Mac and keeps your data there. It has no account, no analytics and no advertising, and the developer receives nothing from it.</p>
+  <p class="updated">Last updated 18 October 2026 · <a href="#fr" lang="fr">Version française</a></p>
+
+  <section>
+    <h2>Fremkit Companion</h2>
+    <p>The browser extension sends the video of a tab you choose to your Fremkit dashboard.</p>
+    <ul>
+      <li><strong>What it reads.</strong> In the tab you send, and only when you send it: where the main video sits on the page, its title, its playback state and the site’s host name.</li>
+      <li><strong>Where it goes.</strong> Only to the Fremkit app on the same Mac, at 127.0.0.1. The picture travels straight from the browser to your dashboard over a local connection. Nothing is sent to the developer or to anyone else, and nothing is recorded. The sound stays in the browser.</li>
+      <li><strong>What it keeps.</strong> A pairing token issued by your Fremkit app and a random install identifier, in the browser’s extension storage on this device. Removing the extension, or removing it in Fremkit’s admin under Devices, ends the pairing.</li>
+      <li><strong>Permissions.</strong> Used only when you send a tab, and only for that tab, plus, if you allow it, the site of a video player embedded in that tab.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Fremkit, the app</h2>
+    <ul>
+      <li>Your dashboard, settings and the connections you configure are stored on your Mac. Passwords and tokens are kept in the macOS keychain.</li>
+      <li>The app contacts only what you set up: the services your widgets use (a calendar, a printer, a weather forecast, your Claude account’s usage, …), the widget registry when you browse it, site icons for the links you add, and the update feed when it checks for a new version.</li>
+      <li>The local server listens on 127.0.0.1 only. A paired iPad reaches it over your local network, encrypted, and only after you approve it.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Contact</h2>
+    <p>Questions: <a href="mailto:contact@fremkit.app">contact@fremkit.app</a> or <a href="https://github.com/fdussert/fremkit/issues">GitHub issues</a>.</p>
+  </section>
+
+  <section id="fr" lang="fr" class="fr">
+    <h2>Confidentialité</h2>
+    <p>Fremkit tourne sur votre Mac et y garde vos données. Pas de compte, pas de statistiques, pas de publicité, et le développeur n’en reçoit rien.</p>
+    <h3>Fremkit Companion</h3>
+    <ul>
+      <li><strong>Ce qu’elle lit.</strong> Dans l’onglet que vous envoyez, et seulement à ce moment-là : la position de la vidéo principale dans la page, son titre, son état de lecture et le nom du site.</li>
+      <li><strong>Où ça va.</strong> Uniquement vers l’app Fremkit du même Mac, en 127.0.0.1. L’image passe directement du navigateur à votre tableau de bord par une connexion locale. Rien n’est envoyé au développeur ni à quiconque, rien n’est enregistré. Le son reste dans le navigateur.</li>
+      <li><strong>Ce qu’elle garde.</strong> Un jeton d’appairage délivré par votre app Fremkit et un identifiant d’installation aléatoire, dans le stockage de l’extension sur cet appareil. Supprimer l’extension, ou la retirer dans l’admin de Fremkit sous Appareils, met fin à l’appairage.</li>
+      <li><strong>Permissions.</strong> Utilisées seulement quand vous envoyez un onglet, et seulement pour cet onglet, plus, si vous l’autorisez, le site d’un lecteur vidéo intégré à cet onglet.</li>
+    </ul>
+    <h3>Fremkit, l’app</h3>
+    <ul>
+      <li>Votre tableau de bord, vos réglages et les connexions que vous configurez sont stockés sur votre Mac. Mots de passe et jetons sont rangés dans le trousseau macOS.</li>
+      <li>L’app ne contacte que ce que vous configurez : les services de vos widgets (un calendrier, une imprimante, la météo, l’usage de votre compte Claude, …), le catalogue de widgets quand vous le parcourez, les icônes des sites que vous ajoutez, et le flux de mises à jour quand elle en cherche une.</li>
+      <li>Le serveur local n’écoute qu’en 127.0.0.1. Un iPad jumelé y accède par votre réseau local, chiffré, et seulement après votre accord.</li>
+    </ul>
+    <p>Contact : <a href="mailto:contact@fremkit.app">contact@fremkit.app</a> ou les <a href="https://github.com/fdussert/fremkit/issues">issues GitHub</a>.</p>
+  </section>
+</main>
+</body>
+</html>
