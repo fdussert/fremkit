@@ -10,7 +10,7 @@
  * drawing nothing when there is no entry, and an update several versions behind lists every
  * version it is taking — not only the newest.
  */
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vite-plus/test'
 import { mount } from '@vue/test-utils'
 import ChangeNotes from '../src/admin/ChangeNotes.vue'
 import ConsentDialog from '../src/admin/ConsentDialog.vue'

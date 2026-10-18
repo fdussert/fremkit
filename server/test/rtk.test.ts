@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi } from 'vite-plus/test'
 import {
   createRtkProvider, localDate, parseGain, resolveRtkBinary, RTK_DAYS, RTK_POLL_MS, RTK_RETRY_MS,
 } from '../src/providers/rtk.js'

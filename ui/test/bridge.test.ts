@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vite-plus/test'
 import { FrameTrust, appIconTarget, faviconTarget, fetchTarget, imageTarget, mayListApps, nonEmptyString, stampInstance } from '../src/shared/widgetMessages'
 
 describe('nonEmptyString', () => {

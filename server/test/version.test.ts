@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vite-plus/test'
 import { readFile } from 'node:fs/promises'
 import { FREMKIT_VERSION, USER_AGENT } from '../src/version.js'
 

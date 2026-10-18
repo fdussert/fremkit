@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vite-plus/test'
 import { parseHookEvent } from '../src/claude/hook-schema.js'
 
 describe('parseHookEvent', () => {

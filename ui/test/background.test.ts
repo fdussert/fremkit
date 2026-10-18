@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect } from 'vite-plus/test'
 import { DEFAULT_WIDGET_DIM, backgroundStyle, backgroundUrl, fade, surfaceOpacity, widgetBackgroundStyle, widgetDim } from '../src/shared/background'
 
 describe('backgroundUrl', () => {

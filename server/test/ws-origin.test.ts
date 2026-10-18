@@ -1,4 +1,4 @@
-import { afterEach, describe, it, expect } from 'vitest'
+import { afterEach, describe, it, expect } from 'vite-plus/test'
 import { allowedOrigins, isOriginAllowed } from '../src/ws/routes.js'
 
 const env = { ...process.env }

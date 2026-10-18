@@ -8,7 +8,7 @@
  * service, which field of theirs, how it will be carried, to a host **they** enter, and for
  * exactly which requests. This asserts the dialog says all five.
  */
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vite-plus/test'
 import { mount } from '@vue/test-utils'
 import ConsentDialog from '../src/admin/ConsentDialog.vue'
 import UpdateAllDialog from '../src/admin/UpdateAllDialog.vue'

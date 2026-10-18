@@ -59,14 +59,14 @@ Touchscreen Gestures must not be running (the panel takes one owner).
 - a Corsair Xeneon Edge — everything except the touch driver works on any display
 - `jq`, only for the Claude Code status line
 - `ffmpeg`, only for the chamber camera of an X1 or H2 printer
-- to build from source only: Xcode Command Line Tools, Node 22 or later, and pnpm
+- to build from source only: Xcode Command Line Tools, Node 22 or later, and Bun
 
 ## Install
 
 | Install the app | Build from source |
 |---|---|
 | For using Fremkit. One signed, notarized app that carries everything it needs, Node included, and updates itself. | For working on Fremkit. A checkout, the developer helper pointed at it, and your changes live on the Edge. |
-| [Download the DMG](https://github.com/fdussert/fremkit/releases/latest) and drag **Fremkit** to Applications — or `brew install --cask fdussert/fremkit/fremkit` | `git clone` + `pnpm setup`, below |
+| [Download the DMG](https://github.com/fdussert/fremkit/releases/latest) and drag **Fremkit** to Applications — or `brew install --cask fdussert/fremkit/fremkit` | `git clone` + `bun run setup`, below |
 | Data in `~/Library/Application Support/Fremkit` | Data in the checkout's `data/` |
 
 ### Install the app
@@ -112,12 +112,12 @@ Already running the developer helper from a checkout? Nothing changes until you 
    ```sh
    git clone https://github.com/fdussert/fremkit.git
    cd fremkit
-   pnpm setup
+   bun run setup
    ```
 
-   `pnpm setup` checks the prerequisites, installs dependencies, builds the UI and the server,
+   `bun run setup` checks the prerequisites, installs dependencies, builds the UI and the server,
    offers to create the code-signing identity, then builds and installs the helper into
-   `~/Applications` and points it at your checkout. `pnpm setup --check` runs the checks only.
+   `~/Applications` and points it at your checkout. `bun run setup --check` runs the checks only.
 
 2. **Say yes to the signing identity** when it asks. The helper is signed ad hoc unless a stable
    code-signing identity exists, and macOS ties Input Monitoring and Accessibility grants to the
@@ -157,12 +157,12 @@ Already running the developer helper from a checkout? Nothing changes until you 
 9. **Launch at login**, optionally, from the menu bar menu. There is no `KeepAlive`: if the helper
    crashes, open it again by hand.
 
-Rebuilding the helper later (`pnpm helper:build && pnpm helper:install`) is what registers changes
+Rebuilding the helper later (`bun run helper:build && bun run helper:install`) is what registers changes
 to its bundle, including the `fremkit://` URL scheme the dashboard's long press uses to open the
 admin window: an older copy ignores it.
 
 The dashboard then opens by itself on the Edge. If you would rather not run the helper at all,
-`pnpm start` serves everything and `pnpm kiosk` opens a full-screen Chrome window on the Edge —
+`bun run start` serves everything and `bun run kiosk` opens a full-screen Chrome window on the Edge —
 you lose the touch driver, the mouse fence and the Dock badges.
 
 ## First run
@@ -399,26 +399,27 @@ itself (Sparkle's system profile is off).
 | "Touch: taken by another driver" | Quit Touchscreen Gestures and unload its launchd agent |
 | Permissions reset after every rebuild | Run `scripts/create-signing-identity.sh` and rebuild |
 | A LAN device answers `ping` but not Fremkit | Allow Local Network for the app running the server |
-| "Server: external" | Something else answers port 4242 — expected under `pnpm dev` |
+| "Server: external" | Something else answers port 4242 — expected under `bun run dev` |
 | A shortcut button to a NAS or a router has no icon | Expected: favicons of private and local addresses are not fetched. The button still works |
 | The admin shows an old version of itself | Reopen it, or Cmd+R in its window; it keeps one web view for the helper's lifetime |
 | Widgets break after pulling a new version | Restart the server: the widget bridge is read once, at start |
 | The disk map shows locked folders | Give "Fremkit" (or "Fremkit Helper" for a source install) Full Disk Access, or leave them unmeasured |
-| The disk map says "du (no helper)" | Expected under `pnpm dev`: the bundled `fremkit-scan` is only there under the helper |
+| The disk map says "du (no helper)" | Expected under `bun run dev`: the bundled `fremkit-scan` is only there under the helper |
 
 The rest, with the reasoning: **[docs/troubleshooting.md](docs/troubleshooting.md)**.
 
 ## Development
 
 ```sh
-pnpm dev          # server on 4242 + Vite on 5173 (dashboard http://localhost:5173, admin /admin)
-pnpm build        # ui + server
-pnpm start        # production: http://127.0.0.1:4242 and /admin
-pnpm test         # vitest, server + ui
-pnpm typecheck
-pnpm helper:build   # native/dist/Fremkit Helper.app
-pnpm helper:install
-pnpm helper:test
+bun run dev          # server on 4242 + Vite on 5173 (dashboard http://localhost:5173, admin /admin)
+bun run build        # ui + server
+bun run start        # production: http://127.0.0.1:4242 and /admin
+bun run test         # vp test, server + ui
+bun run typecheck
+bun run lint         # oxlint, whole repo
+bun run helper:build   # native/dist/Fremkit Helper.app
+bun run helper:install
+bun run helper:test
 bash scripts/build-app.sh   # native/dist/Fremkit.app: the self-contained app, see docs/releasing.md
 ```
 
@@ -434,8 +435,8 @@ bash scripts/build-app.sh   # native/dist/Fremkit.app: the self-contained app, s
 | `brand/` | Icon, menu bar glyph, favicons, social image — see [brand/README-assets.md](brand/README-assets.md) |
 | `docs/` | This documentation |
 
-A second checkout can run beside a live one by giving it another port: `FREMKIT_PORT=4301 pnpm start`.
-`FREMKIT_DATA_DIR=/tmp/fremkit-fresh pnpm start` points the config, the background library and the
+A second checkout can run beside a live one by giving it another port: `FREMKIT_PORT=4301 bun run start`.
+`FREMKIT_DATA_DIR=/tmp/fremkit-fresh bun run start` points the config, the background library and the
 caches somewhere else — a from-scratch install on the live checkout, without moving anything
 aside. Your keychain secrets are keyed by connection id, so a fresh config never names them.
 

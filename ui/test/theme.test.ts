@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect } from 'vite-plus/test'
 import { BUILTIN_THEME, normalizeHex, themeColor, themeVariables } from '../src/shared/theme'
 import type { ThemeInfo } from '../src/shared/types'
 

@@ -11,7 +11,7 @@
  *
  * So the bar is mounted and the events are dispatched as the real ones arrive, in order.
  */
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vite-plus/test'
 import { mount } from '@vue/test-utils'
 import NavBar from '../src/dashboard/NavBar.vue'
 import type { AdminGesture } from '../src/shared/types'

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi } from 'vite-plus/test'
 import { createCleanshotProvider, urlFor, RunPayloadSchema, ACTION_NAMES, CLEANSHOT_BUNDLE_ID, openArgs } from '../src/providers/cleanshot.js'
 
 const LOCAL = { loopback: true }

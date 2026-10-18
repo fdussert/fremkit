@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vite-plus/test'
 import { CONNECTION_COLORS, nextConnectionColor } from '../src/shared/types'
 
 describe('nextConnectionColor', () => {

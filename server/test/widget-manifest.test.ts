@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect } from 'vite-plus/test'
 import { ManifestSchema } from '../src/widgets/manifest.js'
 
 const base = { id: 'clock', name: 'Horloge', version: '1.0.0' }

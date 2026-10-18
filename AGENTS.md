@@ -16,7 +16,7 @@ Fremkit turns a Corsair Xeneon Edge (a 2560 × 720 touch strip) into a widget da
 - `ui/` — Vue 3 + Vite. `ui/src/dashboard` is the page shown on the Edge, `ui/src/admin` the
   editor at `/admin`, `ui/src/shared` what both use (bridge to widgets, i18n, UI primitives).
   The server serves the **built** `ui/dist`, not the sources: after any UI change run
-  `pnpm --filter ui build`, or use `pnpm dev` (Vite on `localhost:5173`).
+  `bun run --filter ui build`, or use `bun run dev` (Vite on `localhost:5173`).
 - `widgets/<id>/manifest.json` + `index.html` — one folder per widget, plain HTML/JS in a
   sandboxed iframe, talking to the host through the `Fremkit` global injected from
   `server/src/bridge/fremkit.js`. The SDK is documented in
@@ -57,19 +57,35 @@ Fremkit turns a Corsair Xeneon Edge (a 2560 × 720 touch strip) into a widget da
 ## Commands
 
 ```bash
-pnpm install                      # once
-pnpm typecheck                    # server + ui (vue-tsc)
-pnpm test                         # vitest, server + ui
-pnpm --filter server exec vitest run test/<file>.test.ts
-pnpm --filter ui build            # required before the server shows a UI change
-pnpm dev                          # server + Vite with hot reload for the UI
-pnpm helper:build && pnpm helper:install && pnpm helper:test
+bun install                       # once
+bun run typecheck                 # server + ui (vue-tsc)
+bun run lint                      # oxlint, whole repo
+bun run test                      # vp test, server + ui
+bun run --filter server test test/<file>.test.ts
+bun run --filter ui build         # required before the server shows a UI change
+bun run dev                       # server + Vite+ with hot reload for the UI
+bun run helper:build && bun run helper:install && bun run helper:test
 ```
+
+`bun run dev` runs `vp dev` for the UI; `vp test` runs both suites (Vitest 5 under Vite+, not the
+`vitest` binary directly), and `vite` and `vitest` are no longer dependencies of their own. The
+`vite` entry in `ui/package.json` is an alias to `@voidzero-dev/vite-plus-core`, Vite+'s own Vite,
+and it has to stay one: with a second copy of real Vite on disk — which is what `@vitejs/plugin-vue`
+pulls in for its peer — TypeScript crashes on `plugins: [vue()]` inside `defineConfig` with
+`Debug Failure. False expression: parameter should have errors when reporting errors`. `vp build`
+also refuses to run until the alias is aligned.
+
+`server/` is on TypeScript 7, the native compiler; `ui/` is still on 5.9, and that is not an
+oversight. `vue-tsc` loads the TypeScript compiler's own JavaScript API (`typescript/lib/tsc`) and
+patches it, and TypeScript 7 ships a native binary with no such entry point, so it dies with
+`ERR_PACKAGE_PATH_NOT_EXPORTED: Package subpath './lib/tsc' is not defined by "exports"`. Plain
+`tsc` is no substitute: it skips every `.vue` file, templates, props and emits included. The UI
+moves to 7 when `vue-tsc` runs on the native compiler.
 
 Restarting the live server when the helper runs it: kill only the node process listening on
 4242 (`kill $(lsof -nP -iTCP:4242 -sTCP:LISTEN -t)`), the helper respawns it within seconds.
 Never kill `FremkitHelper` itself. A second checkout can run beside the live one with
-`FREMKIT_PORT=4301 pnpm exec tsx src/index.ts` from `server/`.
+`FREMKIT_PORT=4301 bun run start` from `server/`.
 
 **An agent asked for a feature or a review works in a worktree and leaves the current tree
 alone.** Add one — `git worktree add ../fremkit-<topic> -b <branch>`, or, to review a pull
@@ -128,7 +144,7 @@ agent's in-flight work. Say where the worktree is, and remove it once the work h
   `ui/src/shared/credits.ts`, which the admin's **Screen → About** reads, and to the README's
   Credits section; `credits.test.ts` fails when the two disagree. A registry widget or theme
   credits its own authors in its `author` field, which the registry refuses to leave empty.
-- **Tests before done**: `pnpm typecheck` and `pnpm test` green, the UI rebuilt if touched, a
+- **Tests before done**: `bun run typecheck` and `bun run test` green, the UI rebuilt if touched, a
   rescan if a manifest changed, and — for anything visible — a look at `/admin` or `/` in a
   browser. The widget catalogue test in `server/test/` reads the real `widgets/` folder, so a
   broken manifest fails it.

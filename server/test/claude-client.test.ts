@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect } from 'vite-plus/test'
 import { ClaudeTracker, clientView } from '../src/claude/tracker.js'
 import { parseHookEvent } from '../src/claude/hook-schema.js'
 

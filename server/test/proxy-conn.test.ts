@@ -6,7 +6,7 @@
  * secret looks for it in the answer, in the error and in the log lines — the three places a
  * credential leaks from in practice.
  */
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vite-plus/test'
 import Fastify from 'fastify'
 import { proxyRoutes } from '../src/proxy/routes.js'
 import { DEFAULT_CONFIG, type Config } from '../src/config/schema.js'

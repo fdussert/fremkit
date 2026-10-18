@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect } from 'vite-plus/test'
 import { ClaudeTracker } from '../src/claude/tracker.js'
 import { appOfProcess, focusClient } from '../src/claude/focus.js'
 import { createClaudeSessionsProvider } from '../src/claude/providers.js'

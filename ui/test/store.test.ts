@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vite-plus/test'
 import { createAdminStore, SAVE_DEBOUNCE_MS, UNDO_LIMIT, type StoreDeps } from '../src/admin/store'
 import type { Config, WidgetManifest, WidgetsResponse } from '../src/shared/types'
 import { navWidgetsOf } from '../src/shared/types'

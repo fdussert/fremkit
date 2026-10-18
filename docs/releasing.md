@@ -1,7 +1,7 @@
 # Releasing Fremkit.app
 
 How the downloadable app is built, signed, notarized and published. Contributors never need any
-of this: the source install (`pnpm setup`) builds the developer helper, which runs a checkout.
+of this: the source install (`bun run setup`) builds the developer helper, which runs a checkout.
 
 ## What the app is
 

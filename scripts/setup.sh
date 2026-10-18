@@ -72,12 +72,12 @@ else
     fi
 fi
 
-# --- pnpm --------------------------------------------------------------------------------
-if command -v pnpm >/dev/null 2>&1; then
-    ok "pnpm $(pnpm -v)"
+# --- Bun: the package manager and script runner for the workspace -------------------------
+if command -v bun >/dev/null 2>&1; then
+    ok "bun $(bun -v)"
 else
-    fail "pnpm not found"
-    hint "install it with: corepack enable pnpm   (or: npm install -g pnpm)"
+    fail "bun not found"
+    hint "install it with: curl -fsSL https://bun.sh/install | bash   (or: brew install bun)"
 fi
 
 # --- jq: only the Claude Code status line needs it, so this is a note, not a failure ------
@@ -100,12 +100,12 @@ fi
 
 # --- Workspace ---------------------------------------------------------------------------
 echo
-echo "==> pnpm install"
-pnpm install
+echo "==> bun install"
+bun install
 
 echo
-echo "==> pnpm build (ui + server)"
-pnpm build
+echo "==> bun run build (ui + server)"
+bun run build
 
 # --- Signing identity --------------------------------------------------------------------
 IDENTITY="${FREMKIT_SIGN_IDENTITY:-Fremkit Helper Dev}"

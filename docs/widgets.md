@@ -194,7 +194,7 @@ could not be read is drawn hatched with a lock and counted apart, never as small
 
 A scan runs only when asked — the ↻, or the first time a root is shown — never on a timer, one at
 a time. Under the helper it uses `fremkit-scan`, which ships inside the helper's bundle and reads
-at low priority; without the helper (`pnpm dev`) it falls back to `du`, slower and without single
+at low priority; without the helper (`bun run dev`) it falls back to `du`, slower and without single
 files. The last scan is kept under `data/disk-map/` and shown with its date after a restart.
 
 Minimum size 8 × 6, default 24 × 9. A tile at least 1.6 times wider than tall gets the list

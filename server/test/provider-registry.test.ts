@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vite-plus/test'
 import { ProviderRegistry } from '../src/providers/registry.js'
 import type { Provider } from '../src/providers/types.js'
 

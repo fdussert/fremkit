@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vite-plus/test'
 import { addedPermissions, effectiveManifest, grantedCatalog, grantedFor, grantedManifest, grantedPermissions, isEmpty, permissionsOf } from '../src/marketplace/consent.js'
 import { ManifestSchema, type WidgetManifest } from '../src/widgets/manifest.js'
 import { WidgetCatalog } from '../src/widgets/catalog.js'

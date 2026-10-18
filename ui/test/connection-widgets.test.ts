@@ -8,7 +8,7 @@
  * typed a Homey token has no reason to know that, so this asserts they are told where it is —
  * and that the list is filtered by the connection actually in front of them.
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 import { mount } from '@vue/test-utils'
 import ConnectionWidgets from '../src/admin/ConnectionWidgets.vue'
 import { useMarketplaceStore } from '../src/admin/marketplace'

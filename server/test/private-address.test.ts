@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect } from 'vite-plus/test'
 import { embeddedIpv4, expandIpv6, isAddressLiteral, isPrivateAddress, isPrivateLiteral, resolvesToPrivate } from '../src/net/private.js'
 
 describe('isPrivateAddress', () => {

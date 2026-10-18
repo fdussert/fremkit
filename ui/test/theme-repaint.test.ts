@@ -9,7 +9,7 @@
  * paths carry that, and neither had a test: the dashboard's own "I have never heard of this id,
  * go and look once", and the admin's rescan after an install.
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 import { ref } from 'vue'
 import type { Config, ThemesResponse } from '../src/shared/types'
 

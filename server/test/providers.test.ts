@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi } from 'vite-plus/test'
 import { parseVolume, createVolumeProvider } from '../src/providers/volume.js'
 import { parseSpotify, createSpotifyProvider, OPEN_PROGRAM, SPOTIFY_BUNDLE_ID, STATE } from '../src/providers/spotify.js'
 import { createMutedeckProvider } from '../src/providers/mutedeck.js'

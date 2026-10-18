@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vite-plus/test'
 import { CONFIRM_WINDOW_MS, useConfirm } from '../src/shared/useConfirm'
 
 describe('useConfirm', () => {

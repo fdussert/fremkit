@@ -4,25 +4,31 @@
   "version": "0.4.1",
   "license": "MIT",
   "type": "module",
-  "packageManager": "pnpm@9.4.0",
+  "packageManager": "bun@1.4.3",
+  "workspaces": [
+    "server",
+    "ui"
+  ],
   "engines": {
     "node": ">=22"
   },
   "scripts": {
     "setup": "bash scripts/setup.sh",
     "dev": "bash scripts/dev.sh",
-    "build": "pnpm -r build",
-    "test": "pnpm -r test",
-    "typecheck": "pnpm -r typecheck",
-    "start": "pnpm --filter server start",
+    "build": "bun run --filter '*' build",
+    "test": "bun run --filter '*' test",
+    "typecheck": "bun run --filter '*' typecheck",
+    "lint": "vp lint",
+    "start": "bun run --filter server start",
     "kiosk": "bash scripts/kiosk.sh",
     "helper:build": "bash scripts/build-helper.sh",
     "helper:install": "bash scripts/install-helper.sh",
     "helper:test": "bash scripts/test-helper.sh"
   },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "esbuild"
-    ]
+  "trustedDependencies": [
+    "esbuild"
+  ],
+  "devDependencies": {
+    "vite-plus": "1.3.0"
   }
 }

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll } from 'vite-plus/test'
 import Fastify from 'fastify'
 import { createServer, type Server } from 'node:http'
 import { proxyRoutes, MAX_BODY_BYTES } from '../src/proxy/routes.js'

@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vite-plus/test'
 import ICAL from 'ical.js'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'

@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect } from 'vite-plus/test'
 import { isAllowedHost, isCrossSiteFetch, isReadMethod, parseHostHeader } from '../src/http/guard.js'
 
 describe('parseHostHeader', () => {

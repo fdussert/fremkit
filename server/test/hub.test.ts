@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi } from 'vite-plus/test'
 import { EventEmitter } from 'node:events'
 import { Hub, MAX_CHANNELS_PER_SOCKET } from '../src/ws/hub.js'
 import { ProviderRegistry } from '../src/providers/registry.js'

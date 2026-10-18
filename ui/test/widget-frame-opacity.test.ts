@@ -6,7 +6,7 @@
  * the instance's own image did not, and a tile with an image kept showing it while the control
  * said the background was off.
  */
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vite-plus/test'
 import { mount } from '@vue/test-utils'
 import WidgetFrame from '../src/dashboard/WidgetFrame.vue'
 import type { WidgetInstance } from '../src/shared/types'

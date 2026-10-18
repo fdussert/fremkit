@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect } from 'vite-plus/test'
 import { createClaudeIdentityProvider, identityEnv, resolveClaudeBinary } from '../src/claude/identity.js'
 import { ProviderRegistry } from '../src/providers/registry.js'
 

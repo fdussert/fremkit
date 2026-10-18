@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vite-plus/test'
 import { createMarketplaceStore, matches, type MarketplaceApi } from '../src/admin/marketplace'
 import { ConsentRequiredError } from '../src/shared/api'
 import type { MarketplaceResponse, MarketplaceWidget, WidgetPermissionSet } from '../src/shared/types'

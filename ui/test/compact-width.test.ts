@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect } from 'vite-plus/test'
 import { WIDE_COMPACT_WIDTH, compactWidth, type WidgetManifest } from '../src/shared/types'
 
 const manifest = (compact?: { width: number }): WidgetManifest => ({

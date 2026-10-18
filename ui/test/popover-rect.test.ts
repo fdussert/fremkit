@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect } from 'vite-plus/test'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { POPOVER_MARGIN, popoverRect } from '../src/shared/popover'

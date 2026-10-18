@@ -137,7 +137,7 @@ held to.
 ## Local Network
 
 macOS 15 and later gate LAN access per application. The server runs inside whatever launched it —
-your terminal under `pnpm dev`, or Fremkit Helper when it manages the server — and *that* app must
+your terminal under `bun run dev`, or Fremkit Helper when it manages the server — and *that* app must
 be allowed under System Settings → Privacy & Security → Local Network. Otherwise every connection
 to a LAN device fails as `EHOSTUNREACH`. `ping` and `curl` are both Apple binaries and both are
 exempt from the filter, so neither proves anything: the symptom is that they reach the device and

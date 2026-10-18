@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect } from 'vite-plus/test'
 import { ClaudeTracker } from '../src/claude/tracker.js'
 import { SOUNDS, createAttention, playSound } from '../src/claude/attention.js'
 import type { InstanceView } from '../src/config/instances.js'

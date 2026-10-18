@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi } from 'vite-plus/test'
 import { normalizeAccountUsage, createClaudeAccountProvider, parseKeychainJson } from '../src/claude/account.js'
 import { USER_AGENT } from '../src/version.js'
 

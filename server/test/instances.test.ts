@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vite-plus/test'
 import { findInstance, findInstances, noInstances } from '../src/config/instances.js'
 import { ConfigSchema, type Config } from '../src/config/schema.js'
 
