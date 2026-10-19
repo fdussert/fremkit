@@ -111,8 +111,8 @@ export async function tileIconRoutes(
       // because a file stored under such a name could never be listed, served or deleted.
       let name = safeBackgroundName(body.name, checked.type)
       if (!isSafeTileIconName(name)) name = safeBackgroundName(undefined, checked.type)
-      await mkdir(dir, { recursive: true })
-      await writeFile(pathOf(name), buf)
+      await mkdir(dir, { recursive: true, mode: 0o700 })
+      await writeFile(pathOf(name), buf, { mode: 0o600 })
       return reply.code(201).send({ name })
     },
   )

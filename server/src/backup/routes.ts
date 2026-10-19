@@ -250,8 +250,8 @@ export async function backupRoutes(
     try {
       await mkdir(backgroundsDir, { recursive: true })
       for (const image of read.backgrounds) await writeFile(join(backgroundsDir, image.name), image.data)
-      await mkdir(tileIconsDir, { recursive: true })
-      for (const icon of read.tileIcons) await writeFile(join(tileIconsDir, icon.name), icon.data)
+      await mkdir(tileIconsDir, { recursive: true, mode: 0o700 })
+      for (const icon of read.tileIcons) await writeFile(join(tileIconsDir, icon.name), icon.data, { mode: 0o600 })
     } catch (err) {
       req.log.warn({ err }, 'restore could not write the backgrounds or the tile icons')
       return reply.code(500).send({ errors: [tr(store.get().locale, 'backup.writeFailed')] })

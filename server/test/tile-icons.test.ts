@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { mkdtemp, mkdir, readdir, readFile, writeFile, rm } from 'node:fs/promises'
+import { mkdtemp, mkdir, readdir, readFile, writeFile, rm, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { FastifyInstance } from 'fastify'
@@ -106,6 +106,8 @@ describe('POST /api/tile-icons', () => {
     expect(name).toMatch(/^\d+-nas-logo\.svg$/)
     expect(await readdir(iconsDir())).toEqual([name])
     expect(await readFile(join(iconsDir(), name), 'utf8')).toBe(SVG)
+    // The data folder is 0700 and its files 0600, whatever the process umask.
+    expect((await stat(join(iconsDir(), name))).mode & 0o777).toBe(0o600)
   })
   it('refuses a missing or empty payload', async () => {
     expect((await app.inject({ method: 'POST', url: '/api/tile-icons', payload: { name: 'x.svg' } })).statusCode).toBe(400)
