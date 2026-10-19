@@ -539,6 +539,7 @@ export const fr: Record<string, string> = {
   'admin.screens.dialog.add': 'Ajouter',
   'admin.screens.dialog.preview': 'Aperçu…',
 
+  'admin.devices.appStore': 'Installez l’app Fremkit pour iPad depuis l’App Store',
   'admin.devices.enable': 'Autoriser un iPad sur le réseau local',
   'admin.devices.firewall': 'macOS peut demander d’autoriser les connexions entrantes pour Fremkit : acceptez.',
   'admin.devices.portInUse': 'Le port {port} est déjà utilisé par une autre application : l’accès reste désactivé.',

@@ -16,6 +16,7 @@ import BaseCheckbox from '../shared/ui/BaseCheckbox.vue'
 import BaseIcon from '../shared/ui/BaseIcon.vue'
 import { useI18n } from '../shared/i18n'
 import { useConfirm } from '../shared/useConfirm'
+import { IPAD_APP_STORE_URL } from '../shared/credits'
 import { shortExtensionId, type PublicExtensionDevice, type PublicIpadDevice } from '../shared/api'
 import type { Screen } from '../shared/types'
 import AddScreenDialog from './AddScreenDialog.vue'
@@ -128,6 +129,9 @@ async function onCreated(screenId: string): Promise<void> {
 <template>
   <div class="devices">
     <div class="ipads" data-test="ipads">
+      <!-- A new tab in a browser; the helper's admin window hands it to the default browser rather
+           than replacing the admin with it, as About's links. -->
+      <p class="ro"><a :href="IPAD_APP_STORE_URL" target="_blank" rel="noopener noreferrer" data-test="app-store">{{ t('admin.devices.appStore') }}</a></p>
       <BaseCheckbox :model-value="enabled" :label="t('admin.devices.enable')"
         @update:model-value="devices.setEnabled($event)" />
       <p class="ro">{{ t('admin.devices.firewall') }}</p>
@@ -240,6 +244,8 @@ async function onCreated(screenId: string): Promise<void> {
 
 <style scoped>
 .ro { margin: 0 0 var(--space-2); font-size: var(--fs-sm); color: var(--text-muted); }
+.ro a { color: var(--accent); text-decoration: none; }
+.ro a:hover { text-decoration: underline; }
 .ro.ext { font-family: var(--font-mono); font-size: var(--fs-xs); color: var(--text-dim); }
 .bad { margin: 0 0 var(--space-2); font-size: var(--fs-sm); color: var(--danger); white-space: pre-wrap; }
 .bad.action { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }

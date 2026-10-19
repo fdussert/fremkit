@@ -15,9 +15,9 @@ tagged `vX.Y.Z`.
 ### Changed
 
 - **iPad pairing and extra screens are no longer experimental.** **Settings → Devices** pairs an
-  iPad running the Fremkit app from the App Store, and the screen selector with its
-  **+ Add a screen** is always above the canvas. Importing a layout brings its iPad screens along
-  with the rest.
+  iPad running the Fremkit app from the App Store, and links to the app there; the screen
+  selector with its **+ Add a screen** is always above the canvas. Importing a layout brings its
+  iPad screens along with the rest.
 
 ## 0.5.0 — 2026-10-19
 

@@ -28,5 +28,8 @@ export const REGISTRY_REPOSITORY = 'https://github.com/fdussert/fremkit-sietch'
 /** A new issue on the bug form, which asks for what the diagnostics report holds. */
 export const BUG_REPORT_URL = `${REPOSITORY}/issues/new?template=bug.yml`
 
+/** The iPad app's App Store page. */
+export const IPAD_APP_STORE_URL = 'https://apps.apple.com/app/id6824504862'
+
 /** The UI's own version, bumped with the three others at every release. */
 export const VERSION: string = version

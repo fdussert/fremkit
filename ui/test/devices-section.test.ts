@@ -43,6 +43,7 @@ const { default: DevicesSection } = await import('../src/admin/DevicesSection.vu
 const { default: ScreenPane } = await import('../src/admin/settings/ScreenPane.vue')
 const { useDevices } = await import('../src/admin/devices')
 const { useAdminStore } = await import('../src/admin/store')
+const { IPAD_APP_STORE_URL } = await import('../src/shared/credits')
 
 function config(): Config {
   return {
@@ -136,6 +137,16 @@ describe('the devices section', () => {
       expect(ipadPart(w)).toBe(true)
       expect(w.find('[data-test="pairing-code"]').exists()).toBe(false)
       expect(w.find('[data-test="ipads-none"]').text()).toBe('No paired iPad.')
+      w.unmount()
+    })
+
+    it('links to the iPad app on the App Store, outside the admin', async () => {
+      const w = await mountWith({ companion: false }, status())
+      const link = w.find('[data-test="app-store"]')
+      expect(link.text()).toBe('Get the Fremkit app for iPad on the App Store')
+      expect(link.attributes('href')).toBe(IPAD_APP_STORE_URL)
+      expect(link.attributes('target')).toBe('_blank')
+      expect(link.attributes('rel')).toBe('noopener noreferrer')
       w.unmount()
     })
 
