@@ -1,5 +1,5 @@
 import type { Config, Screen } from '../shared/types'
-import { COMPANION_WIDGETS, companionOn } from '../shared/companionGate'
+import { companionOn } from '../shared/companionGate'
 
 /**
  * Which page a browser-extension share should bring up on this dashboard.
@@ -17,6 +17,9 @@ import { COMPANION_WIDGETS, companionOn } from '../shared/companionGate'
  * kiosk, so that is rarely the first snapshot. Past the window, or once it has landed, a
  * dashboard is only ever moved by a new share (`reveal`).
  */
+
+/** The widget a share is shown in; the companion's other widgets (Fremdev) never hold one. */
+const FREMPLAY = 'fremplay'
 
 /** How long after a load a resumed share may still bring its page up. */
 export const LANDING_WINDOW_MS = 15_000
@@ -52,7 +55,7 @@ export function landingPage(
   screen: Pick<Screen, 'nav' | 'pages'>,
 ): number | null {
   if (snapshot.tab?.state !== 'sharing' || !companionOn(config)) return null
-  const holds = (instanceId: string): boolean => COMPANION_WIDGETS.includes(config.widgets[instanceId]?.widgetId ?? '')
+  const holds = (instanceId: string): boolean => config.widgets[instanceId]?.widgetId === FREMPLAY
   if (screen.nav.some((item) => holds(item.instanceId))) return null
   const index = screen.pages.findIndex((page) => page.items.some((item) => holds(item.instanceId)))
   return index === -1 ? null : index

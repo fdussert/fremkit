@@ -472,7 +472,11 @@ describe('landingPage', () => {
   })
   const cfg = (companion: boolean) => ({
     labs: { devices: false, companion },
-    widgets: { fp: { widgetId: 'fremplay', showTitle: false, settings: {} }, c: { widgetId: 'clock', showTitle: false, settings: {} } },
+    widgets: {
+      fp: { widgetId: 'fremplay', showTitle: false, settings: {} },
+      c: { widgetId: 'clock', showTitle: false, settings: {} },
+      fd: { widgetId: 'fremdev', showTitle: false, settings: {} },
+    },
   }) as unknown as Config
 
   it('is the first page holding Fremplay while a share is live', async () => {
@@ -483,5 +487,12 @@ describe('landingPage', () => {
     expect(landingPage({ tab: { state: 'sharing' } }, cfg(false), screen([], [['c'], ['fp']]))).toBeNull()
     expect(landingPage({ tab: { state: 'sharing' } }, cfg(true), screen(['fp'], [['c'], ['fp']]))).toBeNull()
     expect(landingPage({ tab: { state: 'sharing' } }, cfg(true), screen([], [['c']]))).toBeNull()
+  })
+
+  it('looks for Fremplay alone, never for the other companion widget', async () => {
+    const { landingPage } = await import('../src/dashboard/companionReveal')
+    expect(landingPage({ tab: { state: 'sharing' } }, cfg(true), screen([], [['fd'], ['fp']]))).toBe(1)
+    expect(landingPage({ tab: { state: 'sharing' } }, cfg(true), screen(['fd'], [['c'], ['fp']]))).toBe(1)
+    expect(landingPage({ tab: { state: 'sharing' } }, cfg(true), screen([], [['fd']]))).toBeNull()
   })
 })
