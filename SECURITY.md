@@ -385,15 +385,19 @@ What it holds and what it can do:
   rewrites a request, and a request is considered only when its tab is a watched dev tab inside a
   granted origin. Requests to hosts that are not dev hosts are not seen.
 - *The MAIN-world hook* is registered for dev hosts only (`localhost`, `127.0.0.1`, `[::1]`,
-  `*.localhost`, `*.test` and the user's own patterns, which refuse public suffixes and IP
-  wildcards). It calls the original `console.error`, never runs the page's getters or `toJSON`, and
+  `*.localhost`, `*.test` and the user's own patterns, which refuse wildcards over a common public
+  suffix (a short list; Chrome's own prompt names the hosts for any other) and over IP labels). It
+  calls the original `console.error` and never runs the page's getters or `toJSON`; the
+  `console.log`/`info`/`debug` wrappers read only a prefix of the first argument and send only the
+  kind, with the same guarantees. It
   sends events to a relay content script through a `CustomEvent` carrying a string. A page can forge
-  events, but only into its own row; the tab id comes from Chrome. A `Proxy` `ownKeys` trap may run,
-  bounded. Pages already loaded keep an inert hook after Fremdev is turned off until they reload.
+  events, but only into its own row; the tab id comes from Chrome. A `Proxy`'s introspection traps
+  (`ownKeys`, `getOwnPropertyDescriptor`, `getPrototypeOf`) may run, within the walk budget. Pages already loaded keep an inert hook after Fremdev is turned off until they reload.
   The relay checks nothing the worker does not check again: the worker decides whether a URL is a
   dev URL.
-- *What leaves the tab:* a kind and text clipped to 300 characters, URL paths only; never a query,
-  fragment, body, header or cookie. Fremkit's own ports (4242, 4243) are never watched.
+- *What leaves the tab:* a kind and text clipped to 300 characters; request URLs as their path only,
+  never query or fragment; nothing from bodies, headers or cookies. An error's own message is free
+  text, sent as the page logged it (clipped), so one that quotes a secret shows it on the Edge. Fremkit's own ports (4242, 4243) are never watched.
 - *Server side.* Every `dev.tabs`, `modules` and `ping` message is validated by a strict schema with
   bounded sizes, and publishing is capped at four per second per install. `companion:dev` is in
   `LOCAL_ONLY_CHANNELS` and `BUILTIN_ONLY_CHANNELS`: paired devices and registry widgets never get

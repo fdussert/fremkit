@@ -190,9 +190,10 @@ them back. Pages already loaded keep the hook they were given until they reload 
   https.
 - Your own hosts, added on the extension's options page: an exact host (`dev.example.com`) or one
   `*` in the first label (`*-dev.example.com`, `*.example.com`). Adding one asks Chrome for that
-  origin only, and removing it gives that permission back. Nothing else is listed by default.
-- Refused as a pattern: a wildcard over a public suffix (`*.co.uk`), over numeric labels (an IP
-  range), a built-in host, and anything with more than one `*`.
+  origin only, and removing it gives that permission back, unless another pattern or grant still covers it. Nothing else is listed by default.
+- Refused as a pattern: a wildcard over a common public suffix (`*.co.uk`; the list is short, and
+  Chrome's own permission prompt names the hosts for any other), over numeric labels (an IP range),
+  a built-in host, and anything with more than one `*`.
 - **Fremkit's own ports (4242 and 4243) are never watched** on the loopback hosts, so the admin open
   in the browser is not a dev tab. Another port (a second checkout on 4301) is a real dev server and
   is watched.
@@ -210,8 +211,10 @@ down. Not counted: `favicon.ico`, hot-update traffic (`/@vite/*`, `/__webpack_hm
 
 What goes to Fremkit, over the extension's authenticated socket to `127.0.0.1:4242`, is per tab: its
 app name, counters, and for each recent event a **kind and a text clipped to 300 characters**; for a
-request, the HTTP status and the URL's **path only**. **Never the query, the fragment, a request or
-response body, headers or cookies.** Error events are forwarded at most ten per second per tab (the
+request, the HTTP status and the URL's **path only**: request URLs never go with their query or
+fragment, and nothing is taken from bodies, headers or cookies. An error's own message is free text
+and goes as the page logged it, clipped to 300 characters, so an error that quotes a token would
+show it on the Edge. Error events are forwarded at most ten per second per tab (the
 counter keeps counting) and the tab list at most twice a second. Nothing leaves your Mac, and
 nothing is sent while Fremdev is off.
 
@@ -222,8 +225,9 @@ the page's scripts, on dev hosts only. It is built not to disturb the page:
 
 - `console.error` still prints: the original is called first, and the wrapper keeps its name and
   `toString`. Errors still propagate (no `preventDefault`), and `fetch` is not wrapped.
-- It never runs the page's code to describe a logged value: no getters, no `toJSON`. A `Proxy` with
-  an `ownKeys` trap may still run it, bounded; the text of an object is a bounded walk, so it is
+- It never runs the page's code to describe a logged value: no getters, no `toJSON`. A `Proxy`'s
+  introspection traps (`ownKeys`, `getOwnPropertyDescriptor`, `getPrototypeOf`) may run, within the
+  walk budget; the text of an object is a bounded walk, so it is
   less faithful than the browser console's.
 - It speaks to the extension through a `CustomEvent` on `document` that carries a string, not a
   window message and not an attribute on `<html>`, so it cannot loop through the page's handlers or
