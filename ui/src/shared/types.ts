@@ -9,6 +9,8 @@ export type AccentMode = 'none' | 'frame' | 'fill'
 export type BackgroundFit = 'cover' | 'contain'
 /** Mirrors the server schema; `dim` is the black overlay opacity laid over the image. */
 export interface WidgetBackground { image: string; fit?: BackgroundFit; dim?: number }
+/** Mirrors the server schema: what the frame draws before a tile's title. `tint` absent = tinted. */
+export type TileIcon = { kind: 'lucide'; name: string } | { kind: 'file'; name: string; tint?: false }
 /**
  * Mirrors the server schema: what a widget instance *is*, shared by every screen that shows it.
  * Stored in `Config.widgets` under its instance id; where it sits is a `Placement` or a `NavItem`.
@@ -26,6 +28,8 @@ export interface Widget {
   background?: WidgetBackground
   /** Opacity of the tile's surface, 0–1; absent means solid. 0 makes it fully see-through. */
   opacity?: number
+  /** Absent means no icon in the title, which is the default. */
+  icon?: TileIcon
   settings: Record<string, unknown>
 }
 /** Mirrors the server schema: where one widget sits on one page of one screen, in cells. */

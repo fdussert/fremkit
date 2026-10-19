@@ -6,6 +6,7 @@ import { isHexColor, onAccent, tileAccent, tileText } from '../shared/color'
 import { useThemeColors } from '../shared/theme'
 import { pick, useI18n } from '../shared/i18n'
 import type { AccentMode, WidgetInstance, WidgetManifest } from '../shared/types'
+import TileIcon from '../shared/TileIcon.vue'
 
 /**
  * `off`: the widget's experimental feature is off (`labs.companion`). The admin's canvas then
@@ -70,7 +71,10 @@ const dimStyle = computed(() => ({ opacity: String(widgetDim(props.instance.back
 <template>
   <div class="frame" :style="style">
     <div class="box" :class="[`accent-${mode}`, { edit, off }]">
-      <div v-if="instance.showTitle" class="title">{{ title }}</div>
+      <div v-if="instance.showTitle" class="title">
+        <TileIcon v-if="instance.icon" :icon="instance.icon" />
+        <span class="text">{{ title }}</span>
+      </div>
       <div class="body">
         <div v-if="imageStyle" class="image" :style="imageStyle"><div class="dim" :style="dimStyle" /></div>
         <div v-if="off" class="missing turned-off" data-test="feature-off">
@@ -95,12 +99,19 @@ const dimStyle = computed(() => ({ opacity: String(widgetDim(props.instance.back
 .box { width: 100%; height: 100%; box-sizing: border-box; display: flex; flex-direction: column;
   border-radius: var(--radius-md); overflow: hidden;
   background: var(--tile-bg); border: 1px solid var(--tile-border); color: var(--tile-text); }
-/* Its own colour is the body's, dimmed, so it reads as a caption on any background. */
-.title { flex: 0 0 auto; padding: 12px 18px 2px; font-size: var(--fs-xs); text-transform: uppercase;
-  letter-spacing: .08em; color: var(--tile-text); opacity: .7;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-/* Framed accent: the title bar is the accent, so its text is the on-accent colour, not the body's. */
-.box.accent-frame .title { background: var(--tile-title-bg); color: var(--tile-title-text); opacity: 1; padding: 8px 18px; }
+/* Its own colour is the body's; the text is dimmed so it reads as a caption on any background,
+   the icon is not, so an accent icon does not look washed out. */
+.title { flex: 0 0 auto; display: flex; align-items: center; gap: .5em; padding: 12px 18px 2px;
+  font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: .08em; color: var(--tile-text); }
+.title .text { min-width: 0; opacity: .7; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* With no accent the icon is the tile's spot of colour, like the weather glyph in the bar. */
+.title .tile-icon { color: var(--accent); }
+/* Framed accent: the title bar is the accent, so its text — and its icon — are the on-accent colour. */
+.box.accent-frame .title { background: var(--tile-title-bg); color: var(--tile-title-text); padding: 8px 18px; }
+.box.accent-frame .title .text { opacity: 1; }
+.box.accent-frame .title .tile-icon { color: var(--tile-title-text); }
+/* Filled accent: the body is the accent, so the icon takes the text colour computed for it. */
+.box.accent-fill .title .tile-icon { color: var(--tile-text); }
 .body { position: relative; flex: 1; min-height: 0; }
 /* Behind the (transparent) iframe, so it replaces whatever surface the appearance painted. */
 .image { position: absolute; inset: 0; }

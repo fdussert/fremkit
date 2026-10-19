@@ -38,6 +38,7 @@ import { wsRoutes } from './ws/routes.js'
 import { proxyRoutes } from './proxy/routes.js'
 import { ConnCache } from './proxy/conn.js'
 import { backgroundRoutes } from './backgrounds/routes.js'
+import { tileIconRoutes } from './tile-icons/routes.js'
 import { faviconRoutes } from './favicons/routes.js'
 import { ClaudeTracker } from './claude/tracker.js'
 import { ClaudeUsage } from './claude/usage.js'
@@ -485,6 +486,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     connCache,
   })
   await app.register(backgroundRoutes, { dataDir: opts.dataDir })
+  await app.register(tileIconRoutes, { dataDir: opts.dataDir, config: () => store.get(), screenOfDevice })
   await app.register(backupRoutes, {
     store,
     dataDir: opts.dataDir,

@@ -1,13 +1,14 @@
 import { describe, it, expect } from 'vitest'
 import {
   ConfigSchema, DEFAULT_CONFIG, MAX_NAV_WIDGETS, defaultLocale, validateConnections, validateLayout, validateNavWidgets,
-  ScreenDisplaySchema, WidgetSchema, NavItemSchema, PlacementSchema, ScreenSchema, DEFAULT_ADMIN_GESTURE,
+  ScreenDisplaySchema, WidgetSchema, NavItemSchema, PlacementSchema, ScreenSchema, DEFAULT_ADMIN_GESTURE, isSafeTileIconName,
   type Config, type LayoutManifest, type Placement, type Widget,
 } from '../src/config/schema.js'
 import {
   NAV_CENTRE_RESERVE_CELLS, NAV_NAMES_MAX_WIDTH, WIDE_COMPACT_SETTINGS, WIDE_COMPACT_WIDTH, compactWidth, navCellsUsed,
   navCentreWidth, navHasRoom, navWiderClusterWidth,
 } from '../src/config/nav.js'
+import { migrateConfig } from '../src/config/migrate.js'
 import { ManifestSchema } from '../src/widgets/manifest.js'
 import { readFileSync } from 'node:fs'
 
@@ -705,6 +706,66 @@ describe('display.adminGesture', () => {
     expect(parsed.success).toBe(true)
     if (parsed.success) expect(parsed.data.adminGesture).toBeUndefined()
     expect(DEFAULT_ADMIN_GESTURE).toBe('both')
+  })
+})
+
+describe('tile icons', () => {
+  const withIcon = (icon: unknown) => ConfigSchema.parse(v4({ widgets: { a: { widgetId: 'clock', icon } } })).widgets.a
+
+  it('leaves icon absent on an existing file', () => {
+    const parsed = ConfigSchema.parse(v4({ widgets: { a: { widgetId: 'clock' } } }))
+    expect(parsed.widgets.a).not.toHaveProperty('icon')
+  })
+  // The field is optional and absent means no icon, so it needs no version bump: a v4 file
+  // written before it existed reads unchanged, and the migration carries one written after.
+  it('keeps the icon through migrateConfig and adds none to a migrated v3 file', () => {
+    const icon = { kind: 'lucide', name: 'server' }
+    expect(migrateConfig(v4({ widgets: { a: { widgetId: 'clock', icon } } })).widgets.a.icon).toEqual(icon)
+    const v3 = { version: 3, pages: [{ id: 'p', name: 'P', widgets: [{ instanceId: 'a', widgetId: 'clock', x: 0, y: 0, w: 8, h: 4 }] }] }
+    const migrated = migrateConfig(v3)
+    expect(migrated.version).toBe(4)
+    expect(Object.values(migrated.widgets).every((w) => !('icon' in w))).toBe(true)
+  })
+  it('round-trips a pictogram and a file, tinted or not', () => {
+    for (const icon of [
+      { kind: 'lucide', name: 'server' },
+      { kind: 'file', name: '1729000000000-nas.svg' },
+      { kind: 'file', name: '1729000000000-logo.png', tint: false },
+    ]) expect(withIcon(icon).icon).toEqual(icon)
+  })
+  it('accepts a well-formed pictogram name it does not know', () => {
+    // The choosable list lives in the UI; a name a later version dropped renders as no icon.
+    expect(withIcon({ kind: 'lucide', name: 'not-in-the-set' }).icon).toEqual({ kind: 'lucide', name: 'not-in-the-set' })
+  })
+  it('refuses an unknown kind, a bad pictogram name, an unsafe file name and an explicit tint', () => {
+    for (const icon of [
+      { kind: 'emoji', name: 'x' },
+      { kind: 'lucide', name: 'Bad Name' },
+      { kind: 'lucide', name: '' },
+      { kind: 'lucide', name: 'a'.repeat(41) },
+      { kind: 'file', name: '../secret.svg' },
+      { kind: 'file', name: 'a/b.svg' },
+      { kind: 'file', name: '.hidden.svg' },
+      { kind: 'file', name: '1-photo.jpg' },
+      // An upper-case extension: the server only ever stores the lower-case one, and serves by it.
+      { kind: 'file', name: '1-nas.SVG' },
+      { kind: 'file', name: '1-nas.svg', tint: true },
+    ]) expect(() => withIcon(icon), JSON.stringify(icon)).toThrow()
+  })
+  it('drops a tint carried by a pictogram, which is always tinted', () => {
+    // zod strips the key it does not know on that branch rather than refusing the tile.
+    expect(withIcon({ kind: 'lucide', name: 'server', tint: false }).icon).toEqual({ kind: 'lucide', name: 'server' })
+  })
+})
+
+describe('isSafeTileIconName', () => {
+  it('takes a stored name with an icon extension', () => {
+    expect(isSafeTileIconName('1729-nas.svg')).toBe(true)
+    expect(isSafeTileIconName('1729-nas.webp')).toBe(true)
+    expect(isSafeTileIconName('1729-nas.png')).toBe(true)
+  })
+  it('refuses anything else', () => {
+    for (const n of ['1729-nas.jpg', '1729-nas', '../x.svg', '.x.svg', 'a..svg', 42, '']) expect(isSafeTileIconName(n), String(n)).toBe(false)
   })
 })
 

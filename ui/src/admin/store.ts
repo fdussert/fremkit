@@ -223,6 +223,13 @@ export interface AdminStore {
   addWidget(widgetId: string): void
   placeExisting(instanceId: string, rect?: Rect): void
   updateInstance(instanceId: string, patch: Partial<WidgetInstance>): void
+  /** How many widgets, across every screen, wear the imported icon `name`. */
+  tileIconUsage(name: string): number
+  /**
+   * Takes the imported icon `name` off every tile that wears it, in one undo step, before the file
+   * itself is deleted. Returns how many tiles lost it; 0 records nothing.
+   */
+  removeTileIconEverywhere(name: string): number
   duplicateWidget(instanceId: string): void
   moveWidget(instanceId: string, targetPageIndex: number): void
   /** A new page at the end of this screen, with the widget moved onto it: one step to undo. */
@@ -310,6 +317,8 @@ export interface AdminStore {
 
 const uid = (): string => Math.random().toString(36).slice(2, 8)
 const rectOf = (w: Placement): Rect => ({ x: w.x, y: w.y, w: w.w, h: w.h })
+/** A widget wearing the imported file `name`, tinted or not. */
+const wearsFile = (w: Widget, name: string): boolean => w.icon?.kind === 'file' && w.icon.name === name
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T
 /** The keys of a patch that belong to a placement rather than to the shared widget. */
 const GEOMETRY: (keyof Rect)[] = ['x', 'y', 'w', 'h']
@@ -944,6 +953,19 @@ export function createAdminStore(deps: StoreDeps): AdminStore {
         const widget = c.widgets[instanceId]
         if (widget && Object.keys(rest).length) patchInto(widget as unknown as Record<string, unknown>, rest)
       })
+    },
+
+    tileIconUsage(name: string): number {
+      return Object.values(state.config?.widgets ?? {}).filter((w) => wearsFile(w, name)).length
+    },
+
+    removeTileIconEverywhere(name: string): number {
+      const count = store.tileIconUsage(name)
+      if (!count) return 0
+      apply((c) => {
+        for (const w of Object.values(c.widgets)) if (wearsFile(w, name)) delete w.icon
+      })
+      return count
     },
 
     /** A new widget set up like the original, next to it on this page. */

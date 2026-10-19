@@ -99,7 +99,7 @@ author's folder, above, is read only under `FREMKIT_WIDGET_DEV=1`.
 | `name` | yes | Shown in the widget library and as the tile's default title |
 | `version` | yes | A semver number — `1.2.0`, `1.0.0-rc.1`. The marketplace orders releases by it |
 | `description` | no | One line in the widget library. Default `""` |
-| `icon` | no | A [Lucide](https://lucide.dev) icon name. Default `layout-grid` |
+| `icon` | no | A [Lucide](https://lucide.dev) icon name. Default `layout-grid`. Also the pictogram the admin suggests for the tile's title icon; name one from `TILE_ICONS` in `ui/src/shared/icons.ts`, or it is not offered. |
 | `category` | no | Which shelf of the library it sits on — see [Categories](#categories). Default `other` |
 | `minSize` | no | `[cols, rows]` in grid cells; the editor refuses anything smaller. Default `[4, 2]` |
 | `defaultSize` | no | `[cols, rows]` the widget is dropped at. Defaults to `minSize`, and must be ≥ it |

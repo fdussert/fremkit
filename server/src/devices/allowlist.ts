@@ -35,6 +35,8 @@ const RULES: Rule[] = [
   { method: 'GET', path: /^\/api\/widgets$/, access: 'token' },
   { method: 'GET', path: /^\/api\/themes$/, access: 'token' },
   { method: 'GET', path: new RegExp(`^/api/backgrounds/${SEG}$`), access: 'token' },
+  // The route itself holds a device to the icons its own screen wears (`tileIconInScope`).
+  { method: 'GET', path: new RegExp(`^/api/tile-icons/${SEG}$`), access: 'token' },
   { method: 'GET', path: /^\/api\/devices\/me$/, access: 'token' },
   { method: 'POST', path: /^\/api\/devices\/me\/brightness$/, access: 'token' },
   { method: 'GET', path: /^\/ws$/, access: 'token' },

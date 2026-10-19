@@ -17,6 +17,7 @@ import HealthBanner from './HealthBanner.vue'
 import UpdateNote from './UpdateNote.vue'
 import { useHealth } from './useHealth'
 import SettingsForm from './SettingsForm.vue'
+import TileIconPicker from './TileIconPicker.vue'
 import WidgetPermissions from './WidgetPermissions.vue'
 import { pick, useI18n } from '../shared/i18n'
 import { screensShowing } from '../shared/screens'
@@ -188,6 +189,7 @@ function moveToPage(): void {
     </BaseField>
     <BaseCheckbox :model-value="inst.showTitle" :label="t('admin.inspector.widget.showTitle')"
       @update:model-value="s.updateInstance(inst!.instanceId, { showTitle: $event })" />
+    <TileIconPicker :instance="inst" :manifest="manifest" />
 
     <BaseSection id="widget.background" :title="t('admin.inspector.widget.background')">
     <BaseCheckbox :model-value="showBg" :label="t('admin.inspector.widget.showBg')"

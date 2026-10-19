@@ -14,6 +14,7 @@ import BaseIcon from '../shared/ui/BaseIcon.vue'
 import BaseRange from '../shared/ui/BaseRange.vue'
 import BaseSegmented from '../shared/ui/BaseSegmented.vue'
 import { api } from '../shared/api'
+import { readBase64 } from '../shared/files'
 import { useI18n } from '../shared/i18n'
 import { DEFAULT_WIDGET_DIM, MAX_WIDGET_DIM } from '../shared/background'
 import type { BackgroundFit } from '../shared/types'
@@ -41,19 +42,6 @@ const error = ref('')
 /** The slider works in whole percents; the config stores the 0–0.9 opacity itself. */
 const dimPercent = computed(() => Math.round((props.modelValue.dim ?? DEFAULT_WIDGET_DIM) * 100))
 
-/** The base64 payload of a file, without the `data:…;base64,` prefix FileReader adds. */
-function readBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onerror = () => reject(new Error(t('admin.background.unreadable')))
-    reader.onload = () => {
-      const result = String(reader.result)
-      resolve(result.slice(result.indexOf(',') + 1))
-    }
-    reader.readAsDataURL(file)
-  })
-}
-
 async function onFile(e: Event): Promise<void> {
   const input = e.target as HTMLInputElement
   const file = input.files?.[0]
@@ -64,7 +52,7 @@ async function onFile(e: Event): Promise<void> {
   if (file.size > MAX_IMAGE_BYTES) { error.value = t('admin.background.tooLarge'); return }
   busy.value = true
   try {
-    const { name } = await api.uploadBackground(file.name, await readBase64(file))
+    const { name } = await api.uploadBackground(file.name, await readBase64(file, t('admin.background.unreadable')))
     // A replaced image is deliberately left on disk: undo has to be able to bring it back.
     emit('update', { image: name, fit: props.modelValue.fit ?? 'cover' })
   } catch (err) {

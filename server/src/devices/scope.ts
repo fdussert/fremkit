@@ -159,3 +159,19 @@ export function iconInScope(config: Config, scope: ScreenScope, target: URL, raw
     return (url.protocol === 'http:' || url.protocol === 'https:') && url.origin === target.origin
   })
 }
+
+/**
+ * Whether a caller in `scope` may read the imported tile icon `name`: on this Mac, any; for a
+ * device, only one an instance of its own screen wears. The library is the user's, and its file
+ * names (a NAS, a bank, an employer's mark) say more than the screen a device was given.
+ */
+export function tileIconInScope(config: Config, scope: ScreenScope, name: string): boolean {
+  if (scope.kind === 'all') return true
+  if (scope.kind === 'none') return false
+  for (const id of screenInstanceIds(config, scope.screenId)) {
+    if (!Object.hasOwn(config.widgets, id)) continue
+    const icon = config.widgets[id].icon
+    if (icon?.kind === 'file' && icon.name === name) return true
+  }
+  return false
+}

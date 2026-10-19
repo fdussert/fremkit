@@ -10,6 +10,20 @@ Anything that changes what the dashboard, the admin or a widget can do gets a li
 (`package.json`, `server/package.json`, `ui/package.json`, `server/src/version.ts`) and is
 tagged `vX.Y.Z`.
 
+## Unreleased
+
+### Added
+
+- **Tile icons.** A tile's title can show an icon: a pictogram from the built-in set, or your own
+  SVG, PNG or WebP, tinted to the theme or in its own colours. Under **/admin**, select a tile,
+  then **Icon**. Fremkit ships no brand logos; the marks you import stay in your installation.
+
+### Fixed
+
+- **Backgrounds with dots at the end of their name.** A background uploaded from a file called,
+  say, "a..png" was saved under a name the dashboard then refused: it never showed in the
+  library and could not be deleted. It is now saved under a clean name.
+
 ## 0.5.0 — 2026-10-19
 
 ### Added
