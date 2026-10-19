@@ -5,6 +5,8 @@ import { describe, expect, it, vi } from 'vitest'
 import { linkAlarm, onlyFremdev, ReconnectGate } from '../../companion/lib/presence.js'
 // @ts-expect-error plain JS module
 import { createFremdev, pageEvent } from '../../companion/fremdev.js'
+// @ts-expect-error plain JS module
+import { BUILTIN_PERMISSION_ORIGINS } from '../../companion/lib/devhosts.js'
 
 // companion/fremdev.js against a fake chrome.*, and the worker's reconnection policy for it.
 
@@ -66,11 +68,16 @@ function fakeChrome({ on = true, granted = ['http://localhost/*'], webRequest = 
   })
   const event = () => ({ addListener: vi.fn(), removeListener: vi.fn() })
   const registered: unknown[] = []
-  const grants = { origins: [...granted] }
+  const grants = { origins: [...granted], permissions: webRequest ? ['webRequest'] : ([] as string[]) }
   const api: Record<string, any> = {
     runtime: { id: 'ext' },
     storage: { local: area(store.local), session: area(store.session) },
-    permissions: { contains: async ({ origins }: { origins: string[] }) => grants.origins.includes(origins[0]), onAdded: event(), onRemoved: event() },
+    permissions: {
+      contains: async ({ origins = [], permissions = [] }: { origins?: string[]; permissions?: string[] }) =>
+        origins.every((o) => grants.origins.includes(o)) && permissions.every((p) => grants.permissions.includes(p)),
+      onAdded: event(),
+      onRemoved: event(),
+    },
     scripting: {
       getRegisteredContentScripts: async () => registered.splice(0) as Array<{ id: string }>,
       unregisterContentScripts: vi.fn(async () => undefined),
@@ -264,6 +271,42 @@ describe('companion/fremdev.js', () => {
     const [onAdded] = f.api.permissions.onAdded.addListener.mock.calls[0]
     await onAdded({ permissions: ['webRequest'] })
     expect(f.api.webRequest.onCompleted.addListener).toHaveBeenCalledTimes(1)
+  })
+
+  it('turns itself on when the grant the popup expected lands after the popup closed', async () => {
+    const f = await makeFremdev({ on: false, granted: [] })
+    const [onAdded] = f.api.permissions.onAdded.addListener.mock.calls[0]
+    f.fremdev.expectGrant()
+    // A partial grant (webRequest alone) is not the one asked for.
+    f.grants.permissions = ['webRequest']
+    await onAdded({ permissions: ['webRequest'] })
+    expect(f.store.local.fremdev).toMatchObject({ on: false })
+    f.grants.origins = [...BUILTIN_PERMISSION_ORIGINS]
+    await onAdded({ permissions: ['webRequest'], origins: BUILTIN_PERMISSION_ORIGINS })
+    expect(f.store.local.fremdev).toMatchObject({ on: true })
+    expect(f.api.scripting.registerContentScripts).toHaveBeenCalledTimes(1)
+    // The popup survived and sends fremdevOn too: nothing starts twice.
+    await f.fremdev.start()
+    expect(f.api.scripting.registerContentScripts).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not turn on for a grant nobody expected, or one that came too late', async () => {
+    const f = await makeFremdev({ on: false, granted: [...BUILTIN_PERMISSION_ORIGINS] })
+    const [onAdded] = f.api.permissions.onAdded.addListener.mock.calls[0]
+    await onAdded({ permissions: ['webRequest'] })
+    expect(f.store.local.fremdev).toMatchObject({ on: false })
+    f.fremdev.expectGrant()
+    for (let i = 0; i < 61; i++) await f.later()
+    await onAdded({ permissions: ['webRequest'] })
+    expect(f.store.local.fremdev).toMatchObject({ on: false })
+    expect(f.api.scripting.registerContentScripts).not.toHaveBeenCalled()
+  })
+
+  it('starts once when two starts race', async () => {
+    const f = await makeFremdev({ on: false })
+    await Promise.all([f.fremdev.start(), f.fremdev.start()])
+    expect(f.api.scripting.registerContentScripts).toHaveBeenCalledTimes(1)
+    expect(f.api.scripting.executeScript).toHaveBeenCalledTimes(2)
   })
 
   it('off, it registers nothing and keeps no row', async () => {

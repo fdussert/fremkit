@@ -33,6 +33,8 @@ const HOOK_JS = 'fremdev/hook.js'
 const SEND_MS = 500
 /** Keeps the worker, and so the socket, alive while a dev tab is open; also the cue to reconnect. */
 const PING_MS = 20_000
+/** How long a turn-on the popup announced (`expectGrant`) may wait for Chrome's prompt. */
+const GRANT_MS = 60_000
 /** Rows kept here; the wire carries the 32 latest (lib/devtabs.js). */
 const MAX_ROWS = 64
 const MAX_COUNT = 1_000_000
@@ -90,6 +92,10 @@ export function createFremdev({
   let support = null
   let tickTimer = null
   let wasActive = false
+  /** Until when a grant landing turns Fremdev on: the popup asked, and may have closed on the prompt. */
+  let grantUntil = null
+  /** The start under way, so a second one (the popup and the grant both) joins it. */
+  let starting = null
   const throttle = new Throttle(SEND_MS, now, setTimer)
 
   const supported = () => support === null || support === 'yes'
@@ -309,10 +315,23 @@ export function createFremdev({
     if (typeof info.title === 'string' && tabs[String(tabId)]) apply(tabId, { kind: 'title', title: info.title })
   })
 
+  /** Whether what the popup asks for to turn on is all held: webRequest and every built-in origin. */
+  async function holdsTurnOn() {
+    try {
+      return await api.permissions.contains({ permissions: ['webRequest'], origins: BUILTIN_PERMISSION_ORIGINS })
+    } catch {
+      return false
+    }
+  }
+
   // A dev origin or webRequest granted or taken back (the popup, the options page, Chrome's settings).
   api.permissions.onAdded.addListener(async () => {
     await loaded
-    if (!on) return
+    if (!on) {
+      // The popup announced a turn-on and Chrome's prompt closed it: the grant is the user's yes.
+      if (grantUntil !== null && now() <= grantUntil && (await holdsTurnOn())) await startOnce()
+      return
+    }
     listen(true)
     await sync({ inject: true })
   })
@@ -350,23 +369,44 @@ export function createFremdev({
     await sync({ inject: false })
   })().catch(() => undefined).then(() => refresh({ changed: on }))
 
+  async function doStart() {
+    await loaded
+    grantUntil = null
+    if (on) return
+    const saved = await readSaved()
+    patterns = cleanPatterns(saved.patterns)
+    on = true
+    await storage.local.set({ fremdev: { ...saved, on: true } })
+    listen(true)
+    await sync({ inject: true })
+    if (support === 'yes') send(protocol.modulesMsg(modules()))
+    refresh({ changed: true })
+  }
+
+  /** One start at a time, and none while already on. */
+  function startOnce() {
+    starting ??= doStart().finally(() => {
+      starting = null
+    })
+    return starting
+  }
+
   return {
     /** Turns Fremdev on (the popup asked for webRequest and the host permissions first, with the user's click). */
-    async start() {
-      await loaded
-      const saved = await readSaved()
-      patterns = cleanPatterns(saved.patterns)
-      on = true
-      await storage.local.set({ fremdev: { ...saved, on: true } })
-      listen(true)
-      await sync({ inject: true })
-      if (support === 'yes') send(protocol.modulesMsg(modules()))
-      refresh({ changed: true })
+    start: startOnce,
+
+    /**
+     * The popup is about to ask Chrome for Fremdev's permissions. Chrome's prompt may close it before
+     * it can say `fremdevOn`, so a grant landing within GRANT_MS turns Fremdev on here.
+     */
+    expectGrant() {
+      grantUntil = now() + GRANT_MS
     },
 
     /** Turns Fremdev off: no script registered, no row, and the server hears the module is gone. */
     async stop() {
       await loaded
+      grantUntil = null
       const saved = await readSaved()
       on = false
       await storage.local.set({ fremdev: { ...saved, on: false } })

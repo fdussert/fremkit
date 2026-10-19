@@ -900,6 +900,9 @@ chrome.runtime.onMessage.addListener((msg, sender, respond) => {
     case 'ended':
       return reply(ready.then(() => endShare({ notify: true })).then(() => ({ ok: true })))
     // Fremdev switched in the popup (which asked for the host permissions), or its patterns edited.
+    // The popup is about to ask Chrome for Fremdev's permissions; the prompt may close it.
+    case 'expectFremdev':
+      return void fremdev.expectGrant()
     case 'fremdevOn':
       return reply(fremdev.start().then(() => ({ ok: true })))
     case 'fremdevOff':
