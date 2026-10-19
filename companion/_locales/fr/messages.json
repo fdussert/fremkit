@@ -102,14 +102,34 @@
   "errFailed": {
     "message": "L'envoi a échoué"
   },
-  "soon": {
-    "message": "Bientôt"
+  "fremdevDesc": {
+    "message": "Erreurs, requêtes et serveur de vos onglets de dev"
   },
-  "localhostName": {
-    "message": "Localhost"
+  "fremdevToggle": {
+    "message": "Activer ou désactiver Fremdev"
   },
-  "localhostDesc": {
-    "message": "Erreurs et requêtes de vos onglets de dev"
+  "fremdevTabs": {
+    "message": "$value$ onglets surveillés",
+    "placeholders": {
+      "value": {
+        "content": "$1"
+      }
+    }
+  },
+  "fremdevTabsOne": {
+    "message": "1 onglet surveillé"
+  },
+  "fremdevUnsupported": {
+    "message": "Mettez Fremkit à jour pour utiliser Fremdev."
+  },
+  "fremdevDisabled": {
+    "message": "Fremdev est désactivé dans Fremkit (fonctions expérimentales)."
+  },
+  "fremdevNeedsAccess": {
+    "message": "Fremdev a besoin d’accéder à vos onglets de développement."
+  },
+  "fremdevFailed": {
+    "message": "Fremdev n’a pas pu démarrer. Réessayez."
   },
   "settings": {
     "message": "Réglages"
@@ -220,6 +240,35 @@
   },
   "optUnpairHint": {
     "message": "Efface la clé de ce navigateur. L'appareil reste listé dans Réglages → Appareils jusqu'à ce que vous l'y retiriez."
+  },
+  "optDevHosts": {
+    "message": "Vos hôtes de développement"
+  },
+  "optDevHostsBuiltin": {
+    "message": "localhost, 127.0.0.1, [::1], *.localhost et *.test sont toujours inclus, sur tous les ports. Ajoutez ici vos autres serveurs de dev."
+  },
+  "optDevHostsNone": {
+    "message": "Aucun hôte ajouté."
+  },
+  "optDevHostAdd": {
+    "message": "Ajouter"
+  },
+  "optDevHostRemove": {
+    "message": "Retirer"
+  },
+  "optDevHostRemoveLabel": {
+    "message": "Retirer $value$",
+    "placeholders": {
+      "value": {
+        "content": "$1"
+      }
+    }
+  },
+  "optDevHostInvalid": {
+    "message": "Un hôte (bo-dev.example.com) ou un motif avec une * dans le premier mot (*-dev.example.com)."
+  },
+  "optDevHostsUnseen": {
+    "message": "Les requêtes vers d’autres hôtes que vos hôtes de développement ne sont pas vues."
   },
   "optShortcut": {
     "message": "Raccourci Fremplay"

@@ -1,9 +1,10 @@
-// The toolbar popup: the Fremkit header with the link state, the Fremplay card, the modules to come,
+// The toolbar popup: the Fremkit header with the link state, the Fremplay and Fremdev cards,
 // and the pairing view while the browser is not linked. Everything it shows comes from
 // chrome.storage, which the worker writes; it asks the worker to act and re-renders on changes.
 
 import { localize, t } from './i18n.js'
 import { browserName } from './lib/browser.js'
+import { BUILTIN_PERMISSION_ORIGINS, parsePattern } from './lib/devhosts.js'
 import { fremplayBlocked, shareErrorKey } from './lib/errors.js'
 import { cleanFrames, embeddedPlayer, pickVideo, survey } from './lib/video.js'
 
@@ -52,6 +53,9 @@ let starting = false
 let shownError = null
 /** What the last typed code got, until the next try: `wrongCode`, `badCode`, … */
 let codeError = null
+/** Fremdev is being turned on or off; the key of the message under its card, if any. */
+let fremdevBusy = false
+let fremdevError = null
 
 const hostOf = (url) => {
   try {
@@ -171,13 +175,37 @@ function renderFremplay() {
   $('error').textContent = error ?? ''
 }
 
+const fremdevOn = () => local.fremdev?.on === true
+
+/** What Fremkit said of Fremdev (worker `fremdevSupport`): its line under the card, or none. */
+const FREMDEV_NOTES = { unsupported: 'fremdevUnsupported', disabled: 'fremdevDisabled' }
+
+function renderFremdev() {
+  const on = fremdevOn()
+  const note = FREMDEV_NOTES[session.fremdevSupport] ?? null
+  const sw = $('fremdevswitch')
+  sw.setAttribute('aria-checked', String(on))
+  // Greyed while Fremkit cannot take it; still clickable to turn off if it was left on.
+  sw.disabled = fremdevBusy || (Boolean(note) && !on)
+  $('fremdevicon').classList.toggle('on', on && !note)
+  const n = on && !note ? Object.keys(session.devTabs ?? {}).length : null
+  $('fremdevtabs').hidden = n === null
+  $('fremdevtabs').textContent = n === null ? '' : n === 1 ? t('fremdevTabsOne') : t('fremdevTabs', n)
+  $('fremdevnote').hidden = !note
+  $('fremdevnote').textContent = note ? t(note) : ''
+  $('fremdeverror').hidden = !fremdevError
+  $('fremdeverror').textContent = fremdevError ? t(fremdevError) : ''
+}
+
 function render() {
   const paired = isPaired()
   renderLink()
   $('menu').hidden = !paired
   $('pair').hidden = paired
-  if (paired) renderFremplay()
-  else renderPairing()
+  if (paired) {
+    renderFremplay()
+    renderFremdev()
+  } else renderPairing()
 }
 
 async function startHere() {
@@ -208,6 +236,42 @@ $('go').addEventListener('click', () => {
     },
     () => startHere(),
   )
+})
+
+$('fremdevswitch').addEventListener('click', () => {
+  if (fremdevBusy) return
+  fremdevError = null
+  if (fremdevOn()) {
+    // Off keeps webRequest and the dev origins: the next turn-on asks nothing.
+    fremdevBusy = true
+    render()
+    ask('fremdevOff').then(() => {
+      fremdevBusy = false
+      render()
+    })
+    return
+  }
+  // Asked here, within the click (the worker has no gesture): webRequest and every dev origin,
+  // the built-in hosts and the user's patterns, in one prompt.
+  const patterns = Array.isArray(local.fremdev?.patterns) ? local.fremdev.patterns : []
+  const origins = [...new Set([...BUILTIN_PERMISSION_ORIGINS, ...patterns.map((p) => parsePattern(p)?.permission).filter(Boolean)])]
+  const asked = chrome.permissions.request({ permissions: ['webRequest'], origins })
+  fremdevBusy = true
+  render()
+  asked
+    .then(
+      async (granted) => {
+        if (!granted) fremdevError = 'fremdevNeedsAccess'
+        else if (!(await ask('fremdevOn'))?.ok) fremdevError = 'fremdevFailed'
+      },
+      () => {
+        fremdevError = 'fremdevNeedsAccess'
+      },
+    )
+    .finally(() => {
+      fremdevBusy = false
+      render()
+    })
 })
 
 $('stop').addEventListener('click', async () => {

@@ -102,14 +102,34 @@
   "errFailed": {
     "message": "Sending failed"
   },
-  "soon": {
-    "message": "Coming soon"
+  "fremdevDesc": {
+    "message": "Errors, requests and server state of your dev tabs"
   },
-  "localhostName": {
-    "message": "Localhost"
+  "fremdevToggle": {
+    "message": "Turn Fremdev on or off"
   },
-  "localhostDesc": {
-    "message": "Errors and failed requests from your dev tabs"
+  "fremdevTabs": {
+    "message": "$value$ tabs watched",
+    "placeholders": {
+      "value": {
+        "content": "$1"
+      }
+    }
+  },
+  "fremdevTabsOne": {
+    "message": "1 tab watched"
+  },
+  "fremdevUnsupported": {
+    "message": "Update Fremkit to use Fremdev."
+  },
+  "fremdevDisabled": {
+    "message": "Fremdev is turned off in Fremkit (experimental features)."
+  },
+  "fremdevNeedsAccess": {
+    "message": "Fremdev needs access to your development tabs."
+  },
+  "fremdevFailed": {
+    "message": "Fremdev could not start. Try again."
   },
   "settings": {
     "message": "Settings"
@@ -220,6 +240,35 @@
   },
   "optUnpairHint": {
     "message": "Forgets this browser's key. The device stays listed in Settings → Devices until you remove it there."
+  },
+  "optDevHosts": {
+    "message": "Your development hosts"
+  },
+  "optDevHostsBuiltin": {
+    "message": "localhost, 127.0.0.1, [::1], *.localhost and *.test are always included, on any port. Add your other dev servers here."
+  },
+  "optDevHostsNone": {
+    "message": "No host added."
+  },
+  "optDevHostAdd": {
+    "message": "Add"
+  },
+  "optDevHostRemove": {
+    "message": "Remove"
+  },
+  "optDevHostRemoveLabel": {
+    "message": "Remove $value$",
+    "placeholders": {
+      "value": {
+        "content": "$1"
+      }
+    }
+  },
+  "optDevHostInvalid": {
+    "message": "A host (bo-dev.example.com) or a pattern with one * in its first label (*-dev.example.com)."
+  },
+  "optDevHostsUnseen": {
+    "message": "Requests to hosts other than your development hosts are not seen."
   },
   "optShortcut": {
     "message": "Fremplay shortcut"
