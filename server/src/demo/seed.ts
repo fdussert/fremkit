@@ -58,10 +58,11 @@ export const DEMO_SETTINGS: Record<string, Record<string, unknown>> = {
 
 /**
  * Built-ins the demo leaves off its dashboard and gives no provider: Fremplay shows a browser
- * tab sent by the Fremkit Companion extension, which a demo has no way to fake, and it is an
- * experimental feature hidden in the admin until `labs.companion` is on.
+ * tab sent by the Fremkit Companion extension, and Fremdev the dev tabs that extension watches,
+ * which a demo has no way to fake; both are experimental features hidden in the admin until
+ * `labs.companion` is on.
  */
-export const DEMO_LEAVES_OUT: readonly string[] = ['fremplay']
+export const DEMO_LEAVES_OUT: readonly string[] = ['fremplay', 'fremdev']
 
 /** The instance ids and places of the seeded dashboard: two pages that show every built-in but those. */
 const PAGES: { id: string; name: string; items: (Placement & { widgetId: string })[] }[] = [

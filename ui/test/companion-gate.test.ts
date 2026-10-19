@@ -48,6 +48,15 @@ describe('visibleScreen', () => {
   })
 })
 
+describe('turnedOff', () => {
+  it('turnedOff lists fremdev tiles while labs.companion is off', () => {
+    const all = { ...widgets, fd: { widgetId: 'fremdev', showTitle: false, settings: {} } }
+    const off = (companion: boolean) => turnedOff({ labs: { devices: false, companion }, widgets: all } as unknown as Config)
+    expect([...off(false)].sort()).toEqual(['fd', 'fp'])
+    expect(off(true).size).toBe(0)
+  })
+})
+
 describe('the admin canvas with Fremplay off', () => {
   const manifest = { id: 'fremplay', name: { fr: 'Fremplay', en: 'Fremplay' } } as unknown as WidgetManifest
   const page: Page = { id: 'p', name: 'P', items: [at('fp')] }

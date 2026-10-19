@@ -1,6 +1,6 @@
 /**
- * `labs.companion` off is Fremplay off: what the dashboard and the admin do with the Fremplay
- * widgets already placed. The config keeps every one of them where it is, so turning the switch
+ * `labs.companion` off is Fremplay and Fremdev off: what the dashboard and the admin do with the
+ * companion's widgets already placed. The config keeps every one of them where it is, so turning the switch
  * back on brings them back in place; only what is drawn changes.
  *
  * - The dashboard draws none of them (`visibleScreen`): their tiles and bar items go, and a page
@@ -10,14 +10,14 @@
 import type { Config, Screen } from './types'
 
 /** The built-in widgets that belong to the companion. */
-export const COMPANION_WIDGETS: readonly string[] = ['fremplay']
+export const COMPANION_WIDGETS: readonly string[] = ['fremplay', 'fremdev']
 
 export function companionOn(config: Pick<Config, 'labs'> | null | undefined): boolean {
   return config?.labs?.companion === true
 }
 
 /**
- * The instance ids whose widget is off while the switch is: every placed Fremplay. Empty with the
+ * The instance ids whose widget is off while the switch is: every placed Fremplay and Fremdev. Empty with the
  * switch on.
  */
 export function turnedOff(config: Pick<Config, 'labs' | 'widgets'> | null | undefined): Set<string> {
