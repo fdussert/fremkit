@@ -436,9 +436,11 @@ the Dock badges, and supervises the server process.
   and the programs it runs (such as `fremkit-scan`) to the helper as their responsible app, so a
   file-access grant made to "Fremkit Helper" — Files and Folders, or Full Disk Access — is also
   the server's.
-- **Full Disk Access is optional.** Only the disk map benefits from it: without it, the folders
-  macOS protects are shown as unreadable. With it, the helper, the server and every provider can
-  read every file of the account. Grant it only if you want those folders measured.
+- **Full Disk Access is optional.** The disk map and the Messages 2FA provider can benefit from
+  it: without it, protected folders are shown as unreadable and Messages lookup fails. With it,
+  the helper, the server and every provider can read every file of the account. Grant it only if
+  you want those features, and leave the separate Messages 2FA privacy setting off unless you
+  want a built-in widget to read recent incoming messages after an explicit copy request.
 - **It is signed with a self-signed identity** created by
   `scripts/create-signing-identity.sh` ("Fremkit Helper Dev"), because macOS ties TCC grants to
   the signature: without a stable one you would re-approve the permissions after every build.
@@ -465,7 +467,9 @@ These are real and not fixed. They are here so you can decide whether they matte
   [docs/connections.md](docs/connections.md#what-the-tls-does-and-does-not-prove).
 - **A same-user process is out of scope.** It can read your keychain, your config and your
   clipboard without going through Fremkit at all — and the access secret's token file, which is
-  readable by your account by design so the scripts can use it.
+  readable by your account by design so the scripts can use it. If macOS grants Full Disk Access
+  and you enable the separate Messages 2FA privacy setting, it can also ask Fremkit's local
+  command to copy a recent incoming verification code; that setting is off by default.
 - **The widgets' own files are served without the secret** (see above), so a page you visit can
   find out which widgets are installed, though not how they are set up or what they show.
 - **The registry is trusted to be curated, not to be safe.** An installed widget can do

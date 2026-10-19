@@ -10,6 +10,18 @@ Anything that changes what the dashboard, the admin or a widget can do gets a li
 (`package.json`, `server/package.json`, `ui/package.json`, `server/src/version.ts`) and is
 tagged `vX.Y.Z`.
 
+## Unreleased
+
+### Added
+- **Messages verification-code provider.** Adds the local, default-off provider for the companion
+  [Sietch Messages widget PR #16](https://github.com/fdussert/fremkit-sietch/pull/16); the widget
+  is not bundled here, and its trusted integration remains separate. When integrated, codes are
+  written as concealed, temporary, current-Mac-only pasteboard content. The provider schedules a
+  conditional clear after 60 seconds; if cleanup startup or execution fails, it attempts an
+  immediate conditional clear. If macOS refuses both cleanup attempts, the code may remain on the
+  pasteboard. A cleanup startup failure is returned as a generic copy failure; a later cleaner
+  failure is logged without exposing the code.
+
 ## 0.5.0 — 2026-10-19
 
 ### Added

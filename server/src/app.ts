@@ -61,6 +61,7 @@ import { isSafeBackgroundName } from './config/schema.js'
 import { backupRoutes } from './backup/routes.js'
 import { bambuRoutes } from './bambu/routes.js'
 import { createShortcutsProvider } from './providers/shortcuts.js'
+import { createMessages2FAProvider } from './providers/messages-2fa.js'
 import { createServiceStatusProvider } from './providers/service-status.js'
 import { createSystemProvider } from './providers/system.js'
 import { createDiskMapProvider } from './providers/disk-map.js'
@@ -308,6 +309,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     registry.register(createDiskMapProvider({ dataDir: opts.dataDir }))
     // Registered here, not in providers/index.ts, because that is where the config store lives.
     registry.register(createShortcutsProvider(undefined, instances))
+    registry.register(createMessages2FAProvider({ enabled: () => store.get().privacy.messages2FA }))
     registry.register(createServiceStatusProvider({}, instances))
     // A paired device may set only its own screen's brightness: see mayCommandBrightness. Read
     // at command time, so a device moved to another screen (or unpaired) is judged as it is now.

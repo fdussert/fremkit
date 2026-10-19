@@ -35,6 +35,9 @@ function setCodexSource(source: CodexSource, on: boolean): void {
 function setMacmonTemperature(on: boolean): void {
   s.apply((c) => { c.privacy.macmonTemperature = on })
 }
+function setMessages2FA(on: boolean): void {
+  s.apply((c) => { c.privacy.messages2FA = on })
+}
 /**
  * Off, the server leaves the account e-mail out of every snapshot it publishes; this box does
  * not hide it in a widget, it decides whether any widget is sent it at all.
@@ -79,6 +82,10 @@ function setShowAccountEmail(on: boolean): void {
     :label="t('admin.inspector.screen.macmonTemperature')"
     @update:model-value="setMacmonTemperature($event)" />
   <p class="ro">{{ t('admin.inspector.screen.macmonTemperature.hint') }}</p>
+  <BaseCheckbox :model-value="privacy.messages2FA ?? false"
+    :label="t('admin.inspector.screen.messages2FA')"
+    @update:model-value="setMessages2FA($event)" />
+  <p class="ro">{{ t('admin.inspector.screen.messages2FA.hint') }}</p>
   </BaseSection>
 </template>
 

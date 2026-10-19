@@ -144,6 +144,8 @@ export interface Privacy {
   codexHistorySources: ('cli' | 'vscode' | 'exec' | 'appServer' | 'subAgent' | 'subAgentReview' | 'subAgentCompact' | 'subAgentThreadSpawn' | 'subAgentOther' | 'unknown')[]
   /** Use the optional local macmon executable for Apple Silicon CPU temperature. */
   macmonTemperature: boolean
+  /** Permit an explicit local request to read a recent Messages verification code. */
+  messages2FA?: boolean
 }
 
 /**

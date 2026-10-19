@@ -37,6 +37,13 @@ const fr = {
 
   // app.ts — the global request gate
   'provider.invalidPayload': 'charge utile invalide',
+  'messages2fa.disabled': 'activez la recherche de codes Messages dans les réglages de confidentialité',
+  'messages2fa.localOnly': 'disponible uniquement depuis ce Mac',
+  'messages2fa.invalidRequest': 'requête invalide',
+  'messages2fa.rateLimited': 'attendez quelques secondes avant de rechercher un autre code',
+  'messages2fa.readFailed': 'impossible de lire Messages',
+  'messages2fa.noneFound': 'aucun code de vérification récent trouvé',
+  'messages2fa.copyFailed': 'impossible de copier le code',
   'clipboard.unknownEntry': 'entrée inconnue',
   'serviceStatus.invalidHost': 'hôte invalide',
   'serviceStatus.invalidHostPort': 'hôte:port invalide',
@@ -333,6 +340,13 @@ const en: Record<MessageKey, string> = {
   'config.degraded': 'configuration on disk is unreadable: fix data/fremkit.json then restart the server',
 
   'provider.invalidPayload': 'invalid payload',
+  'messages2fa.disabled': 'enable Messages code lookup in Privacy settings',
+  'messages2fa.localOnly': 'available only from this Mac',
+  'messages2fa.invalidRequest': 'invalid request',
+  'messages2fa.rateLimited': 'wait a few seconds before looking up another code',
+  'messages2fa.readFailed': 'Messages could not be read',
+  'messages2fa.noneFound': 'no recent verification code found',
+  'messages2fa.copyFailed': 'the code could not be copied',
   'clipboard.unknownEntry': 'unknown entry',
   'serviceStatus.invalidHost': 'invalid host',
   'serviceStatus.invalidHostPort': 'invalid host:port',

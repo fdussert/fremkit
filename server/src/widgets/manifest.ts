@@ -182,14 +182,14 @@ const ChannelSchema = z.string().min(1).refine((channel) => {
  * `widgets/`, which ships with the server and is reviewed with it. Unlike `RESERVED_CHANNELS`, the
  * schema alone cannot say: it does not know where a manifest came from.
  */
-export const BUILTIN_ONLY_CHANNELS: ReadonlySet<string> = new Set(['disk-map', 'clipboard', 'companion'])
+export const BUILTIN_ONLY_CHANNELS: ReadonlySet<string> = new Set(['disk-map', 'clipboard', 'companion', 'messages-2fa'])
 
 /**
  * Channels any widget may read but only a built-in one may command. `brightness` changes the
  * screen itself: a registry widget may show the level, and the built-in widget, the admin and
  * the helper are what set it. Refused in an installed manifest's `commands`, like the above.
  */
-export const BUILTIN_ONLY_COMMANDS: ReadonlySet<string> = new Set(['brightness'])
+export const BUILTIN_ONLY_COMMANDS: ReadonlySet<string> = new Set(['brightness', 'messages-2fa'])
 
 /**
  * Whether a list of `commands` covers a channel: the literal name, or a `type:*` entry for one

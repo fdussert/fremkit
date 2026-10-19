@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import type { Provider } from '../providers/types.js'
+import { tr } from '../i18n.js'
 import type { Config } from '../config/schema.js'
 import { findInstance, type InstanceLookup } from '../config/instances.js'
 import { resolveServices, type ServiceResult } from '../providers/service-status.js'
@@ -62,6 +63,7 @@ export function createDemoProviders(opts: DemoProviderOptions): Provider[] {
     { channel: 'cleanshot', commands: { run: ACTED } },
     rtkProvider(now),
     { channel: 'shortcuts', commands: { open: ACTED } },
+    { channel: 'messages-2fa', commands: { copyLatest: async () => ({ ok: false, error: tr(undefined, 'messages2fa.noneFound') }) } },
     serviceStatusProvider(now, opts.instances ?? ((id) => findInstance(opts.config(), id))),
   ]
 }

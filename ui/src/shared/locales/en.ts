@@ -404,6 +404,8 @@ export const en: Record<string, string> = {
   'admin.inspector.screen.accountEmail.hint': 'Off by default. Widgets that show an account then get the plan and the sign-in method, never the e-mail address: the server leaves it out of what it sends. Once on, the address is sent to every widget that reads an account channel — a widget installed from the marketplace included — and appears on the screen.',
   'admin.inspector.screen.macmonTemperature': 'Read the CPU temperature with macmon',
   'admin.inspector.screen.macmonTemperature.hint': 'Off by default. macmon is a third-party open-source tool that Fremkit does not install. Install it yourself with brew install macmon. On Apple Silicon, the server runs only /opt/homebrew/bin/macmon or /usr/local/bin/macmon every 10 seconds for one sample. The reading stays on this Mac. If unavailable, Fremkit shows the system temperature when known.',
+  'admin.inspector.screen.messages2FA': 'Allow Messages verification-code lookup',
+  'admin.inspector.screen.messages2FA.hint': 'Off by default, including after an upgrade. When enabled, an eligible built-in widget can request only recent incoming Messages after you tap copy. macOS Full Disk Access is also required; granting it does not enable this setting. The copied code is marked concealed and temporary, stays on this Mac, and Fremkit schedules a conditional clear after 60 seconds. If macOS refuses both the scheduled clear and an immediate retry, the code may remain on the clipboard.',
   'admin.inspector.screen.about': 'About',
   'admin.inspector.screen.about.version': 'Fremkit {version}',
   'admin.inspector.screen.labs': 'Experimental features',
