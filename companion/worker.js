@@ -1,5 +1,6 @@
 // The extension's service worker: pairing, the socket to Fremkit, Fremplay's share (which tab, which
-// frame, its meta), the page controls, the shortcut and the badge. The offscreen document holds the
+// frame, its meta), the page controls, the shortcut and the badge. Fremdev (the dev tabs) lives in
+// fremdev.js; this file only carries it over the socket. The offscreen document holds the
 // capture and the peers; it ticks this worker every second, which keeps it alive while sharing and
 // wakes it again if Chrome stopped it.
 //
@@ -7,6 +8,7 @@
 // pairing waiting for its code in `local`; the share and the link state in `session`.
 
 import { browserName } from './lib/browser.js'
+import { createFremdev } from './fremdev.js'
 import { handshake } from './lib/handshake.js'
 import { grantToReturn } from './lib/grant.js'
 import { closeOutcome, refusalOf } from './lib/link.js'
@@ -255,8 +257,9 @@ let presenceUntil = 0
 let idleTimer = null
 const readyWaiters = new Set()
 
-/** The socket is wanted while sharing, and for a while after the popup opened. */
-const wanted = () => Boolean(local.token) && (Boolean(session.share) || Date.now() < presenceUntil)
+/** The socket is wanted while sharing, while Fremdev watches a dev tab, and for a while after the popup opened. */
+const wanted = () =>
+  Boolean(local.token) && (Boolean(session.share) || fremdev.active() || Date.now() < presenceUntil)
 
 function stayFor(ms) {
   presenceUntil = Math.max(presenceUntil, Date.now() + ms)
@@ -270,8 +273,8 @@ function armIdle() {
     idleTimer = null
     if (!wanted()) closeSocket()
     // Still wanted by the presence window alone: look again when it ends. A share re-arms this
-    // when it ends (`endShare`), so it needs no timer while it runs.
-    else if (!session.share) armIdle()
+    // when it ends (`endShare`), and Fremdev when it stops watching, so neither needs a timer.
+    else if (!session.share && !fremdev.active()) armIdle()
   }, idleDelay(presenceUntil, Date.now()))
 }
 
@@ -299,7 +302,8 @@ function connect() {
     token: local.token,
     hello: () => {
       const share = session.share
-      return protocol.hello(local.token, local.installId, share?.accepted ? share : undefined)
+      // `modules` is for a server that speaks Fremdev; Fremkit 0.5.0's hello drops the key unread.
+      return protocol.hello(local.token, local.installId, share?.accepted ? share : undefined, fremdev.modules())
     },
     onImpostor: () => impostor(socket),
   })
@@ -457,6 +461,18 @@ function whenGreeted(timeoutMs) {
   })
 }
 
+// --- Fremdev ----------------------------------------------------------------------------------
+
+/** Opens the socket for Fremdev when it wants one and none is coming; closes it once nothing wants it. */
+function fremdevWantsSocket() {
+  if (!local.token) return
+  if (!wanted()) return armIdle()
+  // While a retry is armed the backoff stands; after a give-up the next dev event starts again.
+  if (!ws && !retryTimer) connect()
+}
+
+const fremdev = createFremdev({ send, wantSocket: () => void ready.then(fremdevWantsSocket) })
+
 // --- Fremplay ---------------------------------------------------------------------------------
 
 /** sessionId → resolver of the start waiting for the server's answer. */
@@ -484,6 +500,7 @@ async function onServerMessage(msg) {
       readyWaiters.clear()
       // A start that was waiting on the socket (or lost it before the answer) announces itself now.
       if (share && !share.accepted) send(protocol.started(share.sessionId, share.meta))
+      fremdev.onReady(msg)
       return
     case 'tab.accepted':
       if (share?.sessionId !== msg.sessionId) return
@@ -525,6 +542,9 @@ async function onServerMessage(msg) {
       return
     case 'tab.control':
       return onControl(msg)
+    case 'dev.focus':
+    case 'dev.clear':
+      return fremdev.onServer(msg)
   }
 }
 
@@ -822,6 +842,9 @@ chrome.permissions.onAdded.addListener(async (permissions) => {
 const OWN = { id: chrome.runtime.id, base: chrome.runtime.getURL(''), tabPages: [chrome.runtime.getURL('options.html')] }
 
 chrome.runtime.onMessage.addListener((msg, sender, respond) => {
+  // The one message from a page: Fremdev's relay. fremdev.js checks the sender is our content
+  // script in a dev tab's top frame, and rebuilds the event from its kind and text.
+  if (msg?.target === 'worker' && msg.type === 'dev.event') return void fremdev.onPageEvent(msg, sender)
   if (!isOwnContext(sender, OWN) || msg?.target !== 'worker') return
   const reply = (promise) => {
     promise.then(respond, (e) => respond({ ok: false, error: 'failed', detail: String(e?.message ?? e) }))
@@ -857,5 +880,12 @@ chrome.runtime.onMessage.addListener((msg, sender, respond) => {
     // The capture ended on Chrome's side: the tab closed, or Chrome stopped it.
     case 'ended':
       return reply(ready.then(() => endShare({ notify: true })).then(() => ({ ok: true })))
+    // Fremdev switched in the popup (which asked for the host permissions), or its patterns edited.
+    case 'fremdevOn':
+      return reply(fremdev.start().then(() => ({ ok: true })))
+    case 'fremdevOff':
+      return reply(fremdev.stop().then(() => ({ ok: true })))
+    case 'fremdevPatterns':
+      return reply(fremdev.patternsChanged().then(() => ({ ok: true })))
   }
 })
