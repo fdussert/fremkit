@@ -30,12 +30,16 @@ describe('the companion extension', () => {
 
   it('the manifest asks for exactly the permitted permissions and no <all_urls>', () => {
     expect(manifest.manifest_version).toBe(3)
-    expect([...manifest.permissions].sort()).toEqual(['activeTab', 'offscreen', 'scripting', 'storage', 'tabCapture'])
+    // Fremdev watches dev tabs' failed requests (webRequest) and their dev server going away (webNavigation).
+    expect([...manifest.permissions].sort()).toEqual(['activeTab', 'offscreen', 'scripting', 'storage', 'tabCapture', 'webNavigation', 'webRequest'])
     // Fremkit's port only (worker.js PORT): not every local server on the Mac.
     expect(manifest.host_permissions).toEqual(['http://127.0.0.1:4242/*'])
     expect([...manifest.optional_host_permissions].sort()).toEqual(['http://*/*', 'https://*/*'])
     expect(manifest.optional_permissions).toBeUndefined()
+    // Fremdev's hooks are registered at run time on the dev origins the user granted, never declared.
     expect(manifest.content_scripts).toBeUndefined()
+    expect(manifest.web_accessible_resources).toBeUndefined()
+    expect(manifest.externally_connectable).toBeUndefined()
     expect(JSON.stringify(manifest)).not.toContain('<all_urls>')
     expect(manifest.background).toEqual({ service_worker: 'worker.js', type: 'module' })
     expect(manifest.action.default_popup).toBe('popup.html')
@@ -44,6 +48,28 @@ describe('the companion extension', () => {
     expect(manifest.commands['fremplay-toggle'].suggested_key.default).toBe('Ctrl+Shift+F')
     // Not ⌥: on a Mac, Option+Shift+letter types a character, and the browser let the page have it.
     expect(manifest.commands['fremplay-toggle'].suggested_key.mac).toBe('MacCtrl+Shift+F')
+  })
+
+  it('is version 0.2.0, the first with Fremdev', () => {
+    expect(manifest.version).toBe('0.2.0')
+  })
+
+  it('hook and relay share the hot-reload prefixes', () => {
+    // hook.js runs in the page as a classic script and cannot import lib/devlog.js: it keeps a copy.
+    const lists = (text: string) => {
+      const out: Record<string, string[]> = {}
+      for (const m of text.matchAll(/const (DOWN|UP|HOT) = \[([\s\S]*?)\]$/gm)) {
+        out[m[1]] = [...m[2].matchAll(/'((?:[^'\\]|\\.)*)'/g)].map((s) => s[1])
+      }
+      return out
+    }
+    const hook = lists(read('fremdev/hook.js'))
+    const devlog = lists(read('lib/devlog.js'))
+    expect(Object.keys(devlog).sort()).toEqual(['DOWN', 'HOT', 'UP'])
+    for (const name of ['DOWN', 'UP', 'HOT']) {
+      expect(devlog[name].length, name).toBeGreaterThan(0)
+      expect(hook[name], name).toEqual(devlog[name])
+    }
   })
 
   it("the manifest's key is present and gives the store's extension id", () => {

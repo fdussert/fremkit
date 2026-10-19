@@ -67,6 +67,14 @@ export function reduce(tab, event, now) {
       return { ...tab, server: event.state === 'down' ? 'down' : 'up', activity: now }
     case 'title':
       return { ...tab, title: event.title ?? '' }
+    case 'count': {
+      // Errors the relay counted over its rate limit: they add up, the last text stays.
+      const n = count(event.n)
+      if (n === 0) return tab
+      const e = tab.errors
+      const add = (v) => Math.min(MAX_COUNT, v + n)
+      return { ...tab, errors: { total: add(e.total), open: add(e.open), last: e.last }, activity: now }
+    }
     case 'clear':
       return { ...tab, errors: tally(), requests: tally(), activity: now }
     default:

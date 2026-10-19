@@ -135,6 +135,15 @@ describe('devtabs', () => {
     expect(titled.activity).toBe(tab.activity)
   })
 
+  it('adds the errors the relay counted over its limit, keeping the last text', () => {
+    let tab = reduce(base(), { kind: 'error', text: 'first' }, 200)
+    tab = reduce(tab, { kind: 'count', n: 990 }, 300)
+    expect(tab.errors).toMatchObject({ total: 991, open: 991, last: { text: 'first', at: 200 } })
+    expect(tab.activity).toBe(300)
+    expect(reduce(tab, { kind: 'count', n: 5_000_000 }, 400).errors).toMatchObject({ total: 1_000_000, open: 1_000_000 })
+    expect(reduce(tab, { kind: 'count', n: -3 }, 500)).toBe(tab)
+  })
+
   it('puts the latest 32 first, in the server shape', () => {
     const tabs = Array.from({ length: 40 }, (_, i) => reduce(emptyTab(i, `http://localhost:${3000 + i}/`, `App ${i}`, i), { kind: 'error', text: 'x' }, 1000 + i))
     const rows = wireTabs(tabs)
