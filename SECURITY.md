@@ -395,11 +395,17 @@ What it holds and what it can do:
   (`ownKeys`, `getOwnPropertyDescriptor`, `getPrototypeOf`) may run, within the walk budget. Pages already loaded keep an inert hook after Fremdev is turned off until they reload.
   The relay checks nothing the worker does not check again: the worker decides whether a URL is a
   dev URL.
-- *What leaves the tab:* a kind and text clipped to 300 characters; request URLs as their path only,
-  never query or fragment; nothing from bodies, headers or cookies. An error's own message is free
-  text, sent as the page logged it (clipped), so one that quotes a secret shows it on the Edge. Fremkit's own ports (4242, 4243) are never watched.
+- *What leaves the tab:* the tab's row names it by the page's title (or its host:port when it has
+  none, clipped to 120 characters) and its host:port; then a kind and text clipped to 300
+  characters; request URLs as their path only, never query or fragment; nothing from bodies,
+  headers or cookies. The title and an error's own message are free text, sent as the page set or
+  logged them (clipped), so one that quotes a secret shows it on the Edge. Fremkit's own ports
+  (4242, 4243) are never watched.
 - *Server side.* Every `dev.tabs`, `modules` and `ping` message is validated by a strict schema with
-  bounded sizes, and publishing is capped at four per second per install. `companion:dev` is in
+  bounded sizes, and publishing is capped at four per second per install. After hello, one that
+  fails is dropped (a `dev.tabs` row by row, keeping the rows that parse) rather than closing the
+  socket, which also carries Fremplay's share; every other message, and the handshake, is still
+  refused with 1008. Nothing of a dropped message is logged but a count. `companion:dev` is in
   `LOCAL_ONLY_CHANNELS` and `BUILTIN_ONLY_CHANNELS`: paired devices and registry widgets never get
   it, and the widget's focus and clear commands are loopback-only and name only a tab id the install
   reported. Fremdev is negotiated by capability with the protocol still at 2, so it widens nothing

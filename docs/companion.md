@@ -209,12 +209,13 @@ requests (network errors and HTTP 4xx/5xx) and main-frame loads that fail becaus
 down. Not counted: `favicon.ico`, hot-update traffic (`/@vite/*`, `/__webpack_hmr`,
 `/sockjs-node/*`, `*.hot-update.*`) and aborted requests.
 
-What goes to Fremkit, over the extension's authenticated socket to `127.0.0.1:4242`, is per tab: its
-app name, counters, and for each recent event a **kind and a text clipped to 300 characters**; for a
-request, the HTTP status and the URL's **path only**: request URLs never go with their query or
-fragment, and nothing is taken from bodies, headers or cookies. An error's own message is free text
-and goes as the page logged it, clipped to 300 characters, so an error that quotes a token would
-show it on the Edge. Error events are forwarded at most ten per second per tab (the
+What goes to Fremkit, over the extension's authenticated socket to `127.0.0.1:4242`, is per tab: the
+**page's title** (or its host:port when it has none, clipped to 120 characters) and its
+**host:port**, counters, and for each recent event a **kind and a text clipped to 300 characters**;
+for a request, the HTTP status and the URL's **path only**: request URLs never go with their query
+or fragment, and nothing is taken from bodies, headers or cookies. The title and an error's own
+message are free text and go as the page set or logged them, clipped, so a title or an error that
+quotes a token would show it on the Edge. Error events are forwarded at most ten per second per tab (the
 counter keeps counting) and the tab list at most twice a second. Nothing leaves your Mac, and
 nothing is sent while Fremdev is off.
 
@@ -242,7 +243,25 @@ the page's scripts, on dev hosts only. It is built not to disturb the page:
 Rows are published on `companion:dev`, a channel of its own so that Fremplay does not replan at
 every update. It is **local-only and built-in-only**, like `companion`: paired devices and registry
 widgets never receive it. An extension's reports are bounded and validated by a strict schema, and
-an install's rows are published at most four times a second.
+an install's rows are published at most four times a second. A report the server cannot read costs
+itself, never the socket (which also carries Fremplay's share): a row outside the schema is left
+out and the others are kept.
+
+A browser stays listed in the widget once it has connected since Fremkit started, even while its
+socket is closed: the extension closes it whenever no dev tab is open, and the widget then says
+*No development tab open* rather than *Extension offline*, which it says only while no linked
+browser has connected yet. On a paired iPad the widget says *Fremdev only shows on the Mac's Edge*:
+the channel never reaches a paired device.
+
+### Reconnection
+
+While a dev tab is open the extension keeps its socket, and pings every 20 seconds. If Fremkit is
+not running, it tries again at each of those ticks (and on a dev event, at most every 15 seconds),
+with no give-up, for as long as a dev tab stays open; these attempts never put a warning on the
+toolbar icon. A Fremkit that answers but does not speak Fremdev
+(0.5.0) or has it off is asked again on the next dev event, at most every 15 seconds, and after
+three such answers in a row at most every 5 minutes; opening the popup, or a Fremkit that says yes,
+goes back to the faster pace.
 
 ### Versions
 
@@ -278,7 +297,8 @@ Fremdev needs a newer Fremkit; an old extension with a newer Fremkit simply has 
   refused this video connection* until the next share, without asking again; the share goes on for
   any other widget watching it, and the toolbar icon flashes **!**. Send the video again.
 - *"Fremplay and Fremkit speak different versions: update Fremkit"*
-- *"Fremdev needs a newer Fremkit"* (popup) — the Fremkit you run predates Fremdev; Fremplay still works.
+- *"Update Fremkit to use Fremdev."* (popup; in French *"Mettez Fremkit à jour pour utiliser
+  Fremdev."*) — the Fremkit you run predates Fremdev; Fremplay still works.
 - *The Fremdev widget shows no tab* — Fremdev is off in the popup, the tab's host is not a dev host
-  (add it on the options page), Chrome has not granted its origin, or the page loaded before you
-  turned Fremdev on (reload it).
+  (add it on the options page), or Chrome has not granted its origin. Tabs already open are hooked
+  when you turn Fremdev on or add their host: no reload is needed.
