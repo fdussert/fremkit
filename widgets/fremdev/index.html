@@ -94,7 +94,8 @@
     down: { fr: 'serveur arrêté', en: 'server down' },
     noAnswer: { fr: 'sans réponse', en: 'no answer' },
     clear: { fr: 'Effacer', en: 'Clear' },
-    show: { fr: 'Afficher l’onglet', en: 'Show the tab' }
+    show: { fr: 'Afficher l’onglet', en: 'Show the tab' },
+    elsewhere: { fr: 'Fremdev ne s\'affiche que sur l\'Edge du Mac.', en: 'Fremdev only shows on the Mac\'s Edge.' }
   }
 
   var FD = FremkitFremdev
@@ -103,6 +104,16 @@
   Fremkit.whenReady(function () {
     var $ = function (id) { return document.getElementById(id) }
     var stage = $('stage'), list = $('list')
+
+    // Not this Mac (a paired iPad): the channel is refused there. One sentence, nothing subscribed.
+    if (!FD.onMac(location)) {
+      $('sum').classList.add('idle')
+      var say = function () { $('msg').textContent = Fremkit.t(L.elsewhere) }
+      Fremkit.onLocale(say)
+      say()
+      return
+    }
+
     var snap = null
     var SVG = 'http://www.w3.org/2000/svg'
     /** As long as the flash animation: a row erroring at every snapshot flashes once per this. */

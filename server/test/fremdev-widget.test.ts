@@ -18,6 +18,7 @@ interface Logic {
   lightOf(tab: unknown): Light
   rowsOf(snapshot: unknown): Row[]
   summaryOf(snapshot: unknown): { light: Light; errors: number }
+  onMac(loc: unknown): boolean
 }
 
 async function loadLogic(): Promise<Logic> {
@@ -76,6 +77,14 @@ describe('the fremdev manifest', () => {
     expect(at).toBeGreaterThan(-1)
     expect(at).toBeLessThan(html.indexOf('FremkitFremdev'))
     expect(html).not.toMatch(/innerHTML|outerHTML|insertAdjacentHTML|document\.write/)
+  })
+
+  it('says where it shows, in both languages, before subscribing to anything', async () => {
+    const html = await readFile(fileURLToPath(new URL('../../widgets/fremdev/index.html', import.meta.url)), 'utf8')
+    expect(html).toContain("elsewhere: { fr: 'Fremdev ne s\\'affiche que sur l\\'Edge du Mac.', en: 'Fremdev only shows on the Mac\\'s Edge.' }")
+    const check = html.indexOf('if (!FD.onMac(location))')
+    expect(check).toBeGreaterThan(0)
+    expect(check).toBeLessThan(html.indexOf('Fremkit.subscribe(CHANNEL'))
   })
 })
 

@@ -76,5 +76,16 @@
     return { light: light, errors: errors }
   }
 
-  root.FremkitFremdev = { stateOf: stateOf, rowsOf: rowsOf, lightOf: lightOf, summaryOf: summaryOf }
+  /**
+   * Whether this frame is drawn on this Mac. A paired device's page comes over the pinned TLS
+   * listener (https), this Mac's over plain loopback http, and the frame shares the page's
+   * address (the host's `isRemotePage` makes the same test). The hub refuses `companion:dev` to a
+   * paired device: there, the widget says where it shows rather than wait for a snapshot.
+   * Fremplay asks WebRTC instead; Fremdev gets no WebRTC to ask.
+   */
+  function onMac(loc) {
+    return !!loc && loc.protocol !== 'https:'
+  }
+
+  root.FremkitFremdev = { stateOf: stateOf, rowsOf: rowsOf, lightOf: lightOf, summaryOf: summaryOf, onMac: onMac }
 })(globalThis)
