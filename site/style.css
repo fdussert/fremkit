@@ -386,6 +386,10 @@ details p { margin: 0 0 22px; color: var(--muted); max-width: 640px; }
 .card.addon > .addon-text { max-width: 560px; }
 .addon-shot { margin: 0; border-radius: 14px; overflow: hidden; border: 1px solid var(--border-strong); background: var(--bg); box-shadow: 0 30px 60px -30px rgba(0,0,0,.9); }
 .addon-shot img { display: block; width: 100%; height: auto; }
+.card.addon.companion { --shot-w: 480px; }
+.addon-shot .credit { padding: 6px 10px; font: 400 11px/1.4 var(--mono); color: var(--dim); border-top: 1px solid var(--border); }
+.addon-shot .credit a { color: var(--muted); }
+.addon-shot .credit .nw { white-space: nowrap; }
 .addon-shot.ipad { border-radius: 20px; border-width: 6px; border-color: #1d2127; }
 .addon-text .tag { margin-top: 0; }
 .addon-text .checks { margin: 20px 0 24px; }
