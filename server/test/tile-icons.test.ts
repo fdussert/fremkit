@@ -24,7 +24,7 @@ beforeEach(async () => {
   dir = await mkdtemp(join(tmpdir(), 'fremkit-tile-icons-'))
   await mkdir(join(dir, 'widgets'), { recursive: true })
   await mkdir(join(dir, 'data'), { recursive: true })
-  app = await buildApp({ dataDir: join(dir, 'data'), widgetsDir: join(dir, 'widgets') })
+  app = await buildApp({ accessToken: null, dataDir: join(dir, 'data'), widgetsDir: join(dir, 'widgets') })
 })
 afterEach(async () => { await app.close(); await rm(dir, { recursive: true, force: true }) })
 
