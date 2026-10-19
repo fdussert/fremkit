@@ -2,27 +2,14 @@
 // development hosts, and the Fremplay shortcut (changed on the browser's own shortcut page).
 
 import { localize, t } from './i18n.js'
-import { BUILTIN_PERMISSION_ORIGINS, parsePattern } from './lib/devhosts.js'
+import { parsePattern, releasableOrigin } from './lib/devhosts.js'
 
 localize()
 
 const $ = (id) => document.getElementById(id)
 const ask = (type) => chrome.runtime.sendMessage({ target: 'worker', type }).catch(() => null)
 
-/** Never released when a pattern goes: Fremdev's built-in hosts and Fremkit's own port. */
-const KEPT = new Set([...BUILTIN_PERMISSION_ORIGINS, 'http://127.0.0.1:4242/*'])
 let hostsBusy = false
-
-/**
- * Whether two `*://host/*` permissions cover a common host. Removing one would take the other's
- * hosts with it when it covers them, so either way the removal waits for the last pattern.
- */
-function overlaps(a, b) {
-  const host = (o) => /^\*:\/\/([^/]+)\/\*$/.exec(o)?.[1] ?? o
-  const [ha, hb] = [host(a), host(b)]
-  const under = (wild, h) => wild.startsWith('*.') && (h.replace(/^\*\./, '') === wild.slice(2) || h.endsWith(wild.slice(1)))
-  return ha === hb || under(ha, hb) || under(hb, ha)
-}
 
 async function readFremdev() {
   const { fremdev } = await chrome.storage.local.get('fremdev')
@@ -139,10 +126,13 @@ async function removeHost(pattern) {
     const rest = patterns.filter((p) => p !== pattern)
     await savePatterns(saved, rest)
     // Its origin goes back unless another pattern still needs it (`*-dev.example.com` and
-    // `*-qa.example.com` share `*://*.example.com/*`) or it is one the extension keeps.
-    const permission = parsePattern(pattern)?.permission
-    const needed = rest.some((p) => overlaps(permission, parsePattern(p)?.permission ?? ''))
-    if (permission && !needed && !KEPT.has(permission)) await chrome.permissions.remove({ origins: [permission] }).catch(() => false)
+    // `*-qa.example.com` share `*://*.example.com/*`), it covers another grant (a Fremplay player's),
+    // or it is one the extension keeps (lib/devhosts.js `releasableOrigin`).
+    const { origins: held = [] } = await chrome.permissions.getAll()
+    const release = releasableOrigin(pattern, rest, held)
+    // A failed removal is left alone on purpose: the pattern is already gone, so Fremdev no longer
+    // watches that host, and the leftover grant shows in Chrome's site settings for the user to drop.
+    if (release) await chrome.permissions.remove({ origins: [release] }).catch(() => false)
   } finally {
     hostsBusy = false
     render()

@@ -108,3 +108,35 @@ export function inOrigins(url, origins) {
     return host === h
   })
 }
+
+/** The origins never released when a pattern goes: Fremdev's built-in hosts and Fremkit's own port. */
+const KEPT_ORIGINS = new Set([...BUILTIN_PERMISSION_ORIGINS, 'http://127.0.0.1:4242/*'])
+
+const hostOf = (origin) => /^(?:\*|https?):\/\/([^/]+)\/\*$/.exec(origin)?.[1] ?? null
+
+/**
+ * Whether two `scheme://host/*` origins cover a common host. Chrome takes back every host a removed
+ * origin covers, so removing either one could take the other's hosts with it.
+ */
+function overlaps(a, b) {
+  const [ha, hb] = [hostOf(a), hostOf(b)]
+  if (!ha || !hb) return false
+  if (ha === '*' || hb === '*') return true
+  const under = (wild, h) => wild.startsWith('*.') && (h.replace(/^\*\./, '') === wild.slice(2) || h.endsWith(wild.slice(1)))
+  return ha === hb || under(ha, hb) || under(hb, ha)
+}
+
+/**
+ * The origin to give back when `pattern` is removed, or null to keep it: kept while a pattern still
+ * listed (`rest`) overlaps it, while it covers another origin the extension holds (`held`, from
+ * `chrome.permissions.getAll()`: a Fremplay player's, say), and always for a built-in one.
+ */
+export function releasableOrigin(pattern, rest, held) {
+  const permission = parsePattern(pattern)?.permission
+  if (!permission || KEPT_ORIGINS.has(permission)) return null
+  const others = (rest ?? []).map((p) => parsePattern(p)?.permission).filter(Boolean)
+  if (others.some((o) => overlaps(permission, o))) return null
+  const elsewhere = (held ?? []).filter((o) => o !== permission && !KEPT_ORIGINS.has(o) && !others.includes(o))
+  if (elsewhere.some((o) => overlaps(permission, o))) return null
+  return permission
+}
