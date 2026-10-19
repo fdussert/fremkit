@@ -254,6 +254,9 @@ export function createFremdev({
   async function request(d, status, error) {
     await loaded
     if (!on || !validId(d.tabId)) return
+    // Only requests to dev hosts, inside a granted origin: the tab's own checks. A call to another
+    // domain, or to Fremkit's ports, is none of Fremdev's business.
+    if (!isDev(d.url)) return
     if (d.type === 'main_frame') {
       if (d.frameId !== 0 && d.frameId !== undefined) return
       // The top frame's own load: an answer is the dev server up, a refusal is it gone.

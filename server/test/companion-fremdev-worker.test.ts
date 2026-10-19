@@ -237,6 +237,19 @@ describe('companion/fremdev.js', () => {
     expect(row.requests.last).toMatchObject({ path: '/api/z', status: 0 })
   })
 
+  it('counts only requests to dev hosts: not Fremkit, not another domain', async () => {
+    const f = await makeFremdev()
+    await f.fremdev.onPageEvent({ kind: 'hot' }, devSender())
+    const [onCompleted] = f.api.webRequest.onCompleted.addListener.mock.calls.at(-1)
+    onCompleted({ tabId: 7, url: 'http://127.0.0.1:4242/api', statusCode: 500, type: 'xmlhttprequest' })
+    onCompleted({ tabId: 7, url: 'https://cdn.example.org/x', statusCode: 500, type: 'xmlhttprequest' })
+    await f.later()
+    expect(f.rows()['7'].requests.total).toBe(0)
+    onCompleted({ tabId: 7, url: 'http://localhost:3000/api/own', statusCode: 500, type: 'xmlhttprequest' })
+    await f.later()
+    expect(f.rows()['7'].requests.total).toBe(1)
+  })
+
   it("tells the dev server's state from the top frame's own load", async () => {
     const f = await makeFremdev()
     const [onCompleted] = f.api.webRequest.onCompleted.addListener.mock.calls.at(-1)
