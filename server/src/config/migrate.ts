@@ -146,24 +146,16 @@ export function migrateConfig(raw: unknown): Config {
 }
 
 /**
- * Decides the `labs` switches a v4 config was written without, one by one.
- *
- * `devices`: a fresh install starts with iPad pairing and extra screens hidden. But a config that
- * already has more than one screen, or a screen made for a paired device, was written by someone
- * using them, and an upgrade that hid their screens' selector would be a regression — so that case
- * starts on. Pairing itself lives in `devices.json`, which this pure function does not read; a
- * paired device shows a device screen, which is what is checked here.
+ * Decides the `labs` switch a v4 config was written without.
  *
  * `companion`: on when a Fremplay widget is already placed, since that config was written by
- * someone using the browser extension; off otherwise.
- *
- * A switch the file already carries is left exactly as written.
+ * someone using the browser extension; off otherwise. A switch the file already carries is left
+ * exactly as written.
  */
 export function adoptLabs(config: Config, raw: unknown): Config {
   const stated = (raw as { labs?: unknown } | null)?.labs
   const has = (key: string): boolean => !!stated && typeof stated === 'object' && key in stated
   const labs = { ...config.labs }
-  if (!has('devices')) labs.devices = config.screens.length > 1 || config.screens.some((x) => x.kind === 'device')
   if (!has('companion')) labs.companion = Object.values(config.widgets).some((w) => w.widgetId === 'fremplay')
   return { ...config, labs }
 }

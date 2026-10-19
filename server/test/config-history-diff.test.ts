@@ -78,8 +78,8 @@ describe('summarizeChange', () => {
     expect(isEmptySummary(s)).toBe(false)
   })
 
-  it('counts either experimental features switch as a change', () => {
-    for (const key of ['devices', 'companion'] as const) {
+  it('counts the experimental features switch as a change', () => {
+    for (const key of ['companion'] as const) {
       const after = base()
       after.labs = { ...after.labs, [key]: !after.labs[key] }
       expect(summarizeChange(base(), after).other, key).toBe(true)

@@ -1,9 +1,10 @@
 /**
  * @vitest-environment jsdom
  *
- * iPad pairing and extra screens as an experimental feature: what the admin hides while
- * `labs.devices` is off (the Devices section, the screen selector and its "Add a screen" for a
- * single screen), the seven clicks on the version that reveal the switch, and the switch itself.
+ * The admin's experimental features: iPad pairing and extra screens, which are not one any more
+ * (the Devices pane, the screen selector and its "Add a screen" on a fresh config), the browser
+ * companion behind `labs.companion`, the seven clicks on the version that reveal the switches, and
+ * the switches themselves.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
@@ -37,12 +38,12 @@ const screen = (id: string, kind: Screen['kind'] = 'edge'): Screen => ({
   nav: [], pages: [{ id: 'home', name: 'Home', items: [] }],
 })
 
-function config(devices: boolean | undefined, count: number): Config {
+function config(companion: boolean | undefined, count: number): Config {
   return {
     version: 4,
     connections: [], secrets: { backend: 'file' }, locale: 'en',
     privacy: { claudeAccountUsage: false, showAccountEmail: false, codexAccount: false, codexHistorySources: [], macmonTemperature: false },
-    ...(devices === undefined ? {} : { labs: { devices } }),
+    ...(companion === undefined ? {} : { labs: { companion } }),
     widgets: {},
     screens: [screen('edge'), ...(count > 1 ? [screen('kitchen', 'device')] : [])],
   }
@@ -63,9 +64,9 @@ const stubs = {
   DevicesSection: true, NavWidgetsEditor: true, BackgroundPicker: true, DiagnosticsSection: true, HistorySection: true,
 }
 
-function seed(devices: boolean | undefined, count: number): void {
+function seed(companion: boolean | undefined, count: number): void {
   const s = useAdminStore()
-  s.state.config = config(devices, count)
+  s.state.config = config(companion, count)
   s.state.manifests = {}
   s.state.toast = ''
   s.selectScreen('edge')
@@ -89,94 +90,44 @@ afterEach(async () => {
   vi.unstubAllGlobals()
 })
 
-describe('what the flag shows', () => {
-  it('reads an absent flag as off', () => {
-    expect(labs.labsDevices(config(undefined, 1))).toBe(false)
-    expect(labs.labsDevices(null)).toBe(false)
-  })
-
-  for (const devices of [false, true]) {
+describe('iPad pairing and extra screens, for everyone', () => {
+  for (const labsKey of [undefined, false]) {
     for (const count of [1, 2]) {
-      // Intended: someone with several screens keeps seeing them — the selector *and* "Add a
-      // screen" — whatever the flag says. The owner's rule; only a single screen hides them.
-      const selector = devices || count > 1
-      it(`flag ${devices ? 'on' : 'off'}, ${count} screen(s): selector and Add a screen ${selector ? 'shown' : 'hidden'}${!devices && count > 1 ? ' (several screens keep both, by design)' : ''}, Devices ${devices ? 'shown' : 'hidden'}`, async () => {
-        seed(devices, count)
-        expect(labs.showsScreens(config(devices, count))).toBe(selector)
-
+      it(`labs ${labsKey === undefined ? 'absent' : 'all off'}, ${count} screen(s): selector, Add a screen and Devices shown`, async () => {
+        seed(labsKey, count)
         const sel = mount(ScreenSelector, { attachTo: document.body, global: { stubs } })
-        expect(sel.find('nav.screens').exists()).toBe(selector)
-        expect(sel.find('button.add').exists()).toBe(selector)
+        expect(sel.find('nav.screens').exists()).toBe(true)
+        expect(sel.find('button.add').exists()).toBe(true)
         sel.unmount()
 
         const insp = settings()
         await flushPromises()
-        expect(hasDevices(insp)).toBe(devices)
+        expect(hasDevices(insp)).toBe(true)
         insp.unmount()
       })
     }
   }
-})
 
-describe('the Devices section while pairing is in use', () => {
-  it('reads the status: listener on, or any paired device', () => {
-    expect(labs.pairingInUse(null)).toBe(false)
-    expect(labs.pairingInUse(status())).toBe(false)
-    expect(labs.pairingInUse(status({ enabled: true }))).toBe(true)
-    expect(labs.pairingInUse(status({ devices: [paired] }))).toBe(true)
-    expect(labs.showsDevices(config(false, 1), status())).toBe(false)
-    expect(labs.showsDevices(config(true, 1), status())).toBe(true)
-    expect(labs.showsDevices(config(false, 1), status({ devices: [paired] }))).toBe(true)
-  })
-
-  for (const [name, answer, shown] of [
-    ['the listener is on', status({ enabled: true }), true],
-    ['a device is paired with the listener off', status({ devices: [paired] }), true],
-    ['pairing is off and nothing is paired', status(), false],
-  ] as const) {
-    it(`flag off, ${name}: Devices ${shown ? 'shown' : 'hidden'}`, async () => {
-      getDevices.mockResolvedValue(answer)
-      seed(false, 1)
-      const wrapper = settings()
-      await flushPromises()
-      expect(getDevices).toHaveBeenCalled()
-      expect(hasDevices(wrapper)).toBe(shown)
-      wrapper.unmount()
-    })
-  }
-
-  it('is left out of the settings search while hidden', async () => {
-    seed(false, 1)
+  it('finds the Devices pane in the settings search on a fresh config', async () => {
+    seed(undefined, 1)
     const wrapper = settings()
     await flushPromises()
     settingsQuery.value = 'iPad'
     await flushPromises()
-    expect(wrapper.find('[data-section="screen.devices"]').exists()).toBe(false)
+    expect(wrapper.find('[data-section="screen.devices"]').exists()).toBe(true)
     wrapper.unmount()
     settingsQuery.value = ''
-  })
-
-  it('stays while the panel is open after the last device is unpaired', async () => {
-    getDevices.mockResolvedValue(status({ devices: [paired] }))
-    seed(false, 1)
-    const wrapper = settings()
-    await flushPromises()
-    expect(hasDevices(wrapper)).toBe(true)
-    useDevices().status.value = status()
-    await flushPromises()
-    expect(hasDevices(wrapper)).toBe(true)
-    wrapper.unmount()
   })
 })
 
 describe('labs.companion', () => {
   const withCompanion = (companion: boolean | undefined): Config =>
-    ({ ...config(false, 1), labs: { devices: false, ...(companion === undefined ? {} : { companion }) } })
+    ({ ...config(undefined, 1), labs: companion === undefined ? {} : { companion } })
   const manifest = (id: string) => ({ id }) as unknown as import('../src/shared/types').WidgetManifest
 
   it('reads an absent flag as off', () => {
     expect(labs.labsCompanion(null)).toBe(false)
-    expect(labs.labsCompanion(config(true, 1))).toBe(false)
+    expect(labs.labsCompanion(config(undefined, 1))).toBe(false)
     expect(labs.labsCompanion(withCompanion(undefined))).toBe(false)
     expect(labs.labsCompanion(withCompanion(true))).toBe(true)
   })
@@ -189,26 +140,23 @@ describe('labs.companion', () => {
     expect(labs.offeredManifests(withCompanion(true), manifests).map((m) => m.id)).toEqual(['clock', 'fremplay'])
   })
 
-  it('counts a paired extension for its own part of the Devices pane, not for the iPad one', () => {
+  it('counts a paired extension for its own part of the Devices pane', () => {
     const ext = { id: 'ext-1', kind: 'extension', name: 'Chrome', pairedAt: '2026-10-02T08:00:00.000Z', lastSeen: null,
       origin: `chrome-extension://${'a'.repeat(32)}`, installId: '3a9c1d2e-5b6f-4a7b-8c9d-0e1f2a3b4c5d', connected: false } as PublicDevice
     const off = withCompanion(false)
-    expect(labs.pairingInUse(status({ devices: [ext] }))).toBe(false)
     expect(labs.extensionsPaired(status({ devices: [ext] }))).toBe(true)
     expect(labs.extensionsPaired(status({ devices: [paired] }))).toBe(false)
-    expect(labs.showsIpads(off, status({ devices: [ext] }))).toBe(false)
     expect(labs.showsExtensions(off, status({ devices: [ext] }))).toBe(true)
     expect(labs.showsExtensions(off, status({ devices: [paired], enabled: true }))).toBe(false)
     expect(labs.showsExtensions(withCompanion(true), status())).toBe(true)
-    expect(labs.showsIpads(withCompanion(true), status())).toBe(false)
-    expect(labs.showsDevices(off, status({ devices: [ext] }))).toBe(true)
   })
 
-  it('shows the Devices pane and the switches while on, as labs.devices does', () => {
-    expect(labs.showsDevices(withCompanion(true), status())).toBe(true)
-    expect(labs.showsDevices(withCompanion(false), status())).toBe(false)
+  it('keeps the switches in sight while on', () => {
     expect(labs.labsShown(withCompanion(true))).toBe(true)
     expect(labs.labsShown(withCompanion(false))).toBe(false)
+    // Any flag `config.labs` carries counts, so a flag added later needs nothing in `labsShown`.
+    expect(labs.labsShown({ ...withCompanion(false), labs: { companion: false, later: true } as never })).toBe(true)
+    expect(labs.labsShown(null)).toBe(false)
   })
 
   it('has its own switch in About, under the same seven clicks, which writes the flag alone', async () => {
@@ -225,11 +173,12 @@ describe('labs.companion', () => {
     expect(wrapper.text()).toMatch(/Browser companion \(Fremplay\)|Compagnon de navigateur \(Fremplay\)/)
     expect((box.element as HTMLInputElement).checked).toBe(false)
     await box.setValue(true)
-    expect(s.state.config!.labs).toEqual({ devices: false, companion: true })
+    expect(s.state.config!.labs).toEqual({ companion: true })
     expect(hasDevices(wrapper)).toBe(true)
     await box.setValue(false)
-    expect(s.state.config!.labs).toEqual({ devices: false, companion: false })
-    expect(hasDevices(wrapper)).toBe(false)
+    expect(s.state.config!.labs).toEqual({ companion: false })
+    // The Devices pane is for the iPad too: it stays with the companion off.
+    expect(hasDevices(wrapper)).toBe(true)
     wrapper.unmount()
   })
 })
@@ -251,7 +200,7 @@ describe('the seven clicks on the version', () => {
     expect(labs.tapVersion(labs.REVEAL_WINDOW_MS + 1 + (labs.REVEAL_TAPS - 1) * 100)).toBe(true)
   })
 
-  it('show the switch in About, focus it without a toast, and the switch writes the flag', async () => {
+  it('show the switches in About, focus the first without a toast, and a switch writes its flag', async () => {
     vi.useFakeTimers({ toFake: ['Date'] })
     vi.setSystemTime(new Date('2026-10-19T08:00:00Z'))
     seed(false, 1)
@@ -264,24 +213,26 @@ describe('the seven clicks on the version', () => {
     expect(version.attributes('role')).toBeUndefined()
     expect(version.attributes('tabindex')).toBe('0')
     for (let i = 0; i < labs.REVEAL_TAPS - 1; i++) await version.trigger('click')
-    expect(wrapper.find('[data-test="labs-devices"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="labs-companion"]').exists()).toBe(false)
     await version.trigger('click')
     await flushPromises()
-    const box = wrapper.find('[data-test="labs-devices"] input')
+    const box = wrapper.find('[data-test="labs-companion"] input')
     // The box takes the focus, which scrolls it into view and announces it; no error toast.
     expect(document.activeElement).toBe(box.element)
     expect(s.state.toast).toBe('')
     expect(wrapper.text()).toMatch(/Experimental features|Fonctions expérimentales/)
     expect((box.element as HTMLInputElement).checked).toBe(false)
 
+    // iPad pairing is no longer behind a switch.
+    expect(wrapper.text()).not.toMatch(/iPad and extra screens|iPad et écrans supplémentaires/)
+    expect(wrapper.findAll('[data-test="labs"] input')).toHaveLength(1)
+
     await box.setValue(true)
-    expect(s.state.config!.labs).toEqual({ devices: true })
-    expect(hasDevices(wrapper)).toBe(true)
+    expect(s.state.config!.labs).toEqual({ companion: true })
     await box.setValue(false)
-    expect(s.state.config!.labs).toEqual({ devices: false })
-    expect(hasDevices(wrapper)).toBe(false)
+    expect(s.state.config!.labs).toEqual({ companion: false })
     // Still there once turned off in this session, so it can be turned back on.
-    expect(wrapper.find('[data-test="labs-devices"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="labs-companion"]').exists()).toBe(true)
     wrapper.unmount()
   })
 
@@ -291,10 +242,10 @@ describe('the seven clicks on the version', () => {
     await flushPromises()
     const version = wrapper.find('[data-test="version"]')
     for (let i = 0; i < labs.REVEAL_TAPS - 1; i++) await version.trigger('keydown', { key: 'Enter' })
-    expect(wrapper.find('[data-test="labs-devices"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="labs-companion"]').exists()).toBe(false)
     await version.trigger('keydown', { key: 'Enter' })
     await flushPromises()
-    expect(wrapper.find('[data-test="labs-devices"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="labs-companion"]').exists()).toBe(true)
     wrapper.unmount()
   })
 
@@ -306,18 +257,18 @@ describe('the seven clicks on the version', () => {
     await version.trigger('keydown', { key: 'Enter' })
     for (let i = 0; i < 20; i++) await version.trigger('keydown', { key: 'Enter', repeat: true })
     await flushPromises()
-    expect(wrapper.find('[data-test="labs-devices"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="labs-companion"]').exists()).toBe(false)
     wrapper.unmount()
   })
 
-  it('leave the switch in sight while the flag is on, revealed or not', async () => {
+  it('leave the switches in sight while a flag is on, revealed or not', async () => {
     seed(true, 1)
     const wrapper = settings('about')
     await flushPromises()
-    const box = wrapper.find('[data-test="labs-devices"] input')
+    const box = wrapper.find('[data-test="labs-companion"] input')
     expect((box.element as HTMLInputElement).checked).toBe(true)
     await box.setValue(false)
-    expect(useAdminStore().state.config!.labs).toEqual({ devices: false })
+    expect(useAdminStore().state.config!.labs).toEqual({ companion: false })
     wrapper.unmount()
   })
 })

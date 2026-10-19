@@ -9,19 +9,19 @@ import BaseSection from '../../shared/ui/BaseSection.vue'
 import DiagnosticsSection from '../DiagnosticsSection.vue'
 import { useI18n } from '../../shared/i18n'
 import { useAdminStore } from '../store'
-import { labsCompanion, labsDevices, labsShown, tapVersion } from '../labs'
+import { labsCompanion, labsShown, tapVersion } from '../labs'
+import type { Labs } from '../../shared/types'
 import { CONTRIBUTORS, MAINTAINER, REGISTRY_REPOSITORY, REPOSITORY, VERSION } from '../../shared/credits'
 
 const s = useAdminStore()
 const { t, locale } = useI18n()
 
 /**
- * iPad pairing and extra screens, hidden until `labs.devices` is on. The switch appears after
- * seven clicks on the version (see `labs.ts`) and stays while the flag is on, so it can be turned
- * off again. It goes through `apply` like every setting: saved, undoable, in the history.
+ * The experimental features block: one checkbox per `config.labs` flag. It appears after seven
+ * clicks on the version (see `labs.ts`) and stays while any flag is on, so it can be turned off
+ * again. Each switch goes through `apply` like every setting: saved, undoable, in the history.
  */
-const devicesOn = computed(() => labsDevices(s.state.config))
-/** The browser companion and Fremplay, behind `labs.companion` the same way. */
+/** The browser companion and Fremplay, behind `labs.companion`. */
 const companionOn = computed(() => labsCompanion(s.state.config))
 const labsVisible = computed(() => labsShown(s.state.config))
 /**
@@ -33,11 +33,9 @@ function onVersionClick(): void {
   if (!tapVersion()) return
   void nextTick(() => labsBlock.value?.querySelector<HTMLInputElement>('input')?.focus())
 }
-function setLabsDevices(on: boolean): void {
-  s.apply((c) => { c.labs = { ...c.labs, devices: on } })
-}
-function setLabsCompanion(on: boolean): void {
-  s.apply((c) => { c.labs = { devices: c.labs?.devices ?? false, ...c.labs, companion: on } })
+/** Sets one flag and keeps the others as they are. */
+function setLab(key: keyof Labs, on: boolean): void {
+  s.apply((c) => { c.labs = { ...c.labs, [key]: on } })
 }
 
 /** "A, B and C" in the language in force, so a third contributor needs no new string. */
@@ -65,11 +63,8 @@ const contributors = computed(() =>
   <DiagnosticsSection />
   <div v-if="labsVisible" ref="labsBlock" data-test="labs">
     <h3>{{ t('admin.inspector.screen.labs') }}</h3>
-    <BaseCheckbox :model-value="devicesOn" :label="t('admin.inspector.screen.labs.devices')"
-      data-test="labs-devices" @update:model-value="setLabsDevices($event)" />
-    <p class="ro">{{ t('admin.inspector.screen.labs.devices.hint') }}</p>
     <BaseCheckbox :model-value="companionOn" :label="t('admin.inspector.screen.labs.companion')"
-      data-test="labs-companion" @update:model-value="setLabsCompanion($event)" />
+      data-test="labs-companion" @update:model-value="setLab('companion', $event)" />
     <p class="ro">{{ t('admin.inspector.screen.labs.companion.hint') }}</p>
   </div>
   </BaseSection>

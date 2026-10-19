@@ -40,7 +40,7 @@ const screen = (id: string, kind: 'edge' | 'device', viewport?: { width: number;
 const CONFIG = {
   version: CONFIG_VERSION,
   locale: 'en',
-  labs: { devices: false, companion: true },
+  labs: { companion: true },
   secrets: { backend: 'file' },
   connections: [],
   widgets: {},

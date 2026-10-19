@@ -20,7 +20,7 @@ import { shortExtensionId, type PublicExtensionDevice, type PublicIpadDevice } f
 import type { Screen } from '../shared/types'
 import AddScreenDialog from './AddScreenDialog.vue'
 import { useDevices } from './devices'
-import { labsCompanion, labsDevices, showsExtensions, showsIpads } from './labs'
+import { labsCompanion, showsExtensions } from './labs'
 import { useAdminStore } from './store'
 
 const s = useAdminStore()
@@ -66,19 +66,15 @@ const deviceScreens = computed<Screen[]>(() => (s.state.config?.screens ?? []).f
 const list = computed<PublicIpadDevice[]>(() => (status.value?.devices ?? []).filter((d): d is PublicIpadDevice => d.kind === 'ipad'))
 const extensions = computed<PublicExtensionDevice[]>(() => (status.value?.devices ?? []).filter((d): d is PublicExtensionDevice => d.kind === 'extension'))
 /**
- * Two parts, each with its own rule (`labs.ts`): the iPad one follows `labs.devices` or iPad
- * pairing in use, the browser extension one `labs.companion` or a paired extension, so a paired
- * device of either kind can always be renamed or removed. Once shown, a part stays while the pane
- * is open, so removing the last device does not pull it from under the pointer; turning its flag
- * off reads the rule again. The request card follows `labs.companion` alone: with it off, no
- * request can be allowed here.
+ * Two parts: the iPad one, always there, and the browser extension one, which follows
+ * `labs.companion` or a paired extension (`labs.ts`), so a paired extension can always be renamed
+ * or removed. Once shown, the extension part stays while the pane is open, so removing the last
+ * one does not pull it from under the pointer; turning the flag off reads the rule again. The
+ * request card follows `labs.companion` alone: with it off, no request can be allowed here.
  */
 const companionOn = computed(() => labsCompanion(s.state.config))
-const ipadsShown = ref(false)
 const extensionsShown = ref(false)
-watch(() => showsIpads(s.state.config, status.value), (on) => { if (on) ipadsShown.value = true }, { immediate: true })
 watch(() => showsExtensions(s.state.config, status.value), (on) => { if (on) extensionsShown.value = true }, { immediate: true })
-watch(() => labsDevices(s.state.config), (on) => { if (!on) ipadsShown.value = showsIpads(s.state.config, status.value) })
 watch(companionOn, (on) => { if (!on) extensionsShown.value = showsExtensions(s.state.config, status.value) })
 /**
  * The extension's request, until its expiry even if the next poll is still to come, and never
@@ -131,7 +127,7 @@ async function onCreated(screenId: string): Promise<void> {
 
 <template>
   <div class="devices">
-    <template v-if="ipadsShown">
+    <div class="ipads" data-test="ipads">
       <BaseCheckbox :model-value="enabled" :label="t('admin.devices.enable')"
         @update:model-value="devices.setEnabled($event)" />
       <p class="ro">{{ t('admin.devices.firewall') }}</p>
@@ -191,7 +187,7 @@ async function onCreated(screenId: string): Promise<void> {
         </BaseButton>
       </div>
       <p class="ro">{{ t('admin.devices.resetCertificate.hint') }}</p>
-    </template>
+    </div>
 
     <section v-if="extensionsShown" class="extensions" data-test="extensions">
       <h4>{{ t('admin.devices.extensions') }}</h4>

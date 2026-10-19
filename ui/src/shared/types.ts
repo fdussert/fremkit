@@ -146,12 +146,8 @@ export interface Privacy {
   macmonTemperature: boolean
 }
 
-/**
- * Features shipped but kept out of the admin until they are ready. `devices` is iPad pairing and
- * adding screens; the server infers it for a config written before it existed.
- */
+/** Features shipped but kept out of the admin until they are ready (`LabsSchema` on the server). */
 export interface Labs {
-  devices: boolean
   /** The browser companion and Fremplay; absent in a config the admin built itself, meaning off. */
   companion?: boolean
 }

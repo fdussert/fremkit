@@ -29,8 +29,6 @@ function config(): Config {
     version: 4,
     connections: [], secrets: { backend: 'file' }, locale: 'en',
     privacy: { claudeAccountUsage: false, showAccountEmail: false, codexAccount: false, codexHistorySources: [], macmonTemperature: false },
-    // Adding screens is an experimental feature: on, so the selector shows its button on one screen.
-    labs: { devices: true },
     widgets: {
       'clock-1': { widgetId: 'clock', showTitle: true, settings: {} },
       'banner-1': { widgetId: 'banner', showTitle: true, settings: {} },

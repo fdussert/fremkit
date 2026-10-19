@@ -180,7 +180,7 @@ describe('the dashboard and the companion channel', () => {
   const config = (): Config => ({
     version: 4, theme: 'fremkit', connections: [], secrets: { backend: 'file' }, locale: 'en',
     privacy: { claudeAccountUsage: false, showAccountEmail: false, codexAccount: false, codexHistorySources: [], macmonTemperature: false },
-    labs: { devices: false, companion: true },
+    labs: { companion: true },
     widgets: {},
     screens: [{
       id: 'edge', name: 'edge', kind: 'edge',
@@ -277,7 +277,7 @@ describe('the dashboard and the companion channel', () => {
   })
 
   it('shows no prompt while labs.companion is off', async () => {
-    for (const labs of [{ devices: false, companion: false }, { devices: true }, undefined]) {
+    for (const labs of [{ companion: false }, {}, undefined]) {
       fake.config = { ...(config() as object), labs } as unknown as Config
       vi.resetModules()
       const w = await mountApp('http://127.0.0.1:4242/')
@@ -291,7 +291,7 @@ describe('the dashboard and the companion channel', () => {
   /** Fremplay on p1 alone and in the bar, a clock beside a Fremplay on p2. */
   const withFremplay = (companion: boolean): Config => {
     const c = config() as unknown as { labs: object; widgets: Record<string, unknown>; screens: { nav: unknown[]; pages: { id: string; items: unknown[] }[] }[] }
-    c.labs = { devices: false, companion }
+    c.labs = { companion }
     c.widgets = {
       fp: { widgetId: 'fremplay', showTitle: false, settings: {} },
       fp2: { widgetId: 'fremplay', showTitle: false, settings: {} },
@@ -471,7 +471,7 @@ describe('landingPage', () => {
     pages: pages.map((ids, i) => ({ id: `p${i}`, name: '', items: ids.map((instanceId) => ({ instanceId, x: 0, y: 0, w: 1, h: 1 })) })),
   })
   const cfg = (companion: boolean) => ({
-    labs: { devices: false, companion },
+    labs: { companion },
     widgets: { fp: { widgetId: 'fremplay', showTitle: false, settings: {} }, c: { widgetId: 'clock', showTitle: false, settings: {} } },
   }) as unknown as Config
 

@@ -16,7 +16,7 @@ const widgets = {
   fp: { widgetId: 'fremplay', showTitle: false, settings: {} },
   clock: { widgetId: 'clock', showTitle: false, settings: {} },
 }
-const cfg = (companion: boolean) => ({ labs: { devices: false, companion }, widgets }) as unknown as Config
+const cfg = (companion: boolean) => ({ labs: { companion }, widgets }) as unknown as Config
 const at = (instanceId: string) => ({ instanceId, x: 0, y: 0, w: 4, h: 4 })
 const screen = (pages: string[][], nav: string[] = []): Screen => ({
   id: 'edge', name: 'Edge', kind: 'edge',

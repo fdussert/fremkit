@@ -152,15 +152,15 @@ describe('deviceConfigView', () => {
   })
   it('carries labs.companion and nothing else of labs', () => {
     for (const companion of [true, false]) {
-      const cfg = ConfigSchema.parse({ ...RAW_CONFIG, labs: { devices: true, companion } })
+      const cfg = ConfigSchema.parse({ ...RAW_CONFIG, labs: { companion } })
       const view = deviceConfigView(cfg, 'tab-b')
       expect(view.labs).toEqual({ companion })
       expect(Object.keys(view.labs)).toEqual(['companion'])
     }
-    // Every key the schema gives `labs`, other than `companion`, stays on the Mac.
+    // Every key the schema gives `labs`, other than `companion`, stays on the Mac (none today:
+    // the loop guards the next one).
     const others = Object.keys(ConfigSchema.parse(RAW_CONFIG).labs).filter((k) => k !== 'companion')
-    expect(others.length).toBeGreaterThan(0)
-    const view = deviceConfigView(ConfigSchema.parse({ ...RAW_CONFIG, labs: { devices: true, companion: true } }), 'tab-b')
+    const view = deviceConfigView(ConfigSchema.parse({ ...RAW_CONFIG, labs: { companion: true } }), 'tab-b')
     for (const key of others) expect(Object.hasOwn(view.labs, key), key).toBe(false)
   })
   it('projects or deliberately withholds every top-level config key', () => {

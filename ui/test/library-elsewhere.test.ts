@@ -79,7 +79,7 @@ describe('the widget library', () => {
     s.selectScreen('edge')
     const wrapper = mount(WidgetLibrary, { attachTo: document.body })
     expect(wrapper.text()).not.toContain('Fremplay')
-    s.state.config = { ...s.state.config!, labs: { devices: false, companion: true } }
+    s.state.config = { ...s.state.config!, labs: { companion: true } }
     await wrapper.vm.$nextTick()
     expect(wrapper.text()).toContain('Fremplay')
     wrapper.unmount()

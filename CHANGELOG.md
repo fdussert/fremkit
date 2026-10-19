@@ -10,6 +10,15 @@ Anything that changes what the dashboard, the admin or a widget can do gets a li
 (`package.json`, `server/package.json`, `ui/package.json`, `server/src/version.ts`) and is
 tagged `vX.Y.Z`.
 
+## Unreleased
+
+### Changed
+
+- **iPad pairing and extra screens are no longer experimental.** **Settings → Devices** pairs an
+  iPad running the Fremkit app from the App Store, and the screen selector with its
+  **+ Add a screen** is always above the canvas. Importing a layout brings its iPad screens along
+  with the rest.
+
 ## 0.5.0 — 2026-10-19
 
 ### Added

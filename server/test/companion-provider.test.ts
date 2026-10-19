@@ -30,7 +30,7 @@ function configWith(where: 'page' | 'bar' | 'nowhere'): Config {
   const edge = DEFAULT_CONFIG.screens[0]
   return {
     ...DEFAULT_CONFIG,
-    labs: { devices: false, companion: true },
+    labs: { companion: true },
     widgets: {
       'clock-1': { widgetId: 'clock', showTitle: true, settings: {} },
       'play-1': { widgetId: 'fremplay', showTitle: false, settings: {} },
@@ -281,7 +281,7 @@ describe('createCompanion', () => {
     companion.session.onMessage('ext', { type: 'tab.started', sessionId: S1, meta: META })
     expect(companion.session.snapshot().tab.state).toBe('sharing')
     sent.length = 0
-    set({ ...configWith('page'), labs: { devices: false, companion: false } } as Config)
+    set({ ...configWith('page'), labs: { companion: false } } as Config)
     expect(sent).toEqual([
       { type: 'ready', protocol: 2, modules: { fremplay: false } },
       { type: 'tab.refused', sessionId: S1, reason: 'disabled' },
@@ -289,7 +289,7 @@ describe('createCompanion', () => {
     expect(companion.session.snapshot().tab.state).toBe('idle')
     // Another save with the switch still off says nothing more.
     sent.length = 0
-    set({ ...configWith('page'), labs: { devices: true, companion: false } } as Config)
+    set({ ...configWith('page'), labs: { companion: false } } as Config)
     expect(sent).toEqual([])
     companion.session.onMessage('ext', { type: 'tab.started', sessionId: S1, meta: META })
     expect(sent).toEqual([{ type: 'tab.refused', sessionId: S1, reason: 'disabled' }])
@@ -314,7 +314,7 @@ describe('createCompanion', () => {
   })
 
   it('refuses a request with 409 while labs.companion is off, with an extension paired or not', async () => {
-    const off = { ...configWith('page'), labs: { devices: false, companion: false } } as Config
+    const off = { ...configWith('page'), labs: { companion: false } } as Config
     await build(off)
     const res = await ask()
     expect(res.statusCode).toBe(409)

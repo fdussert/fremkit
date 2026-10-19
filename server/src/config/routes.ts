@@ -49,8 +49,7 @@ export async function configRoutes(
     parsed.data.marketplace = { ...parsed.data.marketplace, installed: current.marketplace.installed }
     // A body without `labs` keeps the switch as it is: the schema's default would turn the
     // experimental features off behind the user's back for any client that does not send it.
-    const body = req.body as { labs?: { devices?: unknown; companion?: unknown } } | null
-    if (typeof body?.labs?.devices !== 'boolean') parsed.data.labs = { ...parsed.data.labs, devices: current.labs.devices }
+    const body = req.body as { labs?: { companion?: unknown } } | null
     if (typeof body?.labs?.companion !== 'boolean') parsed.data.labs = { ...parsed.data.labs, companion: current.labs.companion }
 
     const errors = [
