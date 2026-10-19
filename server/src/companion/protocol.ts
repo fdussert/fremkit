@@ -198,7 +198,9 @@ export const ExtensionMessageSchema = z.discriminatedUnion('type', [
     installId: Id,
     // Any integer: the server answers a version it does not speak with `tab.refused`.
     protocol: z.number().int(),
-    modules: ModulesSchema.optional(),
+    // A list it cannot read (a newer extension's ninth module, a longer name) still connects:
+    // the install is then not Fremdev-capable, and Fremplay works as before.
+    modules: ModulesSchema.optional().catch(undefined),
     session: z.strictObject({ sessionId: Id, meta: MetaSchema }).optional(),
   }),
   z.strictObject({ type: z.literal('tab.started'), sessionId: Id, meta: MetaSchema }),
@@ -250,15 +252,53 @@ export type ServerMessage =
   /** The Edge dismisses the tab's open errors. */
   | { type: 'dev.clear'; tabId: number }
 
+/** The JSON of a message within the size limit; undefined when over it or not JSON. */
+function readJson(raw: string): unknown {
+  if (Buffer.byteLength(raw, 'utf8') > MAX_MESSAGE_BYTES) return undefined
+  try {
+    return JSON.parse(raw)
+  } catch {
+    return undefined
+  }
+}
+
 /** Null when the text is over the size limit, is not JSON, or is not one of the messages. */
 export function parseExtensionMessage(raw: string): ExtensionMessage | null {
-  if (Buffer.byteLength(raw, 'utf8') > MAX_MESSAGE_BYTES) return null
-  let json: unknown
-  try {
-    json = JSON.parse(raw)
-  } catch {
-    return null
-  }
+  const json = readJson(raw)
+  if (json === undefined) return null
   const parsed = ExtensionMessageSchema.safeParse(json)
   return parsed.success ? parsed.data : null
+}
+
+/** Fremdev's messages: after hello, one that fails its schema costs itself, never the socket. */
+const DEV_MESSAGE_TYPES: ReadonlySet<unknown> = new Set(['dev.tabs', 'modules', 'ping'])
+
+/** A `dev.tabs` whose rows are judged one by one. */
+const DevTabsEnvelope = z.strictObject({ type: z.literal('dev.tabs'), tabs: z.array(z.unknown()).max(MAX_DEV_TABS) })
+
+/**
+ * What a message after hello comes to. `msg` null: a Fremdev message that did not parse, dropped
+ * whole. `dropped`: how many dev rows (or messages) were left out, for a debug line that carries
+ * none of their content. Null, as with `parseExtensionMessage`: the socket is refused.
+ *
+ * Fremdev's messages never cost the socket: it also carries Fremplay's share, and a row the server
+ * cannot read (an extension newer than it, or a bound one side has wrong) would otherwise close it,
+ * and the extension reconnect and send the same row again. Every other message stays strict.
+ */
+export function parseAfterHello(raw: string): { msg: ExtensionMessage | null; dropped: number } | null {
+  const json = readJson(raw)
+  if (json === undefined) return null
+  const parsed = ExtensionMessageSchema.safeParse(json)
+  if (parsed.success) return { msg: parsed.data, dropped: 0 }
+  const type = typeof json === 'object' && json !== null ? (json as { type?: unknown }).type : undefined
+  if (!DEV_MESSAGE_TYPES.has(type)) return null
+  if (type !== 'dev.tabs') return { msg: null, dropped: 1 }
+  const envelope = DevTabsEnvelope.safeParse(json)
+  if (!envelope.success) return { msg: null, dropped: 1 }
+  const tabs: DevTab[] = []
+  for (const row of envelope.data.tabs) {
+    const tab = DevTabSchema.safeParse(row)
+    if (tab.success) tabs.push(tab.data)
+  }
+  return { msg: { type: 'dev.tabs', tabs }, dropped: envelope.data.tabs.length - tabs.length }
 }

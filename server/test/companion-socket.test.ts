@@ -8,6 +8,7 @@ import fastifyWebsocket from '@fastify/websocket'
 import WebSocket from 'ws'
 import { DeviceStore } from '../src/devices/store.js'
 import { CompanionSession } from '../src/companion/session.js'
+import { CompanionDev } from '../src/companion/dev.js'
 import { CompanionSockets, HELLO_TIMEOUT_MS, MAX_PENDING_PER_ORIGIN, MAX_PENDING_SOCKETS, TRY_AGAIN_LATER_CLOSE_CODE, companionSocket } from '../src/companion/socket.js'
 import { PROOF_LABEL, PROTOCOL, proofMac } from '../src/companion/protocol.js'
 import { MAX_WS_PAYLOAD_BYTES } from '../src/ws/hub.js'
@@ -36,6 +37,7 @@ let dir: string
 let app: FastifyInstance
 let store: DeviceStore
 let session: CompanionSession
+let dev: CompanionDev
 let port: number
 
 interface Client {
@@ -114,11 +116,14 @@ describe('companion socket', () => {
     store = new DeviceStore(join(dir, 'devices.json'))
     await store.load()
     const sockets = new CompanionSockets()
+    const pairedCount = () => store.list().filter((d) => d.kind === 'extension').length
+    dev = new CompanionDev({ send: (id, msg) => sockets.send(id, msg), changed: () => undefined, enabled: () => true, pairedCount })
     session = new CompanionSession({
       send: (id, msg) => sockets.send(id, msg),
       changed: () => undefined,
       canShare: () => true,
-      pairedCount: () => store.list().filter((d) => d.kind === 'extension').length,
+      pairedCount,
+      dev,
     })
     app = Fastify()
     await app.register(fastifyWebsocket, { options: { maxPayload: MAX_WS_PAYLOAD_BYTES } })
@@ -363,6 +368,18 @@ describe('companion socket', () => {
     expect(await client.next()).toEqual({ type: 'ready', protocol: PROTOCOL, modules: { fremplay: true, fremdev: true } })
   })
 
+  it('a hello whose modules it cannot read still connects, just not for Fremdev', async () => {
+    const { token } = await paired()
+    for (const modules of [Array.from({ length: 9 }, (_, i) => `m${i}`), ['x'.repeat(33)]]) {
+      const client = await proven(token)
+      client.send({ type: 'hello', token, installId: INSTALL, protocol: PROTOCOL, modules })
+      expect(await client.next()).toEqual({ type: 'ready', protocol: PROTOCOL, modules: { fremplay: true, fremdev: true } })
+      expect(dev.snapshot().installs).toEqual([])
+      client.ws.close()
+      await client.closed
+    }
+  })
+
   it('a first message other than challenge closes 1008', async () => {
     const client = await connect()
     client.send({ type: 'tab.stopped', sessionId: S1 })
@@ -395,6 +412,69 @@ describe('companion socket', () => {
     twice.send({ type: 'hello', token, installId: INSTALL, protocol: PROTOCOL })
     expect(await twice.closed).toEqual({ code: 1008 })
     await expect.poll(() => session.snapshot().extensions.connected).toBe(0)
+  })
+
+  describe('Fremdev messages never cost the socket', () => {
+    const row = (over: Record<string, unknown> = {}) => ({
+      tabId: 1,
+      app: 'My app',
+      host: 'localhost:5173',
+      errors: { total: 1, open: 1, last: { text: 'TypeError: x is undefined', at: 1_000 } },
+      requests: { total: 0, open: 0, last: null },
+      server: 'up',
+      activity: 1_000,
+      ...over,
+    })
+
+    async function fremdevClient() {
+      const { token } = await paired()
+      const client = await proven(token)
+      client.send({ type: 'hello', token, installId: INSTALL, protocol: PROTOCOL, modules: ['fremplay', 'fremdev'] })
+      expect(await client.next()).toMatchObject({ type: 'ready' })
+      return client
+    }
+    /** Still open: a share starts on it. */
+    async function stillOpen(client: Client) {
+      client.send({ type: 'tab.started', sessionId: S1, meta: META })
+      expect(await client.next()).toEqual({ type: 'tab.accepted', sessionId: S1 })
+    }
+    const tabsOf = () => dev.snapshot().installs[0]?.tabs.map((t) => [t.tabId, t.host])
+
+    it('lists a dev tab whose host carries an underscore', async () => {
+      const client = await fremdevClient()
+      client.send({ type: 'dev.tabs', tabs: [row({ host: 'my_app.localhost:3000' })] })
+      await expect.poll(tabsOf).toEqual([[1, 'my_app.localhost:3000']])
+      await stillOpen(client)
+    })
+
+    it('a dev.tabs with one bad row keeps the good rows and the socket', async () => {
+      const client = await fremdevClient()
+      client.send({ type: 'dev.tabs', tabs: [row(), row({ tabId: 2, host: 'bad host/' }), row({ tabId: 3 })] })
+      await expect.poll(tabsOf).toEqual([[1, 'localhost:5173'], [3, 'localhost:5173']])
+      await stillOpen(client)
+    })
+
+    it('a malformed modules or ping keeps the socket and changes nothing', async () => {
+      const client = await fremdevClient()
+      client.send({ type: 'modules', modules: 'fremdev' })
+      client.send({ type: 'ping', extra: 1 })
+      client.send({ type: 'dev.tabs', tabs: Array.from({ length: 33 }, (_, i) => row({ tabId: i })) })
+      await stillOpen(client)
+      expect(dev.snapshot().installs).toMatchObject([{ on: true, connected: true, tabs: [] }])
+    })
+
+    it('a malformed tab.meta still closes it with 1008', async () => {
+      const client = await fremdevClient()
+      client.send({ type: 'tab.meta', sessionId: S1, meta: { ...META, title: 'x'.repeat(301) } })
+      expect(await client.closed).toEqual({ code: 1008 })
+    })
+
+    it('before hello, a dev message is refused like any other', async () => {
+      const { token } = await paired()
+      const client = await proven(token)
+      client.send({ type: 'dev.tabs', tabs: 'all' })
+      expect(await client.closed).toEqual({ code: 1008 })
+    })
   })
 
   it('an oversize message closes the socket before anything reads it', async () => {

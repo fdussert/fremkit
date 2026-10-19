@@ -12,6 +12,7 @@ import {
   MetaSchema,
   PROTOCOL,
   isLocalSdp,
+  parseAfterHello,
   parseExtensionMessage,
 } from '../src/companion/protocol.js'
 
@@ -200,6 +201,14 @@ describe('parseExtensionMessage', () => {
       .toEqual({ type: 'hello', token, installId, protocol: PROTOCOL, modules })
   })
 
+  it('still reads a hello whose modules it cannot read, as one without modules', () => {
+    // A newer extension's ninth module, or a longer name: it connects, just not Fremdev-capable.
+    const nine = Array.from({ length: 9 }, (_, i) => `m${i}`)
+    expect(parse({ type: 'hello', token, installId, protocol: PROTOCOL, modules: nine })).toEqual({ type: 'hello', token, installId, protocol: PROTOCOL })
+    expect(parse({ type: 'hello', token, installId, protocol: PROTOCOL, modules: ['x'.repeat(33)] })).toEqual({ type: 'hello', token, installId, protocol: PROTOCOL })
+    expect(parse({ type: 'hello', token, installId, protocol: PROTOCOL, modules: 'fremdev' })).toEqual({ type: 'hello', token, installId, protocol: PROTOCOL })
+  })
+
   it('parses modules and ping', () => {
     expect(parse({ type: 'modules', modules: ['fremplay', 'fremdev'] })).toEqual({ type: 'modules', modules: ['fremplay', 'fremdev'] })
     expect(parse({ type: 'ping' })).toEqual({ type: 'ping' })
@@ -236,6 +245,41 @@ describe('parseExtensionMessage', () => {
       expect(tabs([row({ requests: { total: 1, open: 0, last: { path: '/a', status: 600, at: 1 } } })])).toBeNull()
       expect(tabs([row({ host: 'bad host/' })])).toBeNull()
       expect(tabs([row({ server: 'sideways' })])).toBeNull()
+    })
+
+    it('takes a host with an underscore, as a URL may carry one', () => {
+      expect(tabs([row({ host: 'my_app.localhost:3000' })])?.type).toBe('dev.tabs')
+    })
+
+    describe('after hello (parseAfterHello)', () => {
+      const after = (m: unknown) => parseAfterHello(typeof m === 'string' ? m : JSON.stringify(m))
+
+      it('passes what parses, whatever its type', () => {
+        expect(after({ type: 'dev.tabs', tabs: [row()] })).toEqual({ msg: { type: 'dev.tabs', tabs: [row()] }, dropped: 0 })
+        expect(after({ type: 'tab.stopped', sessionId })).toEqual({ msg: { type: 'tab.stopped', sessionId }, dropped: 0 })
+      })
+
+      it('keeps the rows of a dev.tabs that do parse, and counts the others', () => {
+        expect(after({ type: 'dev.tabs', tabs: [row(), row({ tabId: 2, host: 'bad host/' }), row({ tabId: 3 }), 'junk'] }))
+          .toEqual({ msg: { type: 'dev.tabs', tabs: [row(), row({ tabId: 3 })] }, dropped: 2 })
+      })
+
+      it('drops a Fremdev message it cannot read, whole, rather than refuse it', () => {
+        expect(after({ type: 'dev.tabs', tabs: Array.from({ length: 33 }, (_, i) => row({ tabId: i })) })).toEqual({ msg: null, dropped: 1 })
+        expect(after({ type: 'dev.tabs', tabs: 'all' })).toEqual({ msg: null, dropped: 1 })
+        expect(after({ type: 'dev.tabs', tabs: [], extra: 1 })).toEqual({ msg: null, dropped: 1 })
+        expect(after({ type: 'modules', modules: ['x'.repeat(33)] })).toEqual({ msg: null, dropped: 1 })
+        expect(after({ type: 'modules' })).toEqual({ msg: null, dropped: 1 })
+        expect(after({ type: 'ping', extra: 1 })).toEqual({ msg: null, dropped: 1 })
+      })
+
+      it('still refuses anything else that does not parse, and what is not JSON or too big', () => {
+        expect(after({ type: 'tab.meta', sessionId, meta: { ...meta, title: 'x'.repeat(301) } })).toBeNull()
+        expect(after({ type: 'tab.nonsense' })).toBeNull()
+        expect(after('not json')).toBeNull()
+        expect(after('null')).toBeNull()
+        expect(after(JSON.stringify({ type: 'ping' }) + ' '.repeat(MAX_MESSAGE_BYTES))).toBeNull()
+      })
     })
   })
 })
