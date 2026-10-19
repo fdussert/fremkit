@@ -16,7 +16,7 @@ import { fremplaySwitch } from './lib/errors.js'
 import { confirmCode, normalizeCode, pairingDeadline } from './lib/pairProof.js'
 import { newNonce } from './lib/proof.js'
 import { navigationClearsRect } from './lib/navigation.js'
-import { idleDelay } from './lib/presence.js'
+import { idleDelay, onlyFremdev, ReconnectGate } from './lib/presence.js'
 import { isOwnContext } from './lib/sender.js'
 import * as protocol from './lib/protocol.js'
 import { withVolumeHint } from './lib/volume.js'
@@ -38,6 +38,8 @@ const NO_VIDEO_MS = 10_000
 /** How long a start waits for the server's answer. */
 const START_TIMEOUT_MS = 8_000
 const PAIR_POLL_MS = 1_500
+/** Fremdev alone reconnects at most this often (dev events and its 20 s tick both ask). */
+const FREMDEV_RETRY_MS = 15_000
 const FLASH_MS = 1_500
 
 const GOLD = '#d9b36a'
@@ -261,6 +263,9 @@ const readyWaiters = new Set()
 const wanted = () =>
   Boolean(local.token) && (Boolean(session.share) || fremdev.active() || Date.now() < presenceUntil)
 
+/** Only Fremdev wants the socket: its attempts leave the link state, and so the badge, alone. */
+const quiet = () => onlyFremdev(session.share, presenceUntil, Date.now())
+
 function stayFor(ms) {
   presenceUntil = Math.max(presenceUntil, Date.now() + ms)
   armIdle()
@@ -291,7 +296,7 @@ function send(msg) {
 function connect() {
   if (ws || retryTimer || !local.token || !local.deviceId) return
   // A warning stays up while the next attempts run: they meet it again, or a server that greets.
-  if (!['ok', 'impostor', 'refused', 'revoked'].includes(session.link)) setLink('connecting')
+  if (!quiet() && !['ok', 'impostor', 'refused', 'revoked'].includes(session.link)) setLink('connecting')
   const socket = new WebSocket(WS_URL)
   ws = socket
   greeted = false
@@ -345,7 +350,7 @@ function connect() {
     if (wasGreeted) {
       retryDelay = RETRY_FIRST_MS
       failingSince = 0
-    } else setLink('unreachable')
+    } else if (!quiet()) setLink('unreachable')
     retry()
   }
 }
@@ -361,12 +366,13 @@ function impostor(socket) {
   try {
     socket.close(1000)
   } catch { /* already closed */ }
-  setLink('impostor')
+  if (!quiet()) setLink('impostor')
   retry()
 }
 
 function retry() {
-  if (!wanted()) {
+  // Fremdev alone gets no backoff run: its tick and its events come back through its gate.
+  if (!wanted() || quiet()) {
     failingSince = 0
     retryDelay = RETRY_FIRST_MS
     return
@@ -389,7 +395,7 @@ function retry() {
 async function refused() {
   for (const waiter of readyWaiters) waiter(false)
   readyWaiters.clear()
-  await setLink('refused')
+  if (!quiet()) await setLink('refused')
   if (session.share) await endShare({ notify: false, error: 'protocol' })
   retry()
 }
@@ -400,6 +406,8 @@ async function refused() {
  * overwrites it, and a server that proves itself and greets it clears this (`ready`).
  */
 async function removed() {
+  // Nobody asked to see this: the popup's next attempt meets the same answer and shows it.
+  if (quiet()) return
   failingSince = 0
   retryDelay = RETRY_FIRST_MS
   presenceUntil = 0
@@ -463,15 +471,24 @@ function whenGreeted(timeoutMs) {
 
 // --- Fremdev ----------------------------------------------------------------------------------
 
-/** Opens the socket for Fremdev when it wants one and none is coming; closes it once nothing wants it. */
-function fremdevWantsSocket() {
+const fremdevGate = new ReconnectGate(FREMDEV_RETRY_MS)
+
+/**
+ * Opens the socket for Fremdev when it wants one and none is coming, at most once per
+ * FREMDEV_RETRY_MS; closes it once nothing wants it. `relearn`: one connection although Fremdev
+ * does not want the socket (the server said it does not speak Fremdev; it may have been updated).
+ */
+function fremdevWantsSocket({ relearn = false } = {}) {
   if (!local.token) return
-  if (!wanted()) return armIdle()
-  // While a retry is armed the backoff stands; after a give-up the next dev event starts again.
-  if (!ws && !retryTimer) connect()
+  const want = wanted()
+  if (!want && !relearn) return armIdle()
+  if (ws || retryTimer) return
+  if (!fremdevGate.allow(Date.now())) return
+  connect()
+  // A relearning socket is closed once its `ready` is heard (Fremdev calls back, nothing wants it).
 }
 
-const fremdev = createFremdev({ send, wantSocket: () => void ready.then(fremdevWantsSocket) })
+const fremdev = createFremdev({ send, wantSocket: (opts) => void ready.then(() => fremdevWantsSocket(opts)) })
 
 // --- Fremplay ---------------------------------------------------------------------------------
 

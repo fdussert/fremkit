@@ -2,12 +2,38 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 // @ts-expect-error plain JS module outside server/, no declarations
+import { onlyFremdev, ReconnectGate } from '../../companion/lib/presence.js'
+// @ts-expect-error plain JS module
 import { createFremdev, pageEvent } from '../../companion/fremdev.js'
 
-// companion/fremdev.js against a fake chrome.*.
+// companion/fremdev.js against a fake chrome.*, and the worker's reconnection policy for it.
 
 const ROOT = join(import.meta.dirname, '..', '..', 'companion')
 const source = (path: string) => readFileSync(join(ROOT, path), 'utf8')
+
+describe('the worker reconnection policy for Fremdev', () => {
+  it('is quiet only when nothing but Fremdev wants the socket', () => {
+    expect(onlyFremdev(null, 0, 1000)).toBe(true)
+    expect(onlyFremdev({ sessionId: 's' }, 0, 1000)).toBe(false)
+    expect(onlyFremdev(null, 2000, 1000)).toBe(false)
+  })
+
+  it('lets one reconnection through per window, however many events ask', () => {
+    const gate = new ReconnectGate(15_000)
+    const passed = [0, 1, 500, 14_999, 15_000, 15_001, 29_999, 30_000].map((t) => gate.allow(t))
+    expect(passed).toEqual([true, false, false, false, true, false, false, true])
+  })
+
+  it("worker.js routes Fremdev's attempts through the gate and keeps them off the badge", () => {
+    const worker = source('worker.js')
+    expect(worker).toMatch(/if \(!fremdevGate\.allow\(Date\.now\(\)\)\) return/)
+    for (const link of ["setLink('unreachable')", "setLink('impostor')", "setLink('refused')"]) {
+      const at = worker.indexOf(link)
+      expect(worker.slice(Math.max(0, at - 20), at), link).toContain('!quiet()')
+    }
+    expect(worker).toMatch(/if \(!wanted\(\) \|\| quiet\(\)\) \{/)
+  })
+})
 
 /** A chrome.* just wide enough for fremdev.js. */
 function fakeChrome({ on = true, granted = ['http://localhost/*'], webRequest = true } = {}) {
