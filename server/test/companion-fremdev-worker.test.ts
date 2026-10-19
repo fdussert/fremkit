@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 // @ts-expect-error plain JS module outside server/, no declarations
-import { linkAlarm, onlyFremdev, ReconnectGate } from '../../companion/lib/presence.js'
+import { linkAlarm, onlyFremdev, PROBE_MISSES, PROBE_SLOW_MS, ProbeBackoff, ReconnectGate } from '../../companion/lib/presence.js'
 // @ts-expect-error plain JS module
 import { createFremdev, pageEvent } from '../../companion/fremdev.js'
 // @ts-expect-error plain JS module
@@ -26,10 +26,55 @@ describe('the worker reconnection policy for Fremdev', () => {
     expect(passed).toEqual([true, false, false, false, true, false, false, true])
   })
 
+  it('slows its probes to one per 5 minutes after 3 answers that Fremdev is unsupported or off', () => {
+    expect(PROBE_MISSES).toBe(3)
+    expect(PROBE_SLOW_MS).toBe(300_000)
+    const b = new ProbeBackoff()
+    let t = 0
+    for (const answer of ['unsupported', 'disabled']) {
+      expect(b.allow(t)).toBe(true)
+      b.probed(t)
+      b.heard(answer)
+      t += 15_000
+    }
+    // A server that does not answer is no answer: still the third probe at the 15 s pace.
+    b.heard(null)
+    expect(b.allow(t)).toBe(true)
+    b.probed(t)
+    b.heard('unsupported')
+    const third = t
+    expect(b.allow(third + 15_000)).toBe(false)
+    expect(b.allow(third + PROBE_SLOW_MS - 1)).toBe(false)
+    expect(b.allow(third + PROBE_SLOW_MS)).toBe(true)
+    b.probed(third + PROBE_SLOW_MS)
+    b.heard('disabled')
+    expect(b.allow(third + PROBE_SLOW_MS + 15_000)).toBe(false)
+    // The popup opened: back to the fast pace.
+    b.reset()
+    expect(b.allow(third + PROBE_SLOW_MS + 15_000)).toBe(true)
+    // A yes starts over too.
+    for (let i = 0; i < 3; i++) {
+      b.probed(third + PROBE_SLOW_MS + 30_000)
+      b.heard('unsupported')
+    }
+    expect(b.allow(third + PROBE_SLOW_MS + 30_000)).toBe(false)
+    b.heard('yes')
+    expect(b.allow(third + PROBE_SLOW_MS + 30_000)).toBe(true)
+  })
+
+  it('worker.js probes through the backoff, and hears every ready', () => {
+    const worker = source('worker.js')
+    const wants = worker.slice(worker.indexOf('function fremdevWantsSocket('), worker.indexOf('const fremdev = createFremdev('))
+    expect(wants).toMatch(/if \(probe && !fremdevProbe\.allow\(now\)\) return\n\s+if \(!fremdevGate\.allow\(now\)\) return\n\s+if \(probe\) fremdevProbe\.probed\(now\)\n\s+connect\(\)/)
+    expect(worker).toContain('fremdevProbe.heard(fremdevSupport(msg))')
+    const open = worker.slice(worker.indexOf("case 'open':"), worker.indexOf("case 'pair':"))
+    expect(open).toContain('fremdevProbe.reset()')
+  })
+
   it('worker.js tells Fremdev of a ready before any await, and of every socket that closes', () => {
     const worker = source('worker.js')
     const ready = worker.slice(worker.indexOf("case 'ready':"), worker.indexOf("case 'tab.accepted':"))
-    expect(ready).toMatch(/^case 'ready':\n\s+greeted = true\n(\s+\/\/.*\n)+\s+fremdev\.onReady\(msg\)\n/)
+    expect(ready).toMatch(/^case 'ready':\n\s+greeted = true\n(\s+\/\/.*\n)+\s+fremdevProbe\.heard\(fremdevSupport\(msg\)\)\n\s+fremdev\.onReady\(msg\)\n/)
     expect(ready.match(/fremdev\.onReady/g)).toHaveLength(1)
     expect(ready.indexOf('fremdev.onReady')).toBeLessThan(ready.indexOf('if (local.revoked) await'))
     // Each place that lets go of a socket.
@@ -52,7 +97,7 @@ describe('the worker reconnection policy for Fremdev', () => {
 
   it("worker.js judges an attempt's quietness once, softens only connecting and unreachable", () => {
     const worker = source('worker.js')
-    expect(worker).toMatch(/if \(!fremdevGate\.allow\(Date\.now\(\)\)\) return/)
+    expect(worker).toMatch(/if \(!fremdevGate\.allow\(now\)\) return/)
     expect(worker).toMatch(/if \(!wanted\(\) \|\| quiet\(\)\) \{/)
     const connect = worker.slice(worker.indexOf('function connect() {'), worker.indexOf('function impostor('))
     expect(connect).toMatch(/const quietAttempt = quiet\(\)\n\s+if \(!quietAttempt && /)

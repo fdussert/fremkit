@@ -16,7 +16,8 @@ import { fremplaySwitch } from './lib/errors.js'
 import { confirmCode, normalizeCode, pairingDeadline } from './lib/pairProof.js'
 import { newNonce } from './lib/proof.js'
 import { navigationClearsRect } from './lib/navigation.js'
-import { idleDelay, linkAlarm, onlyFremdev, ReconnectGate } from './lib/presence.js'
+import { idleDelay, linkAlarm, onlyFremdev, ProbeBackoff, ReconnectGate } from './lib/presence.js'
+import { fremdevSupport } from './lib/devtabs.js'
 import { isOwnContext } from './lib/sender.js'
 import * as protocol from './lib/protocol.js'
 import { withVolumeHint } from './lib/volume.js'
@@ -477,6 +478,13 @@ function whenGreeted(timeoutMs) {
 // --- Fremdev ----------------------------------------------------------------------------------
 
 const fremdevGate = new ReconnectGate(FREMDEV_RETRY_MS)
+/**
+ * A server that keeps saying it does not speak Fremdev (0.5.0) or has it off is asked again at
+ * most every 5 minutes after 3 such answers: each probe is a socket, which a Fremplay tile shows.
+ * A popup opening or a `yes` resets it. A server that does not answer at all is not an answer:
+ * it stays on the 15 s gate.
+ */
+const fremdevProbe = new ProbeBackoff()
 
 /**
  * Opens the socket for Fremdev when it wants one and none is coming, at most once per
@@ -488,7 +496,12 @@ function fremdevWantsSocket({ relearn = false } = {}) {
   const want = wanted()
   if (!want && !relearn) return armIdle()
   if (ws || retryTimer) return
-  if (!fremdevGate.allow(Date.now())) return
+  const now = Date.now()
+  // Wanted (a dev tab, with a server that speaks Fremdev) is not a probe; a relearn is.
+  const probe = !want
+  if (probe && !fremdevProbe.allow(now)) return
+  if (!fremdevGate.allow(now)) return
+  if (probe) fremdevProbe.probed(now)
   connect()
   // A relearning socket is closed once its `ready` is heard (Fremdev calls back, nothing wants it).
 }
@@ -508,6 +521,7 @@ async function onServerMessage(msg) {
       greeted = true
       // Before any await: what Fremdev may send on this socket is this `ready`'s to say, and a
       // flush or a ping in the meantime must not go out on the last socket's answer.
+      fremdevProbe.heard(fremdevSupport(msg))
       fremdev.onReady(msg)
       // A proven server greeted this token: an unproven 4401 before was not its word.
       if (local.revoked) await saveLocal({ revoked: false })
@@ -878,6 +892,8 @@ chrome.runtime.onMessage.addListener((msg, sender, respond) => {
     // The popup opened: be connected while it shows, to tell the link state.
     case 'open':
       return reply(ready.then(() => {
+        // Someone is looking: a server updated since is worth asking again soon.
+        fremdevProbe.reset()
         reconnectNow()
         return { ok: true }
       }))
