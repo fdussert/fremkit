@@ -108,7 +108,7 @@ export const TILE_ICONS: readonly string[] = [
   'house', 'lightbulb', 'zap', 'battery', 'leaf', 'flame',
   'cpu', 'memory-stick', 'hard-drive', 'server', 'database', 'network', 'router', 'wifi', 'globe',
   'monitor', 'laptop', 'smartphone', 'tv', 'printer', 'camera', 'video',
-  'activity', 'gauge', 'chart-line', 'list', 'layout-grid', 'package', 'copy',
+  'activity', 'gauge', 'chart-line', 'chart-pie', 'list', 'layout-grid', 'package', 'copy',
   'message-square', 'mail', 'bell', 'bot', 'code', 'terminal', 'git-branch', 'shield',
   'music', 'volume-2', 'headphones', 'gamepad-2', 'book-open', 'coffee', 'shopping-cart',
   'briefcase', 'car', 'rocket', 'heart', 'star', 'cat', 'dog',

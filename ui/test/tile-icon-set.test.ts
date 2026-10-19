@@ -9,8 +9,8 @@ describe('the choosable pictograms', () => {
   it('are all drawn by the icon table', () => {
     for (const name of TILE_ICONS) expect(Object.hasOwn(ICONS, name), name).toBe(true)
   })
-  it('hold 59 distinct names and no brand mark', () => {
-    expect(new Set(TILE_ICONS).size).toBe(59)
+  it('hold 60 distinct names and no brand mark', () => {
+    expect(new Set(TILE_ICONS).size).toBe(60)
     expect(TILE_ICONS).not.toContain('github')
   })
   it('include the icon every built-in widget suggests', () => {
