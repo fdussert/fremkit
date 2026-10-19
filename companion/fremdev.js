@@ -18,7 +18,7 @@
 //
 // State: `chrome.storage.local.fremdev = { on, patterns }` (the options page edits the patterns),
 // `chrome.storage.session.devTabs = { [tabId]: tab }` and `chrome.storage.session.fremdevSupport`
-// for the popup. Nothing Fremdev is sent unless the server's `ready` said it speaks it.
+// for the popup. Nothing Fremdev is sent unless this socket's `ready` said the server speaks it.
 
 import { BUILTIN_PERMISSION_ORIGINS, FREMKIT_EXCLUDES, inOrigins, isDevUrl, parsePattern } from './lib/devhosts.js'
 import { clip, isNoise, MAX_TEXT, pathOf } from './lib/devlog.js'
@@ -88,8 +88,17 @@ export function createFremdev({
   let granted = []
   /** tabId (as a string key) → tab, lib/devtabs.js's shape. */
   let tabs = {}
-  /** `fremdevSupport(lastReady)`; null until a server said, here or in an earlier worker life. */
+  /**
+   * What this socket's `ready` said (`fremdevSupport`): null from the moment a socket closes until
+   * the next one is greeted, so nothing Fremdev goes out on a stale answer (Fremkit downgraded
+   * between two sockets). Every send reads this.
+   */
   let support = null
+  /**
+   * The last answer heard, from any socket and in an earlier worker life too (it is persisted, for
+   * the popup's note): whether Fremdev wants the socket at all (`active`). Never a reason to send.
+   */
+  let known = null
   let tickTimer = null
   let wasActive = false
   /** Until when a grant landing turns Fremdev on: the popup asked, and may have closed on the prompt. */
@@ -98,7 +107,7 @@ export function createFremdev({
   let starting = null
   const throttle = new Throttle(SEND_MS, now, setTimer)
 
-  const supported = () => support === null || support === 'yes'
+  const supported = () => known === null || known === 'yes'
   const active = () => on && supported() && Object.keys(tabs).length > 0
   const modules = () => (on ? ['fremplay', 'fremdev'] : ['fremplay'])
   const isDev = (url) => typeof url === 'string' && isDevUrl(url, patterns) && inOrigins(url, granted)
@@ -351,7 +360,7 @@ export function createFremdev({
     const session = await storage.session.get(['devTabs', 'fremdevSupport'])
     on = saved.on === true
     patterns = cleanPatterns(saved.patterns)
-    if (support === null && ['yes', 'disabled', 'unsupported'].includes(session.fremdevSupport)) support = session.fremdevSupport
+    if (known === null && ['yes', 'disabled', 'unsupported'].includes(session.fremdevSupport)) known = session.fremdevSupport
     tabs = on && session.devTabs && typeof session.devTabs === 'object' ? session.devTabs : {}
     listen(on)
     if (!on) {
@@ -434,13 +443,22 @@ export function createFremdev({
      */
     onReady(ready) {
       support = fremdevSupport(ready)
-      storage.session.set({ fremdevSupport: support }).catch(() => undefined)
+      known = support
+      storage.session.set({ fremdevSupport: known }).catch(() => undefined)
       void loaded.then(() => {
         if (support === 'yes' && on) send(protocol.modulesMsg(modules()))
         refresh({ changed: on && support === 'yes' })
         // Whatever the answer, the worker decides whether the socket is still wanted.
         wantSocket()
       })
+    },
+
+    /**
+     * The socket closed: nothing Fremdev is sent until the next one's `ready` has run `onReady`.
+     * The answer stays known (the popup's note, and whether to want a socket), just not trusted.
+     */
+    socketClosed() {
+      support = null
     },
 
     /** `dev.focus` and `dev.clear`: only for a tab this install has a row for. */

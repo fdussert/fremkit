@@ -26,6 +26,21 @@ describe('the worker reconnection policy for Fremdev', () => {
     expect(passed).toEqual([true, false, false, false, true, false, false, true])
   })
 
+  it('worker.js tells Fremdev of a ready before any await, and of every socket that closes', () => {
+    const worker = source('worker.js')
+    const ready = worker.slice(worker.indexOf("case 'ready':"), worker.indexOf("case 'tab.accepted':"))
+    expect(ready).toMatch(/^case 'ready':\n\s+greeted = true\n(\s+\/\/.*\n)+\s+fremdev\.onReady\(msg\)\n/)
+    expect(ready.match(/fremdev\.onReady/g)).toHaveLength(1)
+    expect(ready.indexOf('fremdev.onReady')).toBeLessThan(ready.indexOf('if (local.revoked) await'))
+    // Each place that lets go of a socket.
+    const onclose = worker.slice(worker.indexOf('socket.onclose = '), worker.indexOf('function impostor('))
+    expect(onclose).toContain('fremdev.socketClosed()')
+    const impostor = worker.slice(worker.indexOf('function impostor('), worker.indexOf('function retry('))
+    expect(impostor).toContain('fremdev.socketClosed()')
+    const close = worker.slice(worker.indexOf('function closeSocket('), worker.indexOf('function reconnectNow('))
+    expect(close).toContain('fremdev.socketClosed()')
+  })
+
   it("keeps off the badge only an unreachable that Fremdev's own attempts met", () => {
     expect(linkAlarm({ link: 'unreachable', share: null, linkQuiet: false })).toBe(true)
     expect(linkAlarm({ link: 'unreachable', share: null, linkQuiet: true })).toBe(false)
@@ -204,6 +219,35 @@ describe('companion/fremdev.js', () => {
     expect(f.sent.at(-1)).toEqual({ type: 'modules', modules: ['fremplay'] })
     expect(f.store.session.devTabs).toEqual({})
     expect(f.fremdev.active()).toBe(false)
+  })
+
+  it('sends nothing Fremdev between a socket closing and the next ready, on the old answer', async () => {
+    const f = await makeFremdev()
+    f.fremdev.onReady({ type: 'ready', protocol: 2, modules: { fremplay: true, fremdev: true } })
+    await f.fremdev.onPageEvent({ kind: 'error', text: 'x' }, devSender())
+    await f.later()
+    expect(f.sent.map((m) => m.type)).toEqual(['modules', 'dev.tabs'])
+    f.sent.length = 0
+    f.fremdev.socketClosed()
+    // Still wanted: the last answer was yes, a socket is worth opening again.
+    expect(f.fremdev.active()).toBe(true)
+    expect(f.store.session.fremdevSupport).toBe('yes')
+    await f.fremdev.onPageEvent({ kind: 'error', text: 'y' }, devSender())
+    await f.later()
+    await f.fremdev.stop()
+    await f.fremdev.start()
+    await f.later()
+    expect(f.sent).toEqual([])
+    // The next socket's Fremkit was downgraded: still nothing.
+    f.fremdev.onReady({ type: 'ready', protocol: 2, modules: { fremplay: true } })
+    await f.fremdev.onPageEvent({ kind: 'error', text: 'z' }, devSender())
+    await f.later()
+    expect(f.sent).toEqual([])
+    f.fremdev.socketClosed()
+    f.fremdev.onReady({ type: 'ready', protocol: 2, modules: { fremplay: true, fremdev: true } })
+    await f.fremdev.onPageEvent({ kind: 'error', text: 'w' }, devSender())
+    await f.later()
+    expect(f.sent.map((m) => m.type)).toEqual(['modules', 'dev.tabs'])
   })
 
   it('focuses and clears only a tab it has a row for', async () => {

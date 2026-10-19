@@ -333,6 +333,7 @@ function connect() {
     const wasGreeted = greeted
     ws = null
     greeted = false
+    fremdev.socketClosed()
     const outcome = closeOutcome(event.code, { proven: opening.proven, greeted: wasGreeted })
     // The proven server says the record this token named is gone.
     if (outcome === 'revoked') {
@@ -367,6 +368,7 @@ function impostor(socket) {
   if (ws !== socket) return
   ws = null
   greeted = false
+  fremdev.socketClosed()
   try {
     socket.close(1000)
   } catch { /* already closed */ }
@@ -441,6 +443,7 @@ function closeSocket() {
   const socket = ws
   ws = null
   greeted = false
+  if (socket) fremdev.socketClosed()
   try {
     socket?.close(1000)
   } catch { /* already closed */ }
@@ -503,6 +506,9 @@ async function onServerMessage(msg) {
   switch (msg.type) {
     case 'ready':
       greeted = true
+      // Before any await: what Fremdev may send on this socket is this `ready`'s to say, and a
+      // flush or a ping in the meantime must not go out on the last socket's answer.
+      fremdev.onReady(msg)
       // A proven server greeted this token: an unproven 4401 before was not its word.
       if (local.revoked) await saveLocal({ revoked: false })
       // Whether Fremkit has Fremplay on (`labs.companion`), for the popup to say before a click.
@@ -519,7 +525,6 @@ async function onServerMessage(msg) {
       readyWaiters.clear()
       // A start that was waiting on the socket (or lost it before the answer) announces itself now.
       if (share && !share.accepted) send(protocol.started(share.sessionId, share.meta))
-      fremdev.onReady(msg)
       return
     case 'tab.accepted':
       if (share?.sessionId !== msg.sessionId) return
