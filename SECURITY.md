@@ -375,6 +375,33 @@ limited to its own pages and worker (`TRUSTED_CONTEXTS`, available on every brow
 Chrome 116 and later), where code it injects into a page cannot read it, and listens only to its own
 pages.
 
+**Fremdev, the extension's second module.** It watches dev tabs and reports them on `companion:dev`.
+What it holds and what it can do:
+
+- *Permissions.* `webRequest` is optional and is requested, with the dev origins, in one prompt when
+  the user turns Fremdev on; there is no `webNavigation`, and an update adds nothing to the install's
+  permissions (a required new permission would disable the extension for every user, Fremplay
+  included, and the host grants are the consent). `webRequest` only observes: it never blocks or
+  rewrites a request, and a request is considered only when its tab is a watched dev tab inside a
+  granted origin. Requests to hosts that are not dev hosts are not seen.
+- *The MAIN-world hook* is registered for dev hosts only (`localhost`, `127.0.0.1`, `[::1]`,
+  `*.localhost`, `*.test` and the user's own patterns, which refuse public suffixes and IP
+  wildcards). It calls the original `console.error`, never runs the page's getters or `toJSON`, and
+  sends events to a relay content script through a `CustomEvent` carrying a string. A page can forge
+  events, but only into its own row; the tab id comes from Chrome. A `Proxy` `ownKeys` trap may run,
+  bounded. Pages already loaded keep an inert hook after Fremdev is turned off until they reload.
+  The relay checks nothing the worker does not check again: the worker decides whether a URL is a
+  dev URL.
+- *What leaves the tab:* a kind and text clipped to 300 characters, URL paths only; never a query,
+  fragment, body, header or cookie. Fremkit's own ports (4242, 4243) are never watched.
+- *Server side.* Every `dev.tabs`, `modules` and `ping` message is validated by a strict schema with
+  bounded sizes, and publishing is capped at four per second per install. `companion:dev` is in
+  `LOCAL_ONLY_CHANNELS` and `BUILTIN_ONLY_CHANNELS`: paired devices and registry widgets never get
+  it, and the widget's focus and clear commands are loopback-only and name only a tab id the install
+  reported. Fremdev is negotiated by capability with the protocol still at 2, so it widens nothing
+  for a 0.5.0 server. A page's own text can be sensitive (an error message can quote data): it stays
+  on this Mac, but it is displayed on the Edge.
+
 **What a local program can do.** A process running as you can read the access secret and anything
 else; it is out of scope, as under *Known limits*. One running as another account, or anything that
 reaches the port without reading your files, cannot pair without the code that is on the Edge.

@@ -4,12 +4,14 @@ Fremkit Companion is a browser extension that sends the **video** playing in a b
 Fremplay widget on your Edge, and gives you touch controls for it there: play and pause, seek
 10 seconds, volume, mute, fill the tile, bring the tab back, stop.
 
-It is optional. Nothing in Fremkit needs it except the Fremplay widget, which shows how to get it
-until an extension is linked.
+It has two modules, both optional: **Fremplay** (above) and **Fremdev**, which shows the errors of your
+development tabs on the Edge (see [Fremdev](#fremdev-your-development-tabs)). Nothing in Fremkit
+needs the extension except the Fremplay and Fremdev widgets, which show how to get it until an
+extension is linked.
 
 It is **experimental** for now, and hidden until you turn it on: in the admin, open
 **Settings → About**, click the version number seven times (or focus it and press Enter seven
-times), and tick **Browser companion (Fremplay)** under **Experimental features**. Until then the
+times), and tick **Browser companion (Fremplay)** (it gates Fremdev too) under **Experimental features**. Until then the
 admin leaves Fremplay out of the widget library and the bar's list and hides the pairing request in
 **Settings → Devices**, and the Edge shows no pairing prompt, so no code can be typed. A
 browser already linked stays listed in **Settings → Devices** whatever the switch says, so it can
@@ -164,6 +166,87 @@ before you do, so check the name: unless the share starts and that site's frame 
 extension gives the permission back as the attempt ends. A grant is per site, and you can revoke it
 at any time in `chrome://extensions`. The extension asks for no access to every site at install.
 
+## Fremdev: your development tabs
+
+Fremdev is the extension's second module (extension version 0.2.0). It watches the development
+tabs of your browser and lists them in the built-in `fremdev` widget on the Edge: for each tab, its
+JavaScript errors, its failed requests and whether its dev server answers, with a red, orange or
+green light. Tap a row to bring that tab forward; clear a row's counters with one touch. It is
+experimental and behind the same switch as Fremplay (`labs.companion`): with the switch off the
+server reports Fremdev as disabled, the widget is left out like Fremplay's, and the popup says so.
+
+### Turn it on
+
+Open the popup and turn **Fremdev** on. Chrome shows **one prompt** that covers everything it
+needs: the `webRequest` permission (optional in the manifest, so it is not asked at install) and
+access to the development hosts below. Nothing is asked when the extension is installed or
+updated, and the extension uses no `webNavigation` permission. Turning Fremdev off keeps the
+permissions, so turning it on again asks nothing; revoke them at `chrome://extensions` if you want
+them back. Pages already loaded keep the hook they were given until they reload (see below).
+
+### Which tabs are watched
+
+- Always: `localhost`, `127.0.0.1`, `[::1]`, `*.localhost` and `*.test`, on any port, over http or
+  https.
+- Your own hosts, added on the extension's options page: an exact host (`dev.example.com`) or one
+  `*` in the first label (`*-dev.example.com`, `*.example.com`). Adding one asks Chrome for that
+  origin only, and removing it gives that permission back. Nothing else is listed by default.
+- Refused as a pattern: a wildcard over a public suffix (`*.co.uk`), over numeric labels (an IP
+  range), a built-in host, and anything with more than one `*`.
+- **Fremkit's own ports (4242 and 4243) are never watched** on the loopback hosts, so the admin open
+  in the browser is not a dev tab. Another port (a second checkout on 4301) is a real dev server and
+  is watched.
+- A tab counts only inside an origin Chrome granted. A host with no grant is never seen, and
+  **requests to hosts that are not dev hosts are not seen** either: an API on another domain called
+  from your dev page does not appear.
+
+### What is watched, and what leaves the tab
+
+Watched: `console.error` calls, uncaught errors, unhandled promise rejections, the dev server's
+connection signals (Vite and webpack-dev-server lines such as *server connection lost*), failed
+requests (network errors and HTTP 4xx/5xx) and main-frame loads that fail because the server is
+down. Not counted: `favicon.ico`, hot-update traffic (`/@vite/*`, `/__webpack_hmr`,
+`/sockjs-node/*`, `*.hot-update.*`) and aborted requests.
+
+What goes to Fremkit, over the extension's authenticated socket to `127.0.0.1:4242`, is per tab: its
+app name, counters, and for each recent event a **kind and a text clipped to 300 characters**; for a
+request, the HTTP status and the URL's **path only**. **Never the query, the fragment, a request or
+response body, headers or cookies.** Error events are forwarded at most ten per second per tab (the
+counter keeps counting) and the tab list at most twice a second. Nothing leaves your Mac, and
+nothing is sent while Fremdev is off.
+
+### The hook in the page
+
+To see a page's errors, Fremdev registers a small script that runs in the page's own world, before
+the page's scripts, on dev hosts only. It is built not to disturb the page:
+
+- `console.error` still prints: the original is called first, and the wrapper keeps its name and
+  `toString`. Errors still propagate (no `preventDefault`), and `fetch` is not wrapped.
+- It never runs the page's code to describe a logged value: no getters, no `toJSON`. A `Proxy` with
+  an `ownKeys` trap may still run it, bounded; the text of an object is a bounded walk, so it is
+  less faithful than the browser console's.
+- It speaks to the extension through a `CustomEvent` on `document` that carries a string, not a
+  window message and not an attribute on `<html>`, so it cannot loop through the page's handlers or
+  cause a hydration warning.
+- **A page can forge events into its own row** by dispatching that event itself. That only changes
+  what the Edge shows for that tab: the extension takes the tab from Chrome, not from the event.
+- **Turning Fremdev off does not unhook pages that are already loaded**; the hook stays inert
+  there and goes away on the next reload.
+
+### Server side
+
+Rows are published on `companion:dev`, a channel of its own so that Fremplay does not replan at
+every update. It is **local-only and built-in-only**, like `companion`: paired devices and registry
+widgets never receive it. An extension's reports are bounded and validated by a strict schema, and
+an install's rows are published at most four times a second.
+
+### Versions
+
+The protocol number stays `2`. Fremdev is negotiated by capability: the extension sends its
+`modules` in `hello` and only talks Fremdev (`dev.tabs`, `ping`) when Fremkit's `ready` says
+`modules.fremdev`. Fremkit 0.5.0 with this extension keeps Fremplay, and the popup tells you that
+Fremdev needs a newer Fremkit; an old extension with a newer Fremkit simply has no Fremdev.
+
 ## Limits
 
 - Chromium browsers only.
@@ -191,3 +274,7 @@ at any time in `chrome://extensions`. The extension asks for no access to every 
   refused this video connection* until the next share, without asking again; the share goes on for
   any other widget watching it, and the toolbar icon flashes **!**. Send the video again.
 - *"Fremplay and Fremkit speak different versions: update Fremkit"*
+- *"Fremdev needs a newer Fremkit"* (popup) — the Fremkit you run predates Fremdev; Fremplay still works.
+- *The Fremdev widget shows no tab* — Fremdev is off in the popup, the tab's host is not a dev host
+  (add it on the options page), Chrome has not granted its origin, or the page loaded before you
+  turned Fremdev on (reload it).
