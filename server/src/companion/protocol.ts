@@ -169,8 +169,8 @@ export const DevTabSchema = z.strictObject({
   tabId: z.number().int().min(0).max(2_147_483_647),
   /** The tab's title, or its host:port. */
   app: z.string().max(120),
-  /** host:port, as the URL gives it. */
-  host: z.string().regex(/^[a-z0-9.\-[\]:]{1,260}$/i),
+  /** host:port, as the URL gives it: `_` included, a URL's host may carry one (`my_app.localhost`). */
+  host: z.string().regex(/^[a-z0-9._\-[\]:]{1,260}$/i),
   errors: tally(z.strictObject({ text: z.string().max(MAX_DEV_TEXT), at: Stamp })),
   requests: tally(
     z.strictObject({

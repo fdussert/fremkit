@@ -109,14 +109,44 @@ function wireRow(t) {
   }
 }
 
+const MAX_TAB_ID = 2_147_483_647
+/** DevTabSchema's host: host:port as the URL gives it, `_` included. */
+const HOST_RE = /^[a-z0-9._\-[\]:]{1,260}$/i
+const PATH_RE = /^\/[^?#]*$/
+const isStamp = (v) => typeof v === 'number' && Number.isFinite(v) && v >= 0
+const isCount = (v) => Number.isInteger(v) && v >= 0 && v <= MAX_COUNT
+const isText = (v, max) => typeof v === 'string' && v.length <= max
+const okTally = (t, last) => isCount(t?.total) && isCount(t?.open) && t.open <= t.total && (t.last === null || last(t.last))
+
+/**
+ * Whether a row stays inside DevTabSchema's bounds. The server drops a row it cannot read and keeps
+ * the rest; this keeps such a row from leaving at all.
+ */
+export function validRow(r) {
+  return (
+    Number.isInteger(r?.tabId) && r.tabId >= 0 && r.tabId <= MAX_TAB_ID &&
+    isText(r.app, MAX_APP) &&
+    typeof r.host === 'string' && HOST_RE.test(r.host) &&
+    okTally(r.errors, (l) => isText(l?.text, MAX_TEXT) && isStamp(l.at)) &&
+    okTally(r.requests, (l) => isText(l?.path, MAX_TEXT) && PATH_RE.test(l.path) &&
+      Number.isInteger(l.status) && l.status >= 0 && l.status <= 599 && isStamp(l.at)) &&
+    (r.server === 'up' || r.server === 'down') &&
+    isStamp(r.activity)
+  )
+}
+
 const bytes = (rows) => new TextEncoder().encode(JSON.stringify({ type: 'dev.tabs', tabs: rows })).length
 
-/** The rows for `dev.tabs`: the 32 latest, latest first, trimmed (oldest first) to fit the size cap. */
+/**
+ * The rows for `dev.tabs`: the 32 latest, latest first, trimmed (oldest first) to fit the size cap.
+ * A row outside the server's bounds (`validRow`) is left out.
+ */
 export function wireTabs(tabs) {
   const rows = [...tabs]
     .sort((a, b) => b.activity - a.activity)
-    .slice(0, MAX_TABS)
     .map(wireRow)
+    .filter(validRow)
+    .slice(0, MAX_TABS)
   while (rows.length > 0 && bytes(rows) > MAX_BYTES) rows.pop()
   return rows
 }

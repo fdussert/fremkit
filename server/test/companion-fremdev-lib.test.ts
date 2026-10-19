@@ -4,7 +4,7 @@ import { BUILTIN_PERMISSION_ORIGINS, FREMKIT_EXCLUDES, inOrigins, isDevUrl, pars
 // @ts-expect-error plain JS module
 import { errorText, hotReloadSignal, isNoise, MAX_TEXT, pathOf, RateLimiter } from '../../companion/lib/devlog.js'
 // @ts-expect-error plain JS module
-import { emptyTab, fremdevSupport, reduce, Throttle, wireTabs } from '../../companion/lib/devtabs.js'
+import { emptyTab, fremdevSupport, reduce, Throttle, validRow, wireTabs } from '../../companion/lib/devtabs.js'
 // @ts-expect-error plain JS module
 import { hello, devTabs, modulesMsg, ping } from '../../companion/lib/protocol.js'
 import { DevTabSchema } from '../src/companion/protocol.js'
@@ -248,6 +248,32 @@ describe('devtabs', () => {
     expect(rows[31].tabId).toBe(8)
     expect(Object.keys(rows[0]).sort()).toEqual(['activity', 'app', 'errors', 'host', 'requests', 'server', 'tabId'])
     for (const r of rows) expect(DevTabSchema.safeParse(r).success).toBe(true)
+  })
+
+  it('sends a tab whose host carries an underscore, in the server shape', () => {
+    const url = 'http://my_app.localhost:3000/'
+    expect(isDevUrl(url)).toBe(true)
+    const [row] = wireTabs([reduce(emptyTab(1, url, '', 1), { kind: 'error', text: 'x' }, 2)])
+    expect(row.host).toBe('my_app.localhost:3000')
+    expect(DevTabSchema.safeParse(row).success).toBe(true)
+  })
+
+  it('leaves out a row outside the server\'s bounds, and keeps the others', () => {
+    const good = reduce(emptyTab(1, 'http://localhost:5173/', 'A', 1), { kind: 'error', text: 'x' }, 5)
+    const badId = { ...good, tabId: -1, activity: 9 }
+    const badStamp = { ...good, tabId: 2, activity: Number.NaN }
+    const badHost = { ...good, tabId: 3, host: 'bad host/', activity: 8 }
+    const rows = wireTabs([good, badId, badStamp, badHost])
+    expect(rows.map((r: { tabId: number }) => r.tabId)).toEqual([1])
+    // validRow and DevTabSchema agree on each of them.
+    for (const t of [good, badId, badStamp, badHost]) {
+      const shaped = { tabId: t.tabId, app: t.title, host: t.host, errors: t.errors, requests: t.requests, server: t.server, activity: t.activity }
+      expect(validRow(shaped), String(t.tabId)).toBe(DevTabSchema.safeParse(shaped).success)
+    }
+    expect(validRow(null)).toBe(false)
+    expect(validRow({ ...rows[0], requests: { total: 1, open: 0, last: { path: '/a?b', status: 500, at: 1 } } })).toBe(false)
+    expect(validRow({ ...rows[0], errors: { total: 1, open: 2, last: null } })).toBe(false)
+    expect(validRow({ ...rows[0], server: 'sideways' })).toBe(false)
   })
 
   it('clamps and strips what leaves the tab', () => {
