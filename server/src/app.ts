@@ -54,6 +54,7 @@ import { seedDefaultBackground } from './backgrounds/seed.js'
 import { backupRoutes } from './backup/routes.js'
 import { bambuRoutes } from './bambu/routes.js'
 import { createShortcutsProvider } from './providers/shortcuts.js'
+import { createRectangleProvider } from './providers/rectangle.js'
 import { createServiceStatusProvider } from './providers/service-status.js'
 import { createSystemProvider } from './providers/system.js'
 import { createDiskMapProvider } from './providers/disk-map.js'
@@ -180,6 +181,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   // Registered here, not in providers/index.ts, because that is where the config store lives.
   const instances = (instanceId: string) => findInstance(store.get(), instanceId)
   registry.register(createShortcutsProvider(undefined, instances))
+  registry.register(createRectangleProvider())
   registry.register(createServiceStatusProvider({}, instances))
   const secrets = createSecretStore(store.get().secrets.backend, opts.dataDir)
   // v2 → v3 moved the Homey connection to the type its widget declares, and the declaration
