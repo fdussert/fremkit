@@ -1,3 +1,5 @@
+import { clip } from './devlog.js'
+
 // One dev tab's state as a pure reducer, and the rows `dev.tabs` carries. The wire shape mirrors
 // DevTabSchema in server/src/companion/protocol.ts, which is strict.
 
@@ -74,8 +76,8 @@ export function reduce(tab, event, now) {
 
 const count = (n) => Math.max(0, Math.min(MAX_COUNT, Math.trunc(Number.isFinite(n) ? n : 0)))
 const pathOnly = (p) => {
-  const bare = String(p ?? '').split(/[?#]/)[0].slice(0, MAX_TEXT)
-  return bare.startsWith('/') ? bare : `/${bare}`.slice(0, MAX_TEXT)
+  const bare = String(p ?? '').split(/[?#]/)[0]
+  return clip(bare.startsWith('/') ? bare : `/${bare}`, MAX_TEXT)
 }
 
 function wireTally(t, shape) {
@@ -86,9 +88,9 @@ function wireTally(t, shape) {
 function wireRow(t) {
   return {
     tabId: t.tabId,
-    app: String(t.title || t.host).slice(0, MAX_APP),
+    app: clip(String(t.title || t.host), MAX_APP),
     host: t.host,
-    errors: wireTally(t.errors, (l) => ({ text: String(l.text ?? '').slice(0, MAX_TEXT), at: Math.max(0, l.at) })),
+    errors: wireTally(t.errors, (l) => ({ text: clip(String(l.text ?? ''), MAX_TEXT), at: Math.max(0, l.at) })),
     requests: wireTally(t.requests, (l) => ({
       path: pathOnly(l.path),
       status: Math.max(0, Math.min(599, Math.trunc(l.status) || 0)),

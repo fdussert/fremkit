@@ -12,7 +12,7 @@ import { DevTabSchema } from '../src/companion/protocol.js'
 describe('devhosts', () => {
   it('lists the built-in permissions and the Fremkit excludes', () => {
     expect(BUILTIN_PERMISSION_ORIGINS).toHaveLength(8)
-    expect(FREMKIT_EXCLUDES).toEqual(['*://127.0.0.1:4242/*', '*://localhost:4242/*', '*://[::1]:4242/*'])
+    expect(FREMKIT_EXCLUDES).toEqual(expect.arrayContaining(['*://127.0.0.1:4242/*', '*://localhost:4242/*', '*://[::1]:4242/*', '*://*.localhost:4242/*', '*://127.0.0.1:4243/*', '*://*.localhost:4243/*']))
   })
 
   it('recognises dev URLs', () => {
@@ -26,6 +26,16 @@ describe('devhosts', () => {
     expect(isDevUrl('https://a.b.dev.example.com/', ['*.dev.example.com'])).toBe(true)
     expect(isDevUrl('https://dev.example.com/', ['*.dev.example.com'])).toBe(false)
     expect(isDevUrl('https://x.api-dev.example.com/', ['*-dev.example.com'])).toBe(false)
+  })
+
+  it('excludes both Fremkit ports on every loopback host, and only those', () => {
+    for (const u of ['http://app.localhost:4242/', 'http://127.0.0.1:4243/', 'http://[::1]:4243/', 'https://x.localhost:4243/']) expect(isDevUrl(u, []), u).toBe(false)
+    expect(isDevUrl('http://localhost:4301/', [])).toBe(true)
+  })
+
+  it('refuses wildcards over public suffixes and numeric labels', () => {
+    for (const bad of ['*.co.uk', '*-dev.co.uk', '*.com.au', '*.0.2.1', '*-x.0.2.1']) expect(parsePattern(bad), bad).toBeNull()
+    expect(parsePattern('*.example.co.uk')?.permission).toBe('*://*.example.co.uk/*')
   })
 
   it('parses patterns', () => {
@@ -61,12 +71,25 @@ describe('devlog', () => {
   it('keeps the path only', () => {
     expect(pathOf('http://localhost:5173/api/items/4?token=abc#x')).toBe('/api/items/4')
     expect(pathOf('nonsense')).toBe('/')
+    expect(pathOf('data:text/plain,secret')).toBe('/')
+    expect(pathOf('wss://localhost:5173/ws?x=1')).toBe('/ws')
   })
 
   it('knows the noise', () => {
     for (const u of ['http://localhost/favicon.ico', 'http://localhost/@vite/client', 'http://localhost/__webpack_hmr', 'http://localhost/sockjs-node/info', 'http://localhost/main.abc.hot-update.json']) expect(isNoise(u, 'net::ERR_FAILED'), u).toBe(true)
     expect(isNoise('http://localhost/api/items', 'net::ERR_ABORTED')).toBe(true)
     expect(isNoise('http://localhost/api/items', 500)).toBe(false)
+  })
+
+  it('slides the window instead of resetting it', () => {
+    let t = 1_000_000
+    const limiter = new RateLimiter(10, () => t)
+    t += 990
+    expect(Array.from({ length: 10 }, () => limiter.allow()).every(Boolean)).toBe(true)
+    t += 20
+    expect(limiter.allow()).toBe(false)
+    t += 981
+    expect(limiter.allow()).toBe(true)
   })
 
   it('limits to ten a second', () => {
@@ -142,6 +165,24 @@ describe('devtabs', () => {
     expect(rows.length).toBeLessThan(32)
     expect(rows[0].tabId).toBe(31)
     expect(rows.map((r: { tabId: number }) => r.tabId)).toEqual(Array.from({ length: rows.length }, (_, i) => 31 - i))
+  })
+
+  it('never ends a truncated text on half an emoji', () => {
+    let tab = emptyTab(1, 'http://localhost:5173/', `${'a'.repeat(119)}😀`, 1)
+    tab = reduce(tab, { kind: 'error', text: `${'a'.repeat(299)}😀` }, 2)
+    tab = reduce(tab, { kind: 'request', path: `/${'a'.repeat(298)}😀`, status: 500 }, 3)
+    const [row] = wireTabs([tab])
+    for (const s of [row.app, row.errors.last.text, row.requests.last.path]) expect(s).not.toMatch(/[\ud800-\udbff]$/)
+    expect(row.app).toHaveLength(119)
+    expect(row.errors.last.text).toHaveLength(299)
+  })
+
+  it('clear drops the last error and request too', () => {
+    let tab = reduce(emptyTab(1, 'http://localhost:5173/', 'A', 1), { kind: 'error', text: 'x' }, 2)
+    tab = reduce(tab, { kind: 'request', path: '/a', status: 500 }, 3)
+    const cleared = reduce(tab, { kind: 'clear' }, 4)
+    expect(cleared.errors).toEqual({ total: 0, open: 0, last: null })
+    expect(cleared.requests).toEqual({ total: 0, open: 0, last: null })
   })
 
   it('tells what the server supports', () => {

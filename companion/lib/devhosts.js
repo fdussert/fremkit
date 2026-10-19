@@ -14,9 +14,26 @@ export const BUILTIN_PERMISSION_ORIGINS = [
 ]
 
 /** Fremkit's own pages are never a dev tab: the admin open in the browser would be watched. */
-export const FREMKIT_EXCLUDES = ['*://127.0.0.1:4242/*', '*://localhost:4242/*', '*://[::1]:4242/*']
+export const FREMKIT_EXCLUDES = [
+  '*://127.0.0.1:4242/*',
+  '*://localhost:4242/*',
+  '*://[::1]:4242/*',
+  '*://*.localhost:4242/*',
+  '*://127.0.0.1:4243/*',
+  '*://localhost:4243/*',
+  '*://[::1]:4243/*',
+  '*://*.localhost:4243/*',
+]
 
-const FREMKIT_PORT = '4242'
+// The server's two ports: the local one and the paired devices' listener. Another port (a second
+// checkout on 4301, say) is a real dev server and stays watched.
+const FREMKIT_PORTS = ['4242', '4243']
+
+// Common two-label public suffixes: a wildcard over one would cover every site under it.
+const PUBLIC_SUFFIXES = [
+  'co.uk', 'org.uk', 'ac.uk', 'gov.uk', 'com.au', 'net.au', 'org.au', 'co.nz', 'co.jp', 'ne.jp', 'or.jp',
+  'com.br', 'com.cn', 'com.mx', 'co.in', 'co.za', 'com.tr', 'com.tw', 'co.kr', 'com.sg', 'com.hk',
+]
 const LOOPBACK = ['localhost', '127.0.0.1', '[::1]']
 
 const isBuiltinHost = (host) => LOOPBACK.includes(host) || host.endsWith('.localhost') || host.endsWith('.test')
@@ -34,6 +51,10 @@ export function parsePattern(input) {
   if (stars === 0) return { pattern, permission: `*://${pattern}/*` }
   // The star lives in the first label only, and what follows it keeps at least two labels.
   if (!labels[0].includes('*') || labels.length < 3) return null
+  const rest = labels.slice(1)
+  if (PUBLIC_SUFFIXES.includes(rest.join('.'))) return null
+  // A wildcard over numeric labels would stand for IP addresses, not a name the user owns.
+  if (rest.every((l) => /^\d+$/.test(l))) return null
   return { pattern, permission: `*://*.${labels.slice(1).join('.')}/*` }
 }
 
@@ -60,7 +81,7 @@ export function isDevUrl(url, patterns = []) {
   }
   if (u.protocol !== 'http:' && u.protocol !== 'https:') return false
   const host = u.hostname.toLowerCase()
-  if (LOOPBACK.includes(host) && u.port === FREMKIT_PORT) return false
+  if ((LOOPBACK.includes(host) || host.endsWith('.localhost')) && FREMKIT_PORTS.includes(u.port)) return false
   if (isBuiltinHost(host)) return true
   return patterns.some((p) => typeof p === 'string' && matches(host, p))
 }

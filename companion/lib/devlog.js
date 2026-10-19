@@ -3,6 +3,13 @@
 /** The longest error text or request path that leaves the tab. */
 export const MAX_TEXT = 300
 
+/** `s` cut to `max` UTF-16 units, never ending on half of a surrogate pair. */
+export function clip(s, max) {
+  const cut = s.slice(0, max)
+  const last = cut.charCodeAt(cut.length - 1)
+  return cut.length === max && last >= 0xd800 && last <= 0xdbff ? cut.slice(0, -1) : cut
+}
+
 function show(v) {
   if (typeof v === 'string') return v
   if (v instanceof Error) return String(v)
@@ -28,7 +35,7 @@ export function errorText(args) {
         parts.push('[unprintable]')
       }
     }
-    return parts.join(' ').slice(0, MAX_TEXT)
+    return clip(parts.join(' '), MAX_TEXT)
   } catch {
     return ''
   }
@@ -55,7 +62,10 @@ export function hotReloadSignal(text) {
 /** The path of a URL, no query and no fragment; `/` when it does not parse. */
 export function pathOf(url) {
   try {
-    return new URL(url).pathname.slice(0, MAX_TEXT) || '/'
+    const u = new URL(url)
+    // Only the schemes a page requests over; a `data:` URL's payload is not a path.
+    if (!['http:', 'https:', 'ws:', 'wss:'].includes(u.protocol)) return '/'
+    return clip(u.pathname, MAX_TEXT) || '/'
   } catch {
     return '/'
   }
@@ -74,23 +84,19 @@ export function isNoise(url, error) {
   )
 }
 
-/** At most `perSecond` passes in any one second; the caller keeps counting what it refuses. */
+/** At most `perSecond` passes in any sliding second; the caller keeps counting what it refuses. */
 export class RateLimiter {
   constructor(perSecond = 10, now = Date.now) {
     this.perSecond = perSecond
     this.now = now
-    this.start = -Infinity
-    this.used = 0
+    this.passed = []
   }
 
   allow() {
     const t = this.now()
-    if (t - this.start >= 1000) {
-      this.start = t
-      this.used = 0
-    }
-    if (this.used >= this.perSecond) return false
-    this.used += 1
+    while (this.passed.length > 0 && t - this.passed[0] >= 1000) this.passed.shift()
+    if (this.passed.length >= this.perSecond) return false
+    this.passed.push(t)
     return true
   }
 }
