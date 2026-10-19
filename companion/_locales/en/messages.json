@@ -116,6 +116,9 @@
       }
     }
   },
+  "fremdevTabsNone": {
+    "message": "No tab watched"
+  },
   "fremdevTabsOne": {
     "message": "1 tab watched"
   },

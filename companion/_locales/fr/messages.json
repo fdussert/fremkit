@@ -116,6 +116,9 @@
       }
     }
   },
+  "fremdevTabsNone": {
+    "message": "Aucun onglet surveillé"
+  },
   "fremdevTabsOne": {
     "message": "1 onglet surveillé"
   },

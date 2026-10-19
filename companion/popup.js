@@ -185,12 +185,14 @@ function renderFremdev() {
   const note = FREMDEV_NOTES[session.fremdevSupport] ?? null
   const sw = $('fremdevswitch')
   sw.setAttribute('aria-checked', String(on))
-  // Greyed while Fremkit cannot take it; still clickable to turn off if it was left on.
+  // Greyed while Fremkit cannot take it, but only while off: Fremdev left on before Fremkit was
+  // downgraded or its experimental switch turned off must still be turnable off from here, or its
+  // scripts would stay registered on the dev hosts with no way out but Chrome's settings.
   sw.disabled = fremdevBusy || (Boolean(note) && !on)
   $('fremdevicon').classList.toggle('on', on && !note)
   const n = on && !note ? Object.keys(session.devTabs ?? {}).length : null
   $('fremdevtabs').hidden = n === null
-  $('fremdevtabs').textContent = n === null ? '' : n === 1 ? t('fremdevTabsOne') : t('fremdevTabs', n)
+  $('fremdevtabs').textContent = n === null ? '' : n === 0 ? t('fremdevTabsNone') : n === 1 ? t('fremdevTabsOne') : t('fremdevTabs', n)
   $('fremdevnote').hidden = !note
   $('fremdevnote').textContent = note ? t(note) : ''
   $('fremdeverror').hidden = !fremdevError
