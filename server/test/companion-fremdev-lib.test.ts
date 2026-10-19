@@ -1,0 +1,179 @@
+import { describe, expect, it, vi } from 'vitest'
+// @ts-expect-error plain JS module outside server/, no declarations
+import { BUILTIN_PERMISSION_ORIGINS, FREMKIT_EXCLUDES, isDevUrl, parsePattern } from '../../companion/lib/devhosts.js'
+// @ts-expect-error plain JS module
+import { errorText, hotReloadSignal, isNoise, MAX_TEXT, pathOf, RateLimiter } from '../../companion/lib/devlog.js'
+// @ts-expect-error plain JS module
+import { emptyTab, fremdevSupport, reduce, Throttle, wireTabs } from '../../companion/lib/devtabs.js'
+// @ts-expect-error plain JS module
+import { hello, devTabs, modulesMsg, ping } from '../../companion/lib/protocol.js'
+import { DevTabSchema } from '../src/companion/protocol.js'
+
+describe('devhosts', () => {
+  it('lists the built-in permissions and the Fremkit excludes', () => {
+    expect(BUILTIN_PERMISSION_ORIGINS).toHaveLength(8)
+    expect(FREMKIT_EXCLUDES).toEqual(['*://127.0.0.1:4242/*', '*://localhost:4242/*', '*://[::1]:4242/*'])
+  })
+
+  it('recognises dev URLs', () => {
+    const yes = ['http://localhost:5173/', 'http://foo.test/', 'http://[::1]:3000/', 'http://app.localhost:8080/x']
+    const no = ['http://localhost.example.com/', 'http://127.0.0.1:4242/admin', 'http://localhost:4242/', 'chrome://extensions', 'file:///x', 'nonsense']
+    for (const u of yes) expect(isDevUrl(u, []), u).toBe(true)
+    for (const u of no) expect(isDevUrl(u, []), u).toBe(false)
+    expect(isDevUrl('https://bo-dev.example.com/', ['bo-dev.example.com'])).toBe(true)
+    expect(isDevUrl('https://api-dev.example.com/', ['*-dev.example.com'])).toBe(true)
+    expect(isDevUrl('https://www.example.com/', ['*-dev.example.com'])).toBe(false)
+    expect(isDevUrl('https://a.b.dev.example.com/', ['*.dev.example.com'])).toBe(true)
+    expect(isDevUrl('https://dev.example.com/', ['*.dev.example.com'])).toBe(false)
+    expect(isDevUrl('https://x.api-dev.example.com/', ['*-dev.example.com'])).toBe(false)
+  })
+
+  it('parses patterns', () => {
+    expect(parsePattern('  BO-Dev.Example.com ')).toEqual({ pattern: 'bo-dev.example.com', permission: '*://bo-dev.example.com/*' })
+    expect(parsePattern('*-dev.example.com')).toEqual({ pattern: '*-dev.example.com', permission: '*://*.example.com/*' })
+    expect(parsePattern('*.dev.example.com')).toEqual({ pattern: '*.dev.example.com', permission: '*://*.dev.example.com/*' })
+    for (const bad of ['', '  ', 'a b.example.com', 'https://x.example.com', 'x.example.com/path', 'a.*.example.com', '*.*.example.com', 'a-*.b-*.example.com', '*.com', '*-dev.com', 'localhost', '127.0.0.1', 'app.localhost', 'foo.test', '*.foo.test']) {
+      expect(parsePattern(bad), bad).toBeNull()
+    }
+  })
+})
+
+describe('devlog', () => {
+  it('joins console arguments', () => {
+    expect(errorText(['a', 1, { b: 2 }])).toBe('a 1 {"b":2}')
+    expect(errorText([new Error('boom')])).toContain('Error: boom')
+    const loop: Record<string, unknown> = {}
+    loop.self = loop
+    expect(() => errorText([loop])).not.toThrow()
+    expect(() => errorText([Symbol('s')])).not.toThrow()
+    expect(errorText([])).toBe('')
+    expect(errorText(['x'.repeat(1000)])).toHaveLength(300)
+    expect(MAX_TEXT).toBe(300)
+  })
+
+  it('reads hot reload signals', () => {
+    for (const t of ['[vite] server connection lost. Polling', '[webpack-dev-server] Disconnected!', '[WDS] Disconnected!']) expect(hotReloadSignal(t)).toBe('down')
+    for (const t of ['[vite] connected.', '[webpack-dev-server] Server started', '[webpack-dev-server] Hot Module Replacement enabled', '[webpack-dev-server] Live Reloading enabled']) expect(hotReloadSignal(t)).toBe('up')
+    for (const t of ['[vite] hot updated: /src/a.ts', '[HMR] App is up to date', '[HMR] Updated modules']) expect(hotReloadSignal(t)).toBe('hot')
+    expect(hotReloadSignal('[vite] connecting...')).toBeNull()
+  })
+
+  it('keeps the path only', () => {
+    expect(pathOf('http://localhost:5173/api/items/4?token=abc#x')).toBe('/api/items/4')
+    expect(pathOf('nonsense')).toBe('/')
+  })
+
+  it('knows the noise', () => {
+    for (const u of ['http://localhost/favicon.ico', 'http://localhost/@vite/client', 'http://localhost/__webpack_hmr', 'http://localhost/sockjs-node/info', 'http://localhost/main.abc.hot-update.json']) expect(isNoise(u, 'net::ERR_FAILED'), u).toBe(true)
+    expect(isNoise('http://localhost/api/items', 'net::ERR_ABORTED')).toBe(true)
+    expect(isNoise('http://localhost/api/items', 500)).toBe(false)
+  })
+
+  it('limits to ten a second', () => {
+    let t = 1_000_000
+    const limiter = new RateLimiter(10, () => t)
+    const run = () => Array.from({ length: 1000 }, () => limiter.allow()).filter(Boolean).length
+    expect(run()).toBe(10)
+    t += 1000
+    expect(run()).toBe(10)
+  })
+})
+
+describe('devtabs', () => {
+  const base = () => emptyTab(1, 'http://localhost:5173/', 'App', 100)
+
+  it('reduces events', () => {
+    let tab = base()
+    for (const text of ['a', 'b', 'c']) tab = reduce(tab, { kind: 'error', text }, 200)
+    expect(tab.errors).toMatchObject({ total: 3, open: 3, last: { text: 'c', at: 200 } })
+    expect(tab.activity).toBe(200)
+    tab = reduce(tab, { kind: 'request', path: '/api', status: 500 }, 210)
+    expect(tab.requests).toMatchObject({ total: 1, open: 1 })
+    const same = reduce(tab, { kind: 'navigated', url: 'http://localhost:5173/x', title: 'X' }, 300)
+    expect(same.errors).toMatchObject({ total: 3, open: 0 })
+    expect(same.requests.open).toBe(0)
+    const other = reduce(same, { kind: 'navigated', url: 'http://localhost:3000/', title: 'Y' }, 400)
+    expect(other.errors.total).toBe(0)
+    expect(other.host).toBe('localhost:3000')
+    expect(reduce(tab, { kind: 'hot' }, 500).errors.open).toBe(0)
+    const down = reduce(tab, { kind: 'server', state: 'down' }, 600)
+    expect(down.server).toBe('down')
+    expect(reduce(down, { kind: 'server', state: 'up' }, 700).server).toBe('up')
+    const cleared = reduce(tab, { kind: 'clear' }, 800)
+    expect(cleared.errors).toMatchObject({ total: 0, open: 0 })
+    expect(cleared.requests).toMatchObject({ total: 0, open: 0 })
+    const titled = reduce(tab, { kind: 'title', title: 'New' }, 900)
+    expect(titled.title).toBe('New')
+    expect(titled.activity).toBe(tab.activity)
+  })
+
+  it('puts the latest 32 first, in the server shape', () => {
+    const tabs = Array.from({ length: 40 }, (_, i) => reduce(emptyTab(i, `http://localhost:${3000 + i}/`, `App ${i}`, i), { kind: 'error', text: 'x' }, 1000 + i))
+    const rows = wireTabs(tabs)
+    expect(rows).toHaveLength(32)
+    expect(rows[0].tabId).toBe(39)
+    expect(rows[31].tabId).toBe(8)
+    expect(Object.keys(rows[0]).sort()).toEqual(['activity', 'app', 'errors', 'host', 'requests', 'server', 'tabId'])
+    for (const r of rows) expect(DevTabSchema.safeParse(r).success).toBe(true)
+  })
+
+  it('clamps and strips what leaves the tab', () => {
+    let tab = emptyTab(1, 'http://localhost:5173/', 'T'.repeat(500), 1)
+    tab = reduce(tab, { kind: 'error', text: 'e'.repeat(900) }, 2)
+    tab = reduce(tab, { kind: 'request', path: `/api/${'p'.repeat(900)}?token=abc#frag`, status: 502 }, 3)
+    const [row] = wireTabs([tab])
+    expect(row.app).toHaveLength(120)
+    expect(row.errors.last.text).toHaveLength(300)
+    expect(row.requests.last.path).not.toMatch(/[?#]/)
+    expect(row.requests.last.path.length).toBeLessThanOrEqual(300)
+    expect(DevTabSchema.safeParse(row).success).toBe(true)
+  })
+
+  it('keeps multibyte messages under the size cap, latest rows kept', () => {
+    const tabs = Array.from({ length: 32 }, (_, i) => {
+      let t = emptyTab(i, `http://localhost:${3000 + i}/`, '€'.repeat(120), 1)
+      t = reduce(t, { kind: 'error', text: '€'.repeat(300) }, 10 + i)
+      return reduce(t, { kind: 'request', path: `/${'€'.repeat(299)}`, status: 500 }, 10 + i)
+    })
+    const rows = wireTabs(tabs)
+    const size = new TextEncoder().encode(JSON.stringify({ type: 'dev.tabs', tabs: rows })).length
+    expect(size).toBeLessThanOrEqual(60_000)
+    expect(rows.length).toBeGreaterThan(0)
+    expect(rows.length).toBeLessThan(32)
+    expect(rows[0].tabId).toBe(31)
+    expect(rows.map((r: { tabId: number }) => r.tabId)).toEqual(Array.from({ length: rows.length }, (_, i) => 31 - i))
+  })
+
+  it('tells what the server supports', () => {
+    expect(fremdevSupport({ modules: { fremplay: true } })).toBe('unsupported')
+    expect(fremdevSupport({ modules: { fremplay: true, fremdev: false } })).toBe('disabled')
+    expect(fremdevSupport({ modules: { fremplay: true, fremdev: true } })).toBe('yes')
+    expect(fremdevSupport({})).toBe('unsupported')
+  })
+
+  it('throttles to a first run and one trailing run', () => {
+    vi.useFakeTimers()
+    try {
+      const throttle = new Throttle(500, Date.now, setTimeout)
+      const calls: number[] = []
+      for (let i = 0; i < 10; i++) throttle.push(() => calls.push(i))
+      expect(calls).toEqual([0])
+      vi.advanceTimersByTime(500)
+      expect(calls).toEqual([0, 9])
+      vi.advanceTimersByTime(2000)
+      expect(calls).toEqual([0, 9])
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})
+
+describe('protocol builders', () => {
+  it('adds modules to hello only when given', () => {
+    expect(hello('t', 'i', undefined, ['fremplay', 'fremdev']).modules).toEqual(['fremplay', 'fremdev'])
+    expect('modules' in hello('t', 'i')).toBe(false)
+    expect(modulesMsg(['fremdev'])).toEqual({ type: 'modules', modules: ['fremdev'] })
+    expect(devTabs([])).toEqual({ type: 'dev.tabs', tabs: [] })
+    expect(ping()).toEqual({ type: 'ping' })
+  })
+})
