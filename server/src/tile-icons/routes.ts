@@ -1,7 +1,9 @@
 import type { FastifyInstance } from 'fastify'
 import { mkdir, readFile, readdir, unlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { isSafeTileIconName } from '../config/schema.js'
+import { isSafeTileIconName, type Config } from '../config/schema.js'
+import { requestScope, tileIconInScope, type ScreenOfDevice } from '../devices/scope.js'
+import { isRemoteRequest } from '../net/remote.js'
 import { detectImageType, safeBackgroundName, type ImageType } from '../backgrounds/routes.js'
 import { tr } from '../i18n.js'
 
@@ -81,7 +83,15 @@ export function tileIconContentType(name: string): string {
   return 'application/octet-stream'
 }
 
-export async function tileIconRoutes(app: FastifyInstance, opts: { dataDir: string }): Promise<void> {
+export async function tileIconRoutes(
+  app: FastifyInstance,
+  opts: {
+    dataDir: string
+    /** The config, for the icons a paired device's screen wears. Absent, devices get none. */
+    config?: () => Config
+    screenOfDevice?: ScreenOfDevice
+  },
+): Promise<void> {
   const dir = join(opts.dataDir, TILE_ICONS_DIR)
   const pathOf = (name: string): string => join(dir, name)
 
@@ -116,6 +126,15 @@ export async function tileIconRoutes(app: FastifyInstance, opts: { dataDir: stri
   app.get<{ Params: { name: string } }>('/api/tile-icons/:name', async (req, reply) => {
     const { name } = req.params
     if (!isSafeTileIconName(name)) return reply.code(404).send({ error: tr(undefined, 'tileIcons.unknown') })
+    // A paired device reads only the icons its own screen wears (the remote allow-list lets this
+    // GET through, never the list or a write). Refused as unknown, so the answer does not say
+    // whether the library holds a file of that name.
+    if (isRemoteRequest(req)) {
+      const config = opts.config?.()
+      if (!config || !tileIconInScope(config, requestScope(req, opts.screenOfDevice ?? (() => null)), name)) {
+        return reply.code(404).send({ error: tr(undefined, 'tileIcons.unknown') })
+      }
+    }
     let buf: Buffer
     try {
       buf = await readFile(pathOf(name))

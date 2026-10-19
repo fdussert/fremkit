@@ -486,7 +486,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     connCache,
   })
   await app.register(backgroundRoutes, { dataDir: opts.dataDir })
-  await app.register(tileIconRoutes, { dataDir: opts.dataDir })
+  await app.register(tileIconRoutes, { dataDir: opts.dataDir, config: () => store.get(), screenOfDevice })
   await app.register(backupRoutes, {
     store,
     dataDir: opts.dataDir,

@@ -6,7 +6,7 @@ import type { FastifyInstance } from 'fastify'
 import { buildApp } from '../src/app.js'
 import { RemoteListener } from '../src/devices/listener.js'
 import { deviceBrightnessView } from '../src/devices/service.js'
-import { commandScope, deviceConfigView, iconInScope, instanceInScope, widgetInScope, type ScreenScope } from '../src/devices/scope.js'
+import { commandScope, deviceConfigView, iconInScope, instanceInScope, tileIconInScope, widgetInScope, type ScreenScope } from '../src/devices/scope.js'
 import { ConfigSchema, type Config } from '../src/config/schema.js'
 import { hasOpenssl, remote, tlsMaterial, TinyWs, upgrade } from './helpers/remote.js'
 
@@ -27,8 +27,8 @@ const RAW_CONFIG = {
     'cal-edge': { widgetId: 'cal', settings: { source: 'ics-edge' } },
     'sc-b': { widgetId: 'shortcuts', settings: { buttons: [] } },
     'sc-edge': { widgetId: 'shortcuts', settings: { buttons: [] } },
-    'clock-edge': { widgetId: 'clock', settings: {} },
-    'clock-a': { widgetId: 'clock', settings: {} },
+    'clock-edge': { widgetId: 'clock', settings: {}, icon: { kind: 'file', name: '1-edge.svg' } },
+    'clock-a': { widgetId: 'clock', settings: {}, icon: { kind: 'file', name: '1-a.svg', tint: false } },
     'clock-b': { widgetId: 'clock', settings: {} },
     'status-edge': { widgetId: 'service-status', settings: { services: [] } },
     'status-a': { widgetId: 'service-status', settings: { services: [] } },
@@ -64,6 +64,7 @@ const RAW_CONFIG = {
 }
 
 const config = (): Config => ConfigSchema.parse(RAW_CONFIG)
+const TILE_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/></svg>'
 
 describe('screen scope', () => {
   const a: ScreenScope = { kind: 'screen', screenId: 'tab-a' }
@@ -126,6 +127,17 @@ describe('iconInScope', () => {
   it('lets this Mac fetch anything and a device with no screen nothing', () => {
     expect(iconInScope(config(), { kind: 'all' }, at('https://example.net'), 'https://example.net', false)).toBe(true)
     expect(iconInScope(config(), { kind: 'none' }, at('https://example.com'), 'https://example.com', false)).toBe(false)
+  })
+})
+
+describe('tileIconInScope', () => {
+  it('gives this Mac any icon, a device the ones its own screen wears, and a screenless device none', () => {
+    const a: ScreenScope = { kind: 'screen', screenId: 'tab-a' }
+    expect(tileIconInScope(config(), { kind: 'all' }, '9-anything.svg')).toBe(true)
+    expect(tileIconInScope(config(), a, '1-a.svg')).toBe(true)
+    expect(tileIconInScope(config(), a, '1-edge.svg')).toBe(false)
+    expect(tileIconInScope(config(), { kind: 'screen', screenId: 'tab-b' }, '1-a.svg')).toBe(false)
+    expect(tileIconInScope(config(), { kind: 'none' }, '1-a.svg')).toBe(false)
   })
 })
 
@@ -212,6 +224,8 @@ describe.skipIf(!hasOpenssl)('a paired device acts on its own screen only', () =
     await widget('service-status', { commands: ['service-status'], compact: { width: 4 } })
     await mkdir(join(dir, 'data'), { recursive: true })
     await writeFile(join(dir, 'data', 'fremkit.json'), JSON.stringify(RAW_CONFIG))
+    await mkdir(join(dir, 'data', 'tile-icons'), { recursive: true })
+    for (const name of ['1-a.svg', '1-edge.svg']) await writeFile(join(dir, 'data', 'tile-icons', name), TILE_SVG)
     app = await buildApp({ accessToken: null, dataDir: join(dir, 'data'), widgetsDir: join(dir, 'widgets') })
     listener = new RemoteListener(app, 0)
     const { key, cert } = await tlsMaterial()
@@ -256,6 +270,22 @@ describe.skipIf(!hasOpenssl)('a paired device acts on its own screen only', () =
     expect((await remote(port, { path: '/api/proxy/clock', headers: cookie(tokenNone) })).status).toBe(404)
     // Its own: past the scope, refused for the missing `url`.
     expect((await remote(port, { path: '/api/proxy/clock', headers: cookie(tokenA) })).status).toBe(400)
+  })
+
+  it('serves a device only the tile icons its own screen wears, and never the library list', async () => {
+    const own = await remote(port, { path: '/api/tile-icons/1-a.svg', headers: cookie(tokenA) })
+    expect(own.status).toBe(200)
+    expect(own.body).toContain('<svg')
+    // The Edge's icon exists, and is answered exactly like a name that does not.
+    const edge = await remote(port, { path: '/api/tile-icons/1-edge.svg', headers: cookie(tokenA) })
+    const missing = await remote(port, { path: '/api/tile-icons/9-none.svg', headers: cookie(tokenA) })
+    expect([edge.status, missing.status]).toEqual([404, 404])
+    expect(edge.body).toBe(missing.body)
+    expect((await remote(port, { path: '/api/tile-icons/1-a.svg', headers: cookie(tokenB) })).status).toBe(404)
+    expect((await remote(port, { path: '/api/tile-icons/1-a.svg', headers: cookie(tokenNone) })).status).toBe(404)
+    expect((await remote(port, { path: '/api/tile-icons', headers: cookie(tokenA) })).status).toBe(404)
+    // This Mac reads them all.
+    expect((await app.inject({ url: '/api/tile-icons/1-edge.svg' })).statusCode).toBe(200)
   })
 
   it('leaves the proxy alone for this Mac', async () => {

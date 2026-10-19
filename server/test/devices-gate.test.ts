@@ -168,6 +168,7 @@ describe.skipIf(!hasOpenssl)('the remote gate, through a real TLS listener', () 
       'GET /api/favicon',
       'GET /api/proxy/:widgetId',
       'GET /api/themes',
+      'GET /api/tile-icons/:name',
       'GET /api/widgets',
       'GET /fremkit.js',
       'GET /widgets/:id/*',
