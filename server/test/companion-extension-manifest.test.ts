@@ -30,12 +30,15 @@ describe('the companion extension', () => {
 
   it('the manifest asks for exactly the permitted permissions and no <all_urls>', () => {
     expect(manifest.manifest_version).toBe(3)
-    // Fremdev watches dev tabs' failed requests (webRequest) and their dev server going away (webNavigation).
-    expect([...manifest.permissions].sort()).toEqual(['activeTab', 'offscreen', 'scripting', 'storage', 'tabCapture', 'webNavigation', 'webRequest'])
+    // Nothing new at install: an added permission with a warning disables the extension on a store
+    // update until the user accepts it again. Fremdev's webRequest is asked for when it is turned on.
+    expect([...manifest.permissions].sort()).toEqual(['activeTab', 'offscreen', 'scripting', 'storage', 'tabCapture'])
     // Fremkit's port only (worker.js PORT): not every local server on the Mac.
     expect(manifest.host_permissions).toEqual(['http://127.0.0.1:4242/*'])
     expect([...manifest.optional_host_permissions].sort()).toEqual(['http://*/*', 'https://*/*'])
-    expect(manifest.optional_permissions).toBeUndefined()
+    expect(manifest.optional_permissions).toEqual(['webRequest'])
+    // webNavigation reports every site's navigations whatever the host grants: not asked for at all.
+    expect(JSON.stringify(manifest)).not.toContain('webNavigation')
     // Fremdev's hooks are registered at run time on the dev origins the user granted, never declared.
     expect(manifest.content_scripts).toBeUndefined()
     expect(manifest.web_accessible_resources).toBeUndefined()

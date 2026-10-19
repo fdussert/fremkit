@@ -1,0 +1,240 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { describe, expect, it, vi } from 'vitest'
+// @ts-expect-error plain JS module outside server/, no declarations
+import { createFremdev, pageEvent } from '../../companion/fremdev.js'
+
+// companion/fremdev.js against a fake chrome.*.
+
+const ROOT = join(import.meta.dirname, '..', '..', 'companion')
+const source = (path: string) => readFileSync(join(ROOT, path), 'utf8')
+
+/** A chrome.* just wide enough for fremdev.js. */
+function fakeChrome({ on = true, granted = ['http://localhost/*'], webRequest = true } = {}) {
+  const store = {
+    local: { fremdev: { on, patterns: [] as string[] } } as Record<string, unknown>,
+    session: {} as Record<string, unknown>,
+  }
+  const area = (data: Record<string, unknown>) => ({
+    get: async (keys: string | string[]) => Object.fromEntries([keys].flat().filter((k) => k in data).map((k) => [k, structuredClone(data[k])])),
+    set: async (patch: Record<string, unknown>) => void Object.assign(data, structuredClone(patch)),
+  })
+  const event = () => ({ addListener: vi.fn(), removeListener: vi.fn() })
+  const registered: unknown[] = []
+  const grants = { origins: [...granted] }
+  const api: Record<string, any> = {
+    runtime: { id: 'ext' },
+    storage: { local: area(store.local), session: area(store.session) },
+    permissions: { contains: async ({ origins }: { origins: string[] }) => grants.origins.includes(origins[0]), onAdded: event(), onRemoved: event() },
+    scripting: {
+      getRegisteredContentScripts: async () => registered.splice(0) as Array<{ id: string }>,
+      unregisterContentScripts: vi.fn(async () => undefined),
+      registerContentScripts: vi.fn(async (list: unknown[]) => void registered.push(...list)),
+      executeScript: vi.fn(async () => []),
+    },
+    tabs: {
+      query: async () => [{ id: 7, url: 'http://localhost:5173/', title: 'App', windowId: 1 }],
+      get: async (id: number) => ({ id, url: 'http://localhost:5173/', title: 'App', windowId: 1 }),
+      update: vi.fn(async () => undefined),
+      onRemoved: event(),
+      onUpdated: event(),
+    },
+    windows: { update: vi.fn(async () => undefined) },
+  }
+  if (webRequest) api.webRequest = { onCompleted: event(), onErrorOccurred: event() }
+  return { api, store, grants, event }
+}
+
+const devSender = (over: Record<string, unknown> = {}) => ({
+  id: 'ext',
+  frameId: 0,
+  url: 'http://localhost:5173/',
+  tab: { id: 7, url: 'http://localhost:5173/', title: 'App' },
+  ...over,
+})
+
+async function makeFremdev(opts?: Parameters<typeof fakeChrome>[0]) {
+  const { api, store, grants, event } = fakeChrome(opts)
+  const sent: Array<{ type: string; [k: string]: unknown }> = []
+  const wantSocket = vi.fn()
+  let clock = 1_000
+  const timers: Array<() => void> = []
+  const fremdev = createFremdev({
+    send: (m: { type: string }) => (sent.push(m), true),
+    wantSocket,
+    api,
+    now: () => clock,
+    setTimer: (fn: () => void) => void timers.push(fn),
+    every: () => 1,
+    stopEvery: () => undefined,
+  })
+  // Let the boot finish (a command for no tab waits for it and does nothing).
+  await fremdev.onServer({ type: 'none' })
+  const later = async () => {
+    clock += 1_000
+    await new Promise((r) => setTimeout(r, 0))
+    while (timers.length) timers.shift()!()
+    await Promise.resolve()
+  }
+  const rows = () => (f.store.session.devTabs ?? {}) as Record<string, any>
+  const f = { fremdev, api, store, grants, event, sent, wantSocket, later, rows }
+  return f
+}
+
+describe('companion/fremdev.js', () => {
+  it('rebuilds a page event from its kind and text alone', () => {
+    expect(pageEvent({ kind: 'error', text: 'a'.repeat(500), tabId: 3 })).toEqual({ kind: 'error', text: 'a'.repeat(300) })
+    expect(pageEvent({ kind: 'count', n: 5, tabId: 3 })).toEqual({ kind: 'count', n: 5 })
+    expect(pageEvent({ kind: 'count', n: -1 })).toBeNull()
+    expect(pageEvent({ kind: 'count', n: 1.5 })).toBeNull()
+    expect(pageEvent({ kind: 'down' })).toEqual({ kind: 'server', state: 'down' })
+    expect(pageEvent({ kind: 'navigated', url: 'http://evil.example.com/' })).toBeNull()
+    expect(pageEvent({ kind: 'clear' })).toBeNull()
+  })
+
+  it('takes a dev event only from its own content script in the top frame of a granted dev tab', async () => {
+    const f = await makeFremdev()
+    const refused = [
+      devSender({ id: 'other-extension' }),
+      devSender({ frameId: 3 }),
+      devSender({ tab: undefined }),
+      devSender({ tab: { id: 7, url: 'https://www.example.com/' } }),
+      devSender({ url: 'https://www.example.com/' }),
+      devSender({ tab: { id: -1, url: 'http://localhost:5173/' } }),
+      devSender({ tab: { id: 7, url: 'http://127.0.0.1:4242/admin' }, url: 'http://127.0.0.1:4242/admin' }),
+      // A dev URL, but not inside what the user granted (http://localhost/* only).
+      devSender({ tab: { id: 7, url: 'http://foo.test/' }, url: 'http://foo.test/' }),
+    ]
+    for (const sender of refused) await f.fremdev.onPageEvent({ kind: 'error', text: 'x' }, sender)
+    await f.later()
+    expect(f.rows()).toEqual({})
+    await f.fremdev.onPageEvent({ kind: 'error', text: 'boom', tabId: 99 }, devSender())
+    await f.fremdev.onPageEvent({ kind: 'count', n: 40 }, devSender())
+    await f.later()
+    expect(Object.keys(f.rows())).toEqual(['7'])
+    expect(f.rows()['7'].errors.total).toBe(41)
+    expect(f.rows()['7'].errors.last.text).toBe('boom')
+  })
+
+  it('drops the rows a taken-back permission leaves outside', async () => {
+    const f = await makeFremdev()
+    await f.fremdev.onPageEvent({ kind: 'error', text: 'x' }, devSender())
+    await f.later()
+    expect(Object.keys(f.rows())).toEqual(['7'])
+    f.grants.origins = []
+    const [onRemoved] = f.api.permissions.onRemoved.addListener.mock.calls[0]
+    await onRemoved({ origins: ['http://localhost/*'] })
+    await f.later()
+    expect(f.rows()).toEqual({})
+  })
+
+  it('sends nothing Fremdev until the server said it speaks it, then the module before the rows', async () => {
+    const f = await makeFremdev()
+    await f.fremdev.onPageEvent({ kind: 'error', text: 'x' }, devSender())
+    await f.later()
+    expect(f.sent).toEqual([])
+    expect(f.fremdev.active()).toBe(true)
+    f.fremdev.onReady({ type: 'ready', protocol: 2, modules: { fremplay: true } })
+    await f.later()
+    expect(f.sent).toEqual([])
+    // An older Fremkit: Fremdev no longer wants the socket, and a dev event asks to look again.
+    expect(f.fremdev.active()).toBe(false)
+    expect(f.store.session.fremdevSupport).toBe('unsupported')
+    f.wantSocket.mockClear()
+    await f.fremdev.onPageEvent({ kind: 'error', text: 'y' }, devSender())
+    expect(f.wantSocket).toHaveBeenCalledWith({ relearn: true })
+    f.fremdev.onReady({ type: 'ready', protocol: 2, modules: { fremplay: true, fremdev: true } })
+    await f.later()
+    expect(f.sent.map((m) => m.type)).toEqual(['modules', 'dev.tabs'])
+    expect(f.sent[0]).toEqual({ type: 'modules', modules: ['fremplay', 'fremdev'] })
+    expect((f.sent[1].tabs as Array<{ tabId: number }>).map((t) => t.tabId)).toEqual([7])
+    await f.fremdev.stop()
+    expect(f.sent.at(-1)).toEqual({ type: 'modules', modules: ['fremplay'] })
+    expect(f.store.session.devTabs).toEqual({})
+    expect(f.fremdev.active()).toBe(false)
+  })
+
+  it('focuses and clears only a tab it has a row for', async () => {
+    const f = await makeFremdev()
+    await f.fremdev.onPageEvent({ kind: 'error', text: 'x' }, devSender())
+    await f.fremdev.onServer({ type: 'dev.focus', tabId: 8 })
+    await f.fremdev.onServer({ type: 'dev.focus', tabId: -1 })
+    expect(f.api.tabs.update).not.toHaveBeenCalled()
+    await f.fremdev.onServer({ type: 'dev.focus', tabId: 7 })
+    expect(f.api.tabs.update).toHaveBeenCalledWith(7, { active: true })
+    expect(f.api.windows.update).toHaveBeenCalledWith(1, { focused: true })
+    await f.fremdev.onServer({ type: 'dev.clear', tabId: 7 })
+    await f.later()
+    expect(f.rows()['7'].errors.total).toBe(0)
+  })
+
+  it('counts a failed request of a watched tab by its path, and leaves the noise and other tabs out', async () => {
+    const f = await makeFremdev()
+    await f.fremdev.onPageEvent({ kind: 'hot' }, devSender())
+    const [onCompleted] = f.api.webRequest.onCompleted.addListener.mock.calls.at(-1)
+    const [onFailed] = f.api.webRequest.onErrorOccurred.addListener.mock.calls.at(-1)
+    onCompleted({ tabId: 7, url: 'http://localhost:5173/api/x?token=secret#frag', statusCode: 500, type: 'xmlhttprequest' })
+    onCompleted({ tabId: 7, url: 'http://localhost:5173/ok', statusCode: 200, type: 'xmlhttprequest' })
+    onCompleted({ tabId: 8, url: 'http://localhost:5173/api/x', statusCode: 500, type: 'xmlhttprequest' })
+    onCompleted({ tabId: 7, url: 'http://localhost:5173/favicon.ico', statusCode: 404, type: 'image' })
+    onFailed({ tabId: 7, url: 'http://localhost:5173/api/y', error: 'net::ERR_ABORTED', type: 'fetch' })
+    onFailed({ tabId: 7, url: 'http://localhost:5173/api/z', error: 'net::ERR_FAILED', type: 'fetch' })
+    await f.later()
+    const row = f.rows()['7']
+    expect(row.requests.total).toBe(2)
+    expect(row.requests.last).toMatchObject({ path: '/api/z', status: 0 })
+  })
+
+  it("tells the dev server's state from the top frame's own load", async () => {
+    const f = await makeFremdev()
+    const [onCompleted] = f.api.webRequest.onCompleted.addListener.mock.calls.at(-1)
+    const [onFailed] = f.api.webRequest.onErrorOccurred.addListener.mock.calls.at(-1)
+    onFailed({ tabId: 7, frameId: 0, url: 'http://localhost:5173/', error: 'net::ERR_CONNECTION_REFUSED', type: 'main_frame' })
+    onFailed({ tabId: 9, frameId: 0, url: 'https://www.example.com/', error: 'net::ERR_CONNECTION_REFUSED', type: 'main_frame' })
+    await f.later()
+    expect(Object.keys(f.rows())).toEqual(['7'])
+    expect(f.rows()['7']).toMatchObject({ server: 'down', requests: { total: 0 } })
+    onCompleted({ tabId: 7, frameId: 0, url: 'http://localhost:5173/', statusCode: 200, type: 'main_frame' })
+    await f.later()
+    expect(f.rows()['7'].server).toBe('up')
+  })
+
+  it('follows navigations and titles through tabs.onUpdated', async () => {
+    const f = await makeFremdev()
+    const [onUpdated] = f.api.tabs.onUpdated.addListener.mock.calls.at(-1)
+    await onUpdated(7, { status: 'loading', url: 'http://localhost:5173/' }, { id: 7, url: 'http://localhost:5173/', title: '' })
+    await onUpdated(7, { title: 'My app' }, { id: 7, url: 'http://localhost:5173/', title: 'My app' })
+    await f.fremdev.onPageEvent({ kind: 'error', text: 'x' }, devSender())
+    await onUpdated(7, { status: 'loading' }, { id: 7, url: 'http://localhost:5173/', title: 'My app' })
+    await f.later()
+    expect(f.rows()['7']).toMatchObject({ title: 'My app', errors: { total: 1, open: 0 } })
+    await onUpdated(7, { status: 'loading', url: 'https://www.example.com/' }, { id: 7, url: 'https://www.example.com/' })
+    await f.later()
+    expect(f.rows()).toEqual({})
+  })
+
+  it('adds the request listeners when webRequest is granted after the start', async () => {
+    const f = await makeFremdev({ webRequest: false })
+    f.api.webRequest = { onCompleted: f.event(), onErrorOccurred: f.event() }
+    const [onAdded] = f.api.permissions.onAdded.addListener.mock.calls[0]
+    await onAdded({ permissions: ['webRequest'] })
+    expect(f.api.webRequest.onCompleted.addListener).toHaveBeenCalledTimes(1)
+  })
+
+  it('off, it registers nothing and keeps no row', async () => {
+    const f = await makeFremdev({ on: false })
+    await f.fremdev.onPageEvent({ kind: 'error', text: 'x' }, devSender())
+    expect(f.api.scripting.registerContentScripts).not.toHaveBeenCalled()
+    expect(f.fremdev.active()).toBe(false)
+    expect(f.fremdev.modules()).toEqual(['fremplay'])
+    expect(f.api.webRequest.onCompleted.removeListener).toHaveBeenCalled()
+    await f.fremdev.start()
+    const scripts = f.api.scripting.registerContentScripts.mock.calls[0][0] as Array<{ id: string; world?: string; matches: string[] }>
+    expect(scripts.map((s) => [s.id, s.world, s.matches])).toEqual([
+      ['fremdev-relay', undefined, ['http://localhost/*']],
+      ['fremdev-hook', 'MAIN', ['http://localhost/*']],
+    ])
+    expect(f.api.scripting.executeScript).toHaveBeenCalledTimes(2)
+    expect(f.store.local.fremdev).toMatchObject({ on: true })
+  })
+})

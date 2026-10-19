@@ -1,18 +1,26 @@
-// Fremdev in the service worker: which tabs are dev tabs, what their pages, their requests and
-// their navigations say, and the rows sent to Fremkit as `dev.tabs`. worker.js owns the socket and
-// only wires this in (`createFremdev` below).
+// Fremdev in the service worker: which tabs are dev tabs, what their pages and their requests say,
+// and the rows sent to Fremkit as `dev.tabs`. worker.js owns the socket and only wires this in
+// (`createFremdev` below).
 //
-// Where the events come from:
+// Permissions: nothing at install. Turning Fremdev on, the popup asks in one click for
+// `{ permissions: ['webRequest'], origins: BUILTIN_PERMISSION_ORIGINS + the patterns' }` (a request
+// needs the user's gesture, which the worker does not have). Both arrive in `permissions.onAdded`;
+// the request listeners are added when `chrome.webRequest` exists, at start (Chrome wakes the
+// worker only for listeners added then) and when the permission lands.
+//
+// A dev tab is one whose URL is a dev URL (lib/devhosts.js) *and* inside an origin the user granted:
+// a dev URL alone is not a permission. Where the events come from:
 // - the page: fremdev/hook.js (page world) → fremdev/relay.js (isolated world) → `dev.event`,
 //   taken only from this extension's own content script in the top frame of a dev tab;
-// - the requests: chrome.webRequest, for a tab that already has a row;
-// - the dev server: chrome.webNavigation (a refused top-frame load is the server down).
+// - the requests: chrome.webRequest, for a tab that has a row; the top frame's own load tells the
+//   dev server's state (answered: up; refused: down);
+// - navigations and titles: chrome.tabs.onUpdated.
 //
 // State: `chrome.storage.local.fremdev = { on, patterns }` (the options page edits the patterns),
 // `chrome.storage.session.devTabs = { [tabId]: tab }` and `chrome.storage.session.fremdevSupport`
 // for the popup. Nothing Fremdev is sent unless the server's `ready` said it speaks it.
 
-import { BUILTIN_PERMISSION_ORIGINS, FREMKIT_EXCLUDES, isDevUrl, parsePattern } from './lib/devhosts.js'
+import { BUILTIN_PERMISSION_ORIGINS, FREMKIT_EXCLUDES, inOrigins, isDevUrl, parsePattern } from './lib/devhosts.js'
 import { clip, isNoise, MAX_TEXT, pathOf } from './lib/devlog.js'
 import { emptyTab, fremdevSupport, reduce, Throttle, wireTabs } from './lib/devtabs.js'
 import * as protocol from './lib/protocol.js'
@@ -23,13 +31,14 @@ const RELAY_JS = 'fremdev/relay.js'
 const HOOK_JS = 'fremdev/hook.js'
 /** `dev.tabs` at most this often. */
 const SEND_MS = 500
-/** Keeps the worker, and so the socket, alive while a dev tab is open. */
+/** Keeps the worker, and so the socket, alive while a dev tab is open; also the cue to reconnect. */
 const PING_MS = 20_000
 /** Rows kept here; the wire carries the 32 latest (lib/devtabs.js). */
 const MAX_ROWS = 64
 const MAX_COUNT = 1_000_000
 /** A top-frame load that failed this way: nothing listens where the dev server was. */
 const SERVER_GONE = ['net::ERR_CONNECTION_REFUSED', 'net::ERR_CONNECTION_RESET', 'net::ERR_EMPTY_RESPONSE']
+const REQUEST_FILTER = { urls: ['http://*/*', 'https://*/*'] }
 
 const validId = (id) => Number.isInteger(id) && id >= 0
 const cleanPatterns = (list) =>
@@ -56,8 +65,10 @@ export function pageEvent(msg) {
 }
 
 /**
- * `send(msg)` hands a message to the greeted socket (false when there is none); `wantSocket()`
- * tells the worker that `active()` may have changed or a dev event came in.
+ * `send(msg)` hands a message to the greeted socket (false when there is none). `wantSocket()`
+ * tells the worker that `active()` may have changed, or that a dev event came in;
+ * `wantSocket({ relearn: true })` asks for one connection even though Fremdev does not want the
+ * socket, to hear again whether the server speaks Fremdev. The worker throttles both.
  */
 export function createFremdev({
   send,
@@ -71,38 +82,47 @@ export function createFremdev({
 }) {
   let on = false
   let patterns = []
+  /** The candidate origins the user granted, refreshed when a permission comes or goes. */
+  let granted = []
   /** tabId (as a string key) → tab, lib/devtabs.js's shape. */
   let tabs = {}
   /** `fremdevSupport(lastReady)`; null until a server said, here or in an earlier worker life. */
   let support = null
-  let pingTimer = null
+  let tickTimer = null
   let wasActive = false
   const throttle = new Throttle(SEND_MS, now, setTimer)
 
   const supported = () => support === null || support === 'yes'
   const active = () => on && supported() && Object.keys(tabs).length > 0
   const modules = () => (on ? ['fremplay', 'fremdev'] : ['fremplay'])
-  const isDev = (url) => typeof url === 'string' && isDevUrl(url, patterns)
+  const isDev = (url) => typeof url === 'string' && isDevUrl(url, patterns) && inOrigins(url, granted)
 
   function flush() {
     storage.session.set({ devTabs: tabs }).catch(() => undefined)
     if (support === 'yes' && on) send(protocol.devTabs(wireTabs(Object.values(tabs))))
   }
 
+  /** Every 20 s while active: the keep-alive, and a chance for the socket to come back. */
+  function tick() {
+    if (support === 'yes') send(protocol.ping())
+    wantSocket()
+  }
+
   /** After any change: the rows go out (throttled), the keep-alive and the socket follow `active()`. */
   function refresh({ changed = false, event = false } = {}) {
     if (changed) throttle.push(flush)
     const act = active()
-    const pinging = act && support === 'yes'
-    if (pinging && pingTimer === null) pingTimer = every(() => send(protocol.ping()), PING_MS)
-    if (!pinging && pingTimer !== null) {
-      stopEvery(pingTimer)
-      pingTimer = null
+    if (act && tickTimer === null) tickTimer = every(tick, PING_MS)
+    if (!act && tickTimer !== null) {
+      stopEvery(tickTimer)
+      tickTimer = null
     }
-    // A dev event while active is also the cue to come back after the socket gave up.
     if (act !== wasActive || (act && event)) {
       wasActive = act
       wantSocket()
+    } else if (event && on && !supported()) {
+      // An older or switched-off Fremkit: a dev event may look again, at the worker's pace.
+      wantSocket({ relearn: true })
     }
   }
 
@@ -132,18 +152,24 @@ export function createFremdev({
     refresh({ changed: true })
   }
 
-  // --- content scripts --------------------------------------------------------------------------
+  /** Rows whose tab is no longer a dev tab (a pattern removed, a permission taken back) go. */
+  function dropOutside() {
+    for (const tab of Object.values(tabs)) if (!isDev(tab.url)) drop(tab.tabId)
+  }
+
+  // --- permissions and content scripts ----------------------------------------------------------
 
   /** The dev origins the user granted: the built-in hosts and the patterns' permissions. */
-  async function grantedOrigins() {
+  async function refreshGranted() {
     const wanted = [...new Set([...BUILTIN_PERMISSION_ORIGINS, ...patterns.map((p) => parsePattern(p)?.permission).filter(Boolean)])]
-    const granted = []
+    const next = []
     for (const origin of wanted) {
       try {
-        if (await api.permissions.contains({ origins: [origin] })) granted.push(origin)
+        if (await api.permissions.contains({ origins: [origin] })) next.push(origin)
       } catch { /* not a pattern this browser takes */ }
     }
-    return granted
+    granted = next
+    return next
   }
 
   async function unregister() {
@@ -153,32 +179,29 @@ export function createFremdev({
     } catch { /* none registered */ }
   }
 
-  /** Registers the relay and the hook on the granted dev origins; returns them. */
+  /** Registers the relay and the hook on the granted dev origins. */
   async function register() {
     await unregister()
-    const origins = await grantedOrigins()
-    if (origins.length === 0) return origins
+    if (granted.length === 0) return
     const common = {
-      matches: origins,
+      matches: granted,
       excludeMatches: FREMKIT_EXCLUDES,
       runAt: 'document_start',
       allFrames: false,
       persistAcrossSessions: true,
     }
-    // The relay first: it puts the channel id on the page before the page's own scripts run.
     await api.scripting.registerContentScripts([
       { id: RELAY_ID, js: [RELAY_JS], ...common },
       { id: HOOK_ID, js: [HOOK_JS], world: 'MAIN', ...common },
     ])
-    return origins
   }
 
   /** The dev tabs already open get the scripts now (each skips itself when it already runs there). */
-  async function injectOpen(origins) {
-    if (origins.length === 0) return
+  async function injectOpen() {
+    if (granted.length === 0) return
     let open = []
     try {
-      open = await api.tabs.query({ url: origins })
+      open = await api.tabs.query({ url: granted })
     } catch {
       return
     }
@@ -201,11 +224,15 @@ export function createFremdev({
     queue = run.catch(() => undefined)
     return run
   }
+  // Turning off unregisters the scripts for the next loads; a page already open keeps its hook
+  // until it reloads, and the worker drops whatever it still sends.
   const sync = ({ inject }) =>
     serial(async () => {
       if (!on) return unregister()
-      const origins = await register()
-      if (inject) await injectOpen(origins)
+      await refreshGranted()
+      dropOutside()
+      await register()
+      if (inject) await injectOpen()
     })
 
   async function readSaved() {
@@ -213,82 +240,85 @@ export function createFremdev({
     return saved && typeof saved === 'object' ? saved : {}
   }
 
-  // --- listeners (registered at once: Chrome wakes the worker only for those) -----------------
+  // --- requests (optional permission) ------------------------------------------------------------
 
-  const onRequestDone = (d) => {
-    if (d.statusCode >= 400) void request(d, d.statusCode)
-  }
-  // A top-frame load that failed is the dev server's state (webNavigation), not a request.
-  const onRequestFailed = (d) => {
-    if (d.type !== 'main_frame') void request(d, 0, d.error)
-  }
+  const onRequestDone = (d) => void request(d, d.statusCode)
+  const onRequestFailed = (d) => void request(d, 0, d.error)
+
   async function request(d, status, error) {
     await loaded
-    if (!on || !validId(d.tabId) || !tabs[String(d.tabId)] || isNoise(d.url, error)) return
+    if (!on || !validId(d.tabId)) return
+    if (d.type === 'main_frame') {
+      if (d.frameId !== 0 && d.frameId !== undefined) return
+      // The top frame's own load: an answer is the dev server up, a refusal is it gone.
+      if (error === undefined) apply(d.tabId, { kind: 'server', state: 'up' }, { url: d.url, title: '' })
+      else if (SERVER_GONE.includes(error)) {
+        const row = tabs[String(d.tabId)]
+        if (row && row.url !== d.url) apply(d.tabId, { kind: 'navigated', url: d.url, title: row.title })
+        apply(d.tabId, { kind: 'server', state: 'down' }, { url: d.url, title: '' })
+      }
+      if (error !== undefined || status < 400) return
+    }
+    if (!tabs[String(d.tabId)] || (error === undefined && status < 400) || isNoise(d.url, error)) return
     apply(d.tabId, { kind: 'request', path: pathOf(d.url), status })
   }
 
-  async function onCommitted(d) {
-    await loaded
-    if (!on || d.frameId !== 0 || !validId(d.tabId)) return
-    if (!isDev(d.url)) return drop(d.tabId)
-    // The row exists before anything is awaited: the page's first requests follow at once.
-    const row = tabs[String(d.tabId)]
-    if (row) apply(d.tabId, { kind: 'navigated', url: d.url, title: row.title })
-    apply(d.tabId, { kind: 'server', state: 'up' }, { url: d.url, title: '' })
-    const title = (await api.tabs.get(d.tabId).catch(() => null))?.title
-    if (typeof title === 'string' && tabs[String(d.tabId)]) apply(d.tabId, { kind: 'title', title })
-  }
-
-  async function onNavigationError(d) {
-    await loaded
-    if (!on || d.frameId !== 0 || !validId(d.tabId) || !SERVER_GONE.includes(d.error) || !isDev(d.url)) return
-    const row = tabs[String(d.tabId)]
-    if (row && row.url !== d.url) apply(d.tabId, { kind: 'navigated', url: d.url, title: row.title })
-    apply(d.tabId, { kind: 'server', state: 'down' }, { url: d.url, title: '' })
-  }
-
-  const REQUEST_FILTER = { urls: ['http://*/*', 'https://*/*'] }
-  const NAV_FILTER = { url: [{ schemes: ['http', 'https'] }] }
   let listening = false
-  /** The request and navigation listeners only while on: off, they would wake the worker for nothing. */
+  /** The request listeners, only while on and only once `chrome.webRequest` exists. */
   function listen(want) {
+    const web = api.webRequest
+    if (!web) {
+      listening = false
+      return
+    }
     if (want === listening) return
-    listening = want
     try {
       if (want) {
         // Only the hosts the extension holds a permission for reach these, whatever the filter says.
-        api.webRequest.onCompleted.addListener(onRequestDone, REQUEST_FILTER)
-        api.webRequest.onErrorOccurred.addListener(onRequestFailed, REQUEST_FILTER)
-        api.webNavigation.onCommitted.addListener(onCommitted, NAV_FILTER)
-        api.webNavigation.onErrorOccurred.addListener(onNavigationError, NAV_FILTER)
+        web.onCompleted.addListener(onRequestDone, REQUEST_FILTER)
+        web.onErrorOccurred.addListener(onRequestFailed, REQUEST_FILTER)
       } else {
-        api.webRequest.onCompleted.removeListener(onRequestDone)
-        api.webRequest.onErrorOccurred.removeListener(onRequestFailed)
-        api.webNavigation.onCommitted.removeListener(onCommitted)
-        api.webNavigation.onErrorOccurred.removeListener(onNavigationError)
+        web.onCompleted.removeListener(onRequestDone)
+        web.onErrorOccurred.removeListener(onRequestFailed)
       }
-    } catch { /* an API missing in this browser: Fremdev sees less, nothing breaks */ }
+      listening = want
+    } catch {
+      // Not granted yet: `permissions.onAdded` tries again. Fremdev sees less, nothing breaks.
+      listening = false
+    }
   }
   listen(true)
+
+  // --- tabs ---------------------------------------------------------------------------------------
 
   api.tabs.onRemoved.addListener(async (tabId) => {
     await loaded
     drop(tabId)
   })
-  api.tabs.onUpdated.addListener(async (tabId, info) => {
+  api.tabs.onUpdated.addListener(async (tabId, info, tab) => {
     await loaded
-    if (!on || !tabs[String(tabId)]) return
-    if (typeof info.url === 'string' && !isDev(info.url)) return drop(tabId)
-    if (typeof info.title === 'string') apply(tabId, { kind: 'title', title: info.title })
+    if (!on || !validId(tabId)) return
+    const url = typeof info.url === 'string' ? info.url : tab?.url
+    const row = tabs[String(tabId)]
+    if ((info.url !== undefined || info.status === 'loading') && !isDev(url)) return drop(tabId)
+    // A load starting in the tab: a new row, or the same one navigated (a reload resolves its errors).
+    if (info.status === 'loading' && typeof url === 'string') {
+      if (row) apply(tabId, { kind: 'navigated', url, title: row.title })
+      else apply(tabId, { kind: 'server', state: 'up' }, { url, title: tab?.title ?? '' })
+    }
+    if (typeof info.title === 'string' && tabs[String(tabId)]) apply(tabId, { kind: 'title', title: info.title })
   })
-  // A dev origin granted or taken back (the popup, the options page, Chrome's own settings).
+
+  // A dev origin or webRequest granted or taken back (the popup, the options page, Chrome's settings).
   api.permissions.onAdded.addListener(async () => {
     await loaded
-    if (on) await sync({ inject: true })
+    if (!on) return
+    listen(true)
+    await sync({ inject: true })
   })
-  api.permissions.onRemoved.addListener(async () => {
+  api.permissions.onRemoved.addListener(async (removed) => {
     await loaded
+    if ((removed?.permissions ?? []).includes('webRequest')) listening = false
     if (on) await sync({ inject: false })
   })
 
@@ -308,21 +338,20 @@ export function createFremdev({
       await storage.session.set({ devTabs: {} })
       return
     }
+    await refreshGranted()
     // The tabs closed or moved away while the worker was stopped lose their rows.
     try {
       const open = new Map((await api.tabs.query({})).map((t) => [String(t.id), t]))
       for (const key of Object.keys(tabs)) {
         const t = open.get(key)
-        if (!t || (typeof t.url === 'string' && !isDev(t.url))) delete tabs[key]
+        if (!t || !isDev(typeof t.url === 'string' ? t.url : tabs[key].url)) delete tabs[key]
       }
     } catch { /* keep them: the next event corrects */ }
-    // A hello sent before this finished listed Fremdev off.
-    if (support === 'yes') send(protocol.modulesMsg(modules()))
     await sync({ inject: false })
   })().catch(() => undefined).then(() => refresh({ changed: on }))
 
   return {
-    /** Turns Fremdev on (the popup asked for the host permissions first, with the user's click). */
+    /** Turns Fremdev on (the popup asked for webRequest and the host permissions first, with the user's click). */
     async start() {
       await loaded
       const saved = await readSaved()
@@ -335,7 +364,7 @@ export function createFremdev({
       refresh({ changed: true })
     },
 
-    /** Turns Fremdev off: no script, no row, and the server hears the module is gone. */
+    /** Turns Fremdev off: no script registered, no row, and the server hears the module is gone. */
     async stop() {
       await loaded
       const saved = await readSaved()
@@ -353,16 +382,22 @@ export function createFremdev({
     async patternsChanged() {
       await loaded
       patterns = cleanPatterns((await readSaved()).patterns)
-      if (!on) return
-      for (const tab of Object.values(tabs)) if (!isDev(tab.url)) drop(tab.tabId)
-      await sync({ inject: true })
+      if (on) await sync({ inject: true })
     },
 
-    /** The server's `ready`: whether it speaks Fremdev, for the popup and for what may be sent. */
+    /**
+     * The server's `ready`: whether it speaks Fremdev. Once the boot is done, the modules go first
+     * (a hello sent before it listed Fremdev off), then the rows.
+     */
     onReady(ready) {
       support = fremdevSupport(ready)
       storage.session.set({ fremdevSupport: support }).catch(() => undefined)
-      void loaded.then(() => refresh({ changed: on && support === 'yes' }))
+      void loaded.then(() => {
+        if (support === 'yes' && on) send(protocol.modulesMsg(modules()))
+        refresh({ changed: on && support === 'yes' })
+        // Whatever the answer, the worker decides whether the socket is still wanted.
+        wantSocket()
+      })
     },
 
     /** `dev.focus` and `dev.clear`: only for a tab this install has a row for. */
@@ -379,7 +414,7 @@ export function createFremdev({
 
     /**
      * A `dev.event` from a page's relay. Taken only from this extension's content script in the top
-     * frame of a tab whose URL is a dev URL; the tab is Chrome's sender, never the message's say.
+     * frame of a dev tab; the tab is Chrome's sender, never the message's say.
      */
     async onPageEvent(msg, sender) {
       await loaded

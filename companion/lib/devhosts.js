@@ -83,3 +83,28 @@ export function isDevUrl(url, patterns = []) {
   if (isBuiltinHost(host)) return true
   return patterns.some((p) => typeof p === 'string' && matches(host, p))
 }
+
+/**
+ * Whether a page URL falls under one of these match patterns (`scheme://host/*`, the host bare,
+ * `*` or `*.`-prefixed, as BUILTIN_PERMISSION_ORIGINS and parsePattern write them). A dev tab must
+ * also be inside an origin the user granted: a dev URL alone is not a permission.
+ */
+export function inOrigins(url, origins) {
+  let u
+  try {
+    u = new URL(url)
+  } catch {
+    return false
+  }
+  const scheme = u.protocol.slice(0, -1)
+  if (scheme !== 'http' && scheme !== 'https') return false
+  const host = u.hostname.toLowerCase()
+  return (origins ?? []).some((o) => {
+    const m = typeof o === 'string' ? /^(\*|https?):\/\/([^/]+)\/\*$/.exec(o) : null
+    if (!m || (m[1] !== '*' && m[1] !== scheme)) return false
+    const h = m[2].toLowerCase()
+    if (h === '*') return true
+    if (h.startsWith('*.')) return host === h.slice(2) || host.endsWith(h.slice(1))
+    return host === h
+  })
+}

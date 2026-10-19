@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 // @ts-expect-error plain JS module outside server/, no declarations
-import { BUILTIN_PERMISSION_ORIGINS, FREMKIT_EXCLUDES, isDevUrl, parsePattern } from '../../companion/lib/devhosts.js'
+import { BUILTIN_PERMISSION_ORIGINS, FREMKIT_EXCLUDES, inOrigins, isDevUrl, parsePattern } from '../../companion/lib/devhosts.js'
 // @ts-expect-error plain JS module
 import { errorText, hotReloadSignal, isNoise, MAX_TEXT, pathOf, RateLimiter } from '../../companion/lib/devlog.js'
 // @ts-expect-error plain JS module
@@ -18,6 +18,15 @@ describe('devhosts', () => {
     const want = ['http', 'https'].flatMap((scheme) => ['4242', '4243'].flatMap((port) => hosts.map((h) => `${scheme}://${h}:${port}/*`)))
     expect([...FREMKIT_EXCLUDES].sort()).toEqual(want.sort())
     for (const p of FREMKIT_EXCLUDES) expect(p, p).not.toMatch(/^\*:\/\/[^/]*:\d/)
+  })
+
+  it('tells whether a URL is inside the granted origins', () => {
+    const granted = ['http://localhost/*', '*://*.test/*', 'http://[::1]/*', '*://*.dev.example.com/*', '*://bo.example.com/*']
+    const yes = ['http://localhost:5173/x', 'https://foo.test/', 'http://foo.test/', 'http://[::1]:3000/', 'https://a.dev.example.com/', 'https://dev.example.com/', 'http://bo.example.com/']
+    const no = ['https://localhost:5173/', 'http://127.0.0.1:5173/', 'https://[::1]/', 'https://xdev.example.com/', 'http://a.bo.example.com/', 'ftp://foo.test/', 'nonsense']
+    for (const u of yes) expect(inOrigins(u, granted), u).toBe(true)
+    for (const u of no) expect(inOrigins(u, granted), u).toBe(false)
+    expect(inOrigins('http://localhost/', [])).toBe(false)
   })
 
   it('recognises dev URLs', () => {
