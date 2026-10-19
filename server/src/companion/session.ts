@@ -6,6 +6,7 @@
  * socket module (`socket.ts`) and the provider each drive it from their side.
  */
 
+import type { CompanionDev } from './dev.js'
 import { isLocalSdp, PROTOCOL, type Control, type ExtensionMessage, type ServerMessage, type TabMeta } from './protocol.js'
 
 /** Widget frames that may watch the share at once. */
@@ -62,6 +63,8 @@ export interface CompanionSessionOptions {
    * whatever it says. On when left out.
    */
   enabled?: () => boolean
+  /** Fremdev, handed the hellos, the dev messages and the departures of this session's sockets. */
+  dev?: CompanionDev
 }
 
 interface Share {
@@ -87,6 +90,7 @@ export class CompanionSession {
   private readonly canShare: () => boolean
   private readonly pairedCount: () => number
   private readonly enabled: () => boolean
+  private readonly dev: CompanionDev | null
   /** Connected extensions: device id → name. */
   private readonly connected = new Map<string, string>()
   /** Extensions that said hello with a protocol this server does not speak. */
@@ -108,6 +112,7 @@ export class CompanionSession {
     this.canShare = opts.canShare ?? (() => false)
     this.pairedCount = opts.pairedCount ?? (() => 0)
     this.enabled = opts.enabled ?? (() => true)
+    this.dev = opts.dev ?? null
   }
 
   /**
@@ -120,15 +125,22 @@ export class CompanionSession {
     for (const deviceId of this.connected.keys()) {
       if (!this.foreign.has(deviceId)) this.send(deviceId, this.ready())
     }
+    // The same switch gates Fremdev: its channel says so.
+    this.dev?.switched()
     if (on || !this.share) return
     const { deviceId, sessionId } = this.share
     this.send(deviceId, { type: 'tab.refused', sessionId, reason: 'disabled' })
     this.endShare()
   }
 
-  /** The greeting, with the state of the modules this server can switch off. */
+  /**
+   * The greeting, with the state of the modules this server can switch off. One switch for both
+   * (`labs.companion`); `fremdev` being there at all is what tells the extension this server
+   * understands its dev messages.
+   */
   private ready(): ServerMessage {
-    return { type: 'ready', protocol: PROTOCOL, modules: { fremplay: this.enabled() } }
+    const on = this.enabled()
+    return { type: 'ready', protocol: PROTOCOL, modules: { fremplay: on, fremdev: on } }
   }
 
   connect(deviceId: string, name: string): void {
@@ -148,6 +160,7 @@ export class CompanionSession {
    * `hello` that carries it, and a share nobody comes back for goes stale in `tick`.
    */
   disconnect(deviceId: string): void {
+    this.dev?.disconnect(deviceId)
     if (!this.connected.delete(deviceId)) return
     this.foreign.delete(deviceId)
     this.changed()
@@ -155,6 +168,7 @@ export class CompanionSession {
 
   /** The device was unpaired: unlike a disconnect, whatever it was sharing ends now. */
   revoke(deviceId: string): void {
+    this.dev?.disconnect(deviceId)
     const wasConnected = this.connected.delete(deviceId)
     this.foreign.delete(deviceId)
     this.names.delete(deviceId)
@@ -171,7 +185,12 @@ export class CompanionSession {
   onMessage(deviceId: string, msg: ExtensionMessage): void {
     switch (msg.type) {
       case 'hello':
-        return this.hello(deviceId, msg.protocol, msg.session)
+        return this.hello(deviceId, msg.protocol, msg.session, msg.modules)
+      case 'modules':
+      case 'dev.tabs':
+      case 'ping':
+        // Fremdev's; an install it does not know (no modules in its hello) is ignored there.
+        return this.dev?.onMessage(deviceId, msg)
       case 'tab.started':
         return this.started(deviceId, msg.sessionId, msg.meta)
       case 'tab.meta': {
@@ -290,13 +309,16 @@ export class CompanionSession {
     }
   }
 
-  private hello(deviceId: string, protocol: number, session?: { sessionId: string; meta: TabMeta }): void {
+  private hello(deviceId: string, protocol: number, session?: { sessionId: string; meta: TabMeta }, modules?: string[]): void {
     this.send(deviceId, this.ready())
     if (protocol !== PROTOCOL) {
       this.foreign.add(deviceId)
+      // A socket that replaced a Fremdev one leaves no rows behind it.
+      this.dev?.disconnect(deviceId)
       if (session) this.send(deviceId, { type: 'tab.refused', sessionId: session.sessionId, reason: 'protocol' })
       return
     }
+    this.dev?.connect(deviceId, this.names.get(deviceId) ?? '', modules)
     if (!session) return
     const current = this.share
     if (current && (current.deviceId !== deviceId || current.sessionId !== session.sessionId)) {

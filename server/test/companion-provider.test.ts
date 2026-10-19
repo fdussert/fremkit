@@ -231,6 +231,20 @@ describe('createCompanion', () => {
     expect(companion.pairing.pending()?.name).toBe('Chrome')
   })
 
+  it('registers companion:dev and refreshes it when an install reports, and when an extension is paired', async () => {
+    const { companion, registry } = await build()
+    const channels = registry.register.mock.calls.map(([p]) => (p as { channel: string }).channel)
+    expect(channels).toEqual(['companion', 'companion:dev'])
+    registry.refresh.mockClear()
+    companion.session.connect('ext', 'Chrome')
+    companion.session.onMessage('ext', { type: 'hello', token: 'a'.repeat(43), installId: INSTALL, protocol: 2, modules: ['fremdev'] })
+    expect(registry.refresh).toHaveBeenCalledWith('companion:dev')
+    expect(companion.dev.snapshot()).toMatchObject({ enabled: true, installs: [{ deviceId: 'ext', name: 'Chrome', on: true, tabs: [] }] })
+    registry.refresh.mockClear()
+    await store.createExtension({ name: 'Brave', origin: ORIGIN, installId: INSTALL })
+    expect(registry.refresh).toHaveBeenCalledWith('companion:dev')
+  })
+
   it('refreshes the channel on every state change', async () => {
     const { companion, registry } = await build()
     registry.refresh.mockClear()
@@ -283,7 +297,7 @@ describe('createCompanion', () => {
     sent.length = 0
     set({ ...configWith('page'), labs: { devices: false, companion: false } } as Config)
     expect(sent).toEqual([
-      { type: 'ready', protocol: 2, modules: { fremplay: false } },
+      { type: 'ready', protocol: 2, modules: { fremplay: false, fremdev: false } },
       { type: 'tab.refused', sessionId: S1, reason: 'disabled' },
     ])
     expect(companion.session.snapshot().tab.state).toBe('idle')

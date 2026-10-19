@@ -104,7 +104,7 @@ async function proven(token: string, origin = ORIGIN): Promise<Client> {
 async function hello(token: string, installId = INSTALL, origin = ORIGIN): Promise<Client> {
   const client = await proven(token, origin)
   client.send({ type: 'hello', token, installId, protocol: PROTOCOL })
-  expect(await client.next()).toEqual({ type: 'ready', protocol: PROTOCOL, modules: { fremplay: true } })
+  expect(await client.next()).toEqual({ type: 'ready', protocol: PROTOCOL, modules: { fremplay: true, fremdev: true } })
   return client
 }
 
@@ -360,7 +360,7 @@ describe('companion socket', () => {
     const { token } = await paired()
     const client = await proven(token)
     client.send({ type: 'hello', token, installId: INSTALL, protocol: PROTOCOL, modules: ['fremplay'] })
-    expect(await client.next()).toEqual({ type: 'ready', protocol: PROTOCOL, modules: { fremplay: true } })
+    expect(await client.next()).toEqual({ type: 'ready', protocol: PROTOCOL, modules: { fremplay: true, fremdev: true } })
   })
 
   it('a first message other than challenge closes 1008', async () => {
@@ -542,7 +542,7 @@ describe('companion socket in the app', () => {
     ws.send(JSON.stringify({ type: 'challenge', deviceId: device.id, nonce: n }))
     expect(await next()).toEqual({ type: 'proof', mac: expectedMac(token, n) })
     ws.send(JSON.stringify({ type: 'hello', token, installId: INSTALL, protocol: PROTOCOL }))
-    expect(await next()).toEqual({ type: 'ready', protocol: PROTOCOL, modules: { fremplay: false } })
+    expect(await next()).toEqual({ type: 'ready', protocol: PROTOCOL, modules: { fremplay: false, fremdev: false } })
     ws.close()
   }, 10_000)
 

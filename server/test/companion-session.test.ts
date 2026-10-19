@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { CompanionSession, META_PUBLISH_MS } from '../src/companion/session.js'
+import { CompanionDev } from '../src/companion/dev.js'
 import type { ServerMessage, TabMeta } from '../src/companion/protocol.js'
 
 const META: TabMeta = { title: 'A video', host: 'video.example.com', currentTime: 12, duration: 300, paused: false, muted: false, volume: 1 }
@@ -43,7 +44,7 @@ describe('CompanionSession', () => {
   it('answers hello with ready, and counts connected and paired extensions', () => {
     const t = setup({ paired: 3 })
     t.hello('a')
-    expect(t.to('a')).toEqual([{ type: 'ready', protocol: 2, modules: { fremplay: true } }])
+    expect(t.to('a')).toEqual([{ type: 'ready', protocol: 2, modules: { fremplay: true, fremdev: true } }])
     expect(t.session.snapshot()).toEqual({
       protocol: 2,
       extensions: { connected: 1, paired: 3 },
@@ -134,7 +135,7 @@ describe('CompanionSession', () => {
   it('a protocol it does not speak gets ready with its own version, then every share is refused', () => {
     const t = setup()
     t.hello('a', { protocol: 3 })
-    expect(t.to('a')).toEqual([{ type: 'ready', protocol: 2, modules: { fremplay: true } }])
+    expect(t.to('a')).toEqual([{ type: 'ready', protocol: 2, modules: { fremplay: true, fremdev: true } }])
     t.clear()
     t.start('a')
     expect(t.to('a')).toEqual([{ type: 'tab.refused', sessionId: S1, reason: 'protocol' }])
@@ -299,7 +300,7 @@ describe('CompanionSession', () => {
     t.clear()
     t.hello('a', { session: { sessionId: S1, meta: META } })
     expect(t.to('a')).toEqual([
-      { type: 'ready', protocol: 2, modules: { fremplay: true } },
+      { type: 'ready', protocol: 2, modules: { fremplay: true, fremdev: true } },
       { type: 'tab.accepted', sessionId: S1 },
       { type: 'tab.view', receiverId: R(1) },
     ])
@@ -309,7 +310,7 @@ describe('CompanionSession', () => {
     t.session.disconnect('a')
     t.clear()
     t.hello('a', { session: { sessionId: S1, meta: META } })
-    expect(t.to('a')).toEqual([{ type: 'ready', protocol: 2, modules: { fremplay: true } }, { type: 'tab.accepted', sessionId: S1 }])
+    expect(t.to('a')).toEqual([{ type: 'ready', protocol: 2, modules: { fremplay: true, fremdev: true } }, { type: 'tab.accepted', sessionId: S1 }])
     expect(t.session.snapshot().tab.offers).toEqual({ [R(1)]: SDP })
   })
 
@@ -319,7 +320,7 @@ describe('CompanionSession', () => {
     t.start('a', S1)
     t.clear()
     t.hello('b', { session: { sessionId: S2, meta: META } })
-    expect(t.to('b')).toEqual([{ type: 'ready', protocol: 2, modules: { fremplay: true } }, { type: 'tab.stop' }])
+    expect(t.to('b')).toEqual([{ type: 'ready', protocol: 2, modules: { fremplay: true, fremdev: true } }, { type: 'tab.stop' }])
     expect(t.to('a')).toEqual([])
     expect(t.session.snapshot().tab.sessionId).toBe(S1)
   })
@@ -488,7 +489,7 @@ describe('CompanionSession tab.meta throttle', () => {
     it('says so in ready and refuses a new share with disabled', () => {
       const t = setup({ enabled: () => false })
       t.hello('a')
-      expect(t.to('a')).toEqual([{ type: 'ready', protocol: 2, modules: { fremplay: false } }])
+      expect(t.to('a')).toEqual([{ type: 'ready', protocol: 2, modules: { fremplay: false, fremdev: false } }])
       t.clear()
       t.start('a')
       expect(t.to('a')).toEqual([{ type: 'tab.refused', sessionId: S1, reason: 'disabled' }])
@@ -499,7 +500,7 @@ describe('CompanionSession tab.meta throttle', () => {
       const t = setup({ enabled: () => false })
       t.hello('a', { session: { sessionId: S1, meta: META } })
       expect(t.to('a')).toEqual([
-        { type: 'ready', protocol: 2, modules: { fremplay: false } },
+        { type: 'ready', protocol: 2, modules: { fremplay: false, fremdev: false } },
         { type: 'tab.refused', sessionId: S1, reason: 'disabled' },
       ])
       expect(t.session.snapshot().tab.state).toBe('idle')
@@ -516,18 +517,73 @@ describe('CompanionSession tab.meta throttle', () => {
       on = false
       t.session.switched()
       expect(t.to('a')).toEqual([
-        { type: 'ready', protocol: 2, modules: { fremplay: false } },
+        { type: 'ready', protocol: 2, modules: { fremplay: false, fremdev: false } },
         { type: 'tab.refused', sessionId: S1, reason: 'disabled' },
       ])
-      expect(t.to('b')).toEqual([{ type: 'ready', protocol: 2, modules: { fremplay: false } }])
+      expect(t.to('b')).toEqual([{ type: 'ready', protocol: 2, modules: { fremplay: false, fremdev: false } }])
       expect(t.session.snapshot().tab).toMatchObject({ state: 'idle', receivers: [] })
       // Back on: the extensions hear it, and a share starts again.
       t.clear()
       on = true
       t.session.switched()
-      expect(t.to('a')).toEqual([{ type: 'ready', protocol: 2, modules: { fremplay: true } }])
+      expect(t.to('a')).toEqual([{ type: 'ready', protocol: 2, modules: { fremplay: true, fremdev: true } }])
       t.start('a', S2)
       expect(t.session.snapshot().tab.state).toBe('sharing')
     })
+  })
+})
+
+describe('CompanionSession with Fremdev', () => {
+  function withDev(opts: { enabled?: () => boolean } = {}) {
+    const sent: Array<{ to: string; msg: ServerMessage }> = []
+    const devChanged = vi.fn<() => void>()
+    const enabled = opts.enabled ?? (() => true)
+    const dev = new CompanionDev({ send: (to, msg) => sent.push({ to, msg }), changed: devChanged, enabled, pairedCount: () => 1 })
+    const session = new CompanionSession({ send: (to, msg) => sent.push({ to, msg }), changed: () => undefined, enabled, dev })
+    const hello = (device: string, extra: object = {}) => {
+      session.connect(device, `Browser ${device}`)
+      session.onMessage(device, { type: 'hello', token: TOKEN, installId: INSTALL, protocol: 2, ...extra })
+    }
+    return { sent, dev, devChanged, session, hello }
+  }
+
+  it('ready tells fremdev with the switch', () => {
+    let on = true
+    const t = withDev({ enabled: () => on })
+    t.hello('a', { modules: ['fremplay', 'fremdev'] })
+    expect(t.sent).toEqual([{ to: 'a', msg: { type: 'ready', protocol: 2, modules: { fremplay: true, fremdev: true } } }])
+    t.sent.length = 0
+    t.devChanged.mockClear()
+    on = false
+    t.session.switched()
+    expect(t.sent).toEqual([{ to: 'a', msg: { type: 'ready', protocol: 2, modules: { fremplay: false, fremdev: false } } }])
+    // The dev channel is published again: its snapshot now says the switch is off.
+    expect(t.devChanged).toHaveBeenCalled()
+  })
+
+  it('hands hello, the dev messages and the disconnect to Fremdev', () => {
+    const t = withDev()
+    t.hello('a', { modules: ['fremdev'] })
+    t.session.onMessage('a', { type: 'dev.tabs', tabs: [] })
+    expect(t.dev.snapshot().installs).toEqual([{ deviceId: 'a', name: 'Browser a', on: true, tabs: [] }])
+    t.session.onMessage('a', { type: 'modules', modules: [] })
+    expect(t.dev.snapshot().installs[0].on).toBe(false)
+    t.session.onMessage('a', { type: 'ping' })
+    t.session.disconnect('a')
+    expect(t.dev.snapshot().installs).toEqual([])
+  })
+
+  it('leaves Fremdev out for an extension without modules, or speaking another protocol', () => {
+    const t = withDev()
+    t.hello('a')
+    t.hello('b', { protocol: 3, modules: ['fremdev'] })
+    expect(t.dev.snapshot().installs).toEqual([])
+  })
+
+  it('a revoked extension leaves Fremdev', () => {
+    const t = withDev()
+    t.hello('a', { modules: ['fremdev'] })
+    t.session.revoke('a')
+    expect(t.dev.snapshot().installs).toEqual([])
   })
 })
