@@ -7,6 +7,19 @@
 export interface CommandContext {
   /** True when the socket that sent the command is on this machine. */
   loopback: boolean
+  /** True when the socket belongs to a device paired with this Mac, reaching it over the LAN. */
+  paired: boolean
+  /** The paired device's id, when `paired` is true. */
+  deviceId?: string
+}
+
+/**
+ * Whether a command may act on the Mac: a local caller, or a paired device. A command that must
+ * stay with whoever sits at the Mac (`claude.preview` plays a sound here) checks `loopback`
+ * itself instead.
+ */
+export function isTrusted(ctx?: CommandContext): boolean {
+  return ctx?.loopback === true || ctx?.paired === true
 }
 
 export interface Provider<T = unknown> {

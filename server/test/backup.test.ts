@@ -15,19 +15,23 @@ const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR
 const NAS_SVG = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect width="20" height="8" x="2" y="8"/></svg>')
 
 const CONFIG = {
-  version: 3,
+  version: 4,
   locale: 'fr',
-  display: { cols: 64, rows: 16, cell: 40, autoCycleSeconds: 0 },
   connections: [{ id: 'gh-x1z9', type: 'github', name: 'Travail', fields: { host: '' } }],
   secrets: { backend: 'file' },
-  pages: [{ id: 'home', name: 'Accueil', widgets: [] }],
+  widgets: {},
+  screens: [{
+    id: 'edge', name: 'Xeneon Edge', kind: 'edge',
+    display: { cols: 64, rows: 16, cell: 40, autoCycleSeconds: 0 },
+    pages: [{ id: 'home', name: 'Accueil', items: [] }],
+  }],
 }
 
 let dir: string
 let app: FastifyInstance
 
 async function build(dataDir: string): Promise<FastifyInstance> {
-  return buildApp({ dataDir, widgetsDir: join(process.cwd(), '..', 'widgets'), providers: [] })
+  return buildApp({ accessToken: null, dataDir, widgetsDir: join(process.cwd(), '..', 'widgets'), providers: [] })
 }
 
 beforeEach(async () => {
@@ -63,13 +67,13 @@ describe('GET /api/backup', () => {
     const res = await app.inject({ url: '/api/backup' })
     const entries = zipOf(res)
     const config = JSON.parse(entries.find((e) => e.name === CONFIG_ENTRY)!.data.toString('utf8'))
-    expect(config.version).toBe(3)
+    expect(config.version).toBe(4)
     expect(config.connections[0]).toMatchObject({ id: 'gh-x1z9', type: 'github', name: 'Travail' })
     // The keychain is the only place a secret lives; nothing in the archive may look like one.
     const whole = Buffer.concat(entries.map((e) => e.data)).toString('utf8')
     expect(whole).not.toMatch(/token|apiKey|accessCode|"pat"/)
     const manifest = JSON.parse(entries.find((e) => e.name === MANIFEST_ENTRY)!.data.toString('utf8'))
-    expect(manifest).toMatchObject({ secrets: 'excluded', configVersion: 3 })
+    expect(manifest).toMatchObject({ secrets: 'excluded', configVersion: 4 })
     expect(manifest.fremkitVersion).toMatch(/^\d+\.\d+\.\d+$/)
   })
 
@@ -94,11 +98,11 @@ describe('POST /api/restore', () => {
       headers: { 'content-type': 'application/zip' }, payload: archive,
     })
     expect(res.statusCode).toBe(200)
-    expect(res.json()).toMatchObject({ ok: true, pages: 1 })
+    expect(res.json()).toMatchObject({ ok: true, pages: 1, screens: 1 })
 
     // The config is the one that was backed up, connection and all.
     const restored = (await other.inject({ url: '/api/config' })).json()
-    expect(restored.pages[0].id).toBe('home')
+    expect(restored.screens[0].pages[0].id).toBe('home')
     expect(restored.connections[0]).toMatchObject({ id: 'gh-x1z9', type: 'github', name: 'Travail' })
     // The backgrounds came with it.
     expect(await readdir(join(fresh, 'backgrounds'))).toContain('photo.png')
@@ -146,10 +150,47 @@ describe('POST /api/restore', () => {
     const res = await post(archive)
     expect(res.statusCode).toBe(200)
     const restored = (await app.inject({ url: '/api/config' })).json()
-    expect(restored.version).toBe(3)
+    expect(restored.version).toBe(4)
     // v1 used 80 px cells on a 32x8 grid; v2 halves the cell and doubles the coordinates.
-    expect(restored.display).toMatchObject({ cols: 64, rows: 16, cell: 40 })
-    expect(restored.pages[0].widgets[0]).toMatchObject({ x: 2, y: 2, w: 16, h: 4 })
+    expect(restored.screens[0].display).toMatchObject({ cols: 64, rows: 16, cell: 40 })
+    expect(restored.screens[0].pages[0].items[0]).toMatchObject({ instanceId: 'c1', x: 2, y: 2, w: 16, h: 4 })
+    expect(restored.widgets.c1).toMatchObject({ widgetId: 'clock' })
+  })
+
+  it('restoring a v3 archive yields a v4 config with one edge screen', async () => {
+    // Every backup taken before screens existed is a v3 file: it must come back, not be refused.
+    const v3 = {
+      version: 3,
+      locale: 'fr',
+      display: { theme: 'edge', cols: 64, rows: 16, cell: 40, autoCycleSeconds: 0, navWidgets: [] },
+      pages: [
+        { id: 'home', name: 'Accueil', widgets: [{ instanceId: 'c1', widgetId: 'clock', x: 0, y: 0, w: 16, h: 4, settings: {} }] },
+        { id: 'work', name: 'Travail', widgets: [] },
+      ],
+    }
+    const res = await post(writeZip([{ name: CONFIG_ENTRY, data: Buffer.from(JSON.stringify(v3), 'utf8') }]))
+    expect(res.statusCode).toBe(200)
+    expect(res.json()).toMatchObject({ ok: true, pages: 2, screens: 1 })
+    const restored = (await app.inject({ url: '/api/config' })).json()
+    expect(restored.version).toBe(4)
+    expect(restored.theme).toBe('edge')
+    expect(restored.screens).toHaveLength(1)
+    expect(restored.screens[0]).toMatchObject({ kind: 'edge' })
+    expect(restored.screens[0].pages.map((p: { id: string }) => p.id)).toEqual(['home', 'work'])
+    expect(restored.widgets.c1).toMatchObject({ widgetId: 'clock' })
+  })
+
+  it('counts the pages of every screen, and the screens', async () => {
+    const two = {
+      ...CONFIG,
+      screens: [
+        CONFIG.screens[0],
+        { id: 'ipad', name: 'iPad', kind: 'device', pages: [{ id: 'a', name: 'A', items: [] }, { id: 'b', name: 'B', items: [] }] },
+      ],
+    }
+    const res = await post(writeZip([{ name: CONFIG_ENTRY, data: Buffer.from(JSON.stringify(two), 'utf8') }]))
+    expect(res.statusCode).toBe(200)
+    expect(res.json()).toMatchObject({ ok: true, pages: 3, screens: 2 })
   })
 
   it('refuses an archive with no config in it', async () => {
@@ -352,5 +393,97 @@ describe('tile icons in a backup', () => {
     ]) expect(() => readBackup(writeZip([config, entry], new Date())), entry.name).toThrow(tr(undefined, 'backup.badTileIcon'))
     const ok = readBackup(writeZip([config, { name: `${TILE_ICONS_PREFIX}1-x.png`, data: PNG }], new Date()))
     expect(ok.tileIcons.map((i) => i.name)).toEqual(['1-x.png'])
+  })
+})
+
+describe('page backgrounds in a backup', () => {
+  it('carries a page background and its image, and restores both', async () => {
+    const config = structuredClone(CONFIG) as typeof CONFIG & { screens: { pages: Record<string, unknown>[] }[] }
+    config.screens[0].pages[0].background = { image: 'photo.png', fit: 'contain' }
+    await writeFile(join(dir, 'fremkit.json'), JSON.stringify(config), 'utf8')
+    await app.close()
+    app = await build(dir)
+    const archive = Buffer.from((await app.inject({ url: '/api/backup' })).rawPayload)
+    const fresh = await mkdtemp(join(tmpdir(), 'fremkit-restored-'))
+    const other = await build(fresh)
+    const res = await other.inject({
+      method: 'POST', url: '/api/restore', headers: { 'content-type': 'application/zip' }, payload: archive,
+    })
+    expect(res.statusCode).toBe(200)
+    const restored = (await other.inject({ url: '/api/config' })).json()
+    expect(restored.screens[0].pages[0].background).toEqual({ image: 'photo.png', fit: 'contain' })
+    expect(await readdir(join(fresh, 'backgrounds'))).toContain('photo.png')
+    await other.close()
+  })
+})
+
+describe('what an archive or a PUT cannot change', () => {
+  const FORGED_CONSENT = {
+    version: '1.0.0', registry: 'official', installedAt: '2026-01-01T00:00:00.000Z',
+    consentedPermissions: { subscriptions: ['github:*'], commands: ['github:*'], network: ['evil.example'] },
+    sharedConnections: ['gh-x1z9'],
+  }
+
+  it('restoring keeps this Mac\'s secrets backend, privacy choices and consent records', async () => {
+    const before = (await app.inject({ url: '/api/config' })).json()
+    const crafted = {
+      ...CONFIG,
+      secrets: { backend: before.secrets.backend === 'file' ? 'keychain' : 'file' },
+      privacy: { ...before.privacy, claudeAccountUsage: true, showAccountEmail: true },
+      marketplace: { installed: { 'evil-widget': FORGED_CONSENT } },
+    }
+    const archive = writeZip([{ name: CONFIG_ENTRY, data: Buffer.from(JSON.stringify(crafted)) }])
+    const res = await post(archive)
+    expect(res.statusCode).toBe(200)
+    const after = (await app.inject({ url: '/api/config' })).json()
+    expect(after.secrets).toEqual(before.secrets)
+    expect(after.privacy).toEqual(before.privacy)
+    expect(after.marketplace.installed).toEqual(before.marketplace.installed)
+    expect(after.marketplace.installed['evil-widget']).toBeUndefined()
+  })
+
+  it('restoring keeps this Mac\'s experimental features switches, either way', async () => {
+    for (const here of [true, false]) {
+      const current = (await app.inject({ url: '/api/config' })).json()
+      const mine = { devices: here, companion: !here }
+      expect((await app.inject({ method: 'PUT', url: '/api/config', payload: { ...current, labs: mine } })).statusCode).toBe(200)
+      // A file stating the opposite, then one written before the switches existed with two
+      // screens and a Fremplay widget, which the migration would turn both on for.
+      for (const labs of [{ labs: { devices: !here, companion: here } }, {}]) {
+        const crafted = {
+          ...CONFIG, ...labs,
+          widgets: { ...CONFIG.widgets, 'fremplay-1': { widgetId: 'fremplay', showTitle: false, settings: {} } },
+          screens: [CONFIG.screens[0], { ...CONFIG.screens[0], id: 'second', name: 'Second' }],
+        }
+        const archive = writeZip([{ name: CONFIG_ENTRY, data: Buffer.from(JSON.stringify(crafted)) }])
+        expect((await post(archive)).statusCode).toBe(200)
+        expect((await app.inject({ url: '/api/config' })).json().labs).toEqual(mine)
+      }
+    }
+  })
+
+  it('PUT /api/config without labs keeps the switches, and with them sets them', async () => {
+    const current = (await app.inject({ url: '/api/config' })).json()
+    expect((await app.inject({ method: 'PUT', url: '/api/config', payload: { ...current, labs: { devices: true, companion: true } } })).statusCode).toBe(200)
+    const { labs: _labs, ...without } = current
+    expect((await app.inject({ method: 'PUT', url: '/api/config', payload: without })).statusCode).toBe(200)
+    expect((await app.inject({ url: '/api/config' })).json().labs).toEqual({ devices: true, companion: true })
+    // One switch sent, the other kept.
+    expect((await app.inject({ method: 'PUT', url: '/api/config', payload: { ...current, labs: { devices: false } } })).statusCode).toBe(200)
+    expect((await app.inject({ url: '/api/config' })).json().labs).toEqual({ devices: false, companion: true })
+    expect((await app.inject({ method: 'PUT', url: '/api/config', payload: { ...current, labs: { companion: false } } })).statusCode).toBe(200)
+    expect((await app.inject({ url: '/api/config' })).json().labs).toEqual({ devices: false, companion: false })
+  })
+
+  it('PUT /api/config replays the current consent records', async () => {
+    const current = (await app.inject({ url: '/api/config' })).json()
+    const res = await app.inject({
+      method: 'PUT', url: '/api/config',
+      payload: { ...current, marketplace: { installed: { 'evil-widget': FORGED_CONSENT } } },
+    })
+    expect(res.statusCode).toBe(200)
+    const after = (await app.inject({ url: '/api/config' })).json()
+    expect(after.marketplace.installed['evil-widget']).toBeUndefined()
+    expect(after.marketplace.installed).toEqual(current.marketplace.installed)
   })
 })

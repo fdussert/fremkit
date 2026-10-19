@@ -57,7 +57,7 @@ export class ClaudeUsage {
     this.now = opts.now ?? Date.now
     this.staleMs = opts.staleMs ?? STALE_MS
     this.persistMs = opts.persistMs ?? PERSIST_MS
-    this.writeFn = opts.writeFn ?? ((path, data) => writeFile(path, data, 'utf8'))
+    this.writeFn = opts.writeFn ?? ((path, data) => writeFile(path, data, { encoding: 'utf8', mode: 0o600 }))
     this.scanner = createTranscriptScanner(opts.transcriptsDir)
   }
 

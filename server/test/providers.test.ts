@@ -104,7 +104,7 @@ describe('volume payloads', () => {
 })
 
 describe('spotify activate', () => {
-  const LOCAL = { loopback: true }
+  const LOCAL = { loopback: true, paired: false }
 
   it('opens the application by bundle id, with a fixed argv', async () => {
     const open = vi.fn(async () => {})
@@ -124,7 +124,7 @@ describe('spotify activate', () => {
   it('refuses a command that did not come from this machine', async () => {
     const open = vi.fn(async () => {})
     const p = createSpotifyProvider(vi.fn(async () => ''), open)
-    expect(await p.commands!.activate(null, { loopback: false })).toMatchObject({ ok: false })
+    expect(await p.commands!.activate(null, { loopback: false, paired: false })).toMatchObject({ ok: false })
     expect(await p.commands!.activate(null)).toMatchObject({ ok: false })
     expect(open).not.toHaveBeenCalled()
   })

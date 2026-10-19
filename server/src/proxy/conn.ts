@@ -41,7 +41,7 @@ export function pathMatches(pattern: string, path: string): boolean {
  * A path a widget may be asking for, or null.
  *
  * Refused before any matching: a path that is not rooted, carries a query or a fragment, or
- * holds a `.`, `..` or an empty segment. The last three matter most — a service's own router may
+ * holds a `.`, `..` or an empty segment, with or without `;` parameters. The last three matter most — a service's own router may
  * collapse them, so `/api/flow/../admin` could match a pattern for `/api/flow/*` here and arrive
  * as `/api/admin` there. Percent-encodings that decode to a slash or a dot are refused for the
  * same reason: the matcher must be looking at the same string the service will route on.
@@ -56,9 +56,15 @@ export function checkPath(raw: string): string | null {
   if (/[\u0000-\u001f\u007f]/.test(raw)) return null
   // `%2e` is `.` and `%2f` is `/`; either would make the service route on a path this matcher
   // never saw. There is no legitimate reason for a widget to send one.
-  if (/%(?:2e|2f|5c)/i.test(raw)) return null
+  // `%3b` is `;`, refused for the reason below.
+  if (/%(?:2e|2f|5c|3b)/i.test(raw)) return null
   const segments = raw.slice(1).split('/')
-  if (segments.some((s) => s === '' || s === '.' || s === '..')) return null
+  // A segment is also judged without its `;` parameters: Tomcat-style routers drop them before
+  // resolving dot segments, so `/api/flow/..;/admin` arrives as `/api/admin`.
+  if (segments.some((s) => {
+    const bare = s.split(';')[0]
+    return s === '' || bare === '' || bare === '.' || bare === '..'
+  })) return null
   return raw
 }
 

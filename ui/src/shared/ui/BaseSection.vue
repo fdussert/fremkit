@@ -6,7 +6,7 @@
  *
  * Module scope, so every section on the page reads and writes the same record.
  */
-import { reactive } from 'vue'
+import { reactive, type InjectionKey } from 'vue'
 
 const KEY = 'fremkit.sections'
 
@@ -20,10 +20,33 @@ function remember(id: string, value: boolean): void {
   open[id] = value
   try { localStorage.setItem(KEY, JSON.stringify(open)) } catch { /* private window: this session only */ }
 }
+
+/** Opens or folds several sections at once — an "expand all" — and remembers it like a click. */
+export function setSectionsOpen(ids: readonly string[], value: boolean): void {
+  for (const id of ids) open[id] = value
+  try { localStorage.setItem(KEY, JSON.stringify(open)) } catch { /* private window: this session only */ }
+}
+
+/**
+ * What a container says about the sections inside it, without those sections knowing who it is:
+ * the settings window's search hides the ones it did not find and opens the ones it did, and a
+ * pane holding a single section shows it bare, since there is nothing to fold it away from.
+ */
+export interface SectionScope {
+  /** False hides the section altogether. */
+  shown(id: string): boolean
+  /** True opens it whatever was remembered, without remembering it. */
+  forced(id: string): boolean
+  /** Its body alone, no header, nothing to fold. */
+  bare: boolean
+  /** Open until the person folds it, whatever the section's own default. */
+  defaultOpen?: boolean
+}
+export const SECTION_SCOPE: InjectionKey<SectionScope> = Symbol('sectionScope')
 </script>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, inject } from 'vue'
 import BaseIcon from './BaseIcon.vue'
 
 const props = withDefaults(defineProps<{
@@ -34,13 +57,24 @@ const props = withDefaults(defineProps<{
   defaultOpen?: boolean
   /** A short count or state shown on the right of the header, visible while folded. */
   badge?: string
-}>(), { defaultOpen: false, badge: '' })
+  /** Open whatever was remembered, without remembering it: a search showing what it found. */
+  forceOpen?: boolean
+}>(), { defaultOpen: false, badge: '', forceOpen: false })
 
-const isOpen = computed(() => open[props.id] ?? props.defaultOpen)
+const scope = inject(SECTION_SCOPE, null)
+const shown = computed(() => !scope || scope.shown(props.id))
+const forced = computed(() => props.forceOpen || !!scope?.forced(props.id))
+const isOpen = computed(() => forced.value || (open[props.id] ?? (props.defaultOpen || !!scope?.defaultOpen)))
+
+/** The toggle a forced opening fires is not the person's choice, so it is not kept. */
+function onToggle(e: Event): void {
+  if (!forced.value) remember(props.id, (e.target as HTMLDetailsElement).open)
+}
 </script>
 
 <template>
-  <details class="section" :open="isOpen" @toggle="remember(props.id, ($event.target as HTMLDetailsElement).open)">
+  <div v-if="shown && scope?.bare" class="bare" :data-section="id"><slot /></div>
+  <details v-else-if="shown" class="section" :data-section="id" :open="isOpen" @toggle="onToggle">
     <summary>
       <BaseIcon class="chevron" name="chevron-down" :size="14" />
       <span class="title">{{ title }}</span>
@@ -65,6 +99,7 @@ summary:hover { color: var(--text); }
 .badge { color: var(--text-dim); font-weight: 400; text-transform: none; letter-spacing: 0; }
 .chevron { transition: transform .12s ease; transform: rotate(-90deg); }
 [open] > summary .chevron { transform: none; }
+.bare { margin-bottom: var(--space-3); }
 /* Back to the panel's own surface, so what is inside the section sits on the page, not on the bar. */
 .body { padding: var(--space-3); background: var(--surface); }
 </style>

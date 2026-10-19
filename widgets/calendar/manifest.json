@@ -1,6 +1,6 @@
 { "id": "calendar",
   "name": { "fr": "Prochains rendez-vous", "en": "Next events" },
-  "version": "1.0.0",
+  "version": "1.0.0", "preview": "preview.webp",
   "description": { "fr": "L’agenda des jours qui viennent", "en": "The days ahead, calendar by calendar" },
   "category": "productivity",
   "icon": "calendar-days", "minSize": [8, 4], "defaultSize": [16, 10],

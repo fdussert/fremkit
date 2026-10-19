@@ -23,7 +23,7 @@ final class HelperConfigTests: XCTestCase {
 
     func testDefaults() {
         let config = HelperConfig.default
-        XCTAssertEqual(config.repoPath, NSHomeDirectory() + "/fremkit")
+        XCTAssertNil(config.repoPath)
         XCTAssertEqual(config.url, "http://127.0.0.1:4242/?kiosk=1")
         XCTAssertEqual(config.adminUrl, "http://127.0.0.1:4242/admin")
         XCTAssertEqual(config.port, 4242)
@@ -99,6 +99,18 @@ final class HelperConfigTests: XCTestCase {
         // No temporary leftovers next to the file.
         let siblings = try FileManager.default.contentsOfDirectory(atPath: directory.path)
         XCTAssertEqual(siblings.filter { $0.hasSuffix(".tmp") }, [])
+    }
+
+    func testRepoPathDecodesAndStaysAbsentWhenUnset() throws {
+        let checkout = try write("{\"repoPath\":\"/Users/someone/fremkit\"}")
+        XCTAssertEqual(HelperConfig.load(from: checkout).repoPath, "/Users/someone/fremkit")
+
+        // Saving a config without one must not write a key the next load would read as a checkout.
+        let url = directory.appendingPathComponent("saved.json")
+        try HelperConfig.default.save(to: url)
+        let text = try String(contentsOf: url, encoding: .utf8)
+        XCTAssertFalse(text.contains("repoPath"))
+        XCTAssertNil(HelperConfig.load(from: url).repoPath)
     }
 
     func testDefaultURL() {

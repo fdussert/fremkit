@@ -234,7 +234,7 @@ export class ClaudeTracker {
     this.ttlMs = opts.ttlMs ?? DEFAULT_TTL_MS
     this.filePath = opts.filePath
     this.persistMs = opts.persistMs ?? PERSIST_MS
-    this.writeFn = opts.writeFn ?? ((path, data) => writeFile(path, data, 'utf8'))
+    this.writeFn = opts.writeFn ?? ((path, data) => writeFile(path, data, { encoding: 'utf8', mode: 0o600 }))
     this.onAttention = opts.onAttention
   }
 

@@ -39,7 +39,8 @@ export function faviconTarget(message: { url?: unknown }): string | null {
  *
  * Unlike a favicon, the whole address leaves the machine, path included — so the host fetches
  * only an address the user typed into this widget's own settings. A widget cannot use it to send
- * whatever it likes to whichever host it likes, one image request at a time.
+ * whatever it likes to whichever host it likes, one image request at a time. `settings` is the
+ * instance's saved settings alone: a manifest default is the widget's own words, not the user's.
  */
 export function imageTarget(message: { url?: unknown }, settings: unknown): string | null {
   const url = nonEmptyString(message.url)?.trim()
@@ -153,36 +154,70 @@ export function connRequest(message: { url?: unknown; init?: unknown }): {
  * keep answering as that widget and inherit its subscriptions — a channel carrying a
  * connection's data among them.
  *
- * A load whose `src` is unchanged is such a self-navigation. A load with a different `src` is
- * the host pointing the frame at another widget, and is trusted. A *new element* — which is
- * what a `v-if` does when a manifest disappears and comes back after a rescan — starts over:
- * before that, a rescan disowned an innocent frame for the rest of its life.
+ * Two signs of a new document, whichever comes first:
+ *
+ * - a second `fremkit:hello` for the same `src`. The bridge says hello exactly once per document,
+ *   synchronously, before any of the widget's code runs — so this one arrives *before* the new
+ *   document's `load`, and also catches a navigation made before the first `load` ever fired;
+ * - a `load` whose `src` is unchanged (a self-navigation to a page that runs no bridge).
+ *
+ * A hello or a load with a *different* `src` is the host pointing the frame at another widget,
+ * and is trusted. A *new element* — which is what a `v-if` does when a manifest disappears and
+ * comes back after a rescan — starts over: before that, a rescan disowned an innocent frame for
+ * the rest of its life.
+ *
+ * Trust decides whether the host answers at all; what it answers *over* is a `MessagePort`
+ * handed to the document that said hello (see `useWidgetBridge`), so nothing the host sends
+ * after a navigation can reach the next document even before this class has noticed.
  */
 export class FrameTrust {
   private loadedSrc: string | null = null
-  private disowned = false
+  private helloSrc: string | null = null
+  /** The src that was disowned; only the host pointing the frame elsewhere lifts it. */
+  private disownedSrc: string | null = null
 
   /** True while the host should answer the frame. */
   get trusted(): boolean {
-    return !this.disowned
+    return this.disownedSrc === null
   }
 
   /** Called on every `load` event of the current element. */
   onLoad(src: string | null): void {
-    const value = src ?? ''
-    if (this.loadedSrc === null || this.loadedSrc !== value) {
-      this.loadedSrc = value
-      this.disowned = false
-      return
-    }
-    this.disowned = true
+    this.loadedSrc = this.see(this.loadedSrc, src ?? '')
+  }
+
+  /** Called on every `fremkit:hello` the frame's window posts. */
+  onHello(src: string | null): void {
+    this.helloSrc = this.see(this.helloSrc, src ?? '')
+  }
+
+  /** A second sighting of the same src is a new document; a different src is the host's doing. */
+  private see(previous: string | null, value: string): string {
+    if (previous === value) this.disownedSrc = value
+    else if (this.disownedSrc !== null && this.disownedSrc !== value) this.disownedSrc = null
+    return value
   }
 
   /** Called when the iframe element itself is replaced: a fresh element is a fresh document. */
   reset(): void {
     this.loadedSrc = null
-    this.disowned = false
+    this.helloSrc = null
+    this.disownedSrc = null
   }
+}
+
+/**
+ * The nonce of a `fremkit:hello`, or null when the message is not one.
+ *
+ * The bridge sends the same nonce twice: in the hello it posts to the window, and as the first
+ * message on the port the host hands back. A document that got the port without having said
+ * that hello — the next one, after a navigation raced the answer — cannot repeat it.
+ */
+export function helloNonce(message: unknown): string | null {
+  if (!message || typeof message !== 'object') return null
+  const m = message as { type?: unknown; nonce?: unknown }
+  if (m.type !== 'fremkit:hello' || typeof m.nonce !== 'string') return null
+  return /^[0-9a-f]{16,64}$/.test(m.nonce) ? m.nonce : null
 }
 
 /**
@@ -195,3 +230,6 @@ export class FrameTrust {
 export function mayListApps(subscriptions: string[] | undefined): boolean {
   return channelAllowed(subscriptions ?? [], 'dock')
 }
+
+/** Dispatched on the host window when a widget asks, through the bridge, to hold swipes off. */
+export const HOLD_SWIPE_EVENT = 'fremkit:hold-swipe'

@@ -1,0 +1,4 @@
+// Copy to Local.xcconfig (git-ignored) and put your own values in: the Apple team that signs the
+// app and a bundle id under your own prefix. Only `scripts/build-ios.sh install` needs it.
+DEVELOPMENT_TEAM = ABCDE12345
+FREMKIT_BUNDLE_ID = com.example.fremkit

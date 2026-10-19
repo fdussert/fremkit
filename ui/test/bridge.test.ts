@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { FrameTrust, appIconTarget, faviconTarget, fetchTarget, imageTarget, mayListApps, nonEmptyString, stampInstance } from '../src/shared/widgetMessages'
+import { FrameTrust, helloNonce, appIconTarget, faviconTarget, fetchTarget, imageTarget, mayListApps, nonEmptyString, stampInstance } from '../src/shared/widgetMessages'
 
 describe('nonEmptyString', () => {
   it('accepts a non-empty string and nothing else', () => {
@@ -98,8 +98,45 @@ describe('mayListApps', () => {
   })
 })
 
+describe('helloNonce', () => {
+  it('reads the nonce of a hello and nothing else', () => {
+    expect(helloNonce({ type: 'fremkit:hello', nonce: '0123456789abcdef0123456789abcdef' })).toBe('0123456789abcdef0123456789abcdef')
+    for (const m of [null, 'x', { type: 'fremkit:hello' }, { type: 'fremkit:hello', nonce: 'short' },
+      { type: 'fremkit:hello', nonce: 42 }, { type: 'fremkit:subscribe', nonce: '0123456789abcdef' },
+      { type: 'fremkit:hello', nonce: 'ZZZZZZZZZZZZZZZZZZZZ' }]) {
+      expect(helloNonce(m), JSON.stringify(m)).toBeNull()
+    }
+  })
+})
+
 describe('FrameTrust', () => {
   const SRC = '/widgets/clock/index.html'
+
+  it('disowns a second hello for the same src, before the new document has even loaded', () => {
+    // The bridge says hello once per document, before the widget's code runs. A second one is a
+    // new document — including one navigated to before the first load ever fired.
+    const trust = new FrameTrust()
+    trust.onHello(SRC)
+    expect(trust.trusted).toBe(true)
+    trust.onHello(SRC)
+    expect(trust.trusted).toBe(false)
+    // And its load does not bring it back.
+    trust.onLoad(SRC)
+    expect(trust.trusted).toBe(false)
+  })
+
+  it('trusts a hello after the host pointed the frame at another widget, and after a new element', () => {
+    const trust = new FrameTrust()
+    trust.onHello(SRC)
+    trust.onLoad(SRC)
+    trust.onHello('/widgets/weather/index.html')
+    expect(trust.trusted).toBe(true)
+    trust.onHello('/widgets/weather/index.html')
+    expect(trust.trusted).toBe(false)
+    trust.reset()
+    trust.onHello('/widgets/weather/index.html')
+    expect(trust.trusted).toBe(true)
+  })
 
   it('trusts the first load', () => {
     const trust = new FrameTrust()

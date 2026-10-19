@@ -45,9 +45,9 @@ export function parseLsof(out: string): Map<number, string> {
 /** Lists open Claude Code sessions as processes. Returns null when discovery itself failed. */
 export async function listClaudeProcesses(runner: Runner = run): Promise<ClaudeProcess[] | null> {
   try {
-    const procs = parsePs(await runner('ps', ['-axo', 'pid=,lstart=,command=']))
+    const procs = parsePs(await runner('/bin/ps', ['-axo', 'pid=,lstart=,command=']))
     if (!procs.length) return []
-    const cwds = parseLsof(await runner('lsof', ['-a', '-d', 'cwd', '-p', procs.map((p) => p.pid).join(','), '-Fpn']))
+    const cwds = parseLsof(await runner('/usr/sbin/lsof', ['-a', '-d', 'cwd', '-p', procs.map((p) => p.pid).join(','), '-Fpn']))
     return procs.flatMap((p) => { const cwd = cwds.get(p.pid); return cwd ? [{ pid: p.pid, cwd, startedAt: p.startedAt }] : [] })
   } catch { return null }
 }

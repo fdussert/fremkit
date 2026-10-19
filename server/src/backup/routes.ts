@@ -3,7 +3,7 @@ import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { isSafeBackgroundName, isSafeTileIconName, type Config } from '../config/schema.js'
 import { migrateConfig } from '../config/migrate.js'
-import { DegradedStoreError, type ConfigStore } from '../config/store.js'
+import type { ConfigStore } from '../config/store.js'
 import { detectImageType, MAX_BACKGROUND_BYTES } from '../backgrounds/routes.js'
 import { checkTileIcon, MAX_TILE_ICON_BYTES, TILE_ICONS_DIR } from '../tile-icons/routes.js'
 import { isCrossSiteFetch } from '../http/guard.js'
@@ -11,8 +11,7 @@ import { FREMKIT_VERSION } from '../version.js'
 import type { ConnectionTypeRegistry } from '../connections/registry.js'
 import type { SecretStore } from '../secrets/index.js'
 import { readZip, writeZip, ZipError } from './zip.js'
-import { applyRestoreSecretPlan, restoreSecretPlan } from './secrets.js'
-import { migrateHomeySecret } from '../config/migrate.js'
+import { applyConfig } from './apply.js'
 import { tr } from '../i18n.js'
 
 /**
@@ -258,46 +257,23 @@ export async function backupRoutes(
       return reply.code(500).send({ errors: [tr(store.get().locale, 'backup.writeFailed')] })
     }
 
-    // Before the save, and before anything can poll with the restored fields: a stored secret is
-    // tied to the host it was issued for, and the archive chooses the hosts. See backup/secrets.ts.
-    const plan = restoreSecretPlan(store.get().connections, read.config.connections, opts.types)
-    if (plan.rebound.length || plan.removed.length) {
-      try {
-        await applyRestoreSecretPlan(plan, opts.types, opts.secrets)
-      } catch (err) {
-        req.log.warn({ err }, 'restore could not drop the secrets the archive rebinds')
-        return reply.code(500).send({ errors: [tr(store.get().locale, 'backup.writeFailed')] })
-      }
+    const applied = await applyConfig(opts, read.config, { reason: 'restore' }, req.log)
+    if (!applied.ok) {
+      const locale = store.get().locale
+      if (applied.failure === 'degraded') return reply.code(409).send({ errors: [tr(locale, 'config.degraded')] })
+      if (applied.failure === 'secrets') return reply.code(500).send({ errors: [tr(locale, 'backup.writeFailed')] })
+      return reply.code(400).send({ errors: [tr(locale, 'backup.badConfig')] })
     }
+    const { saved, reenterSecrets } = applied
 
-    // Through the store, which keeps its own `.bak` of what was there and validates on the way in.
-    let saved: Config
-    try {
-      saved = await store.save(read.config)
-    } catch (err) {
-      if (err instanceof DegradedStoreError) {
-        return reply.code(409).send({ errors: [tr(store.get().locale, 'config.degraded')] })
-      }
-      req.log.warn({ err }, 'restore could not save the config')
-      return reply.code(400).send({ errors: [tr(store.get().locale, 'backup.badConfig')] })
-    }
-    // A backup carries no secrets, so a restored Homey connection's key is still sitting in the
-    // keychain under the field name the coded type used. Move it before anything asks whether it
-    // is there — otherwise the answer names a connection whose key never went anywhere.
-    await migrateHomeySecret(saved, opts.secrets).catch((err: unknown) => {
-      req.log.warn({ err }, 'restore could not move the Homey key to its new field')
-    })
-    await opts.onRestored?.(saved)
-
-    // Only the connections whose secret is actually absent: on the same Mac the keychain items
-    // are keyed by the ids the archive carries, so most restores need nothing typed in. The ones
-    // the plan above just stripped are absent now, so they are named here without a second list.
     return reply.send({
       ok: true,
-      pages: saved.pages.length,
+      // Over every screen: the admin says "N pages restored", and a page on a device is one too.
+      pages: saved.screens.reduce((n, screen) => n + screen.pages.length, 0),
+      screens: saved.screens.length,
       backgrounds: read.backgrounds.length,
       tileIcons: read.tileIcons.length,
-      reenterSecrets: await missingSecrets(saved, opts.types, opts.secrets),
+      reenterSecrets,
     })
   })
 }

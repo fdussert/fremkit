@@ -81,15 +81,15 @@ describe('network parsers', () => {
 /** Replays the commands the provider runs, so a poll can be driven without touching the Mac. */
 function fakeExec(counters: { rx: number; tx: number }, extra: Record<string, string> = {}) {
   return vi.fn(async (file: string, args: string[]) => {
-    if (file === 'route') return ROUTE
-    if (file === 'netstat') {
+    if (file === '/sbin/route') return ROUTE
+    if (file === '/usr/sbin/netstat') {
       return NETSTAT.replace(
         /^en7\s+1500\s+<Link#18>.*$/m,
         `en7        1500  <Link#18>   aa:bb:cc:dd:ee:02  1 0 ${counters.rx} 1 0 ${counters.tx} 0`,
       )
     }
-    if (file === 'networksetup' && args[0] === '-listallhardwareports') return PORTS
-    if (file === 'ipconfig' && args[0] === 'getifaddr') return '198.51.100.7\n'
+    if (file === '/usr/sbin/networksetup' && args[0] === '-listallhardwareports') return PORTS
+    if (file === '/usr/sbin/ipconfig' && args[0] === 'getifaddr') return '198.51.100.7\n'
     return extra[file] ?? ''
   })
 }
@@ -137,11 +137,11 @@ describe('network provider', () => {
 
   it('reads the SSID only on a wireless interface', async () => {
     const exec = vi.fn(async (file: string, args: string[]) => {
-      if (file === 'route') return ROUTE.replace('interface: en7', 'interface: en0')
-      if (file === 'netstat') return NETSTAT
-      if (file === 'networksetup' && args[0] === '-listallhardwareports') return PORTS
-      if (file === 'ipconfig' && args[0] === 'getifaddr') return '198.51.100.7'
-      if (file === 'ipconfig' && args[0] === 'getsummary') return '  SSID : Example Network'
+      if (file === '/sbin/route') return ROUTE.replace('interface: en7', 'interface: en0')
+      if (file === '/usr/sbin/netstat') return NETSTAT
+      if (file === '/usr/sbin/networksetup' && args[0] === '-listallhardwareports') return PORTS
+      if (file === '/usr/sbin/ipconfig' && args[0] === 'getifaddr') return '198.51.100.7'
+      if (file === '/usr/sbin/ipconfig' && args[0] === 'getsummary') return '  SSID : Example Network'
       return ''
     })
     const snapshot = (await createNetworkProvider(exec).poll!()) as NetworkSnapshot

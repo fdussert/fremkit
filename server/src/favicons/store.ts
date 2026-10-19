@@ -3,6 +3,7 @@ import { mkdir, readdir, readFile, rename, stat, unlink, writeFile } from 'node:
 import { join } from 'node:path'
 import { USER_AGENT } from '../version.js'
 import { resolvesToPrivate } from '../net/private.js'
+import { publicFetch } from '../net/pinned.js'
 import { pickIconHref } from './pick.js'
 
 /** How long a cached icon is served without asking the site again. */
@@ -142,7 +143,8 @@ export class FaviconStore {
 
   constructor(opts: { dir: string; fetchImpl?: FetchLike; now?: () => number; isPrivate?: PrivateCheck }) {
     this.dir = opts.dir
-    this.fetchImpl = opts.fetchImpl ?? ((input, init) => fetch(input, init))
+    // Through the pinned dispatcher: the address connected to is the address checked.
+    this.fetchImpl = opts.fetchImpl ?? ((input, init) => publicFetch(input, init))
     this.now = opts.now ?? Date.now
     this.isPrivate = opts.isPrivate ?? ((host) => resolvesToPrivate(host))
   }

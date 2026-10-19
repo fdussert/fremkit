@@ -1,8 +1,8 @@
 <script setup lang="ts">
 /**
- * "Copy settings from…": a drop-down of every other instance of the same widget — the tiles of
- * every page and the compact ones in the navigation bar — whose settings can be pasted onto the
- * instance being edited. Configuring a widget once and reusing it is the point; the caller owns
+ * "Copy settings from…": a drop-down of every other widget of the same kind — wherever it is
+ * shown, on a page or in a bar, on any screen — whose settings can be pasted onto the one being
+ * edited. Configuring a widget once and reusing it is the point; the caller owns
  * the write, so the same component serves a tile (`updateInstance`) and a bar widget
  * (`updateNavWidget`), each as one undo step.
  *
@@ -11,7 +11,6 @@
  */
 import { computed, ref } from 'vue'
 import { pick, useI18n } from '../shared/i18n'
-import { navWidgetsOf } from '../shared/types'
 import { useAdminStore } from './store'
 
 const props = defineProps<{ widgetId: string; instanceId: string }>()
@@ -28,16 +27,26 @@ interface Source { id: string; label: string; settings: Record<string, unknown> 
 const sources = computed<Source[]>(() => {
   const cfg = s.state.config
   if (!cfg) return []
+  // Named after where it is first shown; the screen is only worth naming when there are several.
+  const named = cfg.screens.length > 1
   const out: Source[] = []
-  for (const p of cfg.pages) {
-    for (const w of p.widgets) {
-      if (w.widgetId !== props.widgetId || w.instanceId === props.instanceId) continue
-      out.push({ id: w.instanceId, label: `${p.name} · ${w.title || widgetName.value}`, settings: w.settings })
+  const seen = new Set<string>()
+  for (const scr of cfg.screens) {
+    const prefix = named ? `${scr.name} · ` : ''
+    for (const p of scr.pages) {
+      for (const item of p.items) {
+        const w = cfg.widgets[item.instanceId]
+        if (!w || w.widgetId !== props.widgetId || item.instanceId === props.instanceId || seen.has(item.instanceId)) continue
+        seen.add(item.instanceId)
+        out.push({ id: item.instanceId, label: `${prefix}${p.name} · ${w.title || widgetName.value}`, settings: w.settings })
+      }
     }
-  }
-  for (const w of navWidgetsOf(cfg.display)) {
-    if (w.widgetId !== props.widgetId || w.instanceId === props.instanceId) continue
-    out.push({ id: w.instanceId, label: t('admin.settings.copyFromBar', { name: widgetName.value }), settings: w.settings })
+    for (const item of scr.nav) {
+      const w = cfg.widgets[item.instanceId]
+      if (!w || w.widgetId !== props.widgetId || item.instanceId === props.instanceId || seen.has(item.instanceId)) continue
+      seen.add(item.instanceId)
+      out.push({ id: item.instanceId, label: prefix + t('admin.settings.copyFromBar', { name: widgetName.value }), settings: w.settings })
+    }
   }
   return out
 })

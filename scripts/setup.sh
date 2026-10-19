@@ -181,5 +181,5 @@ Setup done. First run, in this order:
   6. Launch at login — optional, from the menu bar "F" menu.
 
 The dashboard opens by itself on the Xeneon Edge display. The admin is in the same menu
-("Open the admin"), or at http://127.0.0.1:4242/admin.
+("Open the admin", or "Open the admin in the browser"), or with `pnpm open /admin`.
 CHECKLIST

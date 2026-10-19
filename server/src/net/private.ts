@@ -10,9 +10,9 @@ import { lookup } from 'node:dns/promises'
  *
  * The check runs twice, because either alone can be fooled. The manifest is judged when it is
  * read, which catches the obvious literal; the resolved address is judged at request time, which
- * catches a name that points at 127.0.0.1 today and somewhere else tomorrow. Neither closes the
- * gap between our lookup and the one `fetch` does — that is a rebinding race no application-level
- * check can win — but a widget cannot reach a private address by simply asking for one.
+ * catches a name that points at 127.0.0.1 today and somewhere else tomorrow. The gap between our
+ * lookup and the one `fetch` does (DNS rebinding) is closed by `net/pinned.ts`, whose connection
+ * lookup applies `isPrivateAddress` to the very address it connects to.
  */
 
 /**
@@ -139,6 +139,10 @@ function isPrivateIpv6Groups(groups: number[]): boolean {
   if (groups.slice(0, 7).every((g) => g === 0) && groups[7] === 1) return true // ::1, loopback
   if ((first & 0xfe00) === 0xfc00) return true               // fc00::/7, unique local
   if ((first & 0xffc0) === 0xfe80) return true               // fe80::/10, link-local
+  if ((first & 0xffc0) === 0xfec0) return true               // fec0::/10, site-local (deprecated, still routed by some)
+  // 64:ff9b:1::/48, local-use NAT64 (RFC 8215): a translator inside the network, whose IPv4 side
+  // is whatever the operator chose, LAN included. Not readable as one IPv4, so refused whole.
+  if (first === 0x0064 && groups[1] === 0xff9b && groups[2] === 0x0001) return true
   if ((first & 0xff00) === 0xff00) return true               // ff00::/8, multicast
   return false
 }

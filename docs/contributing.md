@@ -3,6 +3,11 @@
 Notes for people working on Fremkit itself. For writing a widget — which needs none of this — see
 [writing-widgets.md](writing-widgets.md).
 
+Writing a widget needs a checkout and two commands: `pnpm widget:new <id>` writes one that works,
+`pnpm dev` reloads it on every save, and `pnpm widget:check <folder>` tells you what the registry
+would refuse before you open the pull request — see
+[Your first widget in five minutes](writing-widgets.md#your-first-widget-in-five-minutes).
+
 ## Language
 
 The repository is in English: code, comments, commit messages, documentation. The interface
@@ -16,8 +21,9 @@ string goes through `ui/src/shared/locales/`, and every manifest text is either 
 server/    Fastify 5 server on 127.0.0.1:4242 — config, widget catalog, providers, connections,
            the secret store, the widget bridge and the WebSocket
 ui/        Vue 3: the dashboard (src/dashboard), the admin (src/admin), shared code (src/shared)
+e2e/       Playwright: end-to-end tests of the admin and the dashboard against a real server
 native/    The Swift helper: kiosk window, HID touch driver, mouse fence, admin window,
-           Dock badges, server supervision
+           Dock badges, server supervision, `fremkit-scan` (the disk map's scanner)
 widgets/   One folder per widget
 themes/    One folder per theme — see themes.md
 scripts/   setup, dev, build/install/test the helper, signing identity, kiosk, Claude Code hooks
@@ -31,13 +37,18 @@ docs/      This documentation
 
 ```sh
 pnpm dev          # server on 4242 + Vite on 5173 (dashboard http://localhost:5173, admin /admin)
+pnpm open --dev   # signs the browser in on the Vite server (add /admin for the admin)
 pnpm build        # ui + server
 pnpm start        # production: http://127.0.0.1:4242 and /admin
+pnpm open         # signs the browser in on 4242 (pnpm open /admin, pnpm open --print)
 pnpm test         # vitest, server + ui
 pnpm typecheck
+pnpm e2e          # Playwright, against the built UI: see "End-to-end tests" below
 pnpm helper:build   # native/dist/Fremkit Helper.app
 pnpm helper:install
 pnpm helper:test
+pnpm widget:new <id>      # a new widget in the author's folder (data/widgets-dev)
+pnpm widget:check <dir>   # the registry's and the installer's rules, before a pull request
 ```
 
 `pnpm dev` exports `FREMKIT_DEV=1`, which is what puts the Vite origin
@@ -45,9 +56,44 @@ pnpm helper:test
 WebSocket and a write from. Without it only `http://127.0.0.1:4242` and `http://localhost:4242`
 are trusted, plus the port `FREMKIT_PORT` moved a second checkout to. A production instance must
 not trust 5173: it is Vite's default port, so any unrelated project serving on it would be
-trusted to save this dashboard's config. Running Vite by hand (`pnpm --filter ui dev`) against a
+trusted to save this dashboard's config. It also exports `FREMKIT_WIDGET_DEV=1`: the server reads
+the widget author's folder (`data/widgets-dev`, or `FREMKIT_WIDGET_DEV_DIR`) and watches it and
+`widgets/`, reloading a widget's frames when its files are saved
+([writing-widgets.md](writing-widgets.md#your-first-widget-in-five-minutes)). Running Vite by hand (`pnpm --filter ui dev`) against a
 server started without the flag gives a dashboard whose WebSocket is refused — export
 `FREMKIT_DEV=1` for the server too.
+
+### Signing in: the access secret
+
+The server answers only callers holding its access secret ([SECURITY.md](../SECURITY.md#the-local-access-secret)),
+which it writes to `~/Library/Application Support/Fremkit/access-<port>.token` (under
+`FREMKIT_SUPPORT_DIR` when set) once it listens, and removes when it exits. The helper's windows
+need nothing. A browser needs a one-time link: `pnpm open` mints one through `POST /api/auth/code`
+and opens `/auth?code=…&next=…`, which opens a session, sets its cookie and lands on the page.
+Under `pnpm dev`, `pnpm open --dev` opens it on Vite's origin instead — Vite proxies `/auth`, so
+the cookie belongs to `localhost:5173`. Sessions live in the server's memory: when `tsx watch`
+restarts the server, the page is refused and shows how to get back in — run `pnpm open --dev`
+again. `dev.sh` exports one secret for the whole session, so scripts are not affected.
+
+Anything that holds the secret and talks to the port should ask `GET /auth/proof?nonce=<random>`
+first, without a credential, and check the answer — HMAC-SHA256 of
+`fremkit-access-proof-v1:<nonce>` under the secret, base64url — before sending the secret: the
+helper does (`AccessProof.swift`).
+
+Scripts send `Authorization: Bearer <secret>`; `scripts/lib/access.sh` has the helpers, and
+hands the header to curl through a file descriptor rather than on the command line:
+
+```sh
+. scripts/lib/access.sh
+curl -X POST -H @<(fremkit_auth_header 4242) http://127.0.0.1:4242/api/widgets/rescan
+```
+
+A second checkout on `FREMKIT_PORT=4301` writes `access-4301.token` and names its cookie after
+its port, so it never signs the live one out: `FREMKIT_PORT=4301 pnpm open`. Vite follows
+`FREMKIT_PORT` too. Its remote listener (paired devices) stays on 4243 unless
+`FREMKIT_REMOTE_PORT` moves it: set that too before turning remote access on in a second checkout,
+or the two servers fight over the port. It takes a whole number from 1 to 65535 other than
+`FREMKIT_PORT`; the server refuses to start on anything else and says why.
 
 ### Installing from a registry you are building
 
@@ -111,7 +157,7 @@ Under the helper: `kill $(lsof -nP -iTCP:4242 -sTCP:LISTEN -t)` and it respawns 
 
 ## Backup and restore
 
-**/admin → Screen → Backup.** "Back up" downloads `fremkit-backup-<date>.zip`; "Restore…" takes
+**/admin → Settings → History & backup → Backup.** "Back up" downloads `fremkit-backup-<date>.zip`; "Restore…" takes
 one back.
 
 What is in the archive:
@@ -160,7 +206,7 @@ run:
 
 | Key | Default | What it is |
 |---|---|---|
-| `repoPath` | `~/fremkit` | the checkout whose server the helper supervises (`pnpm setup` writes the real path) |
+| `repoPath` | `~/fremkit` | the checkout whose server the helper supervises (`pnpm run setup` writes the real path) |
 | `url` | `http://127.0.0.1:4242/?kiosk=1` | what the kiosk window loads |
 | `adminUrl` | `http://127.0.0.1:4242/admin` | what the admin window loads |
 | `port` | `4242` | port watched to decide whether a server is already up |
@@ -199,12 +245,46 @@ extracted from installed application bundles in `data/icons/apps/`, site favicon
 to `~/Library/Logs/Fremkit/server.log`, opened by the menu's *Log…*. It is never rotated, so
 delete it by hand if it grows.
 
+## End-to-end tests
+
+`e2e/` drives the admin and the dashboard in a real browser against a real server: the library,
+adding, moving, resizing and locking tiles with the mouse and the keyboard, every context menu,
+the ⌘K palette, undo and redo, exporting a page and importing it elsewhere, the version history,
+widget health, the dashboard's swipes, backgrounds and night theme, and a security smoke test
+(nothing answers without the session, the CSP is sent, a widget frame cannot navigate away).
+
+```sh
+pnpm --filter ui build                                   # the tests use ui/dist, not the sources
+pnpm --filter e2e exec playwright install chromium-headless-shell webkit   # once
+pnpm e2e                                                 # all of it
+pnpm e2e tests/menus.spec.ts --project=chromium          # one file, one browser
+pnpm e2e --repeat-each=3                                 # what to run before calling a test stable
+```
+
+Each Playwright worker starts its own server (`e2e/fixtures/server.ts`) on a port from 4330 to
+4339 (`E2E_FIRST_PORT=4360 pnpm e2e` moves the range, for a second checkout running the suite at
+the same time), with a temporary data folder, a `file` secrets backend (never the keychain) and an
+empty registry index served locally, so nothing reaches the network; the live server on 4242 is never
+touched. Before every test the server is put back to the state the test asks for (`seed`,
+`connections`), and the browser signs in the way a person does: a one-time code from
+`POST /api/auth/code`, redeemed at `/auth`. WebKit runs too when its Playwright build is installed
+(the helper's windows are WebKit); `E2E_WEBKIT=0` leaves it out. A failure keeps a trace and the
+server's log in `e2e/test-results/`.
+
+Selectors are roles and visible text first. Where neither exists (the canvas tiles, their resize
+handles) the editor carries a `data-test` attribute; keep it when you change that markup.
+
+Beware `playwright install`: it deletes every browser build in the shared cache
+(`~/Library/Caches/ms-playwright`) that no installed Playwright version links to, which can take
+away a build some other tool on the Mac points at by path.
+
 ## Pull requests
 
 Fork, branch, and open the pull request against `main`. Every pull request runs
 `.github/workflows/ci.yml` on Ubuntu with Node 22: `pnpm install --frozen-lockfile`, then
-`pnpm typecheck`, `pnpm test` and `pnpm build`. The widget catalogue test reads the real
-`widgets/` folder, so a broken manifest fails the run.
+`pnpm typecheck`, `pnpm test` and `pnpm build`, and in a second job the end-to-end tests in
+Chromium. The widget catalogue test reads the real `widgets/` folder, so a broken manifest fails
+the run.
 
 Locale parity *is* checked: `ui/test/i18n.test.ts` fails when a key exists on one side and not the
 other. What the CI cannot see is that nothing personal — hostname, IP, organisation, serial number,

@@ -11,9 +11,12 @@ export type BackgroundFit = 'cover' | 'contain'
 export interface WidgetBackground { image: string; fit?: BackgroundFit; dim?: number }
 /** Mirrors the server schema: what the frame draws before a tile's title. `tint` absent = tinted. */
 export type TileIcon = { kind: 'lucide'; name: string } | { kind: 'file'; name: string; tint?: false }
-export interface WidgetInstance {
-  instanceId: string; widgetId: string
-  x: number; y: number; w: number; h: number
+/**
+ * Mirrors the server schema: what a widget instance *is*, shared by every screen that shows it.
+ * Stored in `Config.widgets` under its instance id; where it sits is a `Placement` or a `NavItem`.
+ */
+export interface Widget {
+  widgetId: string
   title?: string; showTitle: boolean
   /** Colour of the tile's surface: `#rrggbb`, absent means the theme surface. */
   bgColor?: string
@@ -29,42 +32,99 @@ export interface WidgetInstance {
   icon?: TileIcon
   settings: Record<string, unknown>
 }
-export interface Page { id: string; name: string; widgets: WidgetInstance[] }
+/** Mirrors the server schema: where one widget sits on one page of one screen, in cells. */
+export interface Placement {
+  instanceId: string; x: number; y: number; w: number; h: number
+  /** The editor neither drags nor resizes a locked tile. Absent means unlocked. */
+  locked?: boolean
+}
+/**
+ * A widget joined with one of its placements: what a frame draws and what the bridge hands the
+ * widget. Never stored — built by `tileOf` (or `compactOf` for the bar) from the config.
+ */
+export type WidgetInstance = Widget & Placement
+/**
+ * Mirrors the server schema. `background`, when present, is shown instead of the screen's while
+ * this page is on screen; absent, the page shows the screen's.
+ */
+export interface Page { id: string; name: string; items: Placement[]; background?: Background }
 /** Mirrors the server schema: which side of the centred dots a bar widget sits on. */
 export type NavSlot = 'left' | 'right'
 /** The two clusters, in the order the Screen tab offers them. */
 export const NAV_SLOTS: NavSlot[] = ['left', 'right']
 
 /**
- * Mirrors the server schema: one widget drawn inside the navigation bar. No geometry — the bar
- * sizes it from the manifest's `compact.width` — and no appearance, since the bar is its surface.
- * `slot` picks its cluster; its position in the list orders it within that cluster.
+ * Mirrors the server schema: one widget drawn inside a screen's navigation bar. No geometry — the
+ * bar sizes it from the manifest's `compact.width` — and no appearance, since the bar is its
+ * surface. Its widget and settings are the `Config.widgets` entry it names. `slot` picks its
+ * cluster; its position in the screen's `nav` orders it within that cluster.
  */
-export interface NavWidget {
-  instanceId: string; widgetId: string; slot: NavSlot
+export interface NavItem {
+  instanceId: string; slot: NavSlot
   /** Touching it opens a popover with the same widget in full; absent means the touch reaches the widget. */
   popup?: boolean
-  settings: Record<string, unknown>
 }
 /** Mirrors the server schema; absent means the plain theme background. */
 export interface Background { color?: string; image?: string; fit?: BackgroundFit }
 /** Mirrors the server schema: the two heights the navigation bar may take. */
 export type NavHeight = 80 | 40
-export interface Display {
+export type NavStyle = 'dots' | 'names'
+export const DEFAULT_NAV_STYLE: NavStyle = 'dots'
+/**
+ * Mirrors the server schema: the grid and the look of one screen. The theme is the config's,
+ * the same on every screen, and the bar's content is the screen's `nav`.
+ */
+export interface ScreenDisplay {
   cols: number; rows: number; cell: number; autoCycleSeconds: number
-  /** Id of a theme in `themes/`; an unknown id paints the built-in one. */
-  theme?: string
   /** Absent means `DEFAULT_NAV_HEIGHT`; the default is stored as a missing key. */
   navHeight?: NavHeight
+  /** Absent keeps the existing dot navigation. */
+  navStyle?: NavStyle
   /** Opacity of the navigation bar's background, 0–1; absent means solid. */
   navOpacity?: number
   /** The opacity a tile gets when it is added; absent means solid. */
   tileOpacity?: number
   /** Absent means `both`; see `AdminGesture`. */
   adminGesture?: AdminGesture
-  /** Compact widgets drawn in the navigation bar; absent when the bar carries none. */
-  navWidgets?: NavWidget[]
   background?: Background
+  /** The orientation a device screen was made for; absent on the Edge. */
+  orientation?: 'landscape' | 'portrait'
+  /** The device's viewport in that orientation, in CSS px, as it reported it; absent on the Edge. */
+  viewport?: { width: number; height: number }
+}
+/** The pre-screens name of `ScreenDisplay`, kept so the components reading it need not change. */
+export type Display = ScreenDisplay
+/**
+ * Mirrors the server schema: one display the dashboard is drawn on — the Edge or a paired device —
+ * with its own grid, bar and pages. Widgets are referenced by instance id from `Config.widgets`.
+ */
+export interface Screen {
+  /** A slug: stable, used in `?screen=` and in device records. */
+  id: string
+  name: string
+  kind: 'edge' | 'device'
+  display: ScreenDisplay
+  /** Compact widgets drawn in this screen's bar, in cluster order. */
+  nav: NavItem[]
+  pages: Page[]
+  /** Automatic brightness for this screen; absent means both modes off. */
+  brightness?: BrightnessSettings
+}
+/** Mirrors `BrightnessSettingsSchema`: how a screen's brightness is driven when nobody touches it. */
+export interface BrightnessSettings {
+  dayNight: {
+    enabled: boolean
+    day: number
+    night: number
+    schedule: 'sun' | 'fixed'
+    latitude?: number
+    longitude?: number
+    /** `HH:MM`, the Mac's time zone. */
+    dayAt: string
+    nightAt: string
+    rampMinutes: number
+  }
+  followMac: { enabled: boolean; scale: number; offset: number }
 }
 export interface Connection { id: string; type: string; name: string; fields: Record<string, string> }
 export type SecretsBackend = 'keychain' | 'file'
@@ -90,12 +150,32 @@ export interface Privacy {
   macmonTemperature: boolean
 }
 
+/**
+ * Features shipped but kept out of the admin until they are ready. `devices` is iPad pairing and
+ * adding screens; the server infers it for a config written before it existed.
+ */
+export interface Labs {
+  devices: boolean
+  /** The browser companion and Fremplay; absent in a config the admin built itself, meaning off. */
+  companion?: boolean
+}
+
 export interface Config {
-  version: 3; display: Display; connections: Connection[]
+  version: 4
+  /** Id of a theme in `themes/`, the same on every screen; an unknown id paints the built-in one. */
+  theme?: string
+  /** A night theme and when it takes over; absent means one theme, day and night. A paired device gets only `night`. */
+  themeSchedule?: ThemeSchedule
+  connections: Connection[]
   secrets: { backend: SecretsBackend }
   locale?: Locale
   privacy: Privacy
-  pages: Page[]
+  /** Absent in a config the server has not answered with yet, which reads as all off. */
+  labs?: Labs
+  /** Every widget instance, keyed by instance id, however many screens show it. */
+  widgets: Record<string, Widget>
+  /** At least one; the first `edge` one is what the Edge shows. */
+  screens: Screen[]
 }
 
 /** A manifest text: one string, or a `{ fr, en }` pair. Resolved with `pick()` at render time. */
@@ -258,6 +338,8 @@ export interface WidgetManifest {
   subscriptions: string[]; commands: string[]
   settingsSchema: Record<string, SettingField>
   permissions: { network: string[] }
+  /** A picture of the widget, a path inside its folder (`/widgets/<id>/<preview>`). */
+  preview?: string
 }
 
 /**
@@ -282,16 +364,16 @@ export const NAV_HEIGHTS: NavHeight[] = [80, 40]
 export const ROWS_BY_NAV_HEIGHT: Record<NavHeight, number> = { 80: 16, 40: 17 }
 /** The nav bar height a display actually renders at. */
 export const navHeightOf = (display: Display): NavHeight => display.navHeight ?? DEFAULT_NAV_HEIGHT
-/** The bar's widgets, with the absent-means-none default applied once, here. */
-export const navWidgetsOf = (display: Display): NavWidget[] => display.navWidgets ?? []
-/** The bar's widgets of one cluster, in their configured order. */
-export const navWidgetsIn = (display: Display, slot: NavSlot): NavWidget[] =>
-  navWidgetsOf(display).filter((w) => w.slot === slot)
+/** One screen's bar items, in their configured order. */
+export const navItemsOf = (screen: Screen): NavItem[] => screen.nav
+/** One screen's bar items of one cluster, in their configured order. */
+export const navItemsIn = (screen: Screen, slot: NavSlot): NavItem[] =>
+  navItemsOf(screen).filter((item) => item.slot === slot)
 
-/** A sanity ceiling on the bar's widget count; mirrors the server's `MAX_NAV_WIDGETS`. */
+/** A sanity ceiling on a screen's bar widget count; mirrors the server's `MAX_NAV_WIDGETS`. */
 export const MAX_NAV_WIDGETS = 12
-/** Cells kept free in the middle of the bar for the page dots, whatever the clusters hold. */
-export const NAV_DOTS_RESERVE_CELLS = 10
+/** Minimum width retained for dot navigation. */
+export const NAV_CENTRE_RESERVE_CELLS = 10
 /**
  * The two settings that make a compact widget need more room than its manifest asks for, and
  * the width it then gets. A widget cannot resize its own iframe, so the rule lives on the host
@@ -312,14 +394,76 @@ export function compactWidth(manifest: WidgetManifest | undefined, settings: Rec
   return wide ? Math.max(base, WIDE_COMPACT_WIDTH) : base
 }
 
-/** The cells the bar's widgets take between them, each at the width its settings give it. */
-export function navCellsUsed(display: Display, manifests: Record<string, WidgetManifest>): number {
-  return navWidgetsOf(display).reduce((sum, w) => sum + compactWidth(manifests[w.widgetId], mergeSettings(manifests[w.widgetId], w.settings)), 0)
+/**
+ * The cells one screen's bar takes, each widget at the width its settings — merged over its
+ * manifest's defaults — give it. An item naming a missing widget counts 0. Mirrors
+ * `navCellsUsed` in `server/src/config/nav.ts`, which applies the same rule at save.
+ */
+export function navCellsUsed(screen: Screen, widgets: Config['widgets'], manifests: Record<string, WidgetManifest>): number {
+  return navItemsOf(screen).reduce((sum, item) => {
+    const widget = widgets[item.instanceId]
+    if (!widget) return sum
+    const manifest = manifests[widget.widgetId]
+    return sum + compactWidth(manifest, mergeSettings(manifest, widget.settings))
+  }, 0)
 }
 
-/** Whether one more compact widget of that width still leaves the dots their room. */
-export function navHasRoom(display: Display, manifests: Record<string, WidgetManifest>, width: number): boolean {
-  return navCellsUsed(display, manifests) + width <= display.cols - NAV_DOTS_RESERVE_CELLS
+/**
+ * The bar centres its pages between two equally wide side tracks, each as wide as the wider
+ * cluster. Budget against that side, gaps and padding included, or a full cluster disappears
+ * behind the centre. `width` cells are counted as one more widget in `slot`. Mirrors
+ * `navWiderClusterWidth` in `server/src/config/nav.ts`.
+ */
+export function navWiderClusterWidth(
+  screen: Screen,
+  widgets: Config['widgets'],
+  manifests: Record<string, WidgetManifest>,
+  width = 0,
+  slot: NavSlot = 'left',
+): number {
+  const display = screen.display
+  const scale = navHeightOf(display) / DEFAULT_NAV_HEIGHT
+  const clusterWidth = (side: NavSlot): number => {
+    const items = navItemsIn(screen, side)
+    const content = items.reduce((sum, item) => {
+      const widget = widgets[item.instanceId]
+      if (!widget) return sum
+      const manifest = manifests[widget.widgetId]
+      return sum + compactWidth(manifest, mergeSettings(manifest, widget.settings)) * display.cell
+    }, 0)
+    const count = items.length + (side === slot && width > 0 ? 1 : 0)
+    return content + (side === slot ? width * display.cell : 0)
+      + Math.max(0, count - 1) * 12 * scale + 24 * scale
+  }
+  return Math.max(clusterWidth('left'), clusterWidth('right'))
+}
+
+/** The widest the named-page centre grows, at the default bar height: NavBar.vue's centre track cap. */
+export const NAV_NAMES_MAX_WIDTH = 1200
+
+/** The width one screen's bar keeps for its pages: the dots' cells, or the names up to their cap. */
+export function navCentreWidth(screen: Screen): number {
+  const display = screen.display
+  if (display.navStyle !== 'names') return NAV_CENTRE_RESERVE_CELLS * display.cell
+  // Names take their natural width up to the centre track's cap in NavBar.vue (1200 px, scaled).
+  // Reserving less lets a side cluster eat into that track, and the names drift off centre.
+  const names = Math.max(screen.pages.length, 1)
+  return Math.min(names * 120 + (names - 1) * 8, NAV_NAMES_MAX_WIDTH) * navHeightOf(display) / DEFAULT_NAV_HEIGHT
+}
+
+/**
+ * Whether one more compact widget of `width` cells in `slot` still leaves that screen's pages
+ * their centre. Mirrors `navHasRoom` in `server/src/config/nav.ts`, which applies it at save.
+ */
+export function navHasRoom(
+  screen: Screen,
+  widgets: Config['widgets'],
+  manifests: Record<string, WidgetManifest>,
+  width: number,
+  slot: NavSlot = 'left',
+): boolean {
+  return 2 * navWiderClusterWidth(screen, widgets, manifests, width, slot) + navCentreWidth(screen)
+    <= screen.display.cols * screen.display.cell
 }
 
 /**
@@ -338,8 +482,11 @@ export function fieldsInScope(
   return out
 }
 
-/** Where a widget came from: shipped with Fremkit, or installed from the marketplace. */
-export type WidgetSource = 'builtin' | 'installed'
+/**
+ * Where a widget came from: shipped with Fremkit, installed from the marketplace, or the folder
+ * a widget author works in (only under `FREMKIT_WIDGET_DEV=1`).
+ */
+export type WidgetSource = 'builtin' | 'installed' | 'dev'
 
 /** The three lists a widget asks for, as the registry index and a consent record spell them. */
 /**
@@ -429,6 +576,11 @@ export interface MarketplaceWidget {
   /** A built-in already owns this id, so it can never be installed. */
   shadowsBuiltin: boolean
   /**
+   * The registry's URL of the widget's preview image, when it publishes one. Never loaded as is:
+   * the admin shows `/api/marketplace/preview/<id>`, which the server fetches and checks.
+   */
+  preview?: string
+  /**
    * What this version changed, as plain text from the package's changelog.
    *
    * **Rendered as text, never as markup.** The registry strips the markdown, but this is a
@@ -438,7 +590,8 @@ export interface MarketplaceWidget {
   /** What each version documented, newest first, this one included. Empty when none did. */
   history: { version: string; changes: string }[]
   /**
-   * The pages an instance of this widget sits on, by name. Empty for almost every row.
+   * Where an instance of this widget sits: a page's name or the bar, prefixed with the screen's
+   * name when there is more than one screen. Empty for almost every row.
    *
    * Non-empty on a widget that is *not* installed means a tile somewhere paints as missing —
    * which is the whole upgrade path for a dashboard built before a widget moved to the registry.
@@ -508,7 +661,29 @@ export interface ThemeInfo {
   tokens: Record<string, string | number>
   variables: Record<string, string>
 }
-export interface ThemesResponse { themes: Record<string, ThemeInfo>; errors: { id: string; error: string }[] }
+/** Mirrors `ThemeScheduleSchema`: `theme` is the day's, `night` the night's. */
+export interface ThemeSchedule {
+  night: string
+  schedule: 'sun' | 'fixed'
+  latitude?: number
+  longitude?: number
+  dayAt: string
+  nightAt: string
+}
+/** Mirrors `ThemeInForce` in `server/src/themes/schedule.ts`: what the `theme` channel publishes. */
+export interface ThemeInForce {
+  id: string
+  phase: 'day' | 'night'
+  scheduled: boolean
+  next?: { at: string; to: 'day' | 'night' }
+  problem?: 'no-location'
+}
+export interface ThemesResponse {
+  themes: Record<string, ThemeInfo>
+  errors: { id: string; error: string }[]
+  /** The theme in force when the catalog was read, for a first paint that is already right. */
+  inForce?: ThemeInForce
+}
 export interface WidgetSize { w: number; h: number; px: { width: number; height: number } }
 
 export function mergeSettings(manifest: WidgetManifest | undefined, settings: Record<string, unknown>): Record<string, unknown> {
@@ -516,3 +691,63 @@ export function mergeSettings(manifest: WidgetManifest | undefined, settings: Re
   for (const [k, f] of Object.entries(manifest?.settingsSchema ?? {})) out[k] = f.default
   return { ...out, ...settings }
 }
+
+// ---------------------------------------------------------------------------------------------
+// Shared layouts: mirrors server/src/share/. The server builds and reads the file; the admin
+// shows what is in it and applies it through its store.
+
+export type LayoutScope = 'page' | 'screen' | 'setup'
+export type SharedSource = 'builtin' | 'sietch' | 'local'
+export interface SharedBackground { color?: string; image?: string; fit?: BackgroundFit }
+export interface SharedWidget {
+  widgetId: string; title?: string; showTitle: boolean
+  bgColor?: string; accentColor?: string; accentMode?: AccentMode
+  background?: { image: string; fit?: BackgroundFit; dim?: number }
+  opacity?: number
+  settings: Record<string, unknown>
+}
+export interface SharedPlacement { widget: string; x: number; y: number; w: number; h: number; locked?: boolean }
+export interface SharedPage { name: string; items: SharedPlacement[]; background?: SharedBackground }
+export interface SharedNavItem { widget: string; slot: NavSlot; popup?: boolean }
+export type SharedDisplay = Omit<ScreenDisplay, 'background'> & { background?: SharedBackground }
+export interface SharedScreen { name: string; kind: 'edge' | 'device'; display: SharedDisplay; nav: SharedNavItem[]; pages: SharedPage[] }
+export interface LayoutFile {
+  format: 'fremkit-layout'
+  version: number
+  fremkit?: string
+  scope: LayoutScope
+  theme?: { day: string; night?: string }
+  widgets: Record<string, SharedWidget>
+  catalog: Record<string, { version: string; source: SharedSource }>
+  screens: SharedScreen[]
+  /** In a preview, an embedded image is its size; in a file, its bytes as base64. */
+  images: Record<string, { shipped: true } | { data: string } | { bytes: number }>
+}
+
+export type LeftOutReason = 'connection' | 'personal' | 'unknown' | 'invalid'
+export interface ExportReport {
+  scope: LayoutScope
+  name: string | null
+  screens: number; pages: number; tiles: number
+  widgets: { widgetId: string; name: LocalizedText; version: string; source: SharedSource; count: number }[]
+  theme: { day: string; night?: string } | null
+  images: { embedded: { key: string; bytes: number }[]; leftOut: { reason: 'missing' | 'tooLarge' | 'budget'; bytes?: number }[] }
+  removed: { instanceId: string; widget: string; key: string; label: LocalizedText; reason: LeftOutReason }[]
+  optional: { id: string; instanceId: string; widget: string; key: string; label: LocalizedText; preview: string; included: boolean }[]
+  renamed: { kind: 'page' | 'screen' | 'title'; to: string | null }[]
+}
+export interface ExportPreview { file: LayoutFile; filename: string; report: ExportReport }
+
+export type ImportWidgetStatus = WidgetSource | 'missing'
+export interface ImportReport {
+  scope: LayoutScope
+  fremkit: string | null
+  name: string | null
+  screens: number; pages: number; tiles: number
+  widgets: { widgetId: string; version: string; source: SharedSource; status: ImportWidgetStatus; localVersion: string | null; count: number }[]
+  theme: { day: string; night?: string } | null
+  images: { key: string; bytes: number; shipped: boolean }[]
+  connections: { widget: string; widgetId: string; setting: string; label: LocalizedText; connectionType: string; multiple: boolean }[]
+  dropped: { settings: number; placements: number; images: number }
+}
+export interface ImportPreview { layout: LayoutFile; report: ImportReport; shippedBackground: string }

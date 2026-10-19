@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify'
 import { BUNDLE_ID_RE, isPng, MAX_ICON_BYTES, MAX_ICONS, type DockState } from './state.js'
-import { isLoopbackAddress } from '../net/loopback.js'
+import { isLocalRequest, pairedDeviceOf } from '../net/remote.js'
 import { tr } from '../i18n.js'
 import { isCrossSiteFetch } from '../http/guard.js'
 
@@ -11,15 +11,19 @@ import { isCrossSiteFetch } from '../http/guard.js'
  */
 const BODY_LIMIT = Math.ceil(MAX_ICON_BYTES * 4 / 3) * 2 + 4096
 
-/** The helper runs on this machine; nothing else has any business posting Dock state. */
-export function isLocalRequest(req: FastifyRequest): boolean {
-  return isLoopbackAddress(req.ip)
-}
-
 /** Extracts an icon from an installed bundle; the icon route falls back to it. See `apps/icons.ts`. */
 export interface AppIconSource { get(bundleId: string): Promise<Buffer | null> }
 
-export async function dockRoutes(app: FastifyInstance, opts: { state: DockState; appIcons?: AppIconSource }): Promise<void> {
+export async function dockRoutes(
+  app: FastifyInstance,
+  opts: {
+    state: DockState
+    appIcons?: AppIconSource
+    /** The same rule as `/api/apps/installed`: a device whose screen shows a `dock` widget. */
+    deviceMayListApps?: (deviceId: string) => boolean
+  },
+): Promise<void> {
+  /** The helper runs on this machine; nothing else has any business posting Dock state. */
   const local = async (req: FastifyRequest, reply: { code: (n: number) => { send: (b: unknown) => unknown } }): Promise<boolean> => {
     if (isLocalRequest(req)) return true
     reply.code(403).send({ error: tr(undefined, 'dock.notLocal') })
@@ -54,6 +58,14 @@ export async function dockRoutes(app: FastifyInstance, opts: { state: DockState;
 
   app.get<{ Params: { bundleId: string } }>('/api/apps/icon/:bundleId', async (req, reply) => {
     if (isCrossSiteFetch(req.headers)) return reply.code(403).send()
+    // An icon answers "is this installed?" one bundle id at a time, so a paired device gets one
+    // only on the list's terms (apps/routes.ts): its screen shows a widget subscribing to `dock`.
+    if (!isLocalRequest(req)) {
+      const deviceId = pairedDeviceOf(req)
+      if (deviceId === null || !(opts.deviceMayListApps?.(deviceId) ?? false)) {
+        return reply.code(403).send({ error: tr(undefined, 'dock.notLocal') })
+      }
+    }
     const { bundleId } = req.params
     if (!BUNDLE_ID_RE.test(bundleId)) return reply.code(400).send({ error: 'identifiant de bundle invalide' })
     // The helper uploads one icon per Dock slot; an application that is merely installed — the

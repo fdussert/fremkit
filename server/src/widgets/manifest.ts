@@ -156,14 +156,60 @@ export type Compact = z.infer<typeof CompactSchema>
  * fields of every connection. A widget that asked for it would be handed all of it, and no
  * widget here has ever needed it. Refused when the manifest is read, so a folder dropped into
  * `widgets/` cannot quietly ask for the lot.
+ *
+ * `device` is what the hub tells a paired device about itself. It has no provider, and a widget
+ * that declared it would be handed its device's own description.
  */
-const RESERVED_CHANNELS = new Set(['config'])
+const RESERVED_CHANNELS = new Set(['config', 'device'])
 
 const ChannelSchema = z.string().min(1).refine((channel) => {
   // `azure-devops:*` covers every connection of a type, so the family is what matters here.
   const family = channel.split(':')[0]
   return !RESERVED_CHANNELS.has(family) && !RESERVED_CHANNELS.has(channel)
 }, { error: () => tr(undefined, 'manifest.reservedChannel') })
+
+/**
+ * Channels only a built-in widget may subscribe to or command.
+ *
+ * `disk-map` answers with the names of the folders and large files of the home folder, and its
+ * snapshot names the folder being scanned. A widget from the registry with a network permission
+ * could read those and send them away, and its consent dialog would only have said "controls
+ * disk-map". `clipboard` publishes a preview of every entry copied — secrets are masked, the
+ * rest is whatever the user copied — and `copy` writes the pasteboard: the same reading, of
+ * something more personal still. `companion` carries what a browser tab is playing — its title,
+ * its site — and the offers that would let a widget watch it. These are refused in an installed
+ * manifest — at install and when the catalogue reads `data/widgets` — and stay open to
+ * `widgets/`, which ships with the server and is reviewed with it. Unlike `RESERVED_CHANNELS`, the
+ * schema alone cannot say: it does not know where a manifest came from.
+ */
+export const BUILTIN_ONLY_CHANNELS: ReadonlySet<string> = new Set(['disk-map', 'clipboard', 'companion'])
+
+/**
+ * Channels any widget may read but only a built-in one may command. `brightness` changes the
+ * screen itself: a registry widget may show the level, and the built-in widget, the admin and
+ * the helper are what set it. Refused in an installed manifest's `commands`, like the above.
+ */
+export const BUILTIN_ONLY_COMMANDS: ReadonlySet<string> = new Set(['brightness'])
+
+/**
+ * Whether a list of `commands` covers a channel: the literal name, or a `type:*` entry for one
+ * of its per-connection channels. The same rule as `channelAllowed` in `devices/channels.ts` and
+ * `ui/src/shared/types.ts`, repeated here so this file stays self-contained (the registry
+ * vendors it byte for byte).
+ */
+export function commandCovers(commands: readonly string[], channel: string): boolean {
+  return commands.some((entry) => entry === channel || (entry.endsWith(':*') && channel.startsWith(entry.slice(0, -1))))
+}
+
+/** The built-in-only channels a manifest asks for, by family, in the order it names them. */
+export function builtinOnlyChannels(manifest: WidgetManifest): string[] {
+  const previews = Object.values(manifest.settingsSchema ?? {}).flatMap((f) => (f.preview ? [f.preview.channel] : []))
+  const asked = [...manifest.subscriptions, ...manifest.commands, ...previews]
+  const read = asked.map((c) => c.split(':')[0]).filter((family) => BUILTIN_ONLY_CHANNELS.has(family))
+  // A preview is a command too, whatever `commands` says about it.
+  const commanded = [...manifest.commands, ...previews].map((c) => c.split(':')[0]).filter((family) => BUILTIN_ONLY_COMMANDS.has(family))
+  return [...new Set([...read, ...commanded])]
+}
 
 
 /**
@@ -315,6 +361,93 @@ function localizedValues(text: LocalizedText | undefined): string[] {
   return typeof text === 'string' ? [text] : Object.values(text)
 }
 
+/**
+ * A widget's preview: one picture of it at work, shown in the admin's library and, once the
+ * registry carries it, on its Sietch card.
+ *
+ * A file of the widget's own folder, by relative path: no leading `/`, no segment starting with a
+ * dot (which rules out `..` and dotfiles), and one of the two formats a browser draws without a
+ * decoder of ours. The rest of the rules are about the bytes, which a schema cannot see: they are
+ * `previewProblems` below, applied by the installer (size and format) and by `widget:check` and
+ * the registry's packer (dimensions too).
+ */
+export const PREVIEW_PATH_RE = /^(?:[A-Za-z0-9_-][A-Za-z0-9._-]{0,63}\/){0,3}[A-Za-z0-9_-][A-Za-z0-9._-]{0,63}\.(?:webp|png)$/
+
+/** The largest preview a package may carry: a picture for a card, not a gallery. */
+export const PREVIEW_MAX_BYTES = 200 * 1024
+/** One grid cell, in CSS pixels, on the Edge: what `defaultSize` is counted in. */
+export const PREVIEW_CELL_PX = 40
+/** A preview is taken at twice the CSS size, so it stays sharp on a Retina screen. */
+export const PREVIEW_SCALE = 2
+/** How far a preview's width or height may be from the expected one before it is refused. */
+export const PREVIEW_TOLERANCE = 0.15
+
+/** The size a preview should have, in pixels: the default tile at `PREVIEW_SCALE`. */
+export function expectedPreviewSize(defaultSize: readonly [number, number]): { width: number; height: number } {
+  return { width: defaultSize[0] * PREVIEW_CELL_PX * PREVIEW_SCALE, height: defaultSize[1] * PREVIEW_CELL_PX * PREVIEW_SCALE }
+}
+
+/**
+ * The format and pixel size of a PNG or WebP file, read from its header, or null for anything
+ * else — including a file whose extension promises one and whose bytes are the other.
+ */
+export function previewImageInfo(bytes: Uint8Array): { format: 'png' | 'webp'; width: number; height: number } | null {
+  const at = (i: number): number => bytes[i] ?? 0
+  const u16le = (i: number): number => at(i) | (at(i + 1) << 8)
+  const u24le = (i: number): number => at(i) | (at(i + 1) << 8) | (at(i + 2) << 16)
+  const u32be = (i: number): number => ((at(i) << 24) | (at(i + 1) << 16) | (at(i + 2) << 8) | at(i + 3)) >>> 0
+  const ascii = (i: number, n: number): string => String.fromCharCode(...bytes.subarray(i, i + n))
+  if (bytes.length >= 24 && at(0) === 0x89 && ascii(1, 3) === 'PNG' && ascii(12, 4) === 'IHDR') {
+    return { format: 'png', width: u32be(16), height: u32be(20) }
+  }
+  if (bytes.length >= 30 && ascii(0, 4) === 'RIFF' && ascii(8, 4) === 'WEBP') {
+    const chunk = ascii(12, 4)
+    if (chunk === 'VP8 ' && at(23) === 0x9d && at(24) === 0x01 && at(25) === 0x2a) {
+      return { format: 'webp', width: u16le(26) & 0x3fff, height: u16le(28) & 0x3fff }
+    }
+    if (chunk === 'VP8L' && at(20) === 0x2f) {
+      const bits = (at(21) | (at(22) << 8) | (at(23) << 16) | (at(24) << 24)) >>> 0
+      return { format: 'webp', width: (bits & 0x3fff) + 1, height: ((bits >>> 14) & 0x3fff) + 1 }
+    }
+    if (chunk === 'VP8X') return { format: 'webp', width: u24le(24) + 1, height: u24le(27) + 1 }
+  }
+  return null
+}
+
+/**
+ * What is wrong with a widget's preview, in English sentences, or nothing.
+ *
+ * `bytes` is the file the manifest names, or null when the package has no such file. Without
+ * `checkSize` only what the installer refuses is looked at — present, under the ceiling, really
+ * the format its name says. With it, the dimensions too, which `widget:check` and the registry's
+ * packer enforce and the installer does not: a picture slightly off is a cosmetic matter, not a
+ * reason to turn a widget away on a user's machine.
+ */
+export function previewProblems(
+  manifest: { preview?: string; defaultSize: readonly [number, number] },
+  bytes: Uint8Array | null,
+  opts: { checkSize?: boolean } = {},
+): string[] {
+  if (manifest.preview === undefined) return []
+  if (bytes === null) return [`preview ${manifest.preview} is not in the package`]
+  const problems: string[] = []
+  if (bytes.length > PREVIEW_MAX_BYTES) problems.push(`preview ${manifest.preview} is ${bytes.length} bytes, over the ${PREVIEW_MAX_BYTES} allowed`)
+  const info = previewImageInfo(bytes)
+  const declared = manifest.preview.toLowerCase().endsWith('.png') ? 'png' : 'webp'
+  if (!info || info.format !== declared) {
+    problems.push(`preview ${manifest.preview} is not a ${declared.toUpperCase()} image`)
+    return problems
+  }
+  if (opts.checkSize) {
+    const want = expectedPreviewSize(manifest.defaultSize)
+    const off = (got: number, expected: number): boolean => Math.abs(got - expected) > expected * PREVIEW_TOLERANCE
+    if (off(info.width, want.width) || off(info.height, want.height)) {
+      problems.push(`preview ${manifest.preview} is ${info.width}×${info.height}; a ${manifest.defaultSize[0]}×${manifest.defaultSize[1]} widget's should be about ${want.width}×${want.height} (twice its default size in pixels)`)
+    }
+  }
+  return problems
+}
+
 const RawManifestSchema = z.object({
   id: z.string().regex(WIDGET_ID_RE),
   name: LocalizedTextSchema,
@@ -362,6 +495,8 @@ const RawManifestSchema = z.object({
    * an update asks again.
    */
   connection: ConnectionDeclSchema.optional(),
+  /** A picture of the widget, from its own folder: see `PREVIEW_PATH_RE` and `previewProblems`. */
+  preview: z.string().regex(PREVIEW_PATH_RE, { error: () => tr(undefined, 'manifest.badPreview') }).optional(),
 })
 
 export const ManifestSchema = RawManifestSchema.transform((m, ctx) => {
@@ -379,6 +514,15 @@ export const ManifestSchema = RawManifestSchema.transform((m, ctx) => {
   if (defaultSize[0] < minSize[0] || defaultSize[1] < minSize[1]) {
     ctx.addIssue({ code: 'custom', message: tr(undefined, 'manifest.defaultSizeTooSmall'), path: ['defaultSize'] })
     return z.NEVER
+  }
+  // A preview is a command the admin sends for the widget, with the admin's own authority. It
+  // has to be one the widget declares in `commands` — which the consent dialog lists, the grant
+  // narrows and the built-in-only rule reads — or a manifest could reach any channel through a ▶.
+  for (const [key, field] of Object.entries(m.settingsSchema)) {
+    if (field.preview && !commandCovers(m.commands, field.preview.channel)) {
+      ctx.addIssue({ code: 'custom', message: tr(undefined, 'manifest.previewNotACommand'), path: ['settingsSchema', key, 'preview', 'channel'] })
+      return z.NEVER
+    }
   }
   return { ...rest, minSize, defaultSize }
 })

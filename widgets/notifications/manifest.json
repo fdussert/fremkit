@@ -1,4 +1,4 @@
-{ "id": "notifications", "name": "Notifications", "version": "1.0.0",
+{ "id": "notifications", "name": "Notifications", "version": "1.0.0", "preview": "preview.webp",
   "description": { "fr": "Pastilles de non-lus du Dock", "en": "Unread badges from the Dock" },
   "category": "productivity",
   "icon": "message-square", "minSize": [8, 3], "defaultSize": [16, 4],

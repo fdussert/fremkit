@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { DEFAULT_WIDGET_DIM, backgroundStyle, backgroundUrl, fade, surfaceOpacity, widgetBackgroundStyle, widgetDim } from '../src/shared/background'
+import { DEFAULT_WIDGET_DIM, pageBackground, backgroundStyle, rootBackgroundStyle, backgroundUrl, fade, surfaceOpacity, widgetBackgroundStyle, widgetDim } from '../src/shared/background'
 
 describe('backgroundUrl', () => {
   it('points at the backgrounds route and escapes the name', () => {
@@ -34,6 +34,28 @@ describe('backgroundStyle', () => {
     const style = backgroundStyle({ color: '#101820', image: '1-a.png', fit: 'cover' })
     expect(style['background-color']).toBe('#101820')
     expect(style['background-image']).toBe('url(/api/backgrounds/1-a.png)')
+  })
+})
+
+describe('rootBackgroundStyle', () => {
+  it('paints the image twice: above the bar, and over the whole root under a translucent bar', () => {
+    const url = 'url(/api/backgrounds/a.png)'
+    expect(rootBackgroundStyle({ image: 'a.png', color: '#101820' })).toEqual({
+      'background-color': '#101820',
+      'background-image': `${url}, ${url}`,
+      'background-size': 'cover, cover',
+      'background-position': 'center, center',
+      'background-repeat': 'no-repeat, no-repeat',
+      'background-origin': 'content-box, border-box',
+      'background-clip': 'content-box, border-box',
+    })
+  })
+  it('keeps a contain fit on both layers', () => {
+    expect(rootBackgroundStyle({ image: 'a.png', fit: 'contain' })['background-size']).toBe('contain, contain')
+  })
+  it('leaves a colour alone, which already spans the whole root', () => {
+    expect(rootBackgroundStyle({ color: '#101820' })).toEqual({ 'background-color': '#101820' })
+    expect(rootBackgroundStyle(undefined)).toEqual({})
   })
 })
 
@@ -105,5 +127,17 @@ describe('fade', () => {
   })
   it('mixes a CSS variable, whose value only the browser knows', () => {
     expect(fade('var(--surface)', 0.4)).toBe('color-mix(in srgb, var(--surface) 40%, transparent)')
+  })
+})
+
+describe('pageBackground', () => {
+  const display = { background: { image: 'screen.png' } }
+  it('is the screen\'s for a page without one', () => {
+    expect(pageBackground(display, { })).toEqual({ image: 'screen.png' })
+    expect(pageBackground(display, null)).toEqual({ image: 'screen.png' })
+    expect(pageBackground({}, {})).toBeUndefined()
+  })
+  it('is the page\'s own, whole, when it has one', () => {
+    expect(pageBackground(display, { background: { color: '#101820' } })).toEqual({ color: '#101820' })
   })
 })

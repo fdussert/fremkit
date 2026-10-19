@@ -14,6 +14,10 @@
 # jq is not guaranteed on a Mac, so the object is built with printf and merged by hand. Everything
 # here is best-effort: any step that fails leaves the event exactly as it arrived.
 URL="${FREMKIT_HOOK_URL:-http://127.0.0.1:4242/api/hooks/claude}"
+# The server's access secret, read from its token file and handed to curl through a descriptor,
+# never on the command line. No file, no header: the server answers 401 and the event is dropped.
+. "$(dirname "$0")/lib/access.sh" 2>/dev/null || fremkit_auth_header() { :; }
+PORT=$(fremkit_port_of "$URL" 2>/dev/null || echo 4242)
 
 body=$(cat)
 [ -n "$body" ] || exit 0
@@ -69,5 +73,6 @@ if [ -n "$fields" ]; then
 fi
 
 printf '%s' "$merged" |
-  curl --silent --output /dev/null --max-time 1 -X POST -H 'content-type: application/json' --data-binary @- "$URL" || true
+  curl --silent --output /dev/null --max-time 1 -X POST -H 'content-type: application/json' \
+    -H @<(fremkit_auth_header "$PORT") --data-binary @- "$URL" || true
 exit 0

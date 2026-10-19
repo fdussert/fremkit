@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <title>Fremkit</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <header>
+    <img src="icons/icon-32.png" alt="" width="24" height="24">
+    <span class="brand">Fremkit</span>
+    <span id="link" class="pill"><i></i><span id="linktext">…</span></span>
+  </header>
+
+  <!-- Paired: the module menu -->
+  <main id="menu" hidden>
+    <section class="module" id="fremplay">
+      <div class="mhead">
+        <span class="micon play"></span>
+        <div>
+          <div class="mname">Fremplay</div>
+          <div class="mdesc">__MSG_fremplayDesc__</div>
+        </div>
+      </div>
+      <div class="tab" id="tab"><img id="favicon" alt=""><div><div id="ttitle"></div><div id="thost" class="muted"></div></div></div>
+      <div id="live" class="live" hidden><span class="dot"></span><span id="livetext"></span></div>
+      <div id="ask" class="muted small" hidden></div>
+      <button id="go" class="primary">__MSG_send__</button>
+      <button id="stop" class="ghost" hidden>__MSG_stop__</button>
+      <div id="hint" class="hint"></div>
+      <div id="error" class="error" role="alert" hidden></div>
+    </section>
+
+    <div class="soon-title">__MSG_soon__</div>
+    <section class="module soon" aria-disabled="true">
+      <span class="micon code"></span>
+      <div><div class="mname">__MSG_localhostName__</div><div class="mdesc">__MSG_localhostDesc__</div></div>
+    </section>
+  </main>
+
+  <!-- Not paired: pairing -->
+  <main id="pair" hidden>
+    <p class="lead">__MSG_pairLead__</p>
+    <!-- Removed by an answer nobody proved: maybe not Fremkit's (worker `removed`) -->
+    <p id="removedwarn" class="error" role="alert" hidden>__MSG_pairRemovedWarning__</p>
+    <button id="connect" class="primary">__MSG_pairConnect__</button>
+    <form id="code" class="code" hidden autocomplete="off">
+      <label for="typed" class="muted">__MSG_pairType__</label>
+      <input id="typed" class="digits" maxlength="4" autocomplete="off" autocapitalize="characters" spellcheck="false" inputmode="text">
+      <button id="confirm" type="submit" class="primary">__MSG_pairConfirm__</button>
+      <div id="codeerror" class="error" role="alert" hidden></div>
+      <div id="valid" class="muted small"></div>
+    </form>
+    <div id="pairerror" class="error" role="alert" hidden></div>
+  </main>
+
+  <footer><a href="#" id="settings">__MSG_settings__</a><span id="device" class="muted"></span></footer>
+  <script type="module" src="popup.js"></script>
+</body>
+</html>

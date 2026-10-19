@@ -132,6 +132,27 @@ describe('ConnectionManager', () => {
     await manager.forget(conn({ organization: 'example-org' }))
     expect(await secrets.get('ado-x1z9/pat')).toBeNull()
   })
+
+  it('forgets the secrets of a connection whose type is no longer registered', async () => {
+    // A declared type goes when its widget is uninstalled; the connection can still be deleted.
+    const { manager, secrets } = await makeManager()
+    await secrets.set('ha-q1w2/apiKey', 'secret-1')
+    await secrets.set('ha-q1w2/other', 'secret-2')
+    await secrets.set('ha-q1w2x/apiKey', 'not-this-one')
+    await manager.forget({ id: 'ha-q1w2', type: 'declared:gone', name: 'x', fields: {} })
+    expect(await secrets.get('ha-q1w2/apiKey')).toBeNull()
+    expect(await secrets.get('ha-q1w2/other')).toBeNull()
+    expect(await secrets.get('ha-q1w2x/apiKey')).toBe('not-this-one')
+  })
+
+  it('clears what an earlier connection of the same id left before a new one takes it', async () => {
+    const { manager, secrets } = await makeManager()
+    await secrets.set('ado-x1z9/pat', 'stale')
+    await secrets.set('ado-x1z9/leftover', 'stale')
+    await manager.purgeStale('ado-x1z9', 'azure-devops')
+    expect(await secrets.get('ado-x1z9/pat')).toBeNull()
+    expect(await secrets.get('ado-x1z9/leftover')).toBeNull()
+  })
 })
 
 describe('a provider writing its own secrets', () => {

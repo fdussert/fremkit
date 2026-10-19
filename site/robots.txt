@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://fremkit.app/sitemap.xml

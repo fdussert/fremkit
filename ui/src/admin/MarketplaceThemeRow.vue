@@ -47,7 +47,7 @@ const meta = computed(() => {
  * admin already has it; the server's answer is the fallback for a page that has not loaded one.
  */
 const inUse = computed(() => {
-  const chosen = useAdminStore().state.config?.display.theme
+  const chosen = useAdminStore().state.config?.theme
   return chosen === undefined ? props.theme.inUse : chosen === props.theme.id
 })
 

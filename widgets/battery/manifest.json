@@ -1,6 +1,6 @@
 { "id": "battery",
   "name": { "fr": "Batteries", "en": "Batteries" },
-  "version": "1.0.0",
+  "version": "1.0.0", "preview": "preview.webp",
   "description": { "fr": "Le Mac et ses périphériques Bluetooth", "en": "The Mac and its Bluetooth peripherals" },
   "category": "system",
   "icon": "battery",

@@ -1,6 +1,6 @@
 { "id": "service-status",
   "name": { "fr": "État des services", "en": "Service status" },
-  "version": "1.0.0",
+  "version": "1.0.0", "preview": "preview.webp",
   "description": { "fr": "Pastille verte, orange ou rouge par service, avec la latence et l’historique",
                    "en": "A green, amber or red dot per service, with latency and history" },
   "category": "dev",

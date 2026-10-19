@@ -1,12 +1,15 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, afterEach } from 'vitest'
 import { EventEmitter } from 'node:events'
-import { Hub, MAX_CHANNELS_PER_SOCKET } from '../src/ws/hub.js'
+import { Hub, MAX_CHANNELS_PER_SOCKET, DEVICE_CLOSE_CODE, DEVICE_TERMINATE_MS } from '../src/ws/hub.js'
 import { ProviderRegistry } from '../src/providers/registry.js'
+import { deviceHostView } from '../src/devices/service.js'
 
 class FakeSocket extends EventEmitter {
   sent: any[] = []
   send(data: string) { this.sent.push(JSON.parse(data)) }
   receive(msg: unknown) { this.emit('message', Buffer.from(JSON.stringify(msg))) }
+  closedWith: number | undefined
+  close(code?: number) { this.closedWith = code; this.emit('close') }
 }
 
 function setup() {
@@ -33,6 +36,16 @@ describe('Hub', () => {
     const a = new FakeSocket(); hub.attach(a)
     a.receive({ type: 'subscribe', channel: 'config' })
     expect(a.sent).toEqual([{ type: 'data', channel: 'config', data: { version: 1 } }])
+  })
+  it('notifies subscribers without keeping the value for the next one', () => {
+    const { hub } = setup()
+    const a = new FakeSocket(); hub.attach(a)
+    a.receive({ type: 'subscribe', channel: 'widget-dev' })
+    hub.notify('widget-dev', { ids: ['clock'], manifest: false })
+    expect(a.sent).toEqual([{ type: 'data', channel: 'widget-dev', data: { ids: ['clock'], manifest: false } }])
+    const b = new FakeSocket(); hub.attach(b)
+    b.receive({ type: 'subscribe', channel: 'widget-dev' })
+    expect(b.sent).toEqual([])
   })
   it('forwards subscriber counts to the registry and releases on close', () => {
     const { hub, registry } = setup()
@@ -75,7 +88,7 @@ describe('Hub', () => {
 describe('the cached last value of a channel', () => {
   const subscribe = (hub: Hub, channel: string) => {
     const socket = new FakeSocket()
-    hub.attach(socket, { loopback: true })
+    hub.attach(socket, { loopback: true, paired: false })
     socket.receive({ type: 'subscribe', channel })
     return socket
   }
@@ -170,7 +183,7 @@ describe('what one socket may ask for', () => {
     const registry = new ProviderRegistry((c, d) => hub.broadcast(c, d), (c) => hub.forget(c))
     hub = new Hub(registry)
     const socket = new FakeSocket()
-    hub.attach(socket, { loopback: true })
+    hub.attach(socket, { loopback: true, paired: false })
     for (let i = 0; i < MAX_CHANNELS_PER_SOCKET + 5; i++) {
       socket.receive({ type: 'subscribe', channel: `ch-${i}` })
     }
@@ -184,7 +197,7 @@ describe('what one socket may ask for', () => {
     const registry = new ProviderRegistry((c, d) => hub.broadcast(c, d), (c) => hub.forget(c))
     hub = new Hub(registry)
     const socket = new FakeSocket()
-    hub.attach(socket, { loopback: true })
+    hub.attach(socket, { loopback: true, paired: false })
     for (let i = 0; i < MAX_CHANNELS_PER_SOCKET * 2; i++) {
       socket.receive({ type: 'subscribe', channel: 'volume' })
     }
@@ -196,7 +209,7 @@ describe('what one socket may ask for', () => {
     const registry = new ProviderRegistry((c, d) => hub.broadcast(c, d), (c) => hub.forget(c))
     hub = new Hub(registry)
     const socket = new FakeSocket()
-    hub.attach(socket, { loopback: true })
+    hub.attach(socket, { loopback: true, paired: false })
     for (let i = 0; i < MAX_CHANNELS_PER_SOCKET; i++) socket.receive({ type: 'subscribe', channel: `ch-${i}` })
     socket.receive({ type: 'unsubscribe', channel: 'ch-0' })
     socket.receive({ type: 'subscribe', channel: 'something-new' })
@@ -211,10 +224,406 @@ describe('what one socket may ask for', () => {
     registry.addSubscriber = (channel: string) => { subscribed.push(channel); add(channel) }
     hub = new Hub(registry)
     const socket = new FakeSocket()
-    hub.attach(socket, { loopback: true })
+    hub.attach(socket, { loopback: true, paired: false })
     socket.receive({ type: 'subscribe', channel: '' })
     expect(subscribed).toEqual([])
     // It falls through to the same refusal any malformed message gets.
     expect(socket.sent).toEqual([{ type: 'error', error: 'message inconnu' }])
+  })
+})
+
+describe('a paired socket', () => {
+  const REFUSED = { type: 'error', error: 'canal non autorisé pour l’écran de cet appareil' }
+
+  function pairedSetup() {
+    let hub!: Hub
+    const registry = new ProviderRegistry((c, d) => hub.broadcast(c, d), (c) => hub.forget(c))
+    hub = new Hub(registry)
+    const focused: unknown[] = []
+    registry.register({ channel: 'spotify', intervalMs: 1000 })
+    registry.register({ channel: 'system', intervalMs: 1000 })
+    registry.register({
+      channel: 'claude',
+      commands: {
+        focus: async (p, ctx) => {
+          if (!ctx?.loopback && !ctx?.paired) throw new Error('refused')
+          focused.push(p)
+          return { ok: true }
+        },
+      },
+    })
+    let policy: Record<string, { subscriptions: string[]; commands: string[] } | null> = {
+      'dev-a': { subscriptions: ['system', 'claude'], commands: ['claude'] },
+      'dev-b': { subscriptions: ['system'], commands: [] },
+    }
+    hub.setPolicy((id) => policy[id] ?? null)
+    hub.setDevicePayload((id) => ({ id, screenId: policy[id] ? 'tablet' : null }))
+    hub.setHostView((_id, _channel, data) => data)
+    const count = (channel: string) => (registry as any).states.get(channel).subscribers as number
+    const paired = (deviceId: string) => {
+      const socket = new FakeSocket()
+      hub.attach(socket, { loopback: false, paired: true, deviceId })
+      return socket
+    }
+    const attach = <S extends FakeSocket>(socket: S, deviceId: string): S => {
+      hub.attach(socket, { loopback: false, paired: true, deviceId })
+      return socket
+    }
+    return { hub, registry, focused, count, paired, attach, setPolicy: (p: typeof policy) => { policy = p } }
+  }
+
+  /** Like `ws`: close() only starts the handshake, and `close` fires later, if ever. */
+  class LingeringSocket extends FakeSocket {
+    terminated = false
+    override close(code?: number) { this.closedWith = code }
+    terminate() { this.terminated = true; this.emit('close') }
+  }
+
+  afterEach(() => { vi.useRealTimers() })
+
+  it('refuses companion to a paired socket even when its screen holds fremplay', async () => {
+    const { hub, paired, registry, setPolicy } = pairedSetup()
+    const steered: unknown[] = []
+    registry.register({ channel: 'companion', intervalMs: 1000, commands: { control: async (p) => { steered.push(p); return { ok: true } } } })
+    hub.broadcast('companion', { pairing: { code: 'ABCD' } })
+    // What the policy builds for a screen holding fremplay, wildcard included.
+    setPolicy({ 'dev-a': { subscriptions: ['companion', 'companion:*'], commands: ['companion'] } })
+    const socket = paired('dev-a')
+    socket.receive({ type: 'subscribe', channel: 'companion' })
+    socket.receive({ type: 'subscribe', channel: 'companion:x' })
+    socket.receive({ type: 'command', id: 'c1', channel: 'companion', name: 'control', payload: { action: 'toggle' } })
+    await new Promise((r) => setTimeout(r, 0))
+    expect(socket.sent).toEqual([REFUSED, REFUSED, { ...REFUSED, id: 'c1' }])
+    expect(steered).toEqual([])
+    expect((registry as any).states.get('companion').subscribers).toBe(0)
+    // This Mac's dashboard still gets it.
+    const local = new FakeSocket()
+    hub.attach(local, { loopback: true, paired: false })
+    local.receive({ type: 'subscribe', channel: 'companion' })
+    expect(local.sent).toEqual([{ type: 'data', channel: 'companion', data: { pairing: { code: 'ABCD' } } }])
+    registry.stop()
+  })
+
+  it('is not heard once closed, even before the close handshake ends', async () => {
+    const { hub, count, focused, attach, registry } = pairedSetup()
+    const socket = attach(new LingeringSocket(), 'dev-a')
+    socket.receive({ type: 'subscribe', channel: 'system' })
+    expect(count('system')).toBe(1)
+
+    hub.closeDevice('dev-a')
+    expect(socket.closedWith).toBe(4401)
+    expect(count('system')).toBe(0)
+
+    socket.receive({ type: 'command', id: 'c1', channel: 'claude', name: 'focus', payload: { pid: 1 } })
+    socket.receive({ type: 'subscribe', channel: 'system' })
+    await new Promise((r) => setTimeout(r, 0))
+    expect(focused).toEqual([])
+    expect(count('system')).toBe(0)
+    expect(socket.sent).toEqual([])
+
+    // The late `close` event changes nothing: detaching is idempotent.
+    socket.emit('close')
+    expect(count('system')).toBe(0)
+    registry.stop()
+  })
+
+  it('is dropped without a handshake when the peer does not finish closing', () => {
+    vi.useFakeTimers()
+    const { hub, attach, registry } = pairedSetup()
+    const a = attach(new LingeringSocket(), 'dev-a'), b = attach(new LingeringSocket(), 'dev-b')
+    hub.closeRemote()
+    expect(a.terminated).toBe(false)
+    vi.advanceTimersByTime(DEVICE_TERMINATE_MS)
+    expect(a.terminated).toBe(true)
+    expect(b.terminated).toBe(true)
+    registry.stop()
+  })
+
+  it('fails closed when the policy throws, without throwing out of the message handler', async () => {
+    const { hub, count, focused, paired, registry } = pairedSetup()
+    hub.setPolicy(() => { throw new Error('config unreadable') })
+    const socket = paired('dev-a')
+    expect(() => socket.receive({ type: 'subscribe', channel: 'system' })).not.toThrow()
+    expect(() => socket.receive({ type: 'command', id: 'c1', channel: 'claude', name: 'focus', payload: {} })).not.toThrow()
+    await new Promise((r) => setTimeout(r, 0))
+    expect(count('system')).toBe(0)
+    expect(focused).toEqual([])
+    expect(socket.sent).toEqual([REFUSED, { ...REFUSED, id: 'c1' }])
+    // The host channel stays open: a device with no screen still gets the page.
+    socket.receive({ type: 'subscribe', channel: 'config' })
+    expect(socket.sent).toHaveLength(2)
+    registry.stop()
+  })
+
+  it('drops what a throwing policy can no longer vouch for on refresh', () => {
+    const { hub, count, paired, registry } = pairedSetup()
+    const socket = paired('dev-a')
+    socket.receive({ type: 'subscribe', channel: 'system' })
+    hub.setPolicy(() => { throw new Error('config unreadable') })
+    expect(() => hub.refreshDevice('dev-a')).not.toThrow()
+    expect(count('system')).toBe(0)
+    registry.stop()
+  })
+
+  it('still revokes on refresh when the device payload throws, and sends nothing', () => {
+    const { hub, count, paired, registry, setPolicy } = pairedSetup()
+    const socket = paired('dev-a')
+    socket.receive({ type: 'subscribe', channel: 'system' })
+    setPolicy({ 'dev-a': { subscriptions: [], commands: [] } })
+    hub.setDevicePayload(() => { throw new Error('store unreadable') })
+    expect(() => hub.refreshDevice('dev-a')).not.toThrow()
+    expect(count('system')).toBe(0)
+    expect(socket.sent).toEqual([])
+    expect(() => socket.receive({ type: 'subscribe', channel: 'device' })).not.toThrow()
+    expect(socket.sent).toEqual([])
+    registry.stop()
+  })
+
+  it('is refused a channel its screen does not show, and leaves no subscriber', () => {
+    const { count, paired, registry } = pairedSetup()
+    const socket = paired('dev-a')
+    socket.receive({ type: 'subscribe', channel: 'spotify' })
+    expect(socket.sent).toEqual([REFUSED])
+    expect(count('spotify')).toBe(0)
+    registry.stop()
+  })
+
+  it('may subscribe to the host config channel', () => {
+    const { hub, paired, registry } = pairedSetup()
+    const socket = paired('dev-a')
+    socket.receive({ type: 'subscribe', channel: 'config' })
+    hub.broadcast('config', { version: 1 })
+    expect(socket.sent).toEqual([{ type: 'data', channel: 'config', data: { version: 1 } }])
+    registry.stop()
+  })
+
+  it('may subscribe to its screen\'s channels', () => {
+    const { count, paired, registry } = pairedSetup()
+    const socket = paired('dev-a')
+    socket.receive({ type: 'subscribe', channel: 'system' })
+    expect(socket.sent).toEqual([])
+    expect(count('system')).toBe(1)
+    registry.stop()
+  })
+
+  it('loses what its new screen no longer allows, and hears about it on the device channel', () => {
+    const { hub, count, paired, registry, setPolicy } = pairedSetup()
+    const socket = paired('dev-a')
+    socket.receive({ type: 'subscribe', channel: 'system' })
+    socket.receive({ type: 'subscribe', channel: 'config' })
+    expect(count('system')).toBe(1)
+
+    setPolicy({ 'dev-a': { subscriptions: ['spotify'], commands: [] } })
+    hub.refreshDevice('dev-a')
+
+    expect(count('system')).toBe(0)
+    expect(socket.sent).toEqual([{ type: 'data', channel: 'device', data: { id: 'dev-a', screenId: 'tablet' } }])
+    // `config` is the host's, and survives any screen.
+    hub.broadcast('config', 2)
+    hub.broadcast('system', { cpu: 1 })
+    expect(socket.sent.slice(1)).toEqual([{ type: 'data', channel: 'config', data: 2 }])
+    registry.stop()
+  })
+
+  it('hears nothing on a host channel until a view is set', () => {
+    const registry = new ProviderRegistry(() => {})
+    const hub = new Hub(registry)
+    const socket = new FakeSocket()
+    hub.attach(socket, { loopback: false, paired: true, deviceId: 'dev-a' })
+    socket.receive({ type: 'subscribe', channel: 'config' })
+    hub.broadcast('config', { secret: 'the Mac\'s whole config' })
+    expect(socket.sent).toEqual([])
+    registry.stop()
+  })
+
+  it('is sent its own view of the config, and again only when that view changes', () => {
+    const { hub, paired, registry } = pairedSetup()
+    let screen = 'tab-a'
+    hub.setHostView((id, channel, data) => (channel === 'config' ? { id, screen, of: (data as { n: number }).n } : null))
+    const socket = paired('dev-a')
+    const local = new FakeSocket()
+    hub.attach(local, { loopback: true, paired: false })
+    socket.receive({ type: 'subscribe', channel: 'config' })
+    local.receive({ type: 'subscribe', channel: 'config' })
+    hub.broadcast('config', { n: 1 })
+    expect(socket.sent).toEqual([{ type: 'data', channel: 'config', data: { id: 'dev-a', screen: 'tab-a', of: 1 } }])
+    expect(local.sent).toEqual([{ type: 'data', channel: 'config', data: { n: 1 } }])
+    // A refresh that changes nothing in the view sends no config again.
+    hub.refreshDevice('dev-a')
+    expect(socket.sent.filter((m: any) => m.channel === 'config')).toHaveLength(1)
+    // Moved to another screen: the new view comes before the `device` message.
+    screen = 'tab-b'
+    hub.refreshDevice('dev-a')
+    const after = socket.sent.slice(-2)
+    expect(after[0]).toEqual({ type: 'data', channel: 'config', data: { id: 'dev-a', screen: 'tab-b', of: 1 } })
+    expect(after[1].channel).toBe('device')
+    // A view that throws sends nothing, and throws nothing.
+    hub.setHostView(() => { throw new Error('x') })
+    expect(() => hub.broadcast('config', { n: 2 })).not.toThrow()
+    expect(socket.sent.filter((m: any) => m.channel === 'config')).toHaveLength(2)
+    registry.stop()
+  })
+
+  it('answers a command on a channel it may not use and on one that does not exist the same way', async () => {
+    const { paired, registry, setPolicy } = pairedSetup()
+    // `ghost:x` is in the policy but registered nowhere; `spotify` is registered but not allowed.
+    setPolicy({ 'dev-a': { subscriptions: [], commands: ['claude', 'ghost:x'] } })
+    const socket = paired('dev-a')
+    socket.receive({ type: 'command', id: 'a', channel: 'ghost:x', name: 'nope', payload: {} })
+    socket.receive({ type: 'command', id: 'b', channel: 'spotify', name: 'nope', payload: {} })
+    socket.receive({ type: 'command', id: 'c', channel: 'nowhere:1', name: 'nope', payload: {} })
+    await new Promise((r) => setTimeout(r, 0))
+    expect(socket.sent).toEqual([{ ...REFUSED, id: 'a' }, { ...REFUSED, id: 'b' }, { ...REFUSED, id: 'c' }])
+    registry.stop()
+  })
+
+  it('hears its own view of a widget channel named with the view, and the full one locally', () => {
+    const { hub, paired, registry, setPolicy } = pairedSetup()
+    setPolicy({ 'dev-a': { subscriptions: ['brightness'], commands: [] } })
+    hub.setHostView((_id, channel, data) => (channel === 'brightness' ? { only: (data as { a: number }).a } : null), ['brightness'])
+    const socket = paired('dev-a')
+    const local = new FakeSocket()
+    hub.attach(local, { loopback: true, paired: false })
+    socket.receive({ type: 'subscribe', channel: 'brightness' })
+    local.receive({ type: 'subscribe', channel: 'brightness' })
+    hub.broadcast('brightness', { a: 1, b: 2 })
+    expect(socket.sent).toEqual([{ type: 'data', channel: 'brightness', data: { only: 1 } }])
+    expect(local.sent).toEqual([{ type: 'data', channel: 'brightness', data: { a: 1, b: 2 } }])
+    registry.stop()
+  })
+
+  it('hears the theme through the devices view, without the next switch, and no dev-tool channel', () => {
+    const { hub, paired, registry } = pairedSetup()
+    hub.setHostView((_id, channel, data) => deviceHostView(channel, data, 'tablet'), ['brightness'])
+    const socket = paired('dev-a')
+    socket.receive({ type: 'subscribe', channel: 'theme' })
+    socket.receive({ type: 'subscribe', channel: 'widget-dev' })
+    hub.broadcast('theme', { id: 'edge', phase: 'night', scheduled: true, next: { at: '2026-10-19T06:12:00.000Z', to: 'day' } })
+    hub.broadcast('widget-dev', { id: 'w' })
+    expect(socket.sent).toEqual([{ type: 'data', channel: 'theme', data: { id: 'edge', phase: 'night', scheduled: true } }])
+    registry.stop()
+  })
+
+  it('hears a notified event on a host channel through its view, and nothing when the view has none', () => {
+    const { hub, paired, registry } = pairedSetup()
+    hub.setHostView((_id, channel, data) => (channel === 'theme' ? { seen: data } : null))
+    const socket = paired('dev-a')
+    const local = new FakeSocket()
+    hub.attach(local, { loopback: true, paired: false })
+    for (const s of [socket, local]) {
+      s.receive({ type: 'subscribe', channel: 'theme' })
+      s.receive({ type: 'subscribe', channel: 'widget-dev' })
+    }
+    hub.notify('widget-dev', { ids: ['w'], manifest: false })
+    hub.notify('theme', 1)
+    // Twice the same event is two events: no deduplication on a notify.
+    hub.notify('theme', 1)
+    expect(socket.sent).toEqual([
+      { type: 'data', channel: 'theme', data: { seen: 1 } },
+      { type: 'data', channel: 'theme', data: { seen: 1 } },
+    ])
+    expect(local.sent).toHaveLength(3)
+    expect(local.sent[0]).toEqual({ type: 'data', channel: 'widget-dev', data: { ids: ['w'], manifest: false } })
+    registry.stop()
+  })
+
+  it('with no screen, is held to the host channels', () => {
+    const { paired, registry } = pairedSetup()
+    const socket = paired('dev-unknown')
+    socket.receive({ type: 'subscribe', channel: 'system' })
+    socket.receive({ type: 'subscribe', channel: 'config' })
+    expect(socket.sent).toEqual([REFUSED])
+    registry.stop()
+  })
+
+  it('runs a command its screen allows, with its paired context', async () => {
+    const { focused, paired, registry } = pairedSetup()
+    const socket = paired('dev-a')
+    socket.receive({ type: 'command', id: 'c1', channel: 'claude', name: 'focus', payload: { pid: 1 } })
+    await new Promise((r) => setTimeout(r, 0))
+    expect(socket.sent).toEqual([{ type: 'result', id: 'c1', result: { ok: true } }])
+    expect(focused).toEqual([{ pid: 1 }])
+    registry.stop()
+  })
+
+  it('is refused a command its screen does not allow, with the request id, and nothing runs', async () => {
+    const { focused, paired, registry } = pairedSetup()
+    const socket = paired('dev-b')
+    socket.receive({ type: 'command', id: 'c1', channel: 'claude', name: 'focus', payload: { pid: 1 } })
+    await new Promise((r) => setTimeout(r, 0))
+    expect(socket.sent).toEqual([{ ...REFUSED, id: 'c1' }])
+    expect(focused).toEqual([])
+    registry.stop()
+  })
+
+  it('gets its own payload replayed when it subscribes to the device channel', () => {
+    const { paired, registry } = pairedSetup()
+    const socket = paired('dev-b')
+    socket.receive({ type: 'subscribe', channel: 'device' })
+    expect(socket.sent).toEqual([{ type: 'data', channel: 'device', data: { id: 'dev-b', screenId: 'tablet' } }])
+    registry.stop()
+  })
+
+  it('closes only the device that is closed', () => {
+    const { hub, paired, registry } = pairedSetup()
+    const a1 = paired('dev-a'), a2 = paired('dev-a'), b = paired('dev-b')
+    hub.closeDevice('dev-a')
+    expect(a1.closedWith).toBe(DEVICE_CLOSE_CODE)
+    expect(a2.closedWith).toBe(4401)
+    expect(b.closedWith).toBeUndefined()
+    registry.stop()
+  })
+
+  it('releases its subscriptions when closed', () => {
+    const { hub, count, paired, registry } = pairedSetup()
+    const socket = paired('dev-a')
+    socket.receive({ type: 'subscribe', channel: 'system' })
+    hub.closeDevice('dev-a')
+    expect(count('system')).toBe(0)
+    // Gone from the hub: a refresh reaches nothing.
+    hub.refreshDevice('dev-a')
+    expect(socket.sent).toEqual([])
+    registry.stop()
+  })
+
+  it('is closed by closeRemote, which leaves local sockets open', () => {
+    const { hub, paired, registry } = pairedSetup()
+    const a = paired('dev-a'), b = paired('dev-b')
+    const local = new FakeSocket()
+    hub.attach(local, { loopback: true, paired: false })
+    hub.closeRemote()
+    expect(a.closedWith).toBe(4401)
+    expect(b.closedWith).toBe(4401)
+    expect(local.closedWith).toBeUndefined()
+    local.receive({ type: 'subscribe', channel: 'config' })
+    hub.broadcast('config', 1)
+    expect(local.sent).toEqual([{ type: 'data', channel: 'config', data: 1 }])
+    registry.stop()
+  })
+})
+
+describe('the device channel', () => {
+  it('tells a local socket nothing', () => {
+    let hub!: Hub
+    const registry = new ProviderRegistry((c, d) => hub.broadcast(c, d), (c) => hub.forget(c))
+    hub = new Hub(registry)
+    hub.setDevicePayload((id) => ({ id }))
+    const local = new FakeSocket()
+    hub.attach(local, { loopback: true, paired: false })
+    local.receive({ type: 'subscribe', channel: 'device' })
+    hub.broadcast('device', { id: 'forged' })
+    expect(local.sent).toEqual([])
+  })
+
+  it('leaves a local socket unrestricted by any policy', () => {
+    let hub!: Hub
+    const registry = new ProviderRegistry((c, d) => hub.broadcast(c, d), (c) => hub.forget(c))
+    hub = new Hub(registry)
+    hub.setPolicy(() => ({ subscriptions: [], commands: [] }))
+    const local = new FakeSocket()
+    hub.attach(local, { loopback: true, paired: false })
+    local.receive({ type: 'subscribe', channel: 'spotify' })
+    hub.broadcast('spotify', 1)
+    expect(local.sent).toEqual([{ type: 'data', channel: 'spotify', data: 1 }])
   })
 })

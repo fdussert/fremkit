@@ -1,6 +1,6 @@
 import { computed, ref, watch, type ComputedRef, type Ref } from 'vue'
 import { BUILTIN_COLORS, type ThemeColors } from './color'
-import type { Config, ThemeInfo, ThemesResponse } from './types'
+import type { Config, ThemeInfo, ThemeInForce, ThemeSchedule, ThemesResponse } from './types'
 
 /** The theme every config falls back to, and the one the others are layered on. */
 export const BUILTIN_THEME = 'fremkit'
@@ -9,14 +9,23 @@ const themes = ref<Record<string, ThemeInfo>>({})
 /** The properties painted on the host document right now, mirrored for the widget frames. */
 const applied = ref<Record<string, string>>({})
 const errors = ref<ThemesResponse['errors']>([])
+/**
+ * Day or night, as the server reckons it (`server/src/themes/schedule.ts`): first from the
+ * catalog's answer, then from the `theme` channel. Null until either has spoken.
+ */
+const inForce = ref<ThemeInForce | null>(null)
 let loading: Promise<void> | null = null
+
+function take(body: ThemesResponse): void {
+  themes.value = body.themes
+  errors.value = body.errors
+  if (body.inForce) inForce.value = body.inForce
+}
 
 async function load(): Promise<void> {
   const res = await fetch('/api/themes')
   if (!res.ok) return
-  const body = (await res.json()) as ThemesResponse
-  themes.value = body.themes
-  errors.value = body.errors
+  take((await res.json()) as ThemesResponse)
 }
 
 /**
@@ -39,11 +48,40 @@ export function useThemes(): {
     rescan: async () => {
       const res = await fetch('/api/themes/rescan', { method: 'POST' })
       if (!res.ok) return
-      const body = (await res.json()) as ThemesResponse
-      themes.value = body.themes
-      errors.value = body.errors
+      take((await res.json()) as ThemesResponse)
     },
   }
+}
+
+/**
+ * Keeps the page's day / night in step with the server's, live. Called once by each page that
+ * paints a theme (the dashboard, the admin); `useConfigTheme` then repaints on every switch.
+ */
+export function followThemeSchedule(socket: { subscribe(channel: string, cb: (data: unknown) => void): () => void }): () => void {
+  return socket.subscribe('theme', (data) => {
+    const d = data as ThemeInForce | null
+    if (d && (d.phase === 'day' || d.phase === 'night')) inForce.value = d
+  })
+}
+
+/** What the server last said about day and night, for the admin's status line. */
+export function useThemeInForce(): Ref<ThemeInForce | null> { return inForce }
+
+/**
+ * The theme id to paint: the night theme when the config has one and the server says it is
+ * night, the config's `theme` otherwise.
+ *
+ * The phase comes from the server, the ids from the config this page holds: in the admin that is
+ * the config being edited, so choosing another night theme at night shows at once, before the
+ * save has gone through. A paired device's config carries only the night theme's id
+ * (`deviceConfigView`), which is all this reads.
+ */
+export function themeIdInForce(
+  config: { theme?: string; themeSchedule?: Pick<ThemeSchedule, 'night'> } | null | undefined,
+  now: ThemeInForce | null,
+): string | undefined {
+  if (config?.themeSchedule && now?.phase === 'night') return config.themeSchedule.night
+  return config?.theme
 }
 
 /** The custom properties of a theme, or the built-in one's when the id is unknown. */
@@ -131,16 +169,48 @@ export function applyTheme(root: HTMLElement, variables: Record<string, string>)
  */
 const asked = new Set<string>()
 
-/** Paints the theme a config names, and repaints when either the config or the catalog changes. */
+/** Time given to the widget frames to repaint their tokens before the new picture is taken. */
+const FRAMES_SETTLE_MS = 150
+
+type ViewTransitionDocument = Document & { startViewTransition?: (cb: () => Promise<void> | void) => unknown }
+
+/**
+ * Paints a day / night switch as a crossfade where the browser can (a view transition: one
+ * snapshot of the page before, one after, faded into each other), and at once elsewhere or when
+ * the user asked for less motion. The widgets are in frames that repaint a moment after the host,
+ * so the "after" picture waits for them. The fade's length is in `tokens.css`.
+ */
+function crossfade(paint: () => void): void {
+  const doc = document as ViewTransitionDocument
+  const reduced = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
+  if (!doc.startViewTransition || reduced) { paint(); return }
+  doc.startViewTransition(async () => {
+    paint()
+    await new Promise<void>((r) => setTimeout(r, FRAMES_SETTLE_MS))
+  })
+}
+
+/**
+ * Paints the theme in force — the config's, or its night theme at night (`themeIdInForce`) — and
+ * repaints when the config, the catalog or the day / night phase changes. A change of phase
+ * crossfades; anything else (another theme picked, the catalog arriving) paints at once.
+ */
 export function useConfigTheme(config: Ref<Config | null>): void {
   const { themes: all, reload } = useThemes()
+  let phase: ThemeInForce['phase'] | undefined
+  let painted: string | undefined
   const paint = (): void => {
-    const id = config.value?.display.theme
-    applyTheme(document.documentElement, themeVariables(all.value, id))
+    const id = themeIdInForce(config.value, inForce.value)
+    const switched = phase !== undefined && inForce.value?.phase !== phase && id !== painted && Object.keys(all.value).length > 0
+    phase = inForce.value?.phase
+    painted = id
+    const draw = (): void => applyTheme(document.documentElement, themeVariables(all.value, id))
+    if (switched) crossfade(draw)
+    else draw()
     if (id && !all.value[id] && !asked.has(id)) {
       asked.add(id)
       void reload().catch(() => { /* offline: the built-in theme's own values stand */ })
     }
   }
-  watch([all, () => config.value?.display.theme], paint, { immediate: true })
+  watch([all, () => themeIdInForce(config.value, inForce.value), () => inForce.value?.phase], paint, { immediate: true })
 }

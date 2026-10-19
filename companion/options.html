@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <title>__MSG_optionsTitle__</title>
+  <link rel="stylesheet" href="popup.css">
+  <link rel="stylesheet" href="options.css">
+</head>
+<body class="page">
+  <header>
+    <img src="icons/icon-32.png" alt="" width="24" height="24">
+    <span class="brand">Fremkit Companion</span>
+    <span id="link" class="pill"><i></i><span id="linktext">…</span></span>
+  </header>
+  <main>
+    <section class="module">
+      <div class="mname">__MSG_optLink__</div>
+      <p id="paired" hidden></p>
+      <p id="rename" class="muted" hidden>__MSG_optRename__</p>
+      <p id="unpaired" hidden>__MSG_optNotPaired__</p>
+      <button id="unpair" class="ghost" hidden>__MSG_optUnpair__</button>
+      <p id="unpairhint" class="muted small" hidden>__MSG_optUnpairHint__</p>
+    </section>
+    <section class="module">
+      <div class="mname">__MSG_optShortcut__</div>
+      <div id="hint" class="hint left"></div>
+      <button id="shortcuts" class="ghost">__MSG_optShortcutChange__</button>
+    </section>
+  </main>
+  <script type="module" src="options.js"></script>
+</body>
+</html>

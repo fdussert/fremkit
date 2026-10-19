@@ -1,12 +1,18 @@
 import { copyFile, mkdir, access } from 'node:fs/promises'
 import { join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { shippedPaths } from '../paths.js'
 
 /** The wallpaper a fresh install starts with, as it is named in the background library. */
 export const DEFAULT_BACKGROUND = 'fremkit-wallpaper.png'
 
-/** Where it ships: `brand/wallpaper/`, rendered from its SVG by `brand/tools/build-assets.py`. */
-const SHIPPED = fileURLToPath(new URL('../../../brand/wallpaper/' + DEFAULT_BACKGROUND, import.meta.url))
+/**
+ * Where it ships: `brand/wallpaper/`, rendered from its SVG by `brand/tools/build-assets.py`.
+ * A function rather than a constant: in the app's bundled server the path is only known from
+ * `FREMKIT_ROOT`, see `paths.ts`.
+ */
+function shippedWallpaper(): string {
+  return join(shippedPaths().wallpaperDir, DEFAULT_BACKGROUND)
+}
 
 /**
  * Puts the shipped wallpaper into the user's background library, once.
@@ -27,13 +33,13 @@ const SHIPPED = fileURLToPath(new URL('../../../brand/wallpaper/' + DEFAULT_BACK
  * the user picks one. Not a reason to refuse to start, but a reason for a release to ship the
  * folder.
  */
-export async function seedDefaultBackground(dataDir: string): Promise<boolean> {
+export async function seedDefaultBackground(dataDir: string, shipped: string = shippedWallpaper()): Promise<boolean> {
   const dir = join(dataDir, 'backgrounds')
   const target = join(dir, DEFAULT_BACKGROUND)
   if (await access(target).then(() => true, () => false)) return false
   try {
     await mkdir(dir, { recursive: true })
-    await copyFile(SHIPPED, target)
+    await copyFile(shipped, target)
     return true
   } catch {
     // A checkout without the brand folder, or a read-only data dir: a missing wallpaper is not a

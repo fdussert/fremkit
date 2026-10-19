@@ -15,6 +15,8 @@ export interface BambuCameraRegistryDeps {
   connectTls?: BambuTlsConnect
   spawnProcess?: FfmpegSpawn
   resolveFfmpeg?: () => string | null
+  /** Whether a binary has the concat demuxer; asks the binary by default. */
+  ffmpegCanConcat?: (command: string) => boolean
   now?: () => number
 }
 
@@ -68,7 +70,7 @@ export class BambuCameras {
     this.entries.set(id, {
       ...opts,
       camera: cameraTransport(opts.model) === 'rtsp'
-        ? createBambuRtspCamera({ ...common, spawnProcess: this.deps.spawnProcess, resolve: this.deps.resolveFfmpeg })
+        ? createBambuRtspCamera({ ...common, spawnProcess: this.deps.spawnProcess, resolve: this.deps.resolveFfmpeg, canConcat: this.deps.ffmpegCanConcat })
         : createBambuCamera({ ...common, connectTls: this.deps.connectTls }),
       idle: null,
     })

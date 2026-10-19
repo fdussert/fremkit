@@ -12,7 +12,9 @@ public struct HelperConfig: Codable, Equatable {
         }
     }
 
-    public var repoPath: String
+    /// The checkout whose server the helper runs. Absent in the app, which runs its own bundled
+    /// server instead; see `ServerLaunch`. Encoded only when set.
+    public var repoPath: String?
     public var url: String
     public var adminUrl: String
     public var port: Int
@@ -26,7 +28,7 @@ public struct HelperConfig: Codable, Equatable {
     /// Reads the Dock's badges and posts them to the server. Needs Accessibility.
     public var dock: Bool
 
-    public init(repoPath: String,
+    public init(repoPath: String?,
                 url: String,
                 adminUrl: String,
                 port: Int,
@@ -50,13 +52,16 @@ public struct HelperConfig: Codable, Equatable {
         self.dock = dock
     }
 
-    /// Where the checkout is expected when nothing says otherwise. There is no way to guess it
-    /// from inside an installed bundle, so `scripts/setup.sh` writes the real path into
-    /// `helper.json` at install time and this is only the fallback for a hand-made config.
+    /// Where the checkout is expected when nothing says otherwise and the bundle carries no
+    /// server either. There is no way to guess it from inside an installed bundle, so
+    /// `scripts/setup.sh` writes the real path into `helper.json` at install time and this is only
+    /// the fallback for a hand-made config.
     public static let defaultRepoPath = NSHomeDirectory() + "/fremkit"
 
+    /// No `repoPath`: a fresh app install runs the server it ships. A developer build without a
+    /// bundled server still falls back to `defaultRepoPath`, see `ServerLaunch.decide`.
     public static let `default` = HelperConfig(
-        repoPath: defaultRepoPath,
+        repoPath: nil,
         url: "http://127.0.0.1:4242/?kiosk=1",
         adminUrl: "http://127.0.0.1:4242/admin",
         port: 4242,
@@ -69,11 +74,9 @@ public struct HelperConfig: Codable, Equatable {
         dock: true
     )
 
-    /// `~/Library/Application Support/Fremkit/helper.json`.
+    /// `~/Library/Application Support/Fremkit/helper.json`, or under `FREMKIT_SUPPORT_DIR`.
     public static var defaultURL: URL {
-        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
-            ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Library/Application Support")
-        return base.appendingPathComponent("Fremkit/helper.json")
+        HelperPaths.supportDirectory().appendingPathComponent("helper.json")
     }
 
     /// Every field optional, so a partial or older file still decodes.

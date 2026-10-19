@@ -1,29 +1,5 @@
 import Foundation
 
-/// Telling this project's server from anything else that answers on the port.
-public enum ServerProbe {
-    /// Largest `/api/config` body worth parsing to answer the question.
-    public static let maxProbeBytes = 8 * 1024 * 1024
-
-    /**
-     Whether an `/api/config` body is one of ours.
-
-     The helper stands down and stops supervising when it finds a server already on its port —
-     that is what lets `pnpm dev` take over — and it used to decide that on the status code
-     alone, so any program answering anything between 200 and 499 made it give up, with no way
-     back but a relaunch.
-
-     Only the shape is checked: a JSON object carrying the two keys every Fremkit config has.
-     Enough to tell our server from something else, and nothing a future config version breaks.
-     */
-    public static func looksLikeFremkitConfig(_ data: Data?) -> Bool {
-        guard let data, !data.isEmpty, data.count < maxProbeBytes,
-              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-        else { return false }
-        return object["version"] != nil && object["pages"] is [Any]
-    }
-}
-
 /// Ordering the version directories a Node version manager keeps.
 public enum NodeVersionOrder {
     /**
@@ -60,5 +36,40 @@ public enum KioskOrigin {
               let originHost = origin.host?.lowercased()
         else { return false }
         return scheme == originScheme && host == originHost && candidate.port == origin.port
+    }
+}
+
+/// Which links the admin window hands to the default browser.
+public enum ExternalLink {
+    /**
+     True when a link belongs in the user's browser rather than in the admin window: an `http`
+     or `https` address on another origin than the admin's own.
+
+     The admin window has no address bar and no back button, so another site loaded in it would
+     replace the admin with no way back but a reload. Any other scheme — `file:`, `javascript:`,
+     an application's own — answers false: it is not handed to whatever claims it. Nor does it
+     load in the admin: `AdminOrigin` pins the window's main frame to the admin's own origin.
+     */
+    public static func opensInBrowser(_ candidate: URL?, from admin: URL) -> Bool {
+        guard let candidate,
+              let scheme = candidate.scheme?.lowercased(),
+              scheme == "http" || scheme == "https",
+              candidate.host?.isEmpty == false
+        else { return false }
+        return !KioskOrigin.sameOrigin(candidate, as: admin)
+    }
+}
+
+/// Where the admin window's main frame may go.
+public enum AdminOrigin {
+    /**
+     True for a URL on the admin's own scheme, host and port, and for `about:blank`, which
+     WebKit loads into a fresh view before anything else. Anything else in the main frame would
+     replace the admin — and with it the only page in the window that holds a session — with
+     something that is not ours.
+     */
+    public static func allows(_ candidate: URL?, admin: URL) -> Bool {
+        if candidate?.absoluteString == "about:blank" { return true }
+        return KioskOrigin.sameOrigin(candidate, as: admin)
     }
 }

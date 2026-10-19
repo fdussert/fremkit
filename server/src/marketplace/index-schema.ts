@@ -104,6 +104,17 @@ export const IndexWidgetSchema = z.object({
   /** What this version changed; the one thing the person pressing Update is asking about. */
   changes: ChangesSchema.optional(),
   previous: z.array(DownloadSchema).default([]),
+  /**
+   * The widget's preview image (the manifest's `preview`), published beside the package so a
+   * card can show it before anything is installed. Optional: an index published before previews
+   * has none, and neither does a widget that never made one.
+   *
+   * Like the package URL it must be on the registry's own host — `Registry` drops one that is
+   * not rather than refusing the index, since a picture is not worth losing the shop over — and
+   * the admin never loads it itself: the server fetches it (`GET /api/marketplace/preview/:id`),
+   * caps it at `PREVIEW_MAX_BYTES` and checks it is the PNG or WebP it should be.
+   */
+  preview: PackageUrl.optional(),
 })
 export type IndexWidget = z.infer<typeof IndexWidgetSchema>
 
@@ -112,10 +123,14 @@ export type IndexWidget = z.infer<typeof IndexWidgetSchema>
  *
  * The same expression the registry's `tools/theme.ts` refuses a package with, deliberately: the
  * four swatch tokens end up in a `style` attribute on a card, and a value that reached one
- * unchecked could close the attribute. It is not a CSS parser — Fremkit's `TokensSchema` is the
+ * unchecked could close the attribute, or (as `url(…)`) make the admin fetch from anywhere. It is
+ * not a CSS parser — Fremkit's `TokensSchema` is the
  * authority on what a token may be, and this is what must not travel that far.
  */
 const ColorSchema = z.string().min(1).max(64).regex(/^[#a-zA-Z0-9(),.%\s/-]+$/)
+  // The characters above also spell `url(//host/x)`, which in a `style` attribute is a request
+  // to anywhere. No colour has a `url(` in it.
+  .refine((value) => !/url\s*\(/i.test(value), { message: 'not a colour' })
 
 /**
  * A theme, as the index lists it.

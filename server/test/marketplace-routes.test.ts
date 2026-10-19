@@ -11,8 +11,9 @@ import { WidgetCatalog } from '../src/widgets/catalog.js'
 import { ThemeCatalog } from '../src/themes/catalog.js'
 import { ConnCache } from '../src/proxy/conn.js'
 import { ConfigStore } from '../src/config/store.js'
-import { DEFAULT_CONFIG } from '../src/config/schema.js'
+import { DEFAULT_CONFIG, type Config } from '../src/config/schema.js'
 import { SDK_VERSION } from '../src/bridge/sdk.js'
+import { encodePng } from '../src/demo/icons.js'
 
 const HOST = 'registry.example.com'
 const INDEX_URL = `https://${HOST}/index.json`
@@ -46,6 +47,13 @@ function indexFor(zip: Buffer, over: Record<string, unknown> = {}): Record<strin
 let dir: string
 let app: FastifyInstance
 let store: ConfigStore
+
+/** One screen, one page, one tile of `widgetId`: the v4 shape of "a page places this widget". */
+const placing = (config: Config, widgetId: string, instanceId = 'x'): Config => ({
+  ...config,
+  widgets: { ...config.widgets, [instanceId]: { widgetId, showTitle: true, settings: {} } },
+  screens: [{ ...config.screens[0], pages: [{ id: 'a', name: 'Accueil', items: [{ instanceId, x: 0, y: 0, w: 8, h: 4 }] }] }],
+})
 let catalog: WidgetCatalog
 let themes: ThemeCatalog
 let builtinThemesDir: string
@@ -61,6 +69,8 @@ interface Setup {
   themeZip?: Buffer
   /** Per-widget packages, by id, when one zip for every URL is not enough. */
   zips?: Record<string, Buffer>
+  /** What the registry answers for a `.png` URL. */
+  previewBytes?: Buffer
 }
 
 async function build(setup: Setup = {}): Promise<void> {
@@ -82,6 +92,7 @@ async function build(setup: Setup = {}): Promise<void> {
       requested.push(url)
       if (setup.offline) throw new Error('offline')
       if (url === INDEX_URL) return new Response(JSON.stringify(index))
+      if (url.endsWith('.png') && setup.previewBytes) return new Response(new Uint8Array(setup.previewBytes))
       if (setup.themeZip && url.includes('/themes/')) return new Response(new Uint8Array(setup.themeZip))
       const named = /\/widgets\/([a-z0-9-]+)-/.exec(url)?.[1]
       if (named && setup.zips?.[named]) return new Response(new Uint8Array(setup.zips[named]))
@@ -170,15 +181,20 @@ describe('GET /api/marketplace', () => {
   it('names the pages a widget is placed on, installed or not', async () => {
     // The whole point of the field: a dashboard built before a widget moved to the registry has
     // a tile of it, painted as missing, and this is what lets the admin offer the install.
-    await store.update((config) => ({
-      ...config,
-      pages: [{ id: 'a', name: 'Accueil', widgets: [
-        { instanceId: 'x', widgetId: 'demo', x: 0, y: 0, w: 8, h: 4, showTitle: true, settings: {} },
-      ] }],
-    }))
+    await store.update((config) => placing(config, 'demo'))
     const w = (await app.inject({ url: '/api/marketplace' })).json().widgets[0]
     expect(w.installed).toBe(false)
     expect(w.placedOn).toEqual(['Accueil'])
+  })
+
+  it('placedOn names the screen when there are two', async () => {
+    await store.update((config) => {
+      const one = placing(config, 'demo')
+      const device = { ...one.screens[0], id: 'ipad', name: 'iPad', kind: 'device' as const, nav: [{ instanceId: 'x', slot: 'left' as const }] }
+      return { ...one, screens: [{ ...one.screens[0], name: 'Edge' }, device] }
+    })
+    const w = (await app.inject({ url: '/api/marketplace' })).json().widgets[0]
+    expect(w.placedOn).toEqual(['Edge › Accueil', 'iPad › Accueil', expect.stringMatching(/^iPad › /)])
   })
 
   it('leaves it empty for a widget nothing places', async () => {
@@ -522,11 +538,12 @@ describe('POST /api/marketplace/uninstall', () => {
     await install({ id: 'demo', consent: set() })
     await store.update((c) => ({
       ...c,
-      pages: [{ ...c.pages[0], widgets: [...c.pages[0].widgets, { instanceId: 'demo-1', widgetId: 'demo', x: 0, y: 8, w: 8, h: 4, showTitle: true, settings: {} }] }],
+      widgets: { ...c.widgets, 'demo-1': { widgetId: 'demo', showTitle: true, settings: {} } },
+      screens: [{ ...c.screens[0], pages: [{ ...c.screens[0].pages[0], items: [...c.screens[0].pages[0].items, { instanceId: 'demo-1', x: 0, y: 8, w: 8, h: 4 }] }] }],
     }))
     const res = await uninstall({ id: 'demo' })
     expect(res.statusCode).toBe(409)
-    expect(res.json().places).toEqual([store.get().pages[0].name])
+    expect(res.json().places).toEqual([store.get().screens[0].pages[0].name])
     expect(catalog.entry('demo')?.source).toBe('installed')
   })
 
@@ -538,16 +555,35 @@ describe('POST /api/marketplace/uninstall', () => {
 
 describe('usedBy', () => {
   it('names the pages and the bar a widget is still placed on', () => {
-    const config = {
+    const config: Config = {
       ...DEFAULT_CONFIG,
-      display: { ...DEFAULT_CONFIG.display, navWidgets: [{ instanceId: 'n1', widgetId: 'demo', slot: 'left' as const, settings: {} }] },
-      pages: [
-        { id: 'a', name: 'Accueil', widgets: [{ instanceId: 'x', widgetId: 'demo', x: 0, y: 0, w: 8, h: 4, showTitle: true, settings: {} }] },
-        { id: 'b', name: 'Travail', widgets: [] },
-      ],
+      widgets: {
+        n1: { widgetId: 'demo', showTitle: true, settings: {} },
+        x: { widgetId: 'demo', showTitle: true, settings: {} },
+      },
+      screens: [{
+        ...DEFAULT_CONFIG.screens[0],
+        nav: [{ instanceId: 'n1', slot: 'left' }],
+        pages: [
+          { id: 'a', name: 'Accueil', items: [{ instanceId: 'x', x: 0, y: 0, w: 8, h: 4 }] },
+          { id: 'b', name: 'Travail', items: [] },
+        ],
+      }],
     }
     expect(usedBy(config, 'demo')).toEqual(['Accueil', expect.any(String)])
     expect(usedBy(config, 'clock')).toEqual([])
+  })
+
+  it('names a place once, however many instances of the widget it holds', () => {
+    const config: Config = {
+      ...DEFAULT_CONFIG,
+      widgets: { x: { widgetId: 'demo', showTitle: true, settings: {} }, y: { widgetId: 'demo', showTitle: true, settings: {} } },
+      screens: [{
+        ...DEFAULT_CONFIG.screens[0],
+        pages: [{ id: 'a', name: 'Accueil', items: [{ instanceId: 'x', x: 0, y: 0, w: 8, h: 4 }, { instanceId: 'y', x: 8, y: 0, w: 8, h: 4 }] }],
+      }],
+    }
+    expect(usedBy(config, 'demo')).toEqual(['Accueil'])
   })
 })
 
@@ -686,12 +722,7 @@ describe('POST /api/marketplace/install-missing', () => {
     app.inject({ method: 'POST', url: '/api/marketplace/install-missing', payload: { consent } as never })
 
   /** Puts a tile of `demo` on a page, which is what makes it missing rather than merely absent. */
-  const place = (id: string) => store.update((config) => ({
-    ...config,
-    pages: [{ id: 'a', name: 'Accueil', widgets: [
-      { instanceId: 'x', widgetId: id, x: 0, y: 0, w: 8, h: 4, showTitle: true, settings: {} },
-    ] }],
-  }))
+  const place = (id: string) => store.update((config) => placing(config, id))
 
   it('installs what a screen places and this machine does not have', async () => {
     await place('demo')
@@ -1174,12 +1205,12 @@ describe('themes', () => {
     await withTheme(zip)
     await installTheme()
 
-    await store.update((c) => ({ ...c, display: { ...c.display, theme: 'nuit' } }))
+    await store.update((c) => ({ ...c, theme: 'nuit' }))
     const inUse = await app.inject({ method: 'POST', url: '/api/marketplace/uninstall', payload: { id: 'nuit', kind: 'theme' } as never })
     expect(inUse.statusCode).toBe(409)
     expect((await app.inject({ url: '/api/marketplace' })).json().themes[0].inUse).toBe(true)
 
-    await store.update((c) => ({ ...c, display: { ...c.display, theme: 'fremkit' } }))
+    await store.update((c) => ({ ...c, theme: 'fremkit' }))
     const gone = await app.inject({ method: 'POST', url: '/api/marketplace/uninstall', payload: { id: 'nuit', kind: 'theme' } as never })
     expect(gone.statusCode).toBe(200)
     expect(store.get().marketplace.installed.nuit).toBeUndefined()
@@ -1210,5 +1241,44 @@ describe('themes', () => {
     const res = await app.inject({ method: 'POST', url: '/api/marketplace/update', payload: { id: 'nuit', kind: 'theme' } as never })
     expect(res.statusCode).toBe(200)
     expect(store.get().marketplace.installed.nuit.version).toBe('2.0.0')
+  })
+})
+
+describe('GET /api/marketplace/preview/:id', () => {
+  const PREVIEW_URL = `https://${HOST}/widgets/demo-1.0.0-preview.png`
+  const png = (): Buffer => encodePng(4, 2, new Uint8Array(4 * 2 * 4))
+
+  it('relays the preview the index names, as the image it is', async () => {
+    const zip = packageOf()
+    await build({ zip, index: indexFor(zip, { preview: PREVIEW_URL }), previewBytes: png() })
+    const list = await app.inject({ url: '/api/marketplace' })
+    expect(list.json().widgets[0].preview).toBe(PREVIEW_URL)
+    const res = await app.inject({ url: '/api/marketplace/preview/demo' })
+    expect(res.statusCode).toBe(200)
+    expect(res.headers['content-type']).toBe('image/png')
+    expect(res.rawPayload.equals(png())).toBe(true)
+    // Cached: the second look does not go back to the registry.
+    await app.inject({ url: '/api/marketplace/preview/demo' })
+    expect(requested.filter((u) => u === PREVIEW_URL)).toHaveLength(1)
+  })
+
+  it('drops a preview on another host without ever fetching it', async () => {
+    const zip = packageOf()
+    await build({ zip, index: indexFor(zip, { preview: 'https://elsewhere.example.net/p.png' }), previewBytes: png() })
+    const list = await app.inject({ url: '/api/marketplace' })
+    expect(list.json().widgets).toHaveLength(1)
+    expect(list.json().widgets[0].preview).toBeUndefined()
+    expect((await app.inject({ url: '/api/marketplace/preview/demo' })).statusCode).toBe(404)
+    expect(requested.some((u) => u.includes('elsewhere'))).toBe(false)
+  })
+
+  it('refuses bytes that are not a picture', async () => {
+    const zip = packageOf()
+    await build({ zip, index: indexFor(zip, { preview: PREVIEW_URL }), previewBytes: Buffer.from('<svg onload=alert(1)>') })
+    expect((await app.inject({ url: '/api/marketplace/preview/demo' })).statusCode).toBe(502)
+  })
+
+  it('answers 404 for a widget with no preview', async () => {
+    expect((await app.inject({ url: '/api/marketplace/preview/demo' })).statusCode).toBe(404)
   })
 })

@@ -3,15 +3,27 @@ import { mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { ConfigStore } from '../src/config/store.js'
-import { migrateAppearance, normalizeInstances, parseCityString } from '../src/config/normalize.js'
+import { normalizeInstances, parseCityString } from '../src/config/normalize.js'
+import { migrateAppearance, normalizeV3 } from '../src/config/migrate.js'
 import { ConfigSchema } from '../src/config/schema.js'
+import { V3ConfigSchema } from '../src/config/v3.js'
 
+/** A v4 config showing one clock, `clock-1`, on the Edge's first page. */
 const clock = (settings: Record<string, unknown>) => ({
+  version: 4,
+  widgets: { 'clock-1': { widgetId: 'clock', settings } },
+  screens: [{
+    id: 'edge', name: 'Xeneon Edge', kind: 'edge',
+    pages: [{ id: 'home', name: 'Accueil', items: [{ instanceId: 'clock-1', x: 0, y: 0, w: 16, h: 4 }] }],
+  }],
+})
+/** The same clock in a v3 file, as written before the list setting existed. */
+const v3clock = (settings: Record<string, unknown>) => ({
   version: 3,
   pages: [{ id: 'home', name: 'Accueil', widgets: [{ instanceId: 'clock-1', widgetId: 'clock', x: 0, y: 0, w: 16, h: 4, settings }] }],
 })
-const citiesOf = (config: { pages: { widgets: { settings: Record<string, unknown> }[] }[] }): unknown =>
-  config.pages[0].widgets[0].settings.cities
+const citiesOf = (config: { widgets: Record<string, { settings: Record<string, unknown> }> }): unknown =>
+  config.widgets['clock-1'].settings.cities
 
 describe('parseCityString', () => {
   it('reads one item per city, defaulting the per-city flags', () => {
@@ -32,7 +44,7 @@ describe('parseCityString', () => {
 
 describe('migrateAppearance', () => {
   /** One instance carrying the legacy keys, parsed exactly as a file on disk would be. */
-  const parse = (extra: Record<string, unknown>) => ConfigSchema.parse({
+  const parse = (extra: Record<string, unknown>) => V3ConfigSchema.parse({
     version: 3,
     pages: [{ id: 'home', name: 'Accueil', widgets: [{ instanceId: 'w-1', widgetId: 'clock', x: 0, y: 0, w: 16, h: 4, ...extra }] }],
   }).pages[0].widgets[0]
@@ -77,9 +89,9 @@ describe('migrateAppearance', () => {
   })
 })
 
-describe('normalizeInstances', () => {
+describe('normalizeV3', () => {
   it('converts every legacy appearance of a loaded config, on all pages', () => {
-    const config = normalizeInstances(ConfigSchema.parse({
+    const config = normalizeV3(V3ConfigSchema.parse({
       version: 3,
       pages: [
         { id: 'a', name: 'A', widgets: [{ instanceId: 'w-1', widgetId: 'clock', x: 0, y: 0, w: 16, h: 4, appearance: 'transparent' }] },
@@ -91,27 +103,47 @@ describe('normalizeInstances', () => {
     expect(JSON.stringify(config)).not.toMatch(/appearance|accentStyle/)
   })
 
-  it('folds an empty navigation bar back to a missing key', () => {
-    const parsed = ConfigSchema.parse({ ...clock({}), display: { navWidgets: [] } })
-    expect(parsed.display.navWidgets).toEqual([])
-    expect(normalizeInstances(parsed).display.navWidgets).toBeUndefined()
+  it('converts a v3 clock whose cities are still a string', () => {
+    const config = normalizeV3(V3ConfigSchema.parse(v3clock({ cities: 'NYC=America/New_York' })))
+    expect(config.pages[0].widgets[0].settings.cities).toEqual([{ label: 'NYC', timezone: 'America/New_York', hour12: false, seconds: false }])
   })
-  it('leaves a navigation bar that carries something alone', () => {
-    const parsed = ConfigSchema.parse({ ...clock({}), display: { navWidgets: [{ instanceId: 'a', widgetId: 'clock' }] } })
-    expect(normalizeInstances(parsed).display.navWidgets).toEqual([{ instanceId: 'a', widgetId: 'clock', slot: 'left', settings: {} }])
+})
+
+describe('normalizeInstances', () => {
+  it('drops an orphan widget', () => {
+    const config = normalizeInstances(ConfigSchema.parse({
+      ...clock({}),
+      widgets: { 'clock-1': { widgetId: 'clock' }, 'cpu-9': { widgetId: 'cpu' } },
+    }))
+    expect(Object.keys(config.widgets)).toEqual(['clock-1'])
+  })
+  it('keeps a widget placed only in a bar', () => {
+    const base = clock({})
+    const config = normalizeInstances(ConfigSchema.parse({
+      ...base,
+      widgets: { ...base.widgets, 'cpu-1': { widgetId: 'cpu' } },
+      screens: [{ ...base.screens[0], nav: [{ instanceId: 'cpu-1' }] }],
+    }))
+    expect(Object.keys(config.widgets).sort()).toEqual(['clock-1', 'cpu-1'])
   })
   it('converts a clock instance whose cities are still a string', () => {
     const config = normalizeInstances(ConfigSchema.parse(clock({ seconds: true, cities: 'NYC=America/New_York' })))
     expect(citiesOf(config)).toEqual([{ label: 'NYC', timezone: 'America/New_York', hour12: false, seconds: false }])
-    expect(config.pages[0].widgets[0].settings.seconds).toBe(true)
+    expect(config.widgets['clock-1'].settings.seconds).toBe(true)
+  })
+  it('converts a clock that sits only in a bar too', () => {
+    const base = clock({})
+    const config = normalizeInstances(ConfigSchema.parse({
+      ...base,
+      widgets: { ...base.widgets, 'clock-2': { widgetId: 'clock', settings: { cities: 'Tokyo=Asia/Tokyo' } } },
+      screens: [{ ...base.screens[0], nav: [{ instanceId: 'clock-2' }] }],
+    }))
+    expect(config.widgets['clock-2'].settings.cities).toEqual([{ label: 'Tokyo', timezone: 'Asia/Tokyo', hour12: false, seconds: false }])
   })
   it('leaves a list alone, and never touches another widget', () => {
     const list = [{ label: 'Tokyo', timezone: 'Asia/Tokyo', hour12: true, seconds: true }]
     expect(citiesOf(normalizeInstances(ConfigSchema.parse(clock({ cities: list }))))).toEqual(list)
-    const other = ConfigSchema.parse({
-      version: 3,
-      pages: [{ id: 'home', name: 'Accueil', widgets: [{ instanceId: 'w-1', widgetId: 'weather', x: 0, y: 0, w: 4, h: 2, settings: { cities: 'NYC=America/New_York' } }] }],
-    })
+    const other = ConfigSchema.parse({ ...clock({}), widgets: { 'clock-1': { widgetId: 'weather', settings: { cities: 'NYC=America/New_York' } } } })
     expect(citiesOf(normalizeInstances(other))).toBe('NYC=America/New_York')
   })
 })
@@ -122,7 +154,7 @@ describe('ConfigStore', () => {
 
   it('serves the converted list after loading a file written before the list setting', async () => {
     const file = join(dir, 'fremkit.json')
-    await writeFile(file, JSON.stringify(clock({ cities: 'NYC=America/New_York' })))
+    await writeFile(file, JSON.stringify(v3clock({ cities: 'NYC=America/New_York' })))
     const store = new ConfigStore(file)
     expect(citiesOf(await store.load())).toEqual([{ label: 'NYC', timezone: 'America/New_York', hour12: false, seconds: false }])
   })

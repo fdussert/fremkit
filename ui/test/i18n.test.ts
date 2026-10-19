@@ -27,8 +27,8 @@ describe('dictionaries', () => {
 
 describe('translate', () => {
   it('returns the text of the asked-for language', () => {
-    expect(translate('fr', 'admin.tabs.screen')).toBe('Écran')
-    expect(translate('en', 'admin.tabs.screen')).toBe('Screen')
+    expect(translate('fr', 'admin.settings.pane.screen')).toBe('Écran')
+    expect(translate('en', 'admin.settings.pane.screen')).toBe('Screen')
   })
 
   it('interpolates {name} parameters', () => {
@@ -61,10 +61,10 @@ describe('translate', () => {
 
 describe('locale', () => {
   it('drives t() and takes French for anything that is not English', () => {
-    expect(t('admin.tabs.screen')).toBe('Écran')
+    expect(t('admin.settings.pane.screen')).toBe('Écran')
     setLocale('en')
     expect(locale.value).toBe('en')
-    expect(t('admin.tabs.screen')).toBe('Screen')
+    expect(t('admin.settings.pane.screen')).toBe('Screen')
     setLocale(undefined)
     expect(locale.value).toBe('fr')
   })

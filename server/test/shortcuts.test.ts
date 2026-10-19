@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { createShortcutsProvider, argvFor, OpenPayloadSchema, resolveButton } from '../src/providers/shortcuts.js'
 import type { InstanceLookup } from '../src/config/instances.js'
 
-const LOCAL = { loopback: true }
+const LOCAL = { loopback: true, paired: false }
 const INSTANCE = 'sc-1'
 
 /** The buttons the three `open` tests below press, as the user would have saved them. */
@@ -55,9 +55,9 @@ describe('shortcuts payload validation', () => {
 
 describe('shortcuts argv', () => {
   it('maps each kind to a program and its arguments', () => {
-    expect(argvFor({ kind: 'app', target: 'Calculator' })).toEqual(['open', ['-a', 'Calculator']])
-    expect(argvFor({ kind: 'url', target: 'https://example.com' })).toEqual(['open', ['https://example.com']])
-    expect(argvFor({ kind: 'shortcut', target: 'Good Morning' })).toEqual(['shortcuts', ['run', 'Good Morning']])
+    expect(argvFor({ kind: 'app', target: 'Calculator' })).toEqual(['/usr/bin/open', ['-a', 'Calculator']])
+    expect(argvFor({ kind: 'url', target: 'https://example.com' })).toEqual(['/usr/bin/open', ['https://example.com']])
+    expect(argvFor({ kind: 'shortcut', target: 'Good Morning' })).toEqual(['/usr/bin/shortcuts', ['run', 'Good Morning']])
   })
 })
 
@@ -65,11 +65,11 @@ describe('shortcuts open', () => {
   it('runs the argv of the saved button and reports ok', async () => {
     const { run, p } = provider()
     expect(await p.commands!.open(press(0), LOCAL)).toEqual({ ok: true })
-    expect(run).toHaveBeenLastCalledWith('open', ['-a', 'Calculator'])
+    expect(run).toHaveBeenLastCalledWith('/usr/bin/open', ['-a', 'Calculator'])
     expect(await p.commands!.open(press(1), LOCAL)).toEqual({ ok: true })
-    expect(run).toHaveBeenLastCalledWith('open', ['https://example.com'])
+    expect(run).toHaveBeenLastCalledWith('/usr/bin/open', ['https://example.com'])
     expect(await p.commands!.open(press(2), LOCAL)).toEqual({ ok: true })
-    expect(run).toHaveBeenLastCalledWith('shortcuts', ['run', 'Good Morning'])
+    expect(run).toHaveBeenLastCalledWith('/usr/bin/shortcuts', ['run', 'Good Morning'])
   })
   it('never runs anything for a refused request', async () => {
     const { run, p } = provider()
@@ -92,7 +92,7 @@ describe('shortcuts open', () => {
     }
     // The last one carries a valid request *and* a target: the target is ignored.
     expect(run).toHaveBeenCalledTimes(1)
-    expect(run).toHaveBeenLastCalledWith('open', ['-a', 'Calculator'])
+    expect(run).toHaveBeenLastCalledWith('/usr/bin/open', ['-a', 'Calculator'])
   })
   it('never runs a saved button that is not a usable target', async () => {
     const { run, p } = provider([
@@ -108,7 +108,7 @@ describe('shortcuts open', () => {
   })
   it('refuses a command that did not come from this machine', async () => {
     const { run, p } = provider()
-    expect(await p.commands!.open(press(0), { loopback: false })).toMatchObject({ ok: false })
+    expect(await p.commands!.open(press(0), { loopback: false, paired: false })).toMatchObject({ ok: false })
     expect(await p.commands!.open(press(0))).toMatchObject({ ok: false })
     expect(run).not.toHaveBeenCalled()
   })

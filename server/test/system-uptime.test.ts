@@ -12,7 +12,11 @@ vi.mock('systeminformation', () => ({ default: {
 } }))
 
 describe('OS uptime in the system snapshot', () => {
-  const systemProvider = createSystemProvider()
+  // Disks and memory come from `mac-readings.ts` on a Mac; handed in here so the test reads nothing.
+  const systemProvider = createSystemProvider({
+    readDisks: async () => [],
+    readMemory: async () => ({ total: 100, active: 50, available: 50, swapused: 0, swaptotal: 0 }),
+  })
   beforeEach(() => vi.mocked(uptime).mockReset())
 
   it.each([0, 90061.9])('publishes system uptime %s seconds rather than process uptime', async (seconds) => {

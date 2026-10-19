@@ -535,7 +535,7 @@ describe('opening GitHub rows', () => {
     const opened: string[][] = []
     const provider = createGithubProvider(context(), { fetchFn, openRunner: async (cmd, args) => { opened.push([cmd, ...args]) } })
     const snapshot = await provider.poll!() as GhSnapshot
-    expect(await provider.commands!.open({ kind: 'run', id: snapshot.runs[0].id, instanceId: 'github-actions-1' }, { loopback: true })).toEqual({ ok: true })
+    expect(await provider.commands!.open({ kind: 'run', id: snapshot.runs[0].id, instanceId: 'github-actions-1' }, { loopback: true, paired: false })).toEqual({ ok: true })
     expect(opened).toEqual([['/usr/bin/open', snapshot.runs[0].url]])
     expect(calls.every(c => c.method === 'GET')).toBe(true)
   })
@@ -545,7 +545,7 @@ describe('opening GitHub rows', () => {
     const provider = createGithubProvider(context(), { fetchFn, openRunner: async (cmd, args) => { opened.push([cmd, ...args]) } })
     const snapshot = await provider.poll!() as GhSnapshot
     for (const [kind, item] of [['notification', snapshot.notifications[0]], ['review', snapshot.reviewRequests[0]], ['pull', snapshot.myPrs[0]]] as const) {
-      expect(await provider.commands!.open({ kind, id: item.id }, { loopback: true })).toEqual({ ok: true })
+      expect(await provider.commands!.open({ kind, id: item.id }, { loopback: true, paired: false })).toEqual({ ok: true })
       expect(opened.at(-1)).toEqual(['/usr/bin/open', item.url])
     }
     expect(calls.every(c => c.method === 'GET')).toBe(true)
@@ -555,10 +555,10 @@ describe('opening GitHub rows', () => {
     const opened: string[][] = []
     const provider = createGithubProvider(context(), { fetchFn, openRunner: async (cmd, args) => { opened.push([cmd, ...args]) } })
     const snapshot = await provider.poll!() as GhSnapshot
-    expect(await provider.commands!.open({ kind: 'run', id: snapshot.runs[0].id }, { loopback: false })).toEqual({ ok: false, error: tr(undefined, 'provider.localOnly') })
-    expect(await provider.commands!.open({ kind: 'run', id: '999999' }, { loopback: true })).toEqual({ ok: false })
+    expect(await provider.commands!.open({ kind: 'run', id: snapshot.runs[0].id }, { loopback: false, paired: false })).toEqual({ ok: false, error: tr(undefined, 'provider.localOnly') })
+    expect(await provider.commands!.open({ kind: 'run', id: '999999' }, { loopback: true, paired: false })).toEqual({ ok: false })
     const foreign = snapshot.notifications.find(n => n.url.includes('github.example.com'))!
-    expect(await provider.commands!.open({ kind: 'notification', id: foreign.id }, { loopback: true })).toEqual({ ok: false })
+    expect(await provider.commands!.open({ kind: 'notification', id: foreign.id }, { loopback: true, paired: false })).toEqual({ ok: false })
     expect(await provider.commands!.open({ kind: 'run', id: snapshot.runs[0].id })).toEqual({ ok: false, error: tr(undefined, 'provider.localOnly') })
     expect(opened).toEqual([])
   })
@@ -567,7 +567,7 @@ describe('opening GitHub rows', () => {
     const opened: string[][] = []
     const provider = createGithubProvider(context(), { fetchFn, openRunner: async (cmd, args) => { opened.push([cmd, ...args]) } })
     const snapshot = await provider.poll!() as GhSnapshot
-    expect(await provider.commands!.open({ kind: 'run', id: snapshot.runs[0].id, url: 'https://evil.test', futureHostField: true }, { loopback: true })).toEqual({ ok: true })
+    expect(await provider.commands!.open({ kind: 'run', id: snapshot.runs[0].id, url: 'https://evil.test', futureHostField: true }, { loopback: true, paired: false })).toEqual({ ok: true })
     expect(opened).toEqual([['/usr/bin/open', snapshot.runs[0].url]])
   })
 })

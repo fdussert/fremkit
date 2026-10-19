@@ -1,6 +1,185 @@
 /* Fremkit bridge — injected into every widget. Talks to the dashboard over postMessage. */
-(function () {
+
+/*
+ * WebRTC guard. The first thing that runs in a widget document: the server injects this file
+ * ahead of everything the widget wrote (see `injectBridge`), so no widget code has seen the
+ * constructors before they are gone.
+ *
+ * A widget's CSP (`connect-src 'none'`) does not cover WebRTC, and a peer connection is a way out
+ * with no permission: a STUN or TURN server, or a remote candidate, carries whatever the widget
+ * puts in it. So by default every WebRTC constructor is undefined, non-writable and
+ * non-configurable — nothing in the frame can put it back, and child frames, which could hold a
+ * fresh copy, are refused by the widget CSP (`frame-src 'none'`).
+ *
+ * `data-webrtc="local"` on this script's tag is the exception, and only the server writes it, for
+ * a built-in widget on its list (`server/src/widgets/webrtc.ts`); a registry widget never gets
+ * it. A widget that adds a second copy of this script with the attribute gains nothing: the first
+ * copy already removed the originals, and `local` can only narrow what it finds.
+ */
+;(function () {
   'use strict'
+  var defineProperty = Object.defineProperty
+  var apply = Reflect.apply
+  var construct = Reflect.construct
+  var split = String.prototype.split
+  var slice = String.prototype.slice
+  var lower = String.prototype.toLowerCase
+  var NAMES = ['RTCPeerConnection', 'webkitRTCPeerConnection', 'RTCDataChannel', 'RTCSessionDescription', 'RTCIceCandidate']
+
+  var script = typeof document !== 'undefined' ? document.currentScript : null
+  var local = !!(script && script.getAttribute && script.getAttribute('data-webrtc') === 'local')
+  var Original = local ? window.RTCPeerConnection : undefined
+  var Wrapped = local && typeof Original === 'function'
+    ? localPeerConnection(Original, script.getAttribute('data-webrtc-hosts') || '')
+    : undefined
+
+  for (var i = 0; i < NAMES.length; i++) {
+    var name = NAMES[i]
+    var value
+    if (name === 'RTCPeerConnection' || name === 'webkitRTCPeerConnection') value = Wrapped
+    // Inert value classes and a type with no constructor: harmless next to a guarded connection.
+    else value = Wrapped ? window[name] : undefined
+    try {
+      defineProperty(window, name, { value: value, writable: false, configurable: false, enumerable: false })
+    } catch (e) { /* already locked by an earlier copy of this script */ }
+  }
+
+  /**
+   * An `RTCPeerConnection` that can only talk to this Mac.
+   *
+   * No ICE servers, ever: in the constructor and in `setConfiguration`. Only host candidates on
+   * loopback or on one of `hosts` (this Mac's addresses, written by the server): in
+   * `addIceCandidate`, in the SDP given to `setRemoteDescription` and to `setLocalDescription`.
+   * A data channel rides the same ICE transport, so `createDataChannel` needs nothing of its own.
+   *
+   * Everything a widget hands in is read once, as a primitive, into a fresh object: a getter or a
+   * Proxy cannot answer one thing to the check and another to the browser. The string and
+   * reflection helpers used here were captured before the widget ran, so a widget that replaces
+   * `String.prototype.split` changes nothing in this closure. The originals are reachable only
+   * from it: the prototype's methods and its `constructor` are replaced, non-writable and
+   * non-configurable.
+   */
+  function localPeerConnection(Native, hostList) {
+    var proto = Native.prototype
+    var allowed = Object.create(null)
+    var listed = apply(split, hostList, [' '])
+    for (var k = 0; k < listed.length; k++) if (listed[k]) allowed[apply(lower, listed[k], [])] = true
+
+    var setConfiguration = proto.setConfiguration
+    var setRemoteDescription = proto.setRemoteDescription
+    var setLocalDescription = proto.setLocalDescription
+    var addIceCandidate = proto.addIceCandidate
+
+    function str(v) { return typeof v === 'string' ? v : '' }
+
+    function isLoopback(address) {
+      if (address === '::1') return true
+      var parts = apply(split, address, ['.'])
+      return parts.length === 4 && parts[0] === '127'
+    }
+
+    /**
+     * True for `candidate:… <address> <port> typ host …` naming an allowed address. `own` is a
+     * candidate of this side's, which may also be the browser's mDNS name for one of this Mac's
+     * interfaces (`<uuid>.local`): it is only text handed to the peer, and the browser that wrote
+     * it is the one that answers for it. A remote `.local` name is refused — resolving it asks the
+     * whole network, and whoever answers picks where the checks go.
+     */
+    function candidateAllowed(line, own) {
+      var text = line
+      if (apply(slice, text, [0, 2]) === 'a=') text = apply(slice, text, [2])
+      if (apply(lower, apply(slice, text, [0, 10]), []) !== 'candidate:') return false
+      var f = apply(split, text, [' '])
+      if (f.length < 8) return false
+      for (var n = 0; n < f.length; n++) if (f[n] === '') return false
+      if (apply(lower, f[6], []) !== 'typ' || apply(lower, f[7], []) !== 'host') return false
+      var address = apply(lower, f[4], [])
+      if (own && address.length > 6 && apply(slice, address, [-6]) === '.local') return true
+      return allowed[address] === true || isLoopback(address)
+    }
+
+    /** The SDP with every `a=candidate` line it may not keep taken out. */
+    function filterSdp(sdp, own) {
+      var lines = apply(split, sdp, ['\n'])
+      var out = ''
+      for (var n = 0; n < lines.length; n++) {
+        var line = lines[n]
+        var bare = apply(slice, line, [-1]) === '\r' ? apply(slice, line, [0, -1]) : line
+        var head = apply(lower, apply(slice, bare, [0, 12]), [])
+        if (apply(slice, head, [0, 11]) === 'a=candidate' && !candidateAllowed(bare, own)) continue
+        if (head === 'a=remote-can') continue
+        out += (n > 0 ? '\n' : '') + line
+      }
+      return out
+    }
+
+    function description(desc, own) {
+      if (desc === undefined || desc === null) return desc
+      return { type: str(desc.type), sdp: filterSdp(str(desc.sdp), own) }
+    }
+
+    /** The configuration with no ICE server, whatever was asked; the rest read once. */
+    function configuration(config) {
+      var safe = { iceServers: [] }
+      if (config && typeof config === 'object') {
+        var bundle = config.bundlePolicy
+        var mux = config.rtcpMuxPolicy
+        var pool = config.iceCandidatePoolSize
+        var certificates = config.certificates
+        if (typeof bundle === 'string') safe.bundlePolicy = bundle
+        if (typeof mux === 'string') safe.rtcpMuxPolicy = mux
+        if (typeof pool === 'number') safe.iceCandidatePoolSize = pool
+        if (certificates !== undefined) safe.certificates = certificates
+      }
+      return safe
+    }
+
+    function RTCPeerConnection(config) {
+      if (new.target === undefined) throw new TypeError("Failed to construct 'RTCPeerConnection': Please use the 'new' operator")
+      return construct(Native, [configuration(config)])
+    }
+    var generate = Native.generateCertificate
+    if (typeof generate === 'function') {
+      defineProperty(RTCPeerConnection, 'generateCertificate', {
+        value: function generateCertificate(keygen) { return apply(generate, Native, [keygen]) },
+      })
+    }
+    defineProperty(RTCPeerConnection, 'prototype', { value: proto, writable: false, configurable: false })
+
+    function lock(name, fn) {
+      defineProperty(proto, name, { value: fn, writable: false, configurable: false, enumerable: true })
+    }
+    lock('constructor', RTCPeerConnection)
+    lock('setConfiguration', function (config) { return apply(setConfiguration, this, [configuration(config)]) })
+    lock('setRemoteDescription', function (desc) { return apply(setRemoteDescription, this, [description(desc, false)]) })
+    lock('setLocalDescription', function (desc) {
+      return desc === undefined ? apply(setLocalDescription, this, []) : apply(setLocalDescription, this, [description(desc, true)])
+    })
+    lock('addIceCandidate', function (candidate) {
+      if (candidate === undefined || candidate === null) return apply(addIceCandidate, this, [])
+      var line = str(candidate.candidate)
+      // An empty candidate is the end-of-candidates marker, which reaches no one.
+      if (line !== '' && !candidateAllowed(line, false)) return Promise.resolve()
+      var init = { candidate: line }
+      var mid = candidate.sdpMid
+      var index = candidate.sdpMLineIndex
+      var ufrag = candidate.usernameFragment
+      if (typeof mid === 'string') init.sdpMid = mid
+      if (typeof index === 'number') init.sdpMLineIndex = index
+      if (typeof ufrag === 'string') init.usernameFragment = ufrag
+      return apply(addIceCandidate, this, [init])
+    })
+    // Not in Chrome or WebKit today; an identity provider would be another server to talk to.
+    if ('setIdentityProvider' in proto) lock('setIdentityProvider', function () { throw new TypeError('not available') })
+    return RTCPeerConnection
+  }
+})()
+
+;(function () {
+  'use strict'
+  // A widget that loads the bridge a second time gets the first one: a second copy would say a
+  // second hello, which the host reads as a new document and stops answering.
+  if (window.Fremkit) return
   var subs = new Map()        // channel -> Set<cb>
   var pending = new Map()     // id -> { resolve, reject }
   var resizeCbs = new Set()
@@ -9,7 +188,27 @@
   var readyCbs = []
   var seq = 0
 
-  function post(msg) { window.parent.postMessage(msg, '*') }
+  /**
+   * The host answers this document over a `MessagePort` it hands over in reply to the hello, and
+   * only once the port has carried the same nonce back: a port is bound to the document that
+   * received it, so a frame that navigates leaves the conversation behind. What the widget sends
+   * before the port arrives waits here.
+   */
+  var port = null
+  var outbox = []
+  var nonce = makeNonce()
+
+  function makeNonce() {
+    var bytes = new Uint8Array(16)
+    var c = window.crypto || (typeof crypto !== 'undefined' ? crypto : null)
+    if (c && c.getRandomValues) c.getRandomValues(bytes)
+    else for (var i = 0; i < bytes.length; i++) bytes[i] = Math.floor(Math.random() * 256)
+    var hex = ''
+    for (var j = 0; j < bytes.length; j++) hex += (bytes[j] < 16 ? '0' : '') + bytes[j].toString(16)
+    return hex
+  }
+
+  function post(msg) { if (port) port.postMessage(msg); else outbox.push(msg) }
 
   /**
    * The host frame paints the tile; a widget follows it through these classes and variables.
@@ -129,8 +328,13 @@
      * lowest generation it needs, and the server refuses to install one asking for more than it
      * has. Kept in step with `SDK_VERSION` in ./sdk.ts by bridge.test.ts.
      */
-    sdk: 2,
+    sdk: 3,
     instanceId: null,
+    /**
+     * The id of the screen this frame is drawn on (the Edge, a paired device), or null when the
+     * host did not say — a preview in the admin's library, say. Generation 3.
+     */
+    screen: null,
     settings: {},
     /**
      * The language the dashboard is showing, 'fr' or 'en'. English until the host says otherwise,
@@ -168,6 +372,14 @@
     sendCommand: function (channel, name, payload) {
       return request({ type: 'fremkit:command', channel: channel, name: name, payload: payload })
     },
+    /**
+     * Tells the host a finger is working a control in this frame — a slider, a knob — so the page
+     * does not swipe for the next half second. Call it on every move. The touch driver turns a
+     * quick slide into wheel events at the finger's position; once the finger leaves the frame they
+     * land on the dashboard, which would otherwise take the end of the slide for a swipe.
+     * Generation 3.
+     */
+    holdSwipe: function () { post({ type: 'fremkit:hold-swipe' }) },
     /**
      * Fetches through the host.
      *
@@ -302,11 +514,20 @@
   }
 
   window.addEventListener('message', function (ev) {
-    if (ev.source !== window.parent) return
+    if (ev.source !== window.parent || port) return
     var m = ev.data
+    if (!m || m.type !== 'fremkit:connect' || !ev.ports || !ev.ports[0]) return
+    port = ev.ports[0]
+    port.onmessage = function (e) { onHostMessage(e.data) }
+    port.postMessage({ type: 'fremkit:hello', nonce: nonce })
+    outbox.splice(0).forEach(function (msg) { port.postMessage(msg) })
+  })
+
+  function onHostMessage(m) {
     if (!m || typeof m.type !== 'string') return
     if (m.type === 'fremkit:init') {
       F.instanceId = m.instanceId
+      F.screen = typeof m.screen === 'string' ? m.screen : null
       F.settings = m.settings || {}
       F.size = m.size
       F.showTitle = m.showTitle !== false
@@ -343,7 +564,7 @@
       pending.delete(m.id)
       if (m.error) p.reject(new Error(m.error)); else p.resolve(m.result)
     }
-  })
+  }
 
   /**
    * Makes a widget document stop behaving like a web page.
@@ -379,6 +600,6 @@
 
   applyKioskBehaviour()
 
-  window.Fremkit = F
-  post({ type: 'fremkit:hello' })
+  Object.defineProperty(window, 'Fremkit', { value: F, writable: false, configurable: false, enumerable: true })
+  window.parent.postMessage({ type: 'fremkit:hello', nonce: nonce }, '*')
 })()

@@ -15,10 +15,10 @@ source scripts/lib/swiftc-common.sh
 # native/Tests/Shim/main.swift compiles fine and is silently never run. Catch that here.
 echo "==> registry check"
 declared=$(grep -ho 'func test' native/Tests/FremkitCoreTests/*.swift | wc -l | tr -d ' ')
-registered=$(grep -ho '("test' native/Tests/Shim/main.swift | wc -l | tr -d ' ')
+registered=$(grep -ho '("test' native/Tests/Shim/*.swift | wc -l | tr -d ' ')
 if [ "$declared" != "$registered" ]; then
-    echo "error: $declared test methods declared in native/Tests/FremkitCoreTests but $registered registered in native/Tests/Shim/main.swift" >&2
-    echo "       every new test method must be added to the suites list in native/Tests/Shim/main.swift" >&2
+    echo "error: $declared test methods declared in native/Tests/FremkitCoreTests but $registered registered in native/Tests/Shim" >&2
+    echo "       every new test method must be added to a suites list in native/Tests/Shim (main.swift, ScanSuites.swift, BrightnessSuites.swift)" >&2
     exit 1
 fi
 echo "$registered test methods declared and registered"
@@ -46,6 +46,8 @@ echo "==> FremkitCoreTests"
 "$SWIFTC" -sdk "$SDK" -target "$TARGET" -swift-version "$SWIFT_VERSION" \
     -module-name FremkitCoreTests \
     native/Tests/Shim/main.swift \
+    native/Tests/Shim/ScanSuites.swift \
+    native/Tests/Shim/BrightnessSuites.swift \
     native/Tests/FremkitCoreTests/*.swift \
     -I "$TEST_OUT" -L "$TEST_OUT" -lXCTest \
     -I "$TESTING_OUT" -L "$TESTING_OUT" -lFremkitCore \

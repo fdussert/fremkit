@@ -9,10 +9,13 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useWidgetBridge } from '../shared/useWidgetBridge'
 import { pick, useI18n } from '../shared/i18n'
 import { popoverRect, type Anchor } from '../shared/popover'
-import type { NavWidget, WidgetInstance, WidgetManifest } from '../shared/types'
+import { compactOf } from '../shared/screens'
+import type { Config, NavItem, WidgetInstance, WidgetManifest } from '../shared/types'
 
 const props = defineProps<{
-  navWidget: NavWidget
+  item: NavItem
+  /** Where the item's widget and settings are read. */
+  widgets: Config['widgets']
   manifest?: WidgetManifest
   cell: number
   anchor: Anchor
@@ -55,20 +58,17 @@ const style = computed<Record<string, string>>(() => ({
  * The same widget as the bar draws, as a tile: full size, with its title, and no appearance of
  * its own.
  *
- * The instanceId is the bar entry's, unchanged. It used to carry a `:popup` suffix so the two
+ * The instanceId is the bar item's, unchanged (`compactOf` copies it and nothing overrides it). It used to carry a `:popup` suffix so the two
  * iframes of one bar widget stayed distinguishable — but nothing ever keyed on that, and it
  * became a real bug once commands started resolving their target from the saved dashboard: the
  * server looks the id up in the config, the suffixed one is in no config, and every
  * `service-status.probe` from the popover was refused as an unknown widget.
  */
 const instance = computed<WidgetInstance>(() => ({
-  instanceId: props.navWidget.instanceId,
-  widgetId: props.navWidget.widgetId,
-  x: 0, y: 0,
+  ...compactOf({ widgets: props.widgets }, props.item, 1),
   w: Math.max(1, Math.round(box.value.width / props.cell)),
   h: Math.max(1, Math.round((box.value.height - TITLE_H) / props.cell)),
   showTitle: true,
-  settings: props.navWidget.settings,
 }))
 
 const { state } = useWidgetBridge(iframe, () => instance.value, () => props.manifest, () => props.cell, {
@@ -76,7 +76,7 @@ const { state } = useWidgetBridge(iframe, () => instance.value, () => props.mani
   pixelSize: () => ({ width: box.value.width, height: box.value.height - TITLE_H }),
 })
 const { t } = useI18n()
-const title = computed(() => pick(props.manifest?.name) || props.navWidget.widgetId)
+const title = computed(() => pick(props.manifest?.name) || instance.value.widgetId)
 
 onMounted(() => emit('root', root.value ?? null))
 onUnmounted(() => emit('root', null))
@@ -86,7 +86,7 @@ onUnmounted(() => emit('root', null))
   <div ref="root" class="popover" :style="style">
     <div class="title">{{ title }}</div>
     <div class="body">
-      <iframe v-if="manifest" ref="iframe" :src="`/widgets/${navWidget.widgetId}/index.html`" sandbox="allow-scripts" :title="title" />
+      <iframe v-if="manifest" ref="iframe" :src="`/widgets/${instance.widgetId}/index.html`" sandbox="allow-scripts" :title="title" />
       <!-- One line of room here, so the words take the place of the id rather than joining it. -->
       <div v-if="!manifest || state === 'error'" class="missing">{{ manifest ? title : t('dashboard.widget.notInstalled') }}</div>
     </div>

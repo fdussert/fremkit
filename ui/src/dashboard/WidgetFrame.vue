@@ -8,7 +8,11 @@ import { pick, useI18n } from '../shared/i18n'
 import type { AccentMode, WidgetInstance, WidgetManifest } from '../shared/types'
 import TileIcon from '../shared/TileIcon.vue'
 
-const props = defineProps<{ instance: WidgetInstance; manifest?: WidgetManifest; cell: number; edit?: boolean }>()
+/**
+ * `off`: the widget's experimental feature is off (`labs.companion`). The admin's canvas then
+ * draws the tile greyed and labelled, with no frame running in it; the dashboard draws no tile.
+ */
+const props = defineProps<{ instance: WidgetInstance; manifest?: WidgetManifest; cell: number; edit?: boolean; off?: boolean }>()
 const iframe = ref<HTMLIFrameElement>()
 const { state } = useWidgetBridge(iframe, () => props.instance, () => props.manifest, () => props.cell)
 
@@ -66,17 +70,21 @@ const dimStyle = computed(() => ({ opacity: String(widgetDim(props.instance.back
 
 <template>
   <div class="frame" :style="style">
-    <div class="box" :class="[`accent-${mode}`, { edit }]">
+    <div class="box" :class="[`accent-${mode}`, { edit, off }]">
       <div v-if="instance.showTitle" class="title">
         <TileIcon v-if="instance.icon" :icon="instance.icon" />
         <span class="text">{{ title }}</span>
       </div>
       <div class="body">
         <div v-if="imageStyle" class="image" :style="imageStyle"><div class="dim" :style="dimStyle" /></div>
-        <iframe v-if="manifest" ref="iframe" :src="`/widgets/${instance.widgetId}/index.html`" sandbox="allow-scripts" :title="title" />
+        <div v-if="off" class="missing turned-off" data-test="feature-off">
+          <span>{{ title }}</span>
+          <small>{{ t('dashboard.widget.featureOff') }}</small>
+        </div>
+        <iframe v-else-if="manifest" ref="iframe" :src="`/widgets/${instance.widgetId}/index.html`" sandbox="allow-scripts" :title="title" />
         <!-- No manifest is a widget that is not here: a raw id told nobody anything, and the
              admin can offer to install it from the registry once it is named as missing. -->
-        <div v-if="!manifest || state === 'error'" class="missing">
+        <div v-if="!off && (!manifest || state === 'error')" class="missing">
           <span>{{ title }}</span>
           <small v-if="!manifest">{{ t('dashboard.widget.notInstalled') }}</small>
         </div>
@@ -111,6 +119,8 @@ const dimStyle = computed(() => ({ opacity: String(widgetDim(props.instance.back
 /* Positioned, so the widget and the fallback keep painting above the absolute image layer. */
 iframe { position: relative; z-index: 1; width: 100%; height: 100%; border: 0; background: transparent; display: block; }
 .box.edit iframe { pointer-events: none; }
+/* Greyed: the tile keeps its place and its size, its surface goes neutral. */
+.box.off { filter: grayscale(1); opacity: .55; }
 .missing { position: absolute; z-index: 1; inset: 0; display: flex; flex-direction: column; gap: 2px; align-items: center; justify-content: center;
   color: var(--text-muted); font-size: var(--fs-lg); }
 </style>

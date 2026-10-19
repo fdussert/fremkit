@@ -8,6 +8,14 @@ final class HelperURLTests: XCTestCase {
         XCTAssertEqual(HelperURL.action(for: URL(string: HelperURL.admin)!), .openAdmin)
     }
 
+    func testRevealHostLetsTheDialogsBeSeen() {
+        XCTAssertEqual(HelperURL.action(for: URL(string: "fremkit://reveal")!), .reveal)
+        XCTAssertEqual(HelperURL.action(for: URL(string: HelperURL.reveal)!), .reveal)
+        XCTAssertEqual(HelperURL.action(for: URL(string: "fremkit:reveal")!), .reveal)
+        XCTAssertEqual(HelperURL.action(for: URL(string: "FREMKIT://Reveal?seconds=9999")!), .reveal)
+        XCTAssertNil(HelperURL.action(for: URL(string: "fremkit://reveal.example.com")!))
+    }
+
     func testTargetIsCaseInsensitiveAndIgnoresPathAndQuery() {
         XCTAssertEqual(HelperURL.action(for: URL(string: "FREMKIT://Admin")!), .openAdmin)
         XCTAssertEqual(HelperURL.action(for: URL(string: "fremkit://admin/?from=dashboard#x")!), .openAdmin)

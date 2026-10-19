@@ -18,6 +18,7 @@ import BaseInput from '../shared/ui/BaseInput.vue'
 import BaseSection from '../shared/ui/BaseSection.vue'
 import BaseModal from '../shared/ui/BaseModal.vue'
 import BaseSegmented from '../shared/ui/BaseSegmented.vue'
+import ScrollPanel from '../shared/ui/ScrollPanel.vue'
 import ConsentDialog from './ConsentDialog.vue'
 import MarketplaceRow from './MarketplaceRow.vue'
 import MarketplaceThemeRow from './MarketplaceThemeRow.vue'
@@ -74,6 +75,9 @@ const shelves = computed(() => {
     .map((g) => ({ id: g.id, title: t(`admin.library.category.${g.id}`), widgets: g.widgets }))
 })
 
+/** The shelves "expand all" acts on: Available's, when it shows widgets. */
+const shelfIds = computed(() => shelves.value.filter((g) => g.title).map((g) => `market.${g.id}`))
+
 /** How many rows the panel is about to draw, whichever kind is showing. */
 const rowCount = computed(() => (showingThemes.value ? store.shownThemes.value.length : store.shown.value.length))
 
@@ -88,11 +92,17 @@ const empty = computed(() => {
 
 <template>
   <div class="market">
+    <!-- The tabs, the search and the buttons stay put; only the shelves scroll. -->
+    <ScrollPanel class="scroller" :section-ids="showingThemes ? [] : shelfIds">
+    <template #title>
     <BaseSegmented :model-value="store.state.view" :options="VIEWS"
       @update:model-value="store.setView($event as MarketView)" />
+    </template>
 
+    <template #header>
+    <div class="fixed">
     <div class="bar">
-      <BaseInput v-model="store.state.search"
+      <BaseInput v-model="store.state.search" data-escape-clears @keydown.esc="store.state.search = ''"
         :placeholder="showingThemes ? t('admin.market.searchTheme') : t('admin.market.search')" />
       <BaseSegmented class="kinds" :model-value="store.state.kind" :options="KINDS"
         @update:model-value="store.state.kind = $event as MarketKind" />
@@ -120,6 +130,8 @@ const empty = computed(() => {
     <p v-else-if="store.state.error" class="note warn">{{ store.state.error }}</p>
     <p v-if="store.state.loading && !store.state.loaded" class="note">{{ t('admin.market.loading') }}</p>
     <p v-else-if="store.state.loaded && !store.state.offline && !rowCount" class="note">{{ empty }}</p>
+    </div>
+    </template>
 
     <div v-if="showingThemes" class="list">
       <MarketplaceThemeRow v-for="th in store.shownThemes.value" :key="th.id" :theme="th" />
@@ -139,6 +151,7 @@ const empty = computed(() => {
         <MarketplaceRow v-for="w in shelf.widgets" :key="w.id" :widget="w" />
       </div>
     </template>
+    </ScrollPanel>
 
     <!-- Asked after the removal, not before it: the widget is gone either way, and a
          credential is not deleted by a decision about a widget. -->
@@ -168,7 +181,9 @@ const empty = computed(() => {
 </template>
 
 <style scoped>
-.market { display: flex; flex-direction: column; gap: var(--space-3); }
+.market { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.scroller { --scroll-panel-pad: var(--space-4); padding-top: var(--space-4); }
+.fixed { display: flex; flex-direction: column; gap: var(--space-3); padding-bottom: var(--space-3); }
 .bar { display: flex; align-items: center; gap: var(--space-2); }
 .bar > :first-child { flex: 1; min-width: 0; }
 .kinds { width: 160px; }

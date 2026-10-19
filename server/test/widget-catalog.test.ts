@@ -27,6 +27,52 @@ async function widget(id: string, manifest: unknown, withIndex = true) {
 
 const valid = (id: string) => ({ id, name: id, version: '1.0.0', minSize: [4, 2], defaultSize: [4, 2] })
 
+describe('WidgetCatalog with an author folder', () => {
+  it('reads it last, as source dev', async () => {
+    const dev = await mkdtemp(join(tmpdir(), 'widgets-dev-'))
+    await widget('clock', valid('clock'))
+    await into(dev, 'my-widget', valid('my-widget'))
+    const cat = new WidgetCatalog(dir, installed, dev)
+    await cat.scan()
+    expect(cat.entry('my-widget')!.source).toBe('dev')
+    expect(cat.folderOf('my-widget')).toBe(join(dev, 'my-widget'))
+    expect(cat.errors).toEqual([])
+  })
+
+  it('never lets a widget being written take a built-in or an installed id', async () => {
+    const dev = await mkdtemp(join(tmpdir(), 'widgets-dev-'))
+    await widget('clock', valid('clock'))
+    await into(installed, 'synology', valid('synology'))
+    await into(dev, 'clock', { ...valid('clock'), name: 'Mine' })
+    await into(dev, 'synology', { ...valid('synology'), name: 'Mine' })
+    const cat = new WidgetCatalog(dir, installed, dev)
+    await cat.scan()
+    expect(cat.entry('clock')!.source).toBe('builtin')
+    expect(cat.entry('synology')!.source).toBe('installed')
+    expect(cat.errors.map((e) => e.id).sort()).toEqual(['clock', 'synology'])
+    expect(cat.errors.find((e) => e.id === 'synology')!.error).toMatch(/installed|installé/)
+  })
+
+  it('refuses a built-in id even while the built-in itself does not parse', async () => {
+    const dev = await mkdtemp(join(tmpdir(), 'widgets-dev-'))
+    await widget('clock', '{ not json')
+    await into(dev, 'clock', valid('clock'))
+    const cat = new WidgetCatalog(dir, undefined, dev)
+    await cat.scan()
+    expect(cat.entry('clock')).toBeUndefined()
+    expect(cat.errors.map((e) => e.id)).toEqual(['clock', 'clock'])
+  })
+
+  it('refuses a built-in-only channel there too', async () => {
+    const dev = await mkdtemp(join(tmpdir(), 'widgets-dev-'))
+    await into(dev, 'peek', { ...valid('peek'), subscriptions: ['clipboard'] })
+    const cat = new WidgetCatalog(dir, undefined, dev)
+    await cat.scan()
+    expect(cat.entry('peek')).toBeUndefined()
+    expect(cat.errors.map((e) => e.id)).toEqual(['peek'])
+  })
+})
+
 describe('WidgetCatalog with an installed folder', () => {
   it('counts only the built-in folder in builtinIds', async () => {
     await widget('clock', valid('clock'))
@@ -63,6 +109,36 @@ describe('WidgetCatalog with an installed folder', () => {
     expect(cat.errors[0].id).toBe('clock')
     expect(cat.errors[0].error).toMatch(/clock/)
     expect(cat.errors[0].error).toMatch(/intégré|built-in/)
+  })
+
+  it('refuses an installed widget that asks for a built-in-only channel, and keeps the built-in one', async () => {
+    await widget('disk-map', { ...valid('disk-map'), subscriptions: ['disk-map'], commands: ['disk-map'] })
+    await into(installed, 'peek', { ...valid('peek'), subscriptions: ['disk-map'] })
+    await into(installed, 'poke', { ...valid('poke'), commands: ['disk-map'] })
+    await widget('clipboard', { ...valid('clipboard'), subscriptions: ['clipboard'], commands: ['clipboard'] })
+    await into(installed, 'paste', { ...valid('paste'), subscriptions: ['clipboard'] })
+    const cat = new WidgetCatalog(dir, installed)
+    await cat.scan()
+    expect(cat.entry('disk-map')!.manifest.commands).toEqual(['disk-map'])
+    expect(cat.get('peek')).toBeUndefined()
+    expect(cat.get('poke')).toBeUndefined()
+    expect(cat.entry('clipboard')!.manifest.subscriptions).toEqual(['clipboard'])
+    expect(cat.get('paste')).toBeUndefined()
+    expect(cat.errors.map((e) => e.id).sort()).toEqual(['paste', 'peek', 'poke'])
+    expect(cat.errors.find((e) => e.id === 'peek')!.error).toContain('disk-map')
+    expect(cat.errors.find((e) => e.id === 'paste')!.error).toContain('clipboard')
+  })
+
+  it('a registry manifest subscribing to companion is refused', async () => {
+    await widget('fremplay', { ...valid('fremplay'), subscriptions: ['companion'], commands: ['companion'] })
+    await into(installed, 'watch', { ...valid('watch'), subscriptions: ['companion'] })
+    await into(installed, 'steer', { ...valid('steer'), commands: ['companion'] })
+    const cat = new WidgetCatalog(dir, installed)
+    await cat.scan()
+    expect(cat.entry('fremplay')!.manifest.subscriptions).toEqual(['companion'])
+    expect(cat.get('watch')).toBeUndefined()
+    expect(cat.get('steer')).toBeUndefined()
+    expect(cat.errors.find((e) => e.id === 'watch')!.error).toContain('companion')
   })
 
   it('tolerates an installed folder that does not exist yet', async () => {

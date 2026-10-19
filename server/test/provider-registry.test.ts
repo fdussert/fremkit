@@ -398,3 +398,45 @@ describe('ProviderRegistry.reconsiderAccountEmail', () => {
     reg.stop()
   })
 })
+
+describe('ProviderRegistry.refresh', () => {
+  it('polls a watched channel at once, and leaves an unwatched one alone', async () => {
+    const published: unknown[] = []
+    let n = 0
+    const reg = new ProviderRegistry((_c, d) => published.push(d))
+    reg.register({ channel: 'x', intervalMs: 60_000, poll: async () => ({ n: n++ }) })
+    reg.refresh('x')
+    await vi.advanceTimersByTimeAsync(10)
+    expect(published).toEqual([])
+    reg.addSubscriber('x')
+    await vi.advanceTimersByTimeAsync(10)
+    reg.refresh('x')
+    await vi.advanceTimersByTimeAsync(10)
+    expect(published).toEqual([{ n: 0 }, { n: 1 }])
+    reg.stop()
+  })
+})
+
+describe('ProviderRegistry.refresh during a poll', () => {
+  it('polls again right after a poll already in flight', async () => {
+    const publish = vi.fn()
+    let n = 0
+    let release!: () => void
+    const gate = new Promise<void>(r => { release = r })
+    const reg = new ProviderRegistry(publish)
+    reg.register({
+      channel: 'x', intervalMs: 60_000,
+      poll: async () => { const k = n++; if (k === 0) await gate; return { k } },
+    })
+    reg.addSubscriber('x')
+    await vi.advanceTimersByTimeAsync(0)
+    expect(n).toBe(1)
+    reg.refresh('x')
+    expect(n).toBe(1)
+    release()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(n).toBe(2)
+    expect(publish).toHaveBeenLastCalledWith('x', { k: 1 })
+    reg.stop()
+  })
+})

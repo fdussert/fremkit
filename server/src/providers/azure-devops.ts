@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process'
 import type { ConnectionProviderContext } from '../connections/types.js'
-import type { CommandContext, Provider } from './types.js'
+import { isTrusted, type CommandContext, type Provider } from './types.js'
 import { USER_AGENT } from '../version.js'
 import { tr } from '../i18n.js'
 import { readJsonCapped } from '../net/json.js'
@@ -146,7 +146,7 @@ export function splitRuns(runs: AdoRun[]): { running: AdoRun[]; history: AdoRun[
 }
 
 const openUrl = (url: string): Promise<void> =>
-  new Promise((resolve, reject) => execFile('open', [url], (err) => (err ? reject(err) : resolve())))
+  new Promise((resolve, reject) => execFile('/usr/bin/open', [url], (err) => (err ? reject(err) : resolve())))
 
 export interface AdoProviderDeps {
   fetchFn?: typeof fetch
@@ -234,7 +234,7 @@ export function createAzureDevOpsProvider(ctx: ConnectionProviderContext, deps: 
       open: async (payload, ctx?: CommandContext) => {
         // Opening a page acts on the user's own Mac, so only a client on that Mac may ask for it.
         // Fail closed, like `dock.activate`: no context means the caller is treated as remote.
-        if (!ctx?.loopback) throw new Error(tr(undefined, 'provider.localOnly'))
+        if (!isTrusted(ctx)) throw new Error(tr(undefined, 'provider.localOnly'))
         const raw = String((payload as { url?: unknown })?.url ?? '')
         let parsed: URL
         try {
@@ -245,7 +245,9 @@ export function createAzureDevOpsProvider(ctx: ConnectionProviderContext, deps: 
         // `startsWith` would also accept `https://dev.azure.com.evil.com/…` or
         // `https://dev.azure.com@evil.com/…`; only the parsed origin is trustworthy.
         if (parsed.protocol !== 'https:' || parsed.origin !== 'https://dev.azure.com') throw new Error(tr(undefined, 'provider.refusedUrl'))
-        await open(raw)
+        // The parsed form, the one that was checked: the raw text is what a parser other than
+        // WHATWG (`open`'s) might read differently.
+        await open(parsed.href)
         return { opened: true }
       },
     },

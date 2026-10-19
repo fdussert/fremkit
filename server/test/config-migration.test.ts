@@ -2,10 +2,19 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mkdtemp, readdir, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { HOMEY_DECLARED_TYPE, migrateConfig, migrateHomeySecret } from '../src/config/migrate.js'
+import {
+  HOMEY_DECLARED_TYPE, migrateConfig, migrateHomeySecret, normalizeV3, renameCollisions, toV4,
+} from '../src/config/migrate.js'
 import type { SecretStore } from '../src/secrets/types.js'
 import { ConfigStore } from '../src/config/store.js'
-import { DEFAULT_CONFIG } from '../src/config/schema.js'
+import { DEFAULT_CONFIG, validateLayout, type LayoutManifest } from '../src/config/schema.js'
+import { V3ConfigSchema } from '../src/config/v3.js'
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+
+/** A real-shaped v3 dashboard, with placeholder data: three pages, a bar, and every legacy quirk. */
+const realText = readFileSync(fileURLToPath(new URL('./fixtures/config-v3-real.json', import.meta.url)), 'utf8')
+const realFixture = JSON.parse(realText) as Record<string, any>
 
 const v1 = {
   version: 1,
@@ -16,21 +25,20 @@ const v1 = {
 describe('migrateConfig', () => {
   it('doubles the grid and every instance, and fills the new fields', () => {
     const c = migrateConfig(v1)
-    expect(c.version).toBe(3)
-    expect(c.display).toEqual({ cols: 64, rows: 16, cell: 40, autoCycleSeconds: 30, theme: 'fremkit' })
-    expect(c.pages[0].widgets[0]).toEqual({
-      instanceId: 'clock-1', widgetId: 'clock', x: 8, y: 2, w: 16, h: 4,
-      showTitle: true, settings: { seconds: true },
-    })
+    expect(c.version).toBe(4)
+    expect(c.theme).toBe('fremkit')
+    expect(c.screens[0].display).toEqual({ cols: 64, rows: 16, cell: 40, autoCycleSeconds: 30 })
+    expect(c.screens[0].pages[0].items[0]).toEqual({ instanceId: 'clock-1', x: 8, y: 2, w: 16, h: 4 })
+    expect(c.widgets['clock-1']).toEqual({ widgetId: 'clock', showTitle: true, settings: { seconds: true } })
   })
   it('treats a config without a version as v1', () => {
     const { version, ...noVersion } = v1
     expect(version).toBe(1)
-    expect(migrateConfig(noVersion).display.cols).toBe(64)
+    expect(migrateConfig(noVersion).screens[0].display.cols).toBe(64)
   })
-  it('accepts a v2 config unchanged', () => {
-    const c2 = migrateConfig(v1)
-    expect(migrateConfig(c2)).toEqual(c2)
+  it('accepts a v4 config unchanged', () => {
+    const c4 = migrateConfig(v1)
+    expect(migrateConfig(c4)).toEqual(c4)
   })
   it('keeps older dashboards opted out of Codex account and history reads', () => {
     const old = migrateConfig(v1)
@@ -45,6 +53,62 @@ describe('migrateConfig', () => {
       codexHistorySources: [],
     })
   })
+  describe('labs.devices', () => {
+    /** A v4 file as a release before the flag wrote it: no `labs` key at all. */
+    const withoutLabs = (screens: Record<string, unknown>[]) => {
+      const c = JSON.parse(JSON.stringify(migrateConfig(v1))) as Record<string, any>
+      delete c.labs
+      c.screens = screens
+      return c
+    }
+    const edge = () => JSON.parse(JSON.stringify(migrateConfig(v1).screens[0])) as Record<string, any>
+    const device = () => ({ ...edge(), id: 'kitchen', name: 'Kitchen', kind: 'device' })
+
+    it('starts off for a fresh install and for an older file', () => {
+      expect(DEFAULT_CONFIG.labs).toEqual({ devices: false, companion: false })
+      expect(migrateConfig(v1).labs).toEqual({ devices: false, companion: false })
+    })
+    it('starts off for a v4 file with only the Edge', () => {
+      expect(migrateConfig(withoutLabs([edge()])).labs.devices).toBe(false)
+    })
+    it('starts on for a v4 file with more than one screen', () => {
+      expect(migrateConfig(withoutLabs([edge(), { ...edge(), id: 'edge-2', name: 'Second' }])).labs.devices).toBe(true)
+    })
+    it('starts on for a v4 file whose only screen is a device one', () => {
+      expect(migrateConfig(withoutLabs([device()])).labs.devices).toBe(true)
+    })
+    it('keeps a stated value either way, whatever the screens', () => {
+      const off = { ...withoutLabs([edge(), device()]), labs: { devices: false } }
+      expect(migrateConfig(off).labs.devices).toBe(false)
+      const on = { ...withoutLabs([edge()]), labs: { devices: true } }
+      expect(migrateConfig(on).labs.devices).toBe(true)
+    })
+  })
+  describe('labs.companion', () => {
+    /** A v4 file holding these widgets, with `labs` as given (absent when undefined). */
+    const v4 = (widgetIds: string[], labs?: Record<string, boolean>) => {
+      const c = JSON.parse(JSON.stringify(migrateConfig(v1))) as Record<string, any>
+      delete c.labs
+      if (labs) c.labs = labs
+      c.widgets = Object.fromEntries(widgetIds.map((id, i) => [`${id}-${i}`, { widgetId: id, showTitle: false, settings: {} }]))
+      c.screens[0].pages[0].items = []
+      c.screens[0].nav = []
+      return c
+    }
+
+    it('starts off for a v4 file with no Fremplay, the devices switch stated or not', () => {
+      expect(migrateConfig(v4(['clock'])).labs.companion).toBe(false)
+      expect(migrateConfig(v4(['clock'], { devices: true })).labs).toEqual({ devices: true, companion: false })
+    })
+    it('starts on for a v4 file that already holds a Fremplay widget', () => {
+      expect(migrateConfig(v4(['clock', 'fremplay'])).labs.companion).toBe(true)
+      expect(migrateConfig(v4(['fremplay'], { devices: false })).labs).toEqual({ devices: false, companion: true })
+    })
+    it('keeps a stated value either way, whatever the widgets', () => {
+      expect(migrateConfig(v4(['fremplay'], { devices: false, companion: false })).labs.companion).toBe(false)
+      expect(migrateConfig(v4(['clock'], { devices: false, companion: true })).labs.companion).toBe(true)
+    })
+  })
   it('rejects an unknown version with a clear message', () => {
     // Translated now, so match either language rather than the French wording.
     expect(() => migrateConfig({ ...v1, version: 7 })).toThrow(/(version de config inconnue|unknown config version).*7/)
@@ -55,15 +119,15 @@ describe('ConfigStore migration', () => {
   let dir: string
   beforeEach(async () => { dir = await mkdtemp(join(tmpdir(), 'fremkit-mig-')) })
 
-  it('rewrites a v1 file as v3 and keeps the original as .bak', async () => {
+  it('rewrites a v1 file as v4 and keeps the original as .bak', async () => {
     const file = join(dir, 'fremkit.json')
     await writeFile(file, JSON.stringify(v1, null, 2))
     const cfg = await new ConfigStore(file).load()
-    expect(cfg.version).toBe(3)
-    expect(JSON.parse(await readFile(file, 'utf8')).display.cell).toBe(40)
+    expect(cfg.version).toBe(4)
+    expect(JSON.parse(await readFile(file, 'utf8')).screens[0].display.cell).toBe(40)
     expect(JSON.parse(await readFile(file + '.bak', 'utf8'))).toEqual(v1)
   })
-  it('leaves a v2 file untouched (no .bak rewrite)', async () => {
+  it('leaves a v4 file untouched (no .bak rewrite)', async () => {
     const file = join(dir, 'fremkit.json')
     await writeFile(file, JSON.stringify(migrateConfig(v1), null, 2))
     const before = await readFile(file, 'utf8')
@@ -93,8 +157,8 @@ describe('ConfigStore migration', () => {
     const err = vi.spyOn(console, 'error').mockImplementation(() => {})
     const cfg = await new ConfigStore(file).load()
     err.mockRestore()
-    expect(cfg.pages[0].id).toBe('home')
-    expect(JSON.parse(await readFile(file, 'utf8')).pages[0].id).toBe('home')
+    expect(cfg.screens[0].pages[0].id).toBe('home')
+    expect(JSON.parse(await readFile(file, 'utf8')).screens[0].pages[0].id).toBe('home')
     const corrupt = (await readdir(dir)).filter((f) => f.startsWith('fremkit.json.corrupt-'))
     expect(corrupt).toHaveLength(1)
     expect(await readFile(join(dir, corrupt[0]), 'utf8')).toBe('{ not json')
@@ -153,6 +217,16 @@ describe('privacy settings on an older config', () => {
     expect(migrateConfig({ version: 1, pages: [v1page('clock')] }).privacy.claudeAccountUsage).toBe(false)
   })
 
+  it('keeps inferring it for a v3 file, from a tile or from the bar', () => {
+    const v3 = (display: object, widgetId: string) => migrateConfig({
+      version: 3, display, pages: [page([widget(widgetId)])],
+    }).privacy.claudeAccountUsage
+    expect(v3({}, 'claude-usage')).toBe(true)
+    expect(v3({ navWidgets: [{ instanceId: 'n1', widgetId: 'claude-usage' }] }, 'clock')).toBe(true)
+    expect(v3({}, 'clock')).toBe(false)
+    expect(migrateConfig(realFixture).privacy.claudeAccountUsage).toBe(true)
+  })
+
   it('leaves a fresh install off', () => {
     expect(DEFAULT_CONFIG.privacy.claudeAccountUsage).toBe(false)
   })
@@ -175,23 +249,23 @@ describe('privacy.showAccountEmail on an older config', () => {
 
   it('starts off for every config written before it existed', () => {
     // Even next to the Claude opt-in being inferred on: reading the usage is not showing the e-mail.
-    const v3 = migrateConfig({ ...migrateConfig(v1), privacy: { claudeAccountUsage: true } })
+    const v4 = migrateConfig({ ...migrateConfig(v1), privacy: { claudeAccountUsage: true } })
     // toMatchObject: other privacy keys arrive in other branches and must not break this.
-    expect(v3.privacy).toMatchObject({ claudeAccountUsage: true, showAccountEmail: false })
+    expect(v4.privacy).toMatchObject({ claudeAccountUsage: true, showAccountEmail: false })
     expect(migrateConfig({ version: 2, pages: [page([widget('claude-usage')])] }).privacy)
       .toMatchObject({ claudeAccountUsage: true, showAccountEmail: false })
     expect(migrateConfig(v1).privacy.showAccountEmail).toBe(false)
   })
 
   it('respects the field once the file carries it', () => {
-    const v3 = (showAccountEmail: boolean) => migrateConfig({
+    const v4 = (showAccountEmail: boolean) => migrateConfig({
       ...migrateConfig(v1), privacy: { claudeAccountUsage: false, showAccountEmail },
     }).privacy.showAccountEmail
-    expect(v3(true)).toBe(true)
-    expect(v3(false)).toBe(false)
+    expect(v4(true)).toBe(true)
+    expect(v4(false)).toBe(false)
   })
 
-  it('leaves a v3 file without the field untouched on disk', async () => {
+  it('leaves a v4 file without the field untouched on disk', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'fremkit-mig-'))
     const file = join(dir, 'fremkit.json')
     const { privacy: _privacy, ...rest } = migrateConfig(v1)
@@ -312,7 +386,7 @@ describe('the Homey connection, v2 → v3', () => {
 
   it('moves the type and leaves everything else where it was', () => {
     const cfg = migrateConfig(v2())
-    expect(cfg.version).toBe(3)
+    expect(cfg.version).toBe(4)
     expect(cfg.connections[0]).toMatchObject({
       id: 'homey-1', type: HOMEY_DECLARED_TYPE, name: 'Maison', fields: { host: '192.0.2.30' },
     })
@@ -322,7 +396,7 @@ describe('the Homey connection, v2 → v3', () => {
     // The id is what an instance stores, and it does not change — so nothing has to be re-picked
     // on a dashboard that was already working.
     const cfg = migrateConfig(v2())
-    expect(cfg.pages[0].widgets[0].settings).toEqual({ connection: 'homey-1', all: true })
+    expect(cfg.widgets['hd-1'].settings).toEqual({ connection: 'homey-1', all: true })
   })
 
   it('touches no other connection', () => {
@@ -338,13 +412,13 @@ describe('the Homey connection, v2 → v3', () => {
     ])
   })
 
-  it('is idempotent: a v3 file is already done', () => {
+  it('is idempotent: a v4 file is already done', () => {
     const once = migrateConfig(v2())
     expect(migrateConfig(once)).toEqual(once)
   })
 
   it('refuses a version it does not know', () => {
-    expect(() => migrateConfig({ version: 4, pages: [{ id: 'p', name: 'P', widgets: [] }] })).toThrow()
+    expect(() => migrateConfig({ version: 5, pages: [{ id: 'p', name: 'P', widgets: [] }] })).toThrow()
   })
 })
 
@@ -406,5 +480,153 @@ describe('the Homey key', () => {
       pages: [{ id: 'p', name: 'P', widgets: [] }],
     }), secrets)
     expect(secrets.all).toEqual({ 'homey-1/token': 'abc', 'gh-1/apiKey': 'ghp', 'flows-1/token': 'flow' })
+  })
+})
+
+describe('renameCollisions', () => {
+  it('keeps the first occurrence and numbers the later ones', () => {
+    expect(renameCollisions(['a', 'b', 'a', 'a'])).toEqual(['a', 'b', 'a-2', 'a-3'])
+  })
+  it('skips a suffix another id already holds, wherever it sits', () => {
+    expect(renameCollisions(['a', 'a-2', 'a'])).toEqual(['a', 'a-2', 'a-3'])
+    // A later original keeps its id: the rename made before it reaching it never takes it.
+    expect(renameCollisions(['a', 'a', 'a-2'])).toEqual(['a', 'a-3', 'a-2'])
+  })
+  it('stays within the 64 characters an instance id may have', () => {
+    const long = 'x'.repeat(64)
+    const renamed = renameCollisions([long, long])
+    expect(renamed).toEqual([long, 'x'.repeat(62) + '-2'])
+    expect(renamed[1]).toHaveLength(64)
+  })
+  it('changes nothing when every id is unique', () => {
+    expect(renameCollisions(['clock-1', 'cpu-1'])).toEqual(['clock-1', 'cpu-1'])
+  })
+})
+
+describe('v3 → v4', () => {
+  /** `data/fremkit.example.json` as it shipped at v3; the file itself is rewritten as v4 later. */
+  const example = {
+    version: 3,
+    display: {
+      cols: 64, rows: 16, cell: 40, autoCycleSeconds: 0,
+      background: { image: 'fremkit-wallpaper.png', fit: 'cover' },
+    },
+    connections: [],
+    secrets: { backend: 'keychain' },
+    locale: 'en',
+    pages: [{
+      id: 'home', name: 'Home',
+      widgets: [{ instanceId: 'clock-1', widgetId: 'clock', x: 0, y: 0, w: 16, h: 4, showTitle: true, appearance: 'panel', settings: {} }],
+    }],
+  }
+
+  it('migrates the v3 example', () => {
+    const c = migrateConfig(example)
+    expect(c.version).toBe(4)
+    expect(c.theme).toBe('fremkit')
+    expect(c.screens).toHaveLength(1)
+    const [screen] = c.screens
+    expect(screen).toMatchObject({ id: 'edge', name: 'Xeneon Edge', kind: 'edge' })
+    expect(screen.display).toEqual({
+      cols: 64, rows: 16, cell: 40, autoCycleSeconds: 0,
+      background: { image: 'fremkit-wallpaper.png', fit: 'cover' },
+    })
+    expect('theme' in screen.display).toBe(false)
+    expect(screen.nav).toEqual([])
+    expect(screen.pages).toEqual([{ id: 'home', name: 'Home', items: [{ instanceId: 'clock-1', x: 0, y: 0, w: 16, h: 4 }] }])
+    expect(c.widgets).toEqual({ 'clock-1': { widgetId: 'clock', showTitle: true, settings: {} } })
+  })
+
+  it('keeps the named-page style on the Edge screen, and leaves dots absent', () => {
+    const named = migrateConfig({ ...example, display: { ...example.display, navStyle: 'names' } })
+    expect(named.screens[0].display.navStyle).toBe('names')
+    expect('navStyle' in migrateConfig(example).screens[0].display).toBe(false)
+    expect(() => migrateConfig({ ...example, display: { ...example.display, navStyle: 'tabs' } })).toThrow()
+  })
+
+  it('moves the theme to the top and keeps the rest of the display', () => {
+    const c = migrateConfig(realFixture)
+    expect(c.theme).toBe('edge')
+    expect(c.screens[0].display).toEqual({
+      cols: 64, rows: 17, cell: 40, autoCycleSeconds: 30, navHeight: 40, navOpacity: 0.6,
+      tileOpacity: 0.8, adminGesture: 'longPress', background: { image: 'fremkit-wallpaper.png', fit: 'cover' },
+    })
+    // And the rest of the v2/v3 rewrites still happen on the way.
+    expect(c.connections.find((x) => x.id === 'bambu-1')?.fields.model).toBe('other')
+  })
+
+  it('renders the real fixture identically', () => {
+    const v3 = normalizeV3(V3ConfigSchema.parse(structuredClone(realFixture)))
+    const c = migrateConfig(realFixture)
+    const screen = c.screens.find((s) => s.id === 'edge')!
+    expect(screen.pages.map((p) => p.id)).toEqual(v3.pages.map((p) => p.id))
+    for (const page of v3.pages) {
+      const migrated = screen.pages.find((p) => p.id === page.id)!
+      expect(migrated.name).toBe(page.name)
+      expect(migrated.items).toHaveLength(page.widgets.length)
+      page.widgets.forEach((tile, i) => {
+        const { instanceId: _id, x, y, w, h, ...rest } = tile
+        const placement = migrated.items[i]
+        expect({ x: placement.x, y: placement.y, w: placement.w, h: placement.h }, `${page.id}/${tile.instanceId}`).toEqual({ x, y, w, h })
+        expect(c.widgets[placement.instanceId], `${page.id}/${tile.instanceId}`).toEqual(rest)
+      })
+    }
+    const bar = v3.display.navWidgets ?? []
+    expect(screen.nav).toHaveLength(bar.length)
+    bar.forEach((entry, i) => {
+      const item = screen.nav[i]
+      expect(item.slot).toBe(entry.slot)
+      expect(item.popup).toBe(entry.popup)
+      expect(c.widgets[item.instanceId]).toEqual({ widgetId: entry.widgetId, showTitle: true, settings: entry.settings })
+    })
+    // Nothing lost, nothing invented: one widget per v3 tile and bar entry.
+    const tiles = v3.pages.reduce((n, p) => n + p.widgets.length, 0)
+    expect(Object.keys(c.widgets)).toHaveLength(tiles + bar.length)
+  })
+
+  it('renames the duplicate id on page 3 and the bar', () => {
+    const c = migrateConfig(realFixture)
+    const [home, work, media] = c.screens[0].pages
+    // The first occurrence keeps its id, pages in order, then the bar.
+    expect(home.items[0].instanceId).toBe('clock-1')
+    expect(media.items[0].instanceId).toBe('clock-1-2')
+    expect(work.items[1].instanceId).toBe('battery-1')
+    expect(c.screens[0].nav.map((n) => n.instanceId)).toEqual(['battery-1-2', 'cpu-1'])
+    // A v3 duplicate was two independent tiles: each keeps its own settings.
+    expect(c.widgets['clock-1'].settings.seconds).toBe(false)
+    expect(c.widgets['clock-1-2'].settings.seconds).toBe(true)
+    expect(c.widgets['clock-1-2'].bgColor).toBe('#123456')
+    expect(c.widgets['battery-1'].settings).toEqual({ showPercent: false })
+    expect(c.widgets['battery-1'].accentMode).toBe('fill')
+    expect(c.widgets['battery-1-2']).toEqual({ widgetId: 'battery', showTitle: true, settings: { showPercent: true } })
+  })
+
+  it('keeps opacity and converts appearance before the conversion', () => {
+    const c = migrateConfig(realFixture)
+    expect(c.widgets['weather-1'].opacity).toBe(0)
+    expect(c.widgets['sysmon-1'].opacity).toBe(0.4)
+    expect(c.widgets['claude-1']).toMatchObject({ accentMode: 'frame', accentColor: '#d9b36a', title: 'Usage' })
+    expect(c.widgets['clock-1'].settings.cities).toEqual([
+      { label: 'New York', timezone: 'America/New_York', hour12: false, seconds: false },
+      { label: 'Tokyo', timezone: 'Asia/Tokyo', hour12: false, seconds: false },
+    ])
+    expect(JSON.stringify(c)).not.toMatch(/appearance|accentStyle|navWidgets/)
+  })
+
+  it('migrated configs pass validateLayout', () => {
+    const navIds = new Set((realFixture.display.navWidgets as { widgetId: string }[]).map((n) => n.widgetId))
+    const manifests = new Map<string, LayoutManifest>()
+    for (const c of [migrateConfig(realFixture), migrateConfig(example)]) {
+      for (const w of Object.values(c.widgets)) {
+        manifests.set(w.widgetId, navIds.has(w.widgetId) ? { minSize: [1, 1], compact: { width: 4 } } : { minSize: [1, 1] })
+      }
+      expect(validateLayout(c, manifests)).toEqual([])
+    }
+  })
+
+  it('toV4 builds one Edge screen from a parsed v3 config', () => {
+    const c = toV4(normalizeV3(V3ConfigSchema.parse(structuredClone(example))))
+    expect(c.screens.map((s) => s.id)).toEqual(['edge'])
+    expect(c.widgets['clock-1'].widgetId).toBe('clock')
   })
 })

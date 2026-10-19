@@ -4,6 +4,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 import TileIconPicker from '../src/admin/TileIconPicker.vue'
 import { useAdminStore } from '../src/admin/store'
 import type { Config, WidgetManifest } from '../src/shared/types'
+import { tileOf } from '../src/shared/screens'
 
 const MANIFEST = {
   id: 'clock', name: { fr: 'Horloge', en: 'Clock' }, version: '1.0.0', sdk: 1, icon: 'clock',
@@ -12,14 +13,22 @@ const MANIFEST = {
 
 function config(): Config {
   return {
-    version: 3, locale: 'en',
-    display: { cols: 64, rows: 16, cell: 40, autoCycleSeconds: 0 },
+    version: 4, locale: 'en',
     connections: [], secrets: { backend: 'file' },
     privacy: { claudeAccountUsage: false, showAccountEmail: false, codexAccount: false, codexHistorySources: [], macmonTemperature: false },
-    pages: [{ id: 'home', name: 'Home', widgets: [
-      { instanceId: 'c-1', widgetId: 'clock', x: 0, y: 0, w: 16, h: 4, showTitle: true, settings: {} },
-      { instanceId: 'c-2', widgetId: 'clock', x: 16, y: 0, w: 16, h: 4, showTitle: true, settings: {}, icon: { kind: 'file', name: '1-nas.svg' } },
-    ] }],
+    widgets: {
+      'c-1': { widgetId: 'clock', showTitle: true, settings: {} },
+      'c-2': { widgetId: 'clock', showTitle: true, settings: {}, icon: { kind: 'file', name: '1-nas.svg' } },
+    },
+    screens: [{
+      id: 'edge', name: 'Xeneon Edge', kind: 'edge',
+      display: { cols: 64, rows: 16, cell: 40, autoCycleSeconds: 0 },
+      nav: [],
+      pages: [{ id: 'home', name: 'Home', items: [
+        { instanceId: 'c-1', x: 0, y: 0, w: 16, h: 4 },
+        { instanceId: 'c-2', x: 16, y: 0, w: 16, h: 4 },
+      ] }],
+    }],
   } as unknown as Config
 }
 
@@ -47,7 +56,13 @@ beforeEach(() => {
 })
 afterEach(() => { vi.unstubAllGlobals() })
 
-const tile = (id: string) => useAdminStore().state.config!.pages[0].widgets.find((w) => w.instanceId === id)!
+/** The shared widget as stored, for a test to set up before mounting. */
+const widget = (id: string) => useAdminStore().state.config!.widgets[id]
+/** The tile as the inspector hands it to the picker: the shared widget joined with its placement. */
+const tile = (id: string) => {
+  const c = useAdminStore().state.config!
+  return tileOf(c, c.screens[0].pages[0].items.find((p) => p.instanceId === id)!)
+}
 const mountFor = (id: string, manifest: WidgetManifest | undefined = MANIFEST) =>
   mount(TileIconPicker, { props: { instance: tile(id), manifest }, attachTo: document.body })
 /** Opens the picker on c-2, which wears the imported file, so it lands on the files tab. */
@@ -85,7 +100,7 @@ describe('the Icon field', () => {
     expect(w.find('.picker').exists()).toBe(true)
   })
   it('is disabled while the title is hidden', () => {
-    tile('c-1').showTitle = false
+    widget('c-1').showTitle = false
     const w = mountFor('c-1')
     expect(w.find('[data-action="add"]').exists()).toBe(false)
     // Either language: the admin's locale follows the config, applied by a watcher.
@@ -112,7 +127,7 @@ describe('the Icon field', () => {
     expect(fetchMock).toHaveBeenCalledWith('/api/tile-icons/1-nas.svg', expect.objectContaining({ method: 'DELETE' }))
   })
   it('shows a referenced file that is no longer in the library as missing', async () => {
-    tile('c-2').icon = { kind: 'file', name: '9-gone.svg' }
+    widget('c-2').icon = { kind: 'file', name: '9-gone.svg' }
     const w = mountFor('c-2')
     await w.find('[data-action="change"]').trigger('click')
     await flushPromises()
@@ -136,9 +151,11 @@ describe('the Icon field', () => {
     const w = mountFor('c-2')
     await w.find('[data-action="change"]').trigger('click')
     await flushPromises()
+    // The inspector re-joins the tile on every change; the test hands the new one over the same way.
     useAdminStore().updateInstance('c-2', { showTitle: false })
-    await flushPromises()
+    await w.setProps({ instance: tile('c-2') })
     useAdminStore().updateInstance('c-2', { showTitle: true })
+    await w.setProps({ instance: tile('c-2') })
     await flushPromises()
     expect(w.find('.picker').exists()).toBe(false)
   })
@@ -147,7 +164,7 @@ describe('the Icon field', () => {
     expect(w.find('.tint + .tint-hint').text()).toMatch(/silhouette/i)
   })
   it('switches a file back to tinted by dropping the key', async () => {
-    tile('c-2').icon = { kind: 'file', name: '1-nas.svg', tint: false }
+    widget('c-2').icon = { kind: 'file', name: '1-nas.svg', tint: false }
     const w = await openOnFile()
     await w.find('.tint input').setValue(true)
     expect(tile('c-2').icon).toEqual({ kind: 'file', name: '1-nas.svg' })
@@ -196,7 +213,7 @@ describe('the Icon field', () => {
     expect(tile('c-2').icon).toBeUndefined()
   })
   it('forgets a half-confirmed delete when another tile is selected', async () => {
-    tile('c-1').icon = { kind: 'file', name: '1-nas.svg' }
+    widget('c-1').icon = { kind: 'file', name: '1-nas.svg' }
     const w = await openOnFile()
     await w.find('[data-delete="1-nas.svg"]').trigger('click')
     expect(w.find('[data-delete="1-nas.svg"]').classes()).toContain('danger')

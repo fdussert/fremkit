@@ -1,0 +1,7 @@
+{ "id": "zz-away",
+  "name": { "fr": "Test zz-away", "en": "Test zz-away" },
+  "version": "1.0.0",
+  "description": { "fr": "Widget hostile des tests de bout en bout", "en": "A hostile widget of the end-to-end tests" },
+  "category": "other",
+  "icon": "bug", "minSize": [8, 4], "defaultSize": [8, 4],
+  "settingsSchema": {} }

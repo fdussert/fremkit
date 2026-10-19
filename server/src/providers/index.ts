@@ -8,6 +8,7 @@ import { createCleanshotProvider } from './cleanshot.js'
 import { createClipboardProvider } from './clipboard.js'
 import { createNetworkProvider } from './network.js'
 import { createBatteryProvider } from './battery.js'
+import { createRtkProvider } from './rtk.js'
 
 export const providers: Provider[] = [
   createDockerProvider(),
@@ -20,4 +21,5 @@ export const providers: Provider[] = [
   createClipboardProvider(),
   createNetworkProvider(),
   createBatteryProvider(),
+  createRtkProvider(),
 ]

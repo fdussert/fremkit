@@ -83,6 +83,8 @@ echo "==> packaging them as PKCS#12"
     -name "$IDENTITY" -passout "pass:$P12_PASSWORD" -out "$WORK/identity.p12" >/dev/null 2>&1
 
 echo "==> importing into the login keychain"
+# The PKCS#12's friendly name (`-name` above) becomes the private key's label, which is how the
+# partition-list step below finds this key and no other.
 # `-x` marks the private key non-extractable: it can sign, but it cannot be exported back out of
 # the keychain. Only codesign is allowed to use it — `security` itself was on that list, which
 # let any script dump the key with `security export`.
@@ -96,9 +98,23 @@ security add-trusted-cert -p codeSign -k "$KEYCHAIN" "$WORK/cert.pem"
 # Without this, codesign asks for the login password on every single build. It needs the keychain
 # password, which is prompted for interactively rather than passed as an empty `-k ""` — that only
 # ever worked on a keychain with no password, and silently failed on every other Mac.
-# stdout is noise; stderr is not — a password prompt or a real error has to be visible.
-security set-key-partition-list -S apple-tool:,apple:,codesign: -s "$KEYCHAIN" >/dev/null \
-  || echo "note: could not pre-authorise codesign; macOS may ask for your password on each build."
+#
+# Only the key just imported: `-l` matches the label the PKCS#12 gave it (the identity's name)
+# and `-t private` keeps it to private keys. Without them, `-s` alone matches *every* signing key
+# in the login keychain — other Developer IDs, VPN, S/MIME and client certificates — and would
+# rewrite all their partition lists. The command prints one record per key it changed; anything
+# but exactly one is reported.
+# stderr is not redirected — a password prompt or a real error has to be visible.
+if CHANGED=$(security set-key-partition-list -S apple-tool:,apple:,codesign: -s -t private \
+        -l "$IDENTITY" "$KEYCHAIN"); then
+    COUNT=$(printf '%s\n' "$CHANGED" | grep -c '^keychain: ' || true)
+    if [ "$COUNT" != "1" ]; then
+        echo "warning: expected to pre-authorise exactly one key labelled \"$IDENTITY\", changed $COUNT." >&2
+        echo "         Check Keychain Access for other keys with that name." >&2
+    fi
+else
+    echo "note: could not pre-authorise codesign; macOS may ask for your password on each build."
+fi
 
 if security find-identity -v -p codesigning 2>/dev/null | grep -q "\"$IDENTITY\""; then
     echo

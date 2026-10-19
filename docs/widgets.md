@@ -17,6 +17,8 @@ To write your own, see [writing-widgets.md](writing-widgets.md).
 | [clock](#clock) | Time, date and other cities | — | 5 cells | 16 × 4 |
 | [cpu](#cpu) | CPU load and temperature | — | 4 cells | 8 × 4 |
 | [disk](#disk) | Disk usage and available space | — | — | 16 × 4 |
+| [disk-map](#disk-map) | What fills the disk, as rings you drill into | — | 2 cells | 24 × 9 |
+| [fremplay](#fremplay) | The video of a Chrome tab, with touch controls | — | 3 cells | 28 × 16 |
 | [memory](#memory) | Memory usage, available RAM and swap | — | 4 cells | 8 × 4 |
 | [uptime](#uptime) | Time since the Mac last booted | — | — | 8 × 4 |
 | [network](#network) | Live network throughput | — | 6 cells | 12 × 4 |
@@ -173,9 +175,54 @@ Minimum size 8 × 4, default 8 × 4. Compact width 4 cells.
 
 ## disk
 
-*Disks* shows used and available capacity of the Mac disk and volumes under `/Volumes`. On APFS it prefers the data volume to avoid presenting the sealed system volume as the usable disk. The Mac disk uses container size minus reported available space so its numbers add up. System disk readings omit purgeable capacity, so free space may be lower than Finder shows.
+*Disks* shows used and available capacity of the Mac disk and volumes under `/Volumes`. On APFS it prefers the data volume to avoid presenting the sealed system volume as the usable disk. The Mac disk uses container size minus reported available space so its numbers add up. APFS volumes that share one container — the Mac disk and a volume added to it in Disk Utility, or two volumes of one external disk — are one row: macOS reports each of them with the whole container's size and the same free space, so the row's bar is split into one segment per volume, then *System* for what the rest of the container holds (system volumes, snapshots). Sizes are in decimal units, as Finder and Disk Utility count them. System disk readings omit purgeable capacity, so free space may be lower than Finder shows.
 
 Minimum size 8 × 4, default 16 × 4. No settings.
+
+## disk-map
+
+*Disk map* — what takes the space, DaisyDisk-style: the folders of the home folder or of a volume
+as rings around the folder in the centre, and beside them the same folders as a list with their
+sizes. Tap a segment or a row to go into that folder, tap the centre or a crumb of the path to go
+back up, hold a row or a segment to show it in Finder. ↻ scans again, ✕ stops a scan. Nothing is
+ever deleted or moved: the widget only looks.
+
+Sizes are the space a file actually takes on the disk, as `du` counts it; a hard-linked file counts
+once, a symlink is never followed, another volume mounted inside is not entered, and an iCloud
+file that is only in the cloud counts what it takes locally — it is never downloaded. A folder that
+could not be read is drawn hatched with a lock and counted apart, never as small: see
+[troubleshooting](troubleshooting.md#the-disk-map-says-folders-could-not-be-read).
+
+A scan runs only when asked — the ↻, or the first time a root is shown — never on a timer, one at
+a time. Under the helper it uses `fremkit-scan`, which ships inside the helper's bundle and reads
+at low priority; without the helper (`pnpm dev`) it falls back to `du`, slower and without single
+files. The last scan is kept under `data/disk-map/` and shown with its date after a restart.
+
+Minimum size 8 × 6, default 24 × 9. A tile at least 1.6 times wider than tall gets the list
+beside the ring; a narrower one, and the compact rendering (2 cells), show the ring alone.
+
+| Setting | Type | Default | Scope | What it is |
+|---|---|---|---|---|
+| `root` | enum | `home` | both | `home` (the home folder) or `volume` |
+| `volume` | string | `""` | both | With `volume`: its name under `/Volumes`. Network volumes are not offered |
+| `rings` | enum | `3` | tile | Rings around the centre, 2 to 4 |
+
+## fremplay
+
+*Fremplay* — the video playing in a Chrome tab, sent by the Fremkit Companion extension, with
+its title, its site and its position. A tap shows the controls for four seconds: −10 s, play or
+pause, +10 s, volume down and up, mute, fill, bring the tab forward in Chrome, and stop sharing.
+Until a share starts the tile says what is missing: the extension, the browser, or a video.
+
+Minimum size 8 × 5, default 28 × 16 — a full page of the Edge is where it is meant to be. In the
+bar it is a live thumbnail; a tap opens the full widget in the popover.
+
+| Setting | What it does |
+|---|---|
+| **Video framing** | *Whole, with bars* (the default) shows the whole picture; *Fill, cropping* fills the tile and crops what overflows. The fill button on the Edge swaps the two for the current share only. |
+
+The picture goes from Chrome to the dashboard directly, over this Mac; the server only passes
+the connection details along.
 
 ## memory
 

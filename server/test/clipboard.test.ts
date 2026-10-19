@@ -5,7 +5,7 @@ import {
   type ClipboardSnapshot, type Pasteboard,
 } from '../src/providers/clipboard.js'
 
-const LOCAL = { loopback: true }
+const LOCAL = { loopback: true, paired: false }
 
 /** A pasteboard whose content the test sets, and whose writes it inspects. */
 function fake(initial = '') {
@@ -103,7 +103,7 @@ describe('clipboard commands', () => {
     await p.poll!()
     expect(await p.commands!.copy({ id: 'nope' }, LOCAL)).toMatchObject({ ok: false })
     expect(await p.commands!.copy({}, LOCAL)).toMatchObject({ ok: false })
-    expect(await p.commands!.copy({ id: '1' }, { loopback: false })).toMatchObject({ ok: false })
+    expect(await p.commands!.copy({ id: '1' }, { loopback: false, paired: false })).toMatchObject({ ok: false })
     expect(await p.commands!.copy({ id: '1' })).toMatchObject({ ok: false })
     expect(written).toEqual([])
   })
@@ -127,7 +127,7 @@ describe('clipboard commands', () => {
     const { pasteboard } = fake('one')
     const p = createClipboardProvider(pasteboard, now)
     await p.poll!()
-    expect(await p.commands!.clear(null, { loopback: false })).toMatchObject({ ok: false })
+    expect(await p.commands!.clear(null, { loopback: false, paired: false })).toMatchObject({ ok: false })
     expect(((await p.poll!()) as ClipboardSnapshot).entries.map((e) => e.preview)).toEqual(['one'])
   })
   it('asks the pasteboard for its types once while the same concealed text sits on it', async () => {

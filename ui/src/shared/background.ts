@@ -32,6 +32,38 @@ export function backgroundStyle(bg: Background | undefined): Record<string, stri
 }
 
 /**
+ * The background a page is shown on: its own when it has one, else its screen's. A page's own
+ * replaces the screen's whole — it is not merged with it.
+ */
+export function pageBackground(display: { background?: Background }, page: { background?: Background } | null | undefined): Background | undefined {
+  return page?.background ?? display.background
+}
+
+/** The per-layer properties of a stored image, which a two-layer paint repeats once per layer. */
+const IMAGE_KEYS = ['background-image', 'background-size', 'background-position', 'background-repeat'] as const
+
+/**
+ * The dashboard root's background: the screen's image painted twice, as two layers of one box
+ * that keeps the bar's height as bottom padding.
+ *
+ * - The top layer is sized, placed and clipped against the content box — the area above the bar
+ *   — so on the Edge it falls exactly where the stage is and where the admin's preview shows it,
+ *   and a device viewport wider than its grid shows one image, with no seam.
+ * - The bottom layer covers the whole root, the way the root alone painted it before, and is only
+ *   seen under the bar: a translucent bar shows the image through it, as it always did.
+ *
+ * A colour needs no second layer: `background-color` already spans the whole box, under both.
+ */
+export function rootBackgroundStyle(bg: Background | undefined): Record<string, string> {
+  const style = backgroundStyle(bg)
+  if (!style['background-image']) return style
+  for (const key of IMAGE_KEYS) style[key] = `${style[key]}, ${style[key]}`
+  style['background-origin'] = 'content-box, border-box'
+  style['background-clip'] = 'content-box, border-box'
+  return style
+}
+
+/**
  * Inline style for one widget instance's image layer, drawn behind its transparent iframe.
  * Empty when the instance carries no image, so the tile keeps its appearance's own surface.
  */

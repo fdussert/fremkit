@@ -10,7 +10,7 @@ import { useSocket } from '../shared/socket'
 import { useAdminStore } from './store'
 import { useConnectionsStore } from './connections'
 import { api } from '../shared/api'
-import { fieldsInScope, optionLabel, optionValue, suggestApplies, type InstalledAppInfo, type ListItemField, type PickOption, type SettingField, type SettingScope } from '../shared/types'
+import { channelAllowed, fieldsInScope, optionLabel, optionValue, suggestApplies, type InstalledAppInfo, type ListItemField, type PickOption, type SettingField, type SettingScope } from '../shared/types'
 
 /**
  * The installed applications, fetched at most once per admin session.
@@ -41,6 +41,12 @@ const props = defineProps<{
    * record it against — so the option is simply not offered.
    */
   widgetId?: string
+  /**
+   * The commands the widget is granted (its manifest as `/api/widgets` serves it). A preview is
+   * sent from the admin's own socket, with the admin's authority, so it is offered — and sent —
+   * only on a channel these cover. Absent means none: no ▶ at all.
+   */
+  commands?: string[]
 }>()
 const emit = defineEmits<{ change: [key: string, value: unknown] }>()
 /** Everything below reads the filtered schema, so a field out of scope is invisible to the form. */
@@ -55,8 +61,12 @@ const { t } = useI18n()
 
 /** The one preview in flight, by field key, so the ▶ cannot be hammered while a sound plays. */
 const previewing = ref<string | null>(null)
+/** True when the field's preview names a channel the widget may command. */
+function mayPreview(f: SettingField): boolean {
+  return !!f.preview && channelAllowed(props.commands ?? [], f.preview.channel)
+}
 async function preview(k: string, f: SettingField): Promise<void> {
-  if (!f.preview) return
+  if (!f.preview || !mayPreview(f)) return
   previewing.value = k
   try { await useSocket().command(f.preview.channel, f.preview.command, { value: val(k) }) }
   catch { /* the provider said no, or the socket is down: nothing to show but the silence */ }
@@ -398,11 +408,11 @@ const itemText = (item: Record<string, unknown>, key: string, field: ListItemFie
 
 <template>
   <template v-for="(f, k) in fields" :key="k">
-    <BaseCheckbox v-if="f.type === 'boolean'" :model-value="Boolean(val(k))" :label="pick(f.label)"
+    <BaseCheckbox v-if="f.type === 'boolean'" :data-setting="k" :model-value="Boolean(val(k))" :label="pick(f.label)"
       @update:model-value="emit('change', k, $event)" />
 
     <!-- Not a <BaseField>: its <label> must not wrap the "manage connections" button. -->
-    <div v-else-if="f.type === 'connection'" class="field">
+    <div v-else-if="f.type === 'connection'" class="field" :data-setting="k">
       <label class="lbl">
         {{ pick(f.label) }}
         <select :value="String(val(k) ?? '')" @change="chooseConnection(f, k, ($event.target as HTMLSelectElement).value)">
@@ -421,7 +431,7 @@ const itemText = (item: Record<string, unknown>, key: string, field: ListItemFie
     </div>
 
     <!-- Not a <BaseField>: its <label> must not wrap the per-connection checkbox labels. -->
-    <div v-else-if="f.type === 'connections'" class="field">
+    <div v-else-if="f.type === 'connections'" class="field" :data-setting="k">
       <span class="lbl">{{ pick(f.label) }}</span>
       <p v-if="!connectionRows(f, k).length" class="hint">{{ t('admin.settings.connection.empty') }}</p>
       <ul v-else class="picks">
@@ -434,7 +444,7 @@ const itemText = (item: Record<string, unknown>, key: string, field: ListItemFie
     </div>
 
     <!-- Not a <BaseField>: its <label> must not wrap the per-choice checkbox labels. -->
-    <div v-else-if="f.type === 'pick'" class="field">
+    <div v-else-if="f.type === 'pick'" class="field" :data-setting="k">
       <span class="lbl">{{ pick(f.label) }}</span>
       <p v-if="!pickConnection(f)" class="hint">{{ t('admin.settings.pick.chooseConnection') }}</p>
       <p v-else-if="pickState(k).loading" class="hint">{{ t('common.loading') }}</p>
@@ -463,7 +473,7 @@ const itemText = (item: Record<string, unknown>, key: string, field: ListItemFie
     </div>
 
     <!-- Not a <BaseField> either: its <label> must not wrap the per-app checkbox labels. -->
-    <div v-else-if="f.type === 'apps'" class="field">
+    <div v-else-if="f.type === 'apps'" class="field" :data-setting="k">
       <span class="lbl">{{ pick(f.label) }}</span>
       <p v-if="!dockAvailable || !dockApps.length" class="hint">{{ t('admin.settings.apps.helper') }}</p>
       <ul v-if="dockApps.length" class="apps">
@@ -481,7 +491,7 @@ const itemText = (item: Record<string, unknown>, key: string, field: ListItemFie
     </div>
 
     <!-- Not a <BaseField>: its <label> must not wrap the per-item fields and buttons. -->
-    <div v-else-if="f.type === 'list'" class="field">
+    <div v-else-if="f.type === 'list'" class="field" :data-setting="k">
       <span class="lbl">{{ pick(f.label) }}</span>
       <p v-if="!items(k).length" class="hint">{{ t('admin.settings.list.empty') }}</p>
       <ul v-else class="list">
@@ -522,7 +532,7 @@ const itemText = (item: Record<string, unknown>, key: string, field: ListItemFie
       </BaseButton>
     </div>
 
-    <BaseField v-else :label="pick(f.label)">
+    <BaseField v-else :label="pick(f.label)" :data-setting="k">
       <BaseInput v-if="f.type === 'number'" type="number" lazy :model-value="Number(val(k) ?? 0)"
         @update:model-value="onNumber(k, $event)" />
       <input v-else-if="f.type === 'color'" class="color" type="color" :value="String(val(k) ?? '#000000')"
@@ -533,7 +543,7 @@ const itemText = (item: Record<string, unknown>, key: string, field: ListItemFie
           <option v-for="o in f.options" :key="optionValue(o)" :value="optionValue(o)">{{ pick(optionLabel(o)) }}</option>
         </select>
         <!-- A preview sends the chosen value to the provider, which decides what showing it means. -->
-        <BaseButton v-if="f.preview" variant="icon" :title="t('admin.settings.preview')" :disabled="previewing === k"
+        <BaseButton v-if="mayPreview(f)" variant="icon" :title="t('admin.settings.preview')" :disabled="previewing === k"
           @click="preview(k, f)">
           <BaseIcon name="play" :size="16" />
         </BaseButton>

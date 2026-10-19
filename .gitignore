@@ -1,25 +1,14 @@
 node_modules/
 dist/
-data/secrets.json
-data/icons/
-data/*.bak
-data/*.tmp
-data/*.corrupt
-data/claude-usage.json
-data/claude-usage.json.tmp
-data/claude-sessions.json
-data/claude-sessions.json.*.tmp
+# Runtime state: the dashboard, its backups, the caches, installed widgets and themes,
+# secrets in file mode. Everything in data/ but the example config is the user's own.
+data/*
+!data/fremkit.example.json
 .DS_Store
 .vitest/
 native/.build/
 native/dist/
-data/claude-account.json
-data/claude-account.json.tmp
 .worktrees/
-data/backgrounds/
-# Widgets installed from the marketplace: third-party code the user chose, never ours to commit.
-data/widgets/
-data/fremkit.json
 # Working notes of the coding agents: local only
 docs/superpowers/
 .superpowers/
@@ -39,3 +28,13 @@ docs/superpowers/
 .claude/
 .idea/
 .vscode/
+
+# The iPad app: build output, signing values, Xcode user state
+ios/**/.build/
+ios/Local.xcconfig
+ios/**/xcuserdata/
+ios/build/
+
+# Playwright: what a run leaves behind (e2e/)
+test-results/
+playwright-report/

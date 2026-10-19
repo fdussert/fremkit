@@ -45,3 +45,6 @@
 body { font-family: var(--font); font-size: var(--fs-md); color: var(--text); background: var(--bg); }
 * { -webkit-tap-highlight-color: transparent; }
 :focus-visible { outline: none; box-shadow: var(--ring); border-radius: var(--radius-sm); }
+
+/* A day / night theme switch crossfades (`crossfade` in theme.ts); nothing else uses a view transition. */
+::view-transition-old(root), ::view-transition-new(root) { animation-duration: .9s; }

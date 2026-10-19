@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import Fastify, { type FastifyInstance } from 'fastify'
-import { HELPER_ADMIN_URL, HELPER_BUNDLE_ID, helperRoutes, LSAPPINFO_PROGRAM, OPEN_PROGRAM, runningHelperPath, type Runner } from '../src/helper/routes.js'
+import { HELPER_ADMIN_URL, HELPER_BUNDLE_ID, HELPER_REVEAL_URL, helperRoutes, LSAPPINFO_PROGRAM, OPEN_PROGRAM, runningHelperPath, type Runner } from '../src/helper/routes.js'
 
 const HELPER_PATH = '/Users/example/Applications/Fremkit Helper.app'
 const ASN = 'ASN:0x0-0x9c7d673a-"Fremkit_Helper":'
@@ -105,6 +105,41 @@ describe('POST /api/helper/admin', () => {
     const res = await server.inject({ method: 'POST', url: '/api/helper/admin', remoteAddress: '198.51.100.7' })
 
     expect(res.statusCode).toBe(403)
+    expect(calls).toEqual([])
+  })
+})
+
+describe('POST /api/helper/reveal', () => {
+  it('sends the fixed reveal URL to the running helper, whatever the request carries', async () => {
+    const calls: [string, string[]][] = []
+    const server = await build(fakeRunner(calls))
+
+    const res = await server.inject({
+      method: 'POST',
+      url: '/api/helper/reveal?url=fremkit://admin',
+      headers: { origin: 'http://127.0.0.1:4242', 'content-type': 'application/json' },
+      payload: { url: 'fremkit://quit', seconds: 9999 },
+    })
+
+    expect(res.statusCode).toBe(200)
+    expect(calls[2]).toEqual([OPEN_PROGRAM, ['-a', HELPER_PATH, HELPER_REVEAL_URL]])
+  })
+
+  it('never launches a helper that is not running: there is no dashboard to lower', async () => {
+    const calls: [string, string[]][] = []
+    const server = await build(async (file, args) => { calls.push([file, args]); return '' })
+
+    const res = await server.inject({ method: 'POST', url: '/api/helper/reveal' })
+
+    expect(res.statusCode).toBe(503)
+    expect(calls.some(([file]) => file === OPEN_PROGRAM)).toBe(false)
+  })
+
+  it('refuses a foreign origin and another machine without running anything', async () => {
+    const calls: [string, string[]][] = []
+    const server = await build(fakeRunner(calls))
+    expect((await server.inject({ method: 'POST', url: '/api/helper/reveal', headers: { origin: 'http://evil.example' } })).statusCode).toBe(403)
+    expect((await server.inject({ method: 'POST', url: '/api/helper/reveal', remoteAddress: '198.51.100.7' })).statusCode).toBe(403)
     expect(calls).toEqual([])
   })
 })

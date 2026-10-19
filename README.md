@@ -2,6 +2,8 @@
 
 # Fremkit
 
+**[fremkit.app](https://fremkit.app)** · [Download](https://github.com/fdussert/fremkit/releases/latest) · `brew install --cask fdussert/fremkit/fremkit`
+
 Fremkit turns the Corsair Xeneon Edge — a 2560 × 720 touch strip — into a widget dashboard for
 your Mac. Pages of tiles show the clock, the machine's load, your calendar, your build pipelines,
 your 3D printer, your smart home; you arrange them by dragging them around in a browser-based
@@ -24,12 +26,15 @@ The name is the Fremen survival kit from *Dune*.
   auto-rotation.
 - **A live editor** at `/admin`: the real page rendered with real widgets, drag and resize with
   snapping, overlap refused, keyboard nudges, undo/redo and autosave.
-- **Twenty-eight widgets** — clock, weather, a pomodoro timer, CPU, memory, disks, network
+- **Thirty-nine widgets** — clock, weather, a pomodoro timer, CPU, memory, disks, a disk map, network
   throughput, batteries, processes, volume, Spotify, Dock badges, a clipboard history, shortcut
   buttons, service status checks, published calendars, Claude Code sessions and limits; and,
   *from the registry*, meeting controls, CleanShot X actions, Azure DevOps builds, GitHub
   notifications and Actions, a Bambu Lab printer, Homey devices and flows, a Synology NAS.
-  Eighteen ship with Fremkit; the rest are one press away in the admin.
+  Twenty-two ship with Fremkit; the rest are one press away in the admin.
+- **An iPad app** that shows a screen of the dashboard from your Mac over the local network,
+  paired by QR code and revocable from the admin. See [docs/devices.md](docs/devices.md).
+- **A browser extension** — *Fremkit Companion* sends the video of a Chromium tab to the Fremplay widget on the Edge, with touch controls. See [docs/companion.md](docs/companion.md).
 - **Compact widgets** in the navigation bar, with a full-size popover on touch.
 - **Per-tile appearance** — background colour, opacity, background image, accent colour and how
   much of the tile the accent paints.
@@ -40,10 +45,14 @@ The name is the Fremen survival kit from *Dune*.
   supervises the server.
 - **A widget marketplace** — *Sietch* in the admin installs widgets from a curated registry,
   showing what each one will be allowed to do and asking again when an update wants more.
-- **Backup and restore** of the whole dashboard, as a zip that never carries a secret.
+- **Backup and restore** of the whole dashboard, as a zip that never carries a secret, and a
+  **history** of every saved version for the last month, each one a click away from coming back.
+- **Shareable layouts** — a page, a screen or the whole setup as one file to post and load in a
+  click, without your accounts in it.
 - **Themes** — the palette, the fonts and the text size, as a folder with one JSON file: two ship
   with it, four more are on the registry, and yours sits beside them. The dashboard, the editor
-  and the widgets all wear the one you pick.
+  and the widgets all wear the one you pick — or a second one at night, switching at sunset or
+  at the time you choose.
 - **Two languages** — the whole interface is French or English, switched in the admin.
 - **A widget SDK** that is a folder, a JSON file and an HTML page.
 - **Optional local operations** show Docker containers and Ollama/MLX models through registry widgets. See [docs/local-operations.md](docs/local-operations.md).
@@ -54,25 +63,70 @@ Nothing from Corsair: no iCUE, no driver. The helper opens the touch panel itsel
 Touchscreen Gestures must not be running (the panel takes one owner).
 
 - macOS 13 or later, Apple silicon
-- Xcode Command Line Tools (for the helper's Swift build)
-- Node 22 or later, and pnpm
 - a Corsair Xeneon Edge — everything except the touch driver works on any display
 - `jq`, only for the Claude Code status line
 - `ffmpeg`, only for the chamber camera of an X1 or H2 printer
+- to build from source only: Xcode Command Line Tools, Node 22 or later, and pnpm
 
 ## Install
+
+| Install the app | Build from source |
+|---|---|
+| For using Fremkit. One signed, notarized app that carries everything it needs, Node included, and updates itself. | For working on Fremkit. A checkout, the developer helper pointed at it, and your changes live on the Edge. |
+| [Download the DMG](https://github.com/fdussert/fremkit/releases/latest) and drag **Fremkit** to Applications — or `brew install --cask fdussert/fremkit/fremkit` | `git clone` + `pnpm run setup`, below |
+| Data in `~/Library/Application Support/Fremkit` | Data in the checkout's `data/` |
+
+### Install the app
+
+1. **Download** `Fremkit-<version>.dmg` from the
+   [latest release](https://github.com/fdussert/fremkit/releases/latest), open it and drag
+   **Fremkit** onto **Applications** — or, with Homebrew:
+
+   ```sh
+   brew install --cask fdussert/fremkit/fremkit
+   ```
+
+2. **Quit iCUE and Touchscreen Gestures**, if you use them — see step 3 of the source install
+   below for the launchd agent that relaunches Touchscreen Gestures.
+
+3. **Open Fremkit.** It lives in the menu bar (the **F**), starts its own server and opens the
+   dashboard on the Edge. macOS then asks for two permissions for **Fremkit**, one after the
+   other: **Input Monitoring** (to read the touch panel), then **Accessibility** (to post the
+   touch panel's clicks and scrolls, and read the Dock's badges). A permission still missing
+   shows as a line in the menu bar menu; clicking it opens the right pane of System Settings →
+   Privacy & Security. Touch starts on its own once Input Monitoring is granted, or the menu
+   says "Touch: allowed — quit and reopen Fremkit…" and clicking it does that.
+
+4. **Allow Local Network** when macOS asks — the first time the server reaches a device on your
+   LAN, a printer or a Homey.
+
+5. **Full Disk Access, optionally**, for the disk map to measure the folders macOS protects:
+   Privacy & Security → Full Disk Access → "Fremkit". See step 8 of the source install below.
+
+Updates arrive by themselves (Sparkle, signed by the project), or with **Check for Updates…** in
+the menu. Your dashboard, connections and backgrounds live in
+`~/Library/Application Support/Fremkit`, never inside the app, so an update or a reinstall keeps
+them. The Claude Code hook and status line ship inside the app: see
+[docs/claude-code.md](docs/claude-code.md) for the path to put in `~/.claude/settings.json`.
+
+Already running the developer helper from a checkout? Nothing changes until you choose to move;
+[docs/troubleshooting.md](docs/troubleshooting.md#moving-from-a-checkout-to-the-app) says how.
+
+### Build from source
 
 1. **Clone and set up.**
 
    ```sh
    git clone https://github.com/fdussert/fremkit.git
    cd fremkit
-   pnpm setup
+   pnpm run setup
    ```
 
-   `pnpm setup` checks the prerequisites, installs dependencies, builds the UI and the server,
+   `pnpm run setup` checks the prerequisites, installs dependencies, builds the UI and the server,
    offers to create the code-signing identity, then builds and installs the helper into
-   `~/Applications` and points it at your checkout. `pnpm setup --check` runs the checks only.
+   `~/Applications` and points it at your checkout. `pnpm run setup --check` runs the checks only.
+   Type the `run`: `pnpm setup` on its own is pnpm's own command, which edits your shell's
+   profile and does not set Fremkit up.
 
 2. **Say yes to the signing identity** when it asks. The helper is signed ad hoc unless a stable
    code-signing identity exists, and macOS ties Input Monitoring and Accessibility grants to the
@@ -95,13 +149,21 @@ Touchscreen Gestures must not be running (the panel takes one owner).
    the synthetic mouse and scroll events the touch driver generates, and to read the Dock's
    badges.
 
-6. **Relaunch the helper** — quit it from the menu bar **F**, then open it again from
-   `~/Applications`. Grants only take effect on the next launch.
+6. **Relaunch the helper if it asks.** Touch starts on its own once Input Monitoring is granted;
+   when macOS wants the helper reopened first, the menu bar **F** says "Touch: allowed — quit and
+   reopen Fremkit…", and clicking it does that.
 
 7. **Allow Local Network** when macOS asks. It asks the first time the server reaches a device on
    your LAN — a Bambu printer, a Homey. The app to allow is "Fremkit Helper".
 
-8. **Launch at login**, optionally, from the menu bar menu. There is no `KeepAlive`: if the helper
+8. **Full Disk Access, optionally.** The disk map measures your home folder; without Full Disk
+   Access the folders macOS protects (Mail, Messages, other apps' containers) are shown as
+   unreadable, and macOS asks once for Desktop, Documents and Downloads. Grant it under Privacy &
+   Security → Full Disk Access → "Fremkit Helper" to measure everything — see
+   [troubleshooting](docs/troubleshooting.md#the-disk-map-says-folders-could-not-be-read). It is a
+   broad grant: the server the helper runs can then read every file.
+
+9. **Launch at login**, optionally, from the menu bar menu. There is no `KeepAlive`: if the helper
    crashes, open it again by hand.
 
 Rebuilding the helper later (`pnpm helper:build && pnpm helper:install`) is what registers changes
@@ -109,12 +171,16 @@ to its bundle, including the `fremkit://` URL scheme the dashboard's long press 
 admin window: an older copy ignores it.
 
 The dashboard then opens by itself on the Edge. If you would rather not run the helper at all,
-`pnpm start` serves everything and `pnpm kiosk` opens a full-screen Chrome window on the Edge —
-you lose the touch driver, the mouse fence and the Dock badges.
+`pnpm start` serves everything and `pnpm kiosk` opens a full-screen Chrome window on the Edge,
+signed in through a one-time link — you lose the touch driver, the mouse fence and the Dock
+badges.
 
 ## First run
 
-1. **Open the admin** — from the menu bar **F** menu, or at <http://127.0.0.1:4242/admin>.
+1. **Open the admin** — from the menu bar **F** menu: in its own window, or in your browser with
+   *Open the admin in the browser*. The server answers only callers holding its access secret,
+   so typing <http://127.0.0.1:4242/admin> by hand shows a page saying how to get in instead
+   (see [Security](#security)); from a checkout, `pnpm open /admin` does the same as the menu.
 2. **Add a page** with the **+** in the Pages list, and name it.
 3. **Add widgets** — click a card in the widget library to drop it in the first free spot, or drag
    it onto the canvas. Drag it to move it, pull a handle to resize it.
@@ -125,7 +191,7 @@ you lose the touch driver, the mouse fence and the Dock badges.
    top bar says saved, saving or not saved.
 
 A fresh install starts on one page with a clock and the wallpaper that ships with Fremkit. That
-wallpaper is an ordinary entry in the background library, so *Screen → Image → Remove the image*
+wallpaper is an ordinary entry in the background library, so *Settings → your screen → Screen background → Remove the image*
 leaves the screen with no background at all rather than putting it back.
 
 ### Editing, in more detail
@@ -133,23 +199,56 @@ leaves the screen with no background at all rather than putting it back.
 The admin's middle column is the real page, rendered with live widgets and scaled to fit, with the
 navigation bar below it exactly as the Edge shows it.
 
+A dashboard can have several screens — the Edge, an iPad — each with its own pages and bar, and
+each edited on its own: pick it above the canvas. The widgets are shared, so one shown on
+two screens is the same widget, with the same settings.
+
 - **Edit / Test** — in Edit, an overlay captures the mouse: click to select, drag to move, eight
-  handles to resize. In Test the overlay steps aside and the widgets are usable, and the preview
+  handles to resize. While a widget moves, alignment guides show where its edges or its centre
+  line up with another widget's or with the screen's edges and centre (the grid already snaps, so
+  the guides only show; they never pull). Shift- or Cmd-click adds a widget to the selection (or
+  takes it out), a drag on the empty canvas draws a rectangle that selects every widget it touches,
+  Cmd+A selects the whole page, and a click on the empty canvas or Escape lets go. Several selected
+  widgets move together — by the mouse or the arrows, locked ones staying put — and are duplicated,
+  copied and pasted (in the same arrangement), locked, restyled, moved to another page or removed
+  together, each as one undo step; the inspector then shows how many and what they share. In Test the overlay steps aside and the widgets are usable, and the preview
   behaves like the screen: a horizontal swipe on the navigation bar or on free board space changes
   page, wrapping around at either end.
-- **Keyboard** — arrows move the selection by one cell, Shift+arrows resize it from the south-east corner, Delete or Backspace removes it,
-  Cmd+D duplicates it, Escape deselects. Cmd+Z and Cmd+Shift+Z undo and redo anywhere, up to 50
-  steps.
-- **Left column** — the pages (rename, reorder, duplicate, delete) and the widget library, with a
+- **Right click** — on a widget: settings, show title, appearance (opacity presets, colours,
+  background image, reset), copy and paste its style, duplicate, copy and paste, move to another
+  page or screen, also show it on another screen, default or minimum size, lock its position (a
+  locked widget is neither dragged nor resized), open its connection, about, reload, remove. On
+  the empty canvas: paste, select all, add a widget, new page, page background, screen settings, reload the dashboard. On a page in
+  the list: rename, duplicate, page background, copy to another screen, move, delete. On a library
+  card: add to a page or to the bar, and for a Sietch widget show it there, update or uninstall it.
+  On a group of selected widgets: show title, opacity, duplicate, copy and paste, move to page,
+  lock, remove. On a bar widget: settings, move left or right, remove. On a screen above the canvas: rename,
+  screen settings, reload the dashboard, export, import, delete. The menus work from the
+  keyboard too (arrows, Enter, Escape, type-ahead).
+- **Command palette** — Cmd+K (Ctrl+K, or *Commands* in the top bar) searches everything the
+  editor can do and runs it from the keyboard: add a widget, go to a page or a screen, select a
+  widget, open a connection, jump to a setting, fix a widget that needs attention, and every item
+  of the right-click menus — the selected widget's included, submenus and all. Its commands are
+  the menus' own, so a new menu item is in the palette too. The last commands run come first.
+- **Keyboard** — Tab and Shift+Tab select the next or previous widget of the page, Cmd+A all of
+  them, arrows move the selection — one widget or several — by one cell (a held arrow is one undo step), Shift+arrows resize it from the south-east
+  corner — never through another widget, never a locked one — Delete or Backspace removes it,
+  Cmd+D duplicates it, Cmd+C and Cmd+V copy it and paste a new one with the same settings on the
+  page you are on (any page, any screen), Escape deselects. Cmd+Z and Cmd+Shift+Z undo and redo
+  anywhere, up to 50 steps. `?` shows every shortcut; the sheet, the key handler and the menus'
+  hints all read the one table in `ui/src/admin/shortcuts.ts`.
+- **Left column** — the pages (drag to reorder, double-click to rename, the rest in their menu or
+  behind the "…" on hover) and the widget library, with a
   rescan button that re-reads the `widgets/` folder without restarting the server. Each card says
   in a line what that widget asks for, so a folder dropped into `widgets/` cannot ask for anything
   quietly.
 - **Right column** — *Widget*: title, whether the frame draws it, background, accent, the widget's
   own settings, position and size, and **what the widget asks for** — the channels it reads, the
-  ones it can command, the hosts it may reach. *Page*: name and order. *Screen*: language, grid
+  ones it can command, the hosts it may reach. With no widget selected, *Page*: its own background
+  (a colour or an image shown instead of the screen's, or the screen's). *Screen*: language, grid
   (read-only), navigation bar height and opacity, which gesture opens the admin, auto-rotation
-  delay, the bar's compact widgets, the screen background, the kiosk URL, backup and restore, and
-  privacy.
+  delay, the bar's compact widgets, the screen background, the kiosk URL, the history of saved
+  versions, backup and restore, and privacy.
 - **Move to page** — a tile can be sent to another page from the *Widget* tab: it keeps everything
   it carries and lands in the largest free spot there, or the move is refused when nothing fits.
 - **Copy settings from…** — where the same widget already exists elsewhere, a drop-down above its
@@ -178,7 +277,8 @@ that lets the screen background show through (0 makes the tile, border included,
 see-through — the selection outline keeps it findable while editing), a background image with a
 dimming overlay, an accent colour, and an *accent mode* saying how much of the tile that accent
 paints: **none** leaves it to the widget's own highlights, **frame** colours the title bar and the
-border, **fill** colours the whole tile. The screen itself has a background colour and image too.
+border, **fill** colours the whole tile. The screen itself has a background colour and image too,
+and a page can have its own, shown instead of the screen's while that page is on screen.
 
 **Tile icons.** A tile's title can carry an icon: pick a pictogram, or import your own SVG, PNG or
 WebP (256 KB at most) — the logo of your NAS, the mark of a service you use. The icon shows with
@@ -188,13 +288,16 @@ default, which keeps only its silhouette, or keeps its own colours and inner det
 untick **Tint**.
 
 **The navigation bar.** The strip at the bottom of every page, 80 px or 40 px tall, as opaque as
-you like. Its middle is the page dots. Its two sides are free. **Hold the page dots, or double-tap
-them, to open the admin** — the Edge has no keyboard, so this is the way in from the screen.
-*Screen → Open the admin from the bar* chooses between the two gestures, or accepts both, which
-is the default.
+you like. Its middle shows page dots by default. In *Settings → your screen → Layout → Pages in the bar*, each screen can show scrolling names instead. The sides stay available for compact widgets. **Hold or double-tap
+a page button to open the admin** — the Edge has no keyboard, so this is the way in from the screen.
+*Settings → your screen → Layout → Open the admin from the bar* chooses between the two gestures, or accepts both, which
+is the default. When both gestures are enabled, a page tap waits briefly for a possible
+double tap. With only long press enabled, the page opens on release. The admin prevents a
+named-page layout that would hide compact widgets. A single page keeps its
+button so the admin shortcut remains available.
 
 **Compact widgets.** Widgets can live *in* the bar, in a left or a right cluster, in the order
-you set, as many as fit beside the page dots. A compact rendering is one readable line, as wide
+you set, as many as fit beside the page buttons. A compact rendering is one readable line, as wide
 as the widget's manifest asks for and as tall as the bar; the bar is its surface, so it has no
 title and no tile of its own. Ten of the built-ins have one: `clock`, `weather`, `pomodoro`,
 `cpu`, `memory`, `network`, `battery`, `calendar`, `claude-usage` and `service-status`. Registry
@@ -216,15 +319,27 @@ Several widgets can share one, and one service can have several. Non-secret fiel
 (or, with the `file` backend, to a mode-600 `data/secrets.json`) and are never returned by the
 API, logged, written to the config or sent on the WebSocket.
 
-**Language.** French or English, switched in the admin's Screen panel. It changes the interface,
+**Brightness.** *Settings → your screen → Brightness* sets the level of the selected screen and how it changes
+on its own, per screen: a **day / night** pair of levels switched at sunrise and sunset (computed
+on the Mac from a latitude and longitude — typed, or found with *Search for a city*, which asks
+Open-Meteo for that name only when you press it) or at fixed times, with a gradual
+change of a few minutes; and **follow the Mac**, where the screen follows the Mac's built-in display
+and its light sensor, through a scale and an offset. With both on, the screen follows the Mac and
+day / night is a ceiling at night. A change by hand — the `brightness` widget, this panel, or the
+slider in the helper's **F** menu — holds until the next day / night switch or until the Mac's
+brightness moves noticeably; *Back to automatic* ends it at once. It works over DDC/CI on Apple
+silicon, needs the helper, and only drives the display the kiosk is on; a display that does not
+answer says so (see [troubleshooting](docs/troubleshooting.md#brightness-says-not-adjustable)).
+
+**Language.** French or English, switched in the admin's *Settings → General*. It changes the interface,
 the widget library and the widgets themselves, live, without a reload.
 
 **The helper, or a browser.** The dashboard is a web page: any browser can show it. The native
 helper adds what a browser cannot — its own HID driver for the Edge's touch panel, a fence that
 keeps the mouse cursor on your other displays, a kiosk window with no chrome and no cursor, the
-Dock's notification badges, and supervision of the server. Its menu bar **F** shows what is
+Dock's notification badges, the brightness of the Edge (DDC/CI), and supervision of the server. Its menu bar **F** shows what is
 running: *Open the admin*, *Admin in the browser*, *Hide the dashboard* / *Show the dashboard*,
-*Reload the dashboard*, the *Touch* / *Mouse fence* / *Notifications* / *Manage the server* /
+*Reload the dashboard*, a brightness slider for the kiosk's display, the *Touch* / *Mouse fence* / *Notifications* / *Manage the server* /
 *Launch at login* toggles, *Log…* and *Quit*,
 above state lines such as "Server: running" and "Touch: active".
 
@@ -233,6 +348,7 @@ above state lines such as "Server: running" and "Touch: active".
 | Widget | Shows | Connection | Compact |
 |---|---|---|---|
 | `battery` | The Mac's battery and its Bluetooth peripherals | — | ● |
+| `brightness` | The brightness of the screen it is on: a slider to slide, in the bar too, and what drives it (day/night, follow the Mac) | — | ● |
 | `calendar` | The next events of one or more published calendars | ICS calendar | ● |
 | `claude-sessions` | Live Claude Code sessions; a touch goes to the session's window, and it can chime when one starts waiting | — | — |
 | `claude-usage` | Claude 5 h / 7 day limits and today's tokens | — | ● |
@@ -240,6 +356,7 @@ above state lines such as "Server: running" and "Touch: active".
 | `clock` | Time, date and other cities | — | ● |
 | `cpu` | CPU load and temperature | — | ● |
 | `disk` | Disk usage and available space | — | — |
+| `disk-map` | What fills the disk, as rings you drill into; long press shows it in Finder | — | ● |
 | `memory` | Memory usage, available RAM and swap | — | ● |
 | `uptime` | Time since the Mac last booted | — | — |
 | `network` | Live network throughput, with a sparkline | — | ● |
@@ -274,7 +391,9 @@ screen whose widget is not installed offers the install where it stands.
 | `synology-system` | CPU, memory, network and uptime of a NAS | Synology | ● |
 
 Every setting of every widget is listed in **[docs/widgets.md](docs/widgets.md)**. To write your
-own, see **[docs/writing-widgets.md](docs/writing-widgets.md)**. To change how all of it looks,
+own, see **[docs/writing-widgets.md](docs/writing-widgets.md)**: `pnpm widget:new my-widget` starts
+one that works, `pnpm dev` reloads it on every save, and `pnpm widget:check` runs the registry's
+rules before you publish it. To change how all of it looks,
 see **[docs/themes.md](docs/themes.md)**.
 
 What the installer checks, what a consent record is and how an update asks again:
@@ -297,9 +416,28 @@ How to obtain each credential, what is stored where, and what is never logged:
 
 The optional [Codex provider](docs/codex.md) reads selected local account and chat data after an explicit opt-in. Its dashboard widgets are distributed separately.
 
+## Share your setup
+
+A setup worth a photo is worth a file. **Export page…** (a page's right-click menu),
+**Export screen…** (a screen's), or **Settings → Share → Export the whole setup…** write a
+`.fremkit-layout.json`: the pages, the bar, each tile's place, look and settings, the theme, and
+the background images. The dialog shows what is in the file before you download it (or copy it,
+where a download is not possible) and what was left out.
+
+Never in it: connections and their secrets, host names, e-mail addresses, device names, privacy
+choices, install consents, brightness schedules. A setting that points at a connection is
+blanked; one typed as free text — a label, a link, a note — goes in only if you tick it. Post the
+file with a photo in the repository's **Discussions → Show and tell**.
+
+To load one, drop it onto the editor, or use **Import a layout…**. The dialog lists the widgets it
+uses, offers to install from the Sietch the ones you do not have (with the usual consent dialog),
+asks which of your connections a widget should use, and adds the pages or screens beside yours —
+replacing only if you choose to. One ⌘Z undoes the whole import. Details, and the file format, in
+**[docs/sharing.md](docs/sharing.md)**.
+
 ## Backup
 
-**/admin → Screen → Backup** downloads the whole dashboard — the configuration and the background
+**/admin → Settings → History & backup → Backup** downloads the whole dashboard — the configuration and the background
 library — as `fremkit-backup-<date>.zip`, and **Restore…** takes one back.
 
 Secrets are never in it: they live in the macOS keychain, and the point of keeping them there is
@@ -308,8 +446,26 @@ a restore keeps those ids, restoring onto the **same Mac** finds them and everyt
 once; on another Mac the admin lists the connections whose secret has to be entered again.
 
 A restore replaces the dashboard — pages, widgets, connections and backgrounds — and refuses to
-write at all while the configuration on disk cannot be read. Details in
+write at all while the configuration on disk cannot be read. It keeps this Mac's own security
+choices whatever the archive says: where secrets are kept, the privacy switches, and what each
+installed widget was granted. Details in
 **[docs/contributing.md](docs/contributing.md)**.
+
+### History
+
+**/admin → Settings → History & backup** (or the clock-arrow button next to undo) lists every saved version
+of the dashboard for the last 30 days, up to 100, grouped by day, each with what changed: pages
+added, removed or renamed, widgets added, removed, moved or edited, screens, theme. Continuous
+editing is kept as one version per two minutes, the last state winning. Open a version to see its
+pages, and **Restore this version** to put it back. A restore is a save like any other, so the
+version it replaced is the next line down and restoring that one undoes it. The version before a
+backup restore, a setup import or a Fremkit update that converts the file is always kept.
+
+Like a backup restore, putting a version back keeps this Mac's secrets backend, privacy switches
+and widget permissions, and a connection keeps its stored secret only if it comes back unchanged.
+The versions live in `data/history/`, private to your account, hold no secret (the configuration
+never does), and are not part of a backup: a backup is meant to travel, the history keeps what you
+deleted on purpose.
 
 ## What Fremkit reads on your Mac
 
@@ -319,14 +475,16 @@ The list is short and it is all of it.
 | What | Who reads it | When |
 |---|---|---|
 | `~/.claude/projects/` — Claude Code's session transcripts | the `claude-sessions` and `claude-usage` widgets, for the session list and the token counts | whenever one of those widgets is on the dashboard |
-| The `Claude Code-credentials` keychain item — Claude Code's OAuth token | the account usage behind the `claude-usage` gauges. The token is presented to `api.anthropic.com` and nowhere else; it is never stored, never logged, never in an error message | **off for a new install.** Turn it on in **/admin → Screen → Privacy**. A dashboard that already showed the Claude widget before this setting existed keeps it *on*, so the gauges do not go blank on an upgrade — turn it off there if you would rather. The endpoint (`/api/oauth/usage`) is not documented by Anthropic and may disappear |
+| The `Claude Code-credentials` keychain item — Claude Code's OAuth token | the account usage behind the `claude-usage` gauges. The token is presented to `api.anthropic.com` and nowhere else; it is never stored, never logged, never in an error message | **off for a new install.** Turn it on in **/admin → Settings → Privacy**. A dashboard that already showed the Claude widget before this setting existed keeps it *on*, so the gauges do not go blank on an upgrade — turn it off there if you would rather. The endpoint (`/api/oauth/usage`) is not documented by Anthropic and may disappear |
 | Where a Claude Code session lives — its terminal application, pane and tty, read by the hook inside the session | the `claude-sessions` widget's ↗, to raise that window again | whenever the Claude Code hooks are installed. It stays on the server: the dashboard is told which kind of application it is and what to call it, never the pane key or the tty |
 | The clipboard, through `pbpaste` | the `clipboard` widget | whenever that widget is on the dashboard |
 | The Dock's badge counts and the icons of installed applications | the `notifications` and `shortcuts` widgets, through the helper | whenever one of those widgets is on the dashboard |
+| The brightness of the kiosk's display (DDC/CI over its cable) and of the Mac's built-in display | the helper, for the `brightness` widget and *Settings → your screen → Brightness*; it changes only the display the kiosk is on | while the helper runs |
 | The volume, the battery, the disks, the processes, the network | those widgets, through `pmset`, `df`, `ps` and friends | whenever one of them is on the dashboard |
+| The names and sizes of the folders and files under your home folder or a volume — never their contents | the `disk-map` widget, through `fremkit-scan` or `du`; the last scan is kept in `data/disk-map/` | only when you tap **Scan** (the first time) or ↻ on that widget — never on its own, never on a timer |
 
 A widget that shows an account — its plan, how you signed in — never gets the account's e-mail
-address unless you tick **/admin → Screen → Privacy → Show the account e-mail address**. It is off
+address unless you tick **/admin → Settings → Privacy → Show the account e-mail address**. It is off
 by default, and the server leaves the address out of what it sends, so no widget can show it or
 pass it on. Once on, every widget that reads that account's channel receives it, one installed
 from the marketplace included, and it is on the screen.
@@ -334,43 +492,57 @@ from the marketplace included, and it is on the screen.
 Everything else Fremkit knows, you typed into it: the connections of the table above, whose
 secrets live in the macOS keychain (see [docs/connections.md](docs/connections.md)). Nothing is
 sent to any server other than the ones you configured, there is no telemetry, and the server
-listens on `127.0.0.1` only.
+listens on `127.0.0.1` only. The one exception is the app's update check: once a day it
+downloads `appcast.xml` from this project's GitHub releases, sending nothing but the request
+itself (Sparkle's system profile is off).
 
 ## Troubleshooting
 
 | Symptom | Fix |
 |---|---|
-| "Touch: permission missing" | Grant Input Monitoring to "Fremkit Helper", then relaunch it |
+| "Fremkit can't be opened" or "is damaged" | Download the DMG again from the release page; see the Gatekeeper section of the troubleshooting guide |
+| Permissions asked again after moving to the app | Expected once: the app is signed differently from the developer helper. Grant them to "Fremkit" |
+| "Touch: Input Monitoring missing — open Settings…" | Click the line, turn "Fremkit" (or "Fremkit Helper" for a source install) on in the Input Monitoring list it opens. Touch starts within seconds, or the line asks you to reopen Fremkit — click it |
 | "Touch: taken by another driver" | Quit Touchscreen Gestures and unload its launchd agent |
 | Permissions reset after every rebuild | Run `scripts/create-signing-identity.sh` and rebuild |
 | A LAN device answers `ping` but not Fremkit | Allow Local Network for the app running the server |
 | "Server: external" | Something else answers port 4242 — expected under `pnpm dev` |
+| The browser shows "Open Fremkit from the F menu" | The server asks for its access secret. Use *Open the admin in the browser* in the **F** menu, or `pnpm open` |
 | A shortcut button to a NAS or a router has no icon | Expected: favicons of private and local addresses are not fetched. The button still works |
 | The admin shows an old version of itself | Reopen it, or Cmd+R in its window; it keeps one web view for the helper's lifetime |
 | Widgets break after pulling a new version | Restart the server: the widget bridge is read once, at start |
+| The iPad app does not list the Mac | The network may not relay Bonjour: scan the QR code the admin shows, or put both on the same Wi-Fi — [details](docs/devices.md#troubleshooting) |
+| The disk map shows locked folders | Give "Fremkit" (or "Fremkit Helper" for a source install) Full Disk Access, or leave them unmeasured |
+| The disk map says "du (no helper)" | Expected under `pnpm dev`: the bundled `fremkit-scan` is only there under the helper |
 
 The rest, with the reasoning: **[docs/troubleshooting.md](docs/troubleshooting.md)**.
 
 ## Development
 
 ```sh
-pnpm dev          # server on 4242 + Vite on 5173 (dashboard http://localhost:5173, admin /admin)
+pnpm dev          # server on 4242 + Vite on 5173; then pnpm open --dev [/admin] to sign in
+pnpm open         # opens http://127.0.0.1:4242 signed in (pnpm open /admin for the admin)
+pnpm demo         # a demo server on :4250, invented data only: see docs/demo-mode.md
 pnpm build        # ui + server
 pnpm start        # production: http://127.0.0.1:4242 and /admin
 pnpm test         # vitest, server + ui
 pnpm typecheck
+pnpm e2e          # Playwright end-to-end tests, after pnpm --filter ui build (docs/contributing.md)
 pnpm helper:build   # native/dist/Fremkit Helper.app
 pnpm helper:install
 pnpm helper:test
+bash scripts/build-app.sh   # native/dist/Fremkit.app: the self-contained app, see docs/releasing.md
 ```
 
 | Folder | What is in it |
 |---|---|
 | `server/` | Fastify 5 on 127.0.0.1:4242 — config, widget catalog, providers, connections, secrets, the bridge, the WebSocket |
 | `ui/` | Vue 3 — the dashboard, the admin, and the code they share |
-| `native/` | The Swift helper — kiosk window, HID touch driver, mouse fence, admin window, Dock badges, server supervision |
+| `e2e/` | Playwright end-to-end tests of the admin and the dashboard, each worker on a throwaway server |
+| `native/` | The Swift helper — kiosk window, HID touch driver, mouse fence, admin window, Dock badges, server supervision, and `fremkit-scan`, the disk map's scanner |
 | `widgets/` | One folder per widget |
-| `scripts/` | Setup, dev, the helper's build and tests, the signing identity, kiosk, the Claude Code hooks |
+| `scripts/` | Setup, dev, the helper's build and tests, the app's build, notarization and release, the signing identity, kiosk, the Claude Code hooks |
+| `packaging/` | The Homebrew cask and Sparkle's public key |
 | `data/` | Your configuration and its assets. Git-ignored |
 | `brand/` | Icon, menu bar glyph, favicons, social image — see [brand/README-assets.md](brand/README-assets.md) |
 | `docs/` | This documentation |
@@ -380,17 +552,34 @@ A second checkout can run beside a live one by giving it another port: `FREMKIT_
 caches somewhere else — a from-scratch install on the live checkout, without moving anything
 aside. Your keychain secrets are keyed by connection id, so a fresh config never names them.
 
+Writing a widget for the registry: `pnpm widget:new <id>`, then `pnpm widget:check <folder>` —
+**[docs/writing-widgets.md](docs/writing-widgets.md#your-first-widget-in-five-minutes)**.
 Working on Fremkit itself — the helper build, the configuration files:
 **[docs/contributing.md](docs/contributing.md)**.
 Working on it with a coding agent — layout, conventions, the gotchas: **[AGENTS.md](AGENTS.md)**.
+Building, notarizing and publishing a release: **[docs/releasing.md](docs/releasing.md)**.
 Feeding the Claude Code widgets: **[docs/claude-code.md](docs/claude-code.md)**.
 
 ## Security
+
+The server answers only callers holding a secret made at each launch: the helper's windows get
+it on their own, a browser through a one-time link (the **F** menu, `pnpm open`), and scripts read
+it from `~/Library/Application Support/Fremkit/access-4242.token` and send it as
+`Authorization: Bearer`. For example:
+
+```sh
+curl -X POST -H @<(printf "Authorization: Bearer %s" "$(cat ~/Library/Application\ Support/Fremkit/access-4242.token)") http://127.0.0.1:4242/api/widgets/rescan
+```
 
 The threat model, what a widget can and cannot do, what the helper's permissions mean, the known
 limits, and how to report a problem: **[SECURITY.md](SECURITY.md)**.
 
 ## Credits and trademarks
+
+Fremkit is written by [usul](https://github.com/fdussert), with
+[FlorianBruniaux](https://github.com/FlorianBruniaux) and [mcouzinet](https://github.com/mcouzinet).
+The widgets and themes on the registry name their own authors on their cards. The admin's
+**Settings → About** lists the same people, from `ui/src/shared/credits.ts`.
 
 The icons are a subset of [Lucide](https://lucide.dev) (ISC licence, © Lucide Contributors),
 inlined in `ui/src/shared/icons.ts` so the interface takes no runtime icon dependency.

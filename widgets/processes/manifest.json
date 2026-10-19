@@ -1,6 +1,6 @@
 { "id": "processes",
   "name": { "fr": "Processus", "en": "Processes" },
-  "version": "1.0.0",
+  "version": "1.0.0", "preview": "preview.webp",
   "description": { "fr": "Top processus", "en": "Top processes" },
   "category": "system",
   "icon": "list", "minSize": [16, 4], "defaultSize": [16, 8], "subscriptions": ["processes"],

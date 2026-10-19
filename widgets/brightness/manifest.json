@@ -1,0 +1,12 @@
+{ "id": "brightness",
+  "name": { "fr": "Luminosité", "en": "Brightness" },
+  "version": "1.0.0", "preview": "preview.webp",
+  "description": { "fr": "La luminosité de l'écran : curseur, jour/nuit, suivre le Mac", "en": "The screen's brightness: slider, day/night, follow the Mac" },
+  "category": "system",
+  "icon": "sun",
+  "sdk": 3,
+  "minSize": [8, 3],
+  "defaultSize": [12, 4],
+  "compact": { "width": 5 },
+  "subscriptions": ["brightness"],
+  "commands": ["brightness"] }

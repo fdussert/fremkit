@@ -7,7 +7,7 @@
  * It reads the store directly rather than taking ten props — the store is a singleton, and the
  * row's buttons act on it anyway.
  */
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import BaseButton from '../shared/ui/BaseButton.vue'
 import ChangeNotes from './ChangeNotes.vue'
 import BaseCard from '../shared/ui/BaseCard.vue'
@@ -19,6 +19,8 @@ import type { MarketplaceWidget } from '../shared/types'
 const props = defineProps<{ widget: MarketplaceWidget }>()
 const store = useMarketplaceStore()
 const { t } = useI18n()
+/** The registry's picture would not load: the icon stands in, as for a widget that has none. */
+const thumbFailed = ref(false)
 
 /** The one line under the description: author, licence, version and size. */
 const meta = computed(() => {
@@ -59,7 +61,9 @@ const noPermissions = computed(() => {
 
 <template>
   <BaseCard class="row" :data-widget="widget.id">
-    <BaseIcon :name="widget.icon" :size="20" />
+    <img v-if="widget.preview && !thumbFailed" class="thumb" :src="`/api/marketplace/preview/${encodeURIComponent(widget.id)}`"
+      alt="" loading="lazy" data-market-thumb @error="thumbFailed = true" />
+    <BaseIcon v-else :name="widget.icon" :size="20" />
     <div class="txt">
       <strong>
         {{ pick(widget.name) }}
@@ -120,6 +124,9 @@ const noPermissions = computed(() => {
 
 <style scoped>
 .row { align-items: flex-start; }
+/* The preview, letterboxed into one shape whatever the widget's own proportions. */
+.thumb { width: 96px; height: 60px; flex: 0 0 auto; object-fit: contain; border-radius: var(--radius-sm);
+  background: var(--bg); border: 1px solid var(--border); }
 .txt { display: flex; flex-direction: column; min-width: 0; flex: 1; }
 .txt strong { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; font-size: var(--fs-sm); font-weight: 600; }
 .txt small { font-size: var(--fs-xs); color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; }

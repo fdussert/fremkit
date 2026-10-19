@@ -12,37 +12,76 @@ import type { FastifyInstance } from 'fastify'
 let dir: string
 let app: FastifyInstance
 
+/** A v4 config with one screen and one page holding `items`, each a `clock` widget. */
+const onePage = (items: { instanceId: string, x: number, y: number, w: number, h: number }[], extra: object = {}) => ({
+  version: 4,
+  widgets: Object.fromEntries(items.map((p) => [p.instanceId, { widgetId: 'clock' }])),
+  screens: [{ id: 'edge', name: 'Xeneon Edge', kind: 'edge', pages: [{ id: 'p', name: 'P', items }] }],
+  ...extra,
+})
+
 beforeEach(async () => {
   dir = await mkdtemp(join(tmpdir(), 'fremkit-app-'))
   await mkdir(join(dir, 'widgets', 'clock'), { recursive: true })
   await writeFile(join(dir, 'widgets', 'clock', 'manifest.json'), JSON.stringify({ id: 'clock', name: 'Clock', version: '1.0.0', minSize: [8, 4], defaultSize: [16, 4] }))
   await writeFile(join(dir, 'widgets', 'clock', 'index.html'), '<!doctype html><html><head><title>c</title></head><body>hi</body></html>')
   await writeFile(join(dir, 'widgets', 'clock', 'style.css'), 'body{color:red}')
-  app = await buildApp({ dataDir: join(dir, 'data'), widgetsDir: join(dir, 'widgets') })
+  app = await buildApp({ accessToken: null, dataDir: join(dir, 'data'), widgetsDir: join(dir, 'widgets') })
 })
 afterEach(async () => { await app.close() })
+
+describe('the host pages', () => {
+  it('carry a CSP that keeps widget frames on /widgets/ and the page unframeable', async () => {
+    const ui = join(dir, 'ui')
+    await mkdir(ui, { recursive: true })
+    await writeFile(join(ui, 'index.html'), '<!doctype html><title>dashboard</title>')
+    await writeFile(join(ui, 'admin.html'), '<!doctype html><title>admin</title>')
+    await writeFile(join(ui, 'app.js'), 'x')
+    const served = await buildApp({ accessToken: null, dataDir: join(dir, 'data'), widgetsDir: join(dir, 'widgets'), uiDist: ui, port: 4301 })
+    try {
+      for (const url of ['/', '/index.html', '/admin', '/admin/', '/admin.html']) {
+        const res = await served.inject({ url, headers: { host: '127.0.0.1:4301' } })
+        expect(res.statusCode, url).toBe(200)
+        const csp = String(res.headers['content-security-policy'])
+        expect(csp, url).toContain('frame-src http://127.0.0.1:4301/widgets/')
+        expect(csp, url).toContain("connect-src 'self' ws://127.0.0.1:4301")
+        expect(csp, url).toContain("script-src 'self'")
+        expect(csp, url).not.toContain("script-src 'self' 'unsafe-inline'")
+        for (const d of ["frame-ancestors 'none'", "object-src 'none'", "base-uri 'none'"]) expect(csp, url).toContain(d)
+      }
+      // Under localhost the page's origin is localhost, and so are its frames.
+      const viaName = await served.inject({ url: '/', headers: { host: 'localhost:4301' } })
+      expect(String(viaName.headers['content-security-policy'])).toContain('frame-src http://localhost:4301/widgets/')
+      // Not a page: no host CSP, and the widgets keep their own.
+      expect((await served.inject({ url: '/app.js', headers: { host: '127.0.0.1:4301' } })).headers['content-security-policy']).toBeUndefined()
+      expect((await served.inject({ url: '/widgets/clock/index.html', headers: { host: '127.0.0.1:4301' } })).headers['content-security-policy']).toBe(widgetCsp(4301))
+    } finally {
+      await served.close()
+    }
+  })
+})
 
 describe('config routes', () => {
   it('GET /api/config returns the default config', async () => {
     const res = await app.inject({ url: '/api/config' })
     expect(res.statusCode).toBe(200)
-    expect(res.json().pages[0].id).toBe('home')
+    expect(res.json().screens[0].pages[0].id).toBe('home')
   })
   it('PUT /api/config validates shape and layout', async () => {
-    const bad = await app.inject({ method: 'PUT', url: '/api/config', payload: { version: 3, pages: [] } })
+    const bad = await app.inject({ method: 'PUT', url: '/api/config', payload: { version: 4, screens: [] } })
     expect(bad.statusCode).toBe(400)
-    const overlapping = (locale: 'fr' | 'en') => ({ version: 3, locale, pages: [{ id: 'p', name: 'P', widgets: [
-      { instanceId: 'a', widgetId: 'clock', x: 0, y: 0, w: 16, h: 4 }, { instanceId: 'b', widgetId: 'clock', x: 8, y: 2, w: 16, h: 4 } ] }] })
+    const overlapping = (locale: 'fr' | 'en') => onePage([
+      { instanceId: 'a', x: 0, y: 0, w: 16, h: 4 }, { instanceId: 'b', x: 8, y: 2, w: 16, h: 4 } ], { locale })
     const overlap = await app.inject({ method: 'PUT', url: '/api/config', payload: overlapping('fr') })
     expect(overlap.statusCode).toBe(400)
-    expect(overlap.json().errors[0]).toMatch(/chevauche/)
+    expect(overlap.json().errors[0]).toBe('écran Xeneon Edge, page p : a chevauche b')
     // The config being saved carries the language, so the refusal comes back in it.
     const overlapEn = await app.inject({ method: 'PUT', url: '/api/config', payload: overlapping('en') })
     expect(overlapEn.statusCode).toBe(400)
-    expect(overlapEn.json().errors[0]).toMatch(/overlaps/)
-    const ok = await app.inject({ method: 'PUT', url: '/api/config', payload: { version: 3, pages: [{ id: 'p', name: 'P', widgets: [{ instanceId: 'a', widgetId: 'clock', x: 0, y: 0, w: 16, h: 4 }] }] } })
+    expect(overlapEn.json().errors[0]).toBe('screen Xeneon Edge, page p: a overlaps b')
+    const ok = await app.inject({ method: 'PUT', url: '/api/config', payload: onePage([{ instanceId: 'a', x: 0, y: 0, w: 16, h: 4 }]) })
     expect(ok.statusCode).toBe(200)
-    expect((await app.inject({ url: '/api/config' })).json().pages[0].id).toBe('p')
+    expect((await app.inject({ url: '/api/config' })).json().screens[0].pages[0].id).toBe('p')
   })
   it('PUT /api/config with malformed JSON still returns 400', async () => {
     // The claude plugin registers a lenient application/json parser; it must stay
@@ -53,7 +92,7 @@ describe('config routes', () => {
   it('reports a healthy store and lets a normal PUT through', async () => {
     expect((await app.inject({ url: '/api/config/status' })).json()).toEqual({ degraded: false })
     expect((await app.inject({ url: '/api/config' })).headers['x-fremkit-degraded']).toBeUndefined()
-    const ok = await app.inject({ method: 'PUT', url: '/api/config', payload: { version: 3, pages: [{ id: 'p', name: 'P', widgets: [] }] } })
+    const ok = await app.inject({ method: 'PUT', url: '/api/config', payload: onePage([]) })
     expect(ok.statusCode).toBe(200)
   })
   it('refuses to save, and never writes, while the config on disk cannot be read', async () => {
@@ -62,21 +101,43 @@ describe('config routes', () => {
     await mkdir(join(dir, 'data'), { recursive: true })
     await writeFile(join(dir, 'data', 'fremkit.json'), mine)
     const err = vi.spyOn(console, 'error').mockImplementation(() => {})
-    app = await buildApp({ dataDir: join(dir, 'data'), widgetsDir: join(dir, 'widgets') })
+    app = await buildApp({ accessToken: null, dataDir: join(dir, 'data'), widgetsDir: join(dir, 'widgets') })
     err.mockRestore()
     expect((await app.inject({ url: '/api/config' })).headers['x-fremkit-degraded']).toBe('1')
     expect((await app.inject({ url: '/api/config/status' })).json()).toEqual({ degraded: true })
-    const put = await app.inject({ method: 'PUT', url: '/api/config', payload: { version: 3, pages: [{ id: 'p', name: 'P', widgets: [] }] } })
+    const put = await app.inject({ method: 'PUT', url: '/api/config', payload: onePage([]) })
     expect(put.statusCode).toBe(409)
     // A degraded store has no user config to read a language from, so it answers in the one the
     // machine would have picked.
     expect(put.json().errors[0]).toBe(degradedMessage(defaultLocale()))
     expect(await readFile(join(dir, 'data', 'fremkit.json'), 'utf8')).toBe(mine)
   })
+  it('lets an unrelated save through a bar already over the limit, and refuses widening it', async () => {
+    await app.close()
+    await mkdir(join(dir, 'widgets', 'pill'), { recursive: true })
+    await writeFile(join(dir, 'widgets', 'pill', 'manifest.json'), JSON.stringify({ id: 'pill', name: 'Pill', version: '1.0.0', minSize: [4, 2], defaultSize: [4, 2], compact: { width: 4 } }))
+    await writeFile(join(dir, 'widgets', 'pill', 'index.html'), '<!doctype html><html><head><title>p</title></head><body>p</body></html>')
+    // 34 columns (1360 px) leave each side 480 px after the dots: three 4-cell pills on one side
+    // (528 px with gaps and padding) are already over, as a bar can be after a manifest's compact
+    // width grew.
+    const tablet = (pills: number, pageName: string) => {
+      const widgets: Record<string, unknown> = {}
+      const nav = Array.from({ length: pills }, (_, i) => { widgets['p' + i] = { widgetId: 'pill' }; return { instanceId: 'p' + i } })
+      return { version: 4, locale: 'en', widgets, screens: [{ id: 'tab', name: 'Tablet', kind: 'device', display: { cols: 34, rows: 23 }, nav, pages: [{ id: 'p', name: pageName }] }] }
+    }
+    await mkdir(join(dir, 'data'), { recursive: true })
+    await writeFile(join(dir, 'data', 'fremkit.json'), JSON.stringify(tablet(3, 'P')))
+    app = await buildApp({ accessToken: null, dataDir: join(dir, 'data'), widgetsDir: join(dir, 'widgets') })
+    const renamed = await app.inject({ method: 'PUT', url: '/api/config', payload: tablet(3, 'Renamed') })
+    expect(renamed.statusCode).toBe(200)
+    const widened = await app.inject({ method: 'PUT', url: '/api/config', payload: tablet(4, 'Renamed') })
+    expect(widened.statusCode).toBe(400)
+    expect(widened.json().errors).toEqual(['screen Tablet, navigation bar: its wider widget cluster takes 700 px of the 480 px the pages leave on each side'])
+  })
 })
 
 describe('the request gate', () => {
-  const page = { version: 3, pages: [{ id: 'p', name: 'P', widgets: [] }] }
+  const page = onePage([])
 
   it('refuses every request whose Host is not one of ours', async () => {
     for (const host of ['evil.example', 'evil.example:4242', 'fremkit.local']) {
@@ -86,7 +147,7 @@ describe('the request gate', () => {
     }
   })
   it('refuses a Host on a port that is not the one we listen on', async () => {
-    const other = await buildApp({ dataDir: join(dir, 'data'), widgetsDir: join(dir, 'widgets'), port: 4242 })
+    const other = await buildApp({ accessToken: null, dataDir: join(dir, 'data'), widgetsDir: join(dir, 'widgets'), port: 4242 })
     expect((await other.inject({ url: '/api/config', headers: { host: '127.0.0.1:4242' } })).statusCode).toBe(200)
     expect((await other.inject({ url: '/api/config', headers: { host: '127.0.0.1:8080' } })).statusCode).toBe(421)
     await other.close()
@@ -104,7 +165,7 @@ describe('the request gate', () => {
       expect(res.json().error).toMatch(/origine non autorisée|origin not allowed/)
     }
     // The refusal happens before the route, so nothing was saved.
-    expect((await app.inject({ url: '/api/config' })).json().pages[0].id).toBe('home')
+    expect((await app.inject({ url: '/api/config' })).json().screens[0].pages[0].id).toBe('home')
   })
   it('lets a write from our own origin, and one with no Origin at all, through', async () => {
     expect((await app.inject({ method: 'PUT', url: '/api/config', payload: page,
@@ -158,8 +219,18 @@ describe('widget routes', () => {
     expect(res.statusCode).toBe(200)
     expect(res.headers['content-type']).toContain('text/html')
     expect(res.headers['content-security-policy']).toBe(WIDGET_CSP)
-    expect(res.body).toContain('<head><script src="/fremkit.js"></script>')
-    expect(res.body).toContain('hi')
+    expect(res.body).toBe('<!doctype html><script src="/fremkit.js"></script><html><head><title>c</title></head><body>hi</body></html>')
+  })
+  it('lets only our own pages frame a widget document', async () => {
+    const res = await app.inject({ url: '/widgets/clock/index.html' })
+    const ancestors = String(res.headers['content-security-policy']).split('; ').find((d) => d.startsWith('frame-ancestors'))
+    expect(ancestors).toBe('frame-ancestors http://127.0.0.1:4242 http://localhost:4242')
+    // A second checkout's pages, on its own port, and Vite's in development.
+    expect(widgetCsp(4301)).toContain('frame-ancestors http://127.0.0.1:4301 http://localhost:4301')
+    expect(widgetCsp(4301, true)).toContain('frame-ancestors http://127.0.0.1:4301 http://localhost:4301 http://127.0.0.1:5173 http://localhost:5173')
+    // The other files of a widget carry it too.
+    const css = await app.inject({ url: '/widgets/clock/style.css' })
+    expect(String(css.headers['content-security-policy'])).toContain('frame-ancestors http://127.0.0.1:4242 http://localhost:4242')
   })
   it('allows the bridge and a widget-owned relative script in an opaque frame', async () => {
     await writeFile(join(dir, 'widgets', 'clock', 'index.html'),
@@ -184,7 +255,7 @@ describe('widget routes', () => {
     expect(widgetCsp(4301)).not.toContain(':5173')
   })
   it('serves a second checkout with its own widget origin', async () => {
-    const other = await buildApp({ dataDir: join(dir, 'data'), widgetsDir: join(dir, 'widgets'), port: 4301 })
+    const other = await buildApp({ accessToken: null, dataDir: join(dir, 'data'), widgetsDir: join(dir, 'widgets'), port: 4301 })
     try {
       const res = await other.inject({ url: '/widgets/clock/index.html', headers: { host: '127.0.0.1:4301' } })
       expect(res.statusCode).toBe(200)
@@ -199,9 +270,67 @@ describe('widget routes', () => {
     // case-insensitive filesystem: all the same untrusted code, all the same header.
     await writeFile(join(dir, 'widgets', 'clock', 'popup.html'), '<html><body>second</body></html>')
     for (const url of ['/widgets/clock/', '/widgets/clock/index.html', '/widgets/clock/Index.html',
-      '/widgets/clock/popup.html', '/widgets/clock/style.css', '/widgets/ghost/index.html']) {
+      '/widgets/clock/style.css', '/widgets/ghost/index.html']) {
       const res = await app.inject({ url })
       expect(res.headers['content-security-policy'], url).toBe(WIDGET_CSP)
+    }
+  })
+  it('runs no script in a document that is not the widget\'s page', async () => {
+    // Only index.html gets the bridge, and the bridge is what takes WebRTC away: a second page,
+    // an SVG or an XML file the frame navigated to would otherwise run with it intact.
+    for (const name of ['popup.html', 'page.HTM', 'image.svg', 'feed.xml', 'doc.xhtml', 'sub/index.html']) {
+      await mkdir(join(dir, 'widgets', 'clock', 'sub'), { recursive: true })
+      await writeFile(join(dir, 'widgets', 'clock', name), '<svg xmlns="http://www.w3.org/2000/svg"><script>1</script></svg>')
+      const res = await app.inject({ url: `/widgets/clock/${name}` })
+      expect(res.statusCode, name).toBe(200)
+      const csp = String(res.headers['content-security-policy'])
+      expect(csp, name).toContain("script-src 'none'")
+      expect(csp, name).toContain('sandbox allow-scripts')
+      expect(csp, name).toContain("connect-src 'none'")
+    }
+    expect((await app.inject({ url: '/widgets/clock/style.css' })).headers['content-security-policy']).toBe(WIDGET_CSP)
+  })
+  it('puts the bridge ahead of anything the widget wrote, wherever its <head> is', async () => {
+    // Each of these once let a script of the widget's run before the bridge, which is the one
+    // thing the WebRTC guard cannot survive: `<header>` and a commented `<head>` both matched the
+    // old "after <head>" rule, and a page with no doctype has nothing ahead of it at all.
+    const pages = [
+      '<!doctype html><script>evil()</script><header>x</header>',
+      '<!doctype html><!-- <head> --><script>evil()</script><head></head>',
+      '<script>evil()</script><html><head></head></html>',
+      '<!--><script>evil()</script><!-- --><!doctype html><head></head>',
+      '\uFEFF  <!DOCTYPE html>\n<script>evil()</script>',
+    ]
+    for (const page of pages) {
+      await writeFile(join(dir, 'widgets', 'clock', 'index.html'), page)
+      const body = (await app.inject({ url: '/widgets/clock/index.html' })).body
+      expect(body.indexOf('<script src="/fremkit.js"></script>'), page).toBeGreaterThanOrEqual(0)
+      expect(body.indexOf('<script src="/fremkit.js"></script>'), page).toBeLessThan(body.indexOf('evil'))
+      // Nothing but a doctype ahead of it.
+      expect(body.slice(0, body.indexOf('<script src="/fremkit.js">')).replace(/^\uFEFF?\s*(<!doctype[^>]*>)?/i, ''), page).toBe('')
+    }
+  })
+  it('gives WebRTC\'s local level to a listed built-in only, never to an installed widget', async () => {
+    const listed = await buildApp({
+      accessToken: null, dataDir: join(dir, 'data'), widgetsDir: join(dir, 'widgets'),
+      webrtcLocalBuiltins: new Set(['clock', 'synology']),
+    })
+    try {
+      const folder = join(dir, 'data', 'widgets', 'synology')
+      await mkdir(folder, { recursive: true })
+      await writeFile(join(folder, 'manifest.json'), JSON.stringify({ id: 'synology', name: 'NAS', version: '1.0.0', minSize: [8, 4], defaultSize: [8, 4] }))
+      await writeFile(join(folder, 'index.html'), '<!doctype html><body>nas</body>')
+      await listed.inject({ method: 'POST', url: '/api/widgets/rescan' })
+      const builtin = (await listed.inject({ url: '/widgets/clock/index.html' })).body
+      expect(builtin).toMatch(/^<!doctype html><script src="\/fremkit\.js" data-webrtc="local" data-webrtc-hosts="[0-9a-f.: ]*"><\/script>/)
+      expect(builtin).toContain('127.0.0.1')
+      // On the list by id, but installed: the source decides, not the name.
+      const installed = (await listed.inject({ url: '/widgets/synology/index.html' })).body
+      expect(installed).toBe('<!doctype html><script src="/fremkit.js"></script><body>nas</body>')
+      // And with the shipped list, which names only fremplay, the clock does not have it.
+      expect((await app.inject({ url: '/widgets/clock/index.html' })).body).not.toContain('data-webrtc')
+    } finally {
+      await listed.close()
     }
   })
   it('spells out what a widget may load', async () => {
@@ -250,7 +379,7 @@ describe('widget routes', () => {
     const html = await app.inject({ url: '/widgets/synology/index.html' })
     expect(html.statusCode).toBe(200)
     expect(html.headers['content-security-policy']).toBe(WIDGET_CSP)
-    expect(html.body).toContain('<head><script src="/fremkit.js"></script>')
+    expect(html.body).toBe('<!doctype html><script src="/fremkit.js"></script><html><head></head><body>nas</body></html>')
     expect((await app.inject({ url: '/widgets/synology/app.js' })).body).toBe('console.log(1)')
 
     const dotfile = await app.inject({ url: '/widgets/synology/.env' })

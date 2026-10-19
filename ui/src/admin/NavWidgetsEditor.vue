@@ -1,10 +1,11 @@
 <script setup lang="ts">
 /**
- * The Screen tab's "Navigation bar widgets" section: the bar's compact widgets in order, each
- * with its own settings folded away, plus a drop-down of every widget whose manifest declares a
- * compact rendering. Everything goes through the store's `apply`, so it is undoable.
+ * The Screen tab's "Navigation bar widgets" section: the selected screen's bar entries in order,
+ * each with its widget's settings folded away, plus a drop-down of every widget whose manifest
+ * declares a compact rendering. Everything goes through the store's `apply`, so it is undoable.
+ * The settings are the shared widget's: a tile of the same widget on another screen follows them.
  */
-import { computed, ref } from 'vue'
+import { computed } from 'vue'
 import BaseButton from '../shared/ui/BaseButton.vue'
 import BaseCheckbox from '../shared/ui/BaseCheckbox.vue'
 import BaseIcon from '../shared/ui/BaseIcon.vue'
@@ -12,13 +13,22 @@ import BaseSegmented from '../shared/ui/BaseSegmented.vue'
 import CopySettingsFrom from './CopySettingsFrom.vue'
 import SettingsForm from './SettingsForm.vue'
 import { pick, useI18n } from '../shared/i18n'
-import { NAV_SLOTS, navWidgetsOf, type NavSlot } from '../shared/types'
+import { NAV_SLOTS, navItemsOf, type NavSlot } from '../shared/types'
 import { useAdminStore } from './store'
+import { offeredManifests } from './labs'
+import { widgetDelete, widgetDeleteKey } from './widgetDelete'
+import { openContextMenu } from '../shared/ui/contextMenu'
+import { editorFocus } from './editorFocus'
+import { navSettingsOpen, navWidgetMenu, toggleNavSettings } from './menus'
 
 const s = useAdminStore()
 const { t } = useI18n()
 
-const navWidgets = computed(() => navWidgetsOf(s.state.config!.display))
+/** The bar entries, each with the widget it names; an entry naming no widget shows as unknown. */
+const navWidgets = computed(() => navItemsOf(s.screen.value!).map((item) => {
+  const widget = s.state.config!.widgets[item.instanceId]
+  return { ...item, widgetId: widget?.widgetId ?? '', settings: widget?.settings ?? {} }
+}))
 /** The two clusters, named in the language in force. */
 const SLOT_OPTIONS = computed(() => NAV_SLOTS.map((value) => ({
   value, label: t(`admin.inspector.screen.navWidgets.slot.${value}`),
@@ -27,16 +37,16 @@ const SLOT_OPTIONS = computed(() => NAV_SLOTS.map((value) => ({
 const sameSide = (slot: NavSlot) => navWidgets.value.filter((w) => w.slot === slot)
 const sidePosition = (id: string, slot: NavSlot): number => sameSide(slot).findIndex((w) => w.instanceId === id)
 /** Only widgets with a compact rendering may go in the bar; the server refuses the others. */
-const addable = computed(() => Object.values(s.state.manifests).filter((m) => m.compact))
-/** Instance ids whose settings are unfolded. One at a time is the usual case, but not enforced. */
-const open = ref<string[]>([])
+const addable = computed(() => offeredManifests(s.state.config, s.state.manifests).filter((m) => m.compact))
 
 const manifestOf = (widgetId: string) => s.state.manifests[widgetId]
 const label = (widgetId: string): string => pick(manifestOf(widgetId)?.name) || widgetId
-const isOpen = (id: string): boolean => open.value.includes(id)
-function toggle(id: string): void {
-  open.value = isOpen(id) ? open.value.filter((x) => x !== id) : [...open.value, id]
-}
+/**
+ * Whose settings are unfolded. One at a time is the usual case, but not enforced; shared with the
+ * menus, so "Settings…" on a bar widget unfolds its row here.
+ */
+const isOpen = (id: string): boolean => navSettingsOpen.includes(id)
+const toggle = (id: string): void => toggleNavSettings(id)
 
 function onAdd(event: Event): void {
   const select = event.target as HTMLSelectElement
@@ -44,6 +54,15 @@ function onAdd(event: Event): void {
   // The drop-down is an action, not a value: it snaps back to its placeholder either way.
   select.value = ''
   if (widgetId) s.addNavWidget(widgetId)
+}
+
+/**
+ * The trash button takes the widget out of this screen's bar. When no other screen shows it, that
+ * deletes the widget, so the button asks first — the same two-tap confirmation as a tile.
+ */
+function remove(instanceId: string): void {
+  if (!s.isLastPlace(instanceId)) { s.removeNavWidget(instanceId); return }
+  widgetDelete.ask(widgetDeleteKey(instanceId), () => s.removeNavWidget(instanceId))
 }
 
 /**
@@ -66,7 +85,8 @@ function onSetting(instanceId: string, key: string, value: unknown): void {
   <p v-if="!navWidgets.length" class="hint">{{ t('admin.inspector.screen.navWidgets.empty') }}</p>
   <ul v-else class="list">
     <li v-for="w in navWidgets" :key="w.instanceId">
-      <div class="head">
+      <!-- The head row only: a right click in a setting's field keeps the browser's text menu. -->
+      <div class="head" @contextmenu="openContextMenu($event, navWidgetMenu(s, w.instanceId, editorFocus))">
         <BaseIcon :name="manifestOf(w.widgetId)?.icon ?? 'layout-grid'" :size="16" />
         <button type="button" class="name" :aria-expanded="isOpen(w.instanceId)"
           :title="t(isOpen(w.instanceId) ? 'admin.inspector.screen.navWidgets.collapse' : 'admin.inspector.screen.navWidgets.expand')"
@@ -83,10 +103,20 @@ function onSetting(instanceId: string, key: string, value: unknown): void {
           @click="s.moveNavWidget(w.instanceId, 1)">
           <BaseIcon name="chevron-down" :size="14" />
         </BaseButton>
-        <BaseButton variant="icon" :title="t('common.remove')" @click="s.removeNavWidget(w.instanceId)">
-          <BaseIcon name="trash-2" :size="14" />
+        <BaseButton v-if="widgetDelete.armed(widgetDeleteKey(w.instanceId))" variant="danger" @click="remove(w.instanceId)">
+          {{ t('common.confirm') }}
+        </BaseButton>
+        <BaseButton v-else variant="icon"
+          :title="t(s.isLastPlace(w.instanceId) ? 'admin.inspector.widget.delete' : 'admin.inspector.widget.removeFromScreen')"
+          @click="remove(w.instanceId)">
+          <BaseIcon :name="s.isLastPlace(w.instanceId) ? 'trash-2' : 'x'" :size="14" />
         </BaseButton>
       </div>
+      <!-- The row is too narrow for the name on the button, and a tooltip never shows on touch:
+           the question naming the widget goes under the row while it is armed. -->
+      <p v-if="widgetDelete.armed(widgetDeleteKey(w.instanceId))" class="hint bad">
+        {{ t('admin.inspector.widget.deleteConfirm', { name: label(w.widgetId) }) }}
+      </p>
       <!-- Which side of the dots this widget sits on; the arrows above order it within that side. -->
       <BaseSegmented class="slot" :model-value="w.slot" :options="SLOT_OPTIONS"
         @update:model-value="s.updateNavWidget(w.instanceId, { slot: $event as NavSlot })" />
@@ -101,7 +131,7 @@ function onSetting(instanceId: string, key: string, value: unknown): void {
           @copy="s.updateNavWidget(w.instanceId, { settings: $event })" />
         <!-- The bar draws the compact rendering, so a setting scoped to the tile is not shown here. -->
         <SettingsForm :schema="manifestOf(w.widgetId)!.settingsSchema" scope="compact" :values="w.settings"
-          :widget-id="w.widgetId"
+          :widget-id="w.widgetId" :commands="manifestOf(w.widgetId)!.commands"
           @change="(key, value) => onSetting(w.instanceId, key, value)" />
       </div>
     </li>
@@ -117,6 +147,7 @@ function onSetting(instanceId: string, key: string, value: unknown): void {
 h3 { font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: .08em; color: var(--text-muted);
   margin: var(--space-4) 0 var(--space-2); }
 .hint { font-size: var(--fs-xs); color: var(--text-dim); margin: 0 0 var(--space-2); }
+.list .hint.bad { color: var(--danger); margin: var(--space-1) 0 0; }
 .list { list-style: none; margin: 0 0 var(--space-2); padding: 0; display: flex; flex-direction: column; gap: var(--space-1); }
 .list li { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: var(--space-2); }
 .head { display: flex; align-items: center; gap: var(--space-1); }

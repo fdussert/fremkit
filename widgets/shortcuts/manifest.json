@@ -1,6 +1,6 @@
 { "id": "shortcuts",
   "name": { "fr": "Raccourcis", "en": "Shortcuts" },
-  "version": "1.4.2",
+  "version": "1.4.2", "preview": "preview.webp",
   "description": { "fr": "Gros boutons tactiles qui ouvrent une application, un lien ou un raccourci",
                    "en": "Big touch buttons that open an application, a link or a shortcut" },
   "category": "productivity",

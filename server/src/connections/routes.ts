@@ -13,9 +13,14 @@ import { OptionsError } from './types.js'
 import { isOriginAllowed } from '../ws/routes.js'
 import { isCrossSiteFetch } from '../http/guard.js'
 import { tr } from '../i18n.js'
+import { placeLabel, whereShown } from '../config/instances.js'
 
-/** Ids the route table already spells: `/api/connections/types` must stay the type list. */
-const RESERVED_IDS = new Set(['types'])
+/**
+ * Ids no connection may take: `types`, because `/api/connections/types` must stay the type list;
+ * `devices`, because a connection's secrets are stored under `<id>/<key>` and the pairing TLS key
+ * lives at `devices/tls-key` in the same store.
+ */
+const RESERVED_IDS = new Set(['types', 'devices'])
 
 const usableId = (id: string): boolean => CONNECTION_ID_RE.test(id) && !RESERVED_IDS.has(id)
 
@@ -44,7 +49,8 @@ const TestBodySchema = z.object({
   secrets: z.record(z.string(), z.string()).optional(),
 })
 
-export interface ConnectionUse { page: string; instanceId: string; widgetId: string }
+/** One widget pointing at a connection, and where it is shown, each place as `placeLabel` names it. */
+export interface ConnectionUse { instanceId: string; widgetId: string; where: string[] }
 
 /** True when a stored setting value names the connection, whether it holds one id or a list. */
 const namesConnection = (value: unknown, id: string): boolean =>
@@ -57,20 +63,22 @@ const namesConnection = (value: unknown, id: string): boolean =>
  * settings only; for a widget the catalog does not know (folder removed, rescan pending) every
  * setting value is compared instead, so a stale instance still protects its connection from
  * being deleted.
+ *
+ * Every widget counts, wherever it is shown: one only in a bar holds its connection just as a
+ * tile does, and used to be missed when this walked the pages.
  */
 export function findConnectionUsers(config: Config, catalog: WidgetCatalog, id: string): ConnectionUse[] {
   const uses: ConnectionUse[] = []
-  for (const page of config.pages) {
-    for (const widget of page.widgets) {
-      const manifest = catalog.get(widget.widgetId)
-      const keys = manifest
-        ? Object.entries(manifest.settingsSchema)
-          .filter(([, f]) => f.type === 'connection' || f.type === 'connections')
-          .map(([k]) => k)
-        : Object.keys(widget.settings)
-      if (keys.some((k) => namesConnection(widget.settings[k], id))) {
-        uses.push({ page: page.name, instanceId: widget.instanceId, widgetId: widget.widgetId })
-      }
+  for (const [instanceId, widget] of Object.entries(config.widgets)) {
+    const manifest = catalog.get(widget.widgetId)
+    const keys = manifest
+      ? Object.entries(manifest.settingsSchema)
+        .filter(([, f]) => f.type === 'connection' || f.type === 'connections')
+        .map(([k]) => k)
+      : Object.keys(widget.settings)
+    if (keys.some((k) => namesConnection(widget.settings[k], id))) {
+      const where = whereShown(config, instanceId).map((place) => placeLabel(config, place))
+      uses.push({ instanceId, widgetId: widget.widgetId, where })
     }
   }
   return uses
@@ -205,6 +213,9 @@ export async function connectionRoutes(
     })
 
     try {
+      // A new connection starts from nothing: whatever an earlier one of the same id left in the
+      // store is removed before this one's secrets go in, never adopted.
+      if (!existing) await manager.purgeStale(id, parsed.data.type)
       for (const [key, value] of Object.entries(submitted)) {
         if (value === '') await secrets.delete(`${id}/${key}`)
         else await secrets.set(`${id}/${key}`, value)
@@ -230,7 +241,10 @@ export async function connectionRoutes(
 
     const uses = findConnectionUsers(config, catalog, id)
     if (uses.length) {
-      const list = uses.map((u) => tr(config.locale, 'connections.usedByEntry', { widgetId: u.widgetId, page: u.page })).join(', ')
+      // A widget nothing shows still holds its connection; it is then named alone.
+      const list = uses.map((u) => u.where.length
+        ? tr(config.locale, 'connections.usedByEntry', { widgetId: u.widgetId, where: u.where.join(', ') })
+        : u.widgetId).join(', ')
       return reply.code(409).send({ error: tr(config.locale, 'connections.usedBy', { list }) })
     }
 

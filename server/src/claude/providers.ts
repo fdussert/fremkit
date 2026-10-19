@@ -1,4 +1,4 @@
-import type { Provider } from '../providers/types.js'
+import { isTrusted, type Provider } from '../providers/types.js'
 import type { ClaudeTracker } from './tracker.js'
 import type { ClaudeUsage } from './usage.js'
 import { listClaudeProcesses, type ClaudeProcess } from './processes.js'
@@ -54,7 +54,7 @@ export function createClaudeSessionsProvider(tracker: ClaudeTracker, opts: Claud
        * that acts on the Mac itself.
        */
       focus: async (payload, ctx) => {
-        if (!ctx?.loopback) return { ok: false, error: tr(undefined, 'provider.localOnly') }
+        if (!isTrusted(ctx)) return { ok: false, error: tr(undefined, 'provider.localOnly') }
         const parsed = FocusPayloadSchema.safeParse(payload)
         if (!parsed.success) throw new Error(tr(undefined, 'claude.invalidDismiss'))
         const session = tracker.snapshot().sessions.find((s) => s.sessionId === parsed.data.sessionId)

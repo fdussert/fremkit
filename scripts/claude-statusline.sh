@@ -2,6 +2,9 @@
 # Claude Code status line: prints a one-line status and forwards the JSON to Fremkit in the background.
 # Requires jq. Configure: "statusLine": { "type": "command", "command": "<repo>/scripts/claude-statusline.sh" }
 URL="${FREMKIT_HOOK_URL:-http://127.0.0.1:4242/api/hooks/claude}"
+# The server's access secret, from its token file, given to curl through a descriptor (never argv).
+. "$(dirname "$0")/lib/access.sh" 2>/dev/null || fremkit_auth_header() { :; }
+PORT=$(fremkit_port_of "$URL" 2>/dev/null || echo 4242)
 
 # Degrade cleanly on a machine without jq instead of emitting noise.
 command -v jq >/dev/null 2>&1 || { printf '%s\n' 'fremkit: jq required'; exit 0; }
@@ -17,7 +20,8 @@ branch="$(git -C "${cwd:-.}" rev-parse --abbrev-ref HEAD 2>/dev/null)"
 # Forward without waiting; tag the payload so the server knows it is a status line, not a
 # hook, and pass along the branch just computed above.
 printf '%s' "$input" | jq -c --arg branch "$branch" '. + {hook_event_name: "StatusLine", fremkit_branch: $branch}' 2>/dev/null \
-  | curl --silent --output /dev/null --max-time 0.5 -X POST -H 'content-type: application/json' --data-binary @- "$URL" >/dev/null 2>&1 &
+  | curl --silent --output /dev/null --max-time 0.5 -X POST -H 'content-type: application/json' \
+    -H @<(fremkit_auth_header "$PORT") --data-binary @- "$URL" >/dev/null 2>&1 &
 
 line="$(printf '%s' "$input" | jq -r --arg branch "$branch" '
   def pct(x): if x == null then empty else (x | floor | tostring) + "%" end;

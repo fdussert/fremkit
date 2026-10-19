@@ -2,7 +2,14 @@
 # Launch Chrome in full-screen app mode on the Xeneon Edge display (2560x720).
 # Without the Edge plugged in: a 2560x720 window on the main display.
 set -euo pipefail
-URL="${FREMKIT_URL:-http://127.0.0.1:4242/}"
+SERVER="${FREMKIT_URL:-http://127.0.0.1:4242}"
+# The server answers only holders of its access secret: Chrome is given a one-time link that sets
+# the cookie in its profile and lands on the dashboard (see scripts/lib/access.sh).
+. "$(dirname "$0")/lib/access.sh"
+URL=$(fremkit_auth_url "${SERVER%/}" /) || {
+  echo "fremkit: could not get a sign-in link from $SERVER; is the server running?" >&2
+  exit 1
+}
 PROFILE="$HOME/Library/Application Support/Fremkit/chrome-profile"
 mkdir -p "$PROFILE"
 

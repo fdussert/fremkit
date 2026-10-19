@@ -352,6 +352,13 @@ describe('themes in the index', () => {
     await expect(make(JSON.stringify(ok)).registry.index()).resolves.toBeTruthy()
   })
 
+  it('refuses a url() in a token, which the colour characters can otherwise spell', async () => {
+    for (const accent of ['url(//example.com/x)', 'URL (//example.com/x)', 'image-set(url(//example.com/x) 1x)']) {
+      const bad = index({ themes: [theme({ tokens: { accent, bg: '#000', surface: '#111', text: '#eee' } })] })
+      await expect(make(JSON.stringify(bad)).registry.index(), accent).rejects.toThrow(RegistryError)
+    }
+  })
+
   it('does not move the schema version for the new key', async () => {
     const { registry } = make(JSON.stringify(index({ themes: [theme()] })))
     expect((await registry.index()).schema).toBe(1)

@@ -77,4 +77,9 @@ export class FileSecretStore implements SecretStore {
       await this.writeAll(all)
     })
   }
+
+  async keysOf(connectionId: string): Promise<string[]> {
+    const prefix = `${connectionId}/`
+    return Object.keys(await this.readAll()).filter((k) => k.startsWith(prefix))
+  }
 }

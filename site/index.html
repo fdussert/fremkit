@@ -1,0 +1,416 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fremkit · Everything you watch, on one strip</title>
+<meta name="description" content="Fremkit turns the Corsair Xeneon Edge into a touch widget dashboard for your Mac. No iCUE, no driver, no account. Free and open source.">
+<meta property="og:title" content="Fremkit · Everything you watch, on one strip">
+<meta property="og:description" content="A touch widget dashboard for the Corsair Xeneon Edge, on macOS. No iCUE, no driver, no account.">
+<link rel="canonical" href="https://fremkit.app/">
+<link rel="alternate" hreflang="en" href="https://fremkit.app/">
+<link rel="alternate" hreflang="fr" href="https://fremkit.app/?lang=fr">
+<link rel="alternate" hreflang="x-default" href="https://fremkit.app/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Fremkit">
+<meta property="og:url" content="https://fremkit.app/">
+<meta property="og:image" content="https://fremkit.app/assets/social.png">
+<meta property="og:image:width" content="1280">
+<meta property="og:image:height" content="640">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#0b0d10">
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="assets/favicon-180.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="nav" id="top">
+  <div class="nav-inner">
+    <a class="brand" href="#top"><img src="assets/icon.svg" alt="" width="28" height="28"><span>Fremkit</span></a>
+    <nav class="nav-links">
+      <a href="#how" data-i18n="nav.how">How it works</a>
+      <a href="#features" data-i18n="nav.features">Features</a>
+      <a href="#widgets" data-i18n="nav.widgets">Widgets</a>
+      <a href="#privacy" data-i18n="nav.privacy">Privacy</a>
+      <a href="#build" data-i18n="nav.build">Build a widget</a>
+    </nav>
+    <div class="nav-actions">
+      <button class="lang" id="lang" type="button" aria-label="Langue / Language"><span data-l="en">EN</span><span data-l="fr">FR</span></button>
+      <a class="btn ghost small" href="https://github.com/fdussert/fremkit"><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>GitHub</a>
+      <a class="btn primary small" href="#install" data-i18n="nav.get">Get Fremkit</a>
+    </div>
+  </div>
+</header>
+
+<main>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="wrap hero-text">
+    <p class="eyebrow"><span class="dot"></span><span data-i18n="hero.eyebrow">Widget dashboard for the Corsair Xeneon Edge · macOS</span></p>
+    <h1 data-i18n-html="hero.title">Everything you watch,<br><em>on one strip.</em></h1>
+    <p class="lede" data-i18n-html="hero.lede">Fremkit turns the Xeneon Edge, a 2560 × 720 touch strip, into a dashboard for your Mac: builds, calendar, printer, smart home, Claude Code. <strong>No iCUE, no driver, no account.</strong></p>
+    <div class="hero-cta">
+      <div class="cmd" data-copy="brew install --cask fdussert/fremkit/fremkit">
+        <span class="prompt">$</span><code>brew install --cask fdussert/fremkit/fremkit</code>
+        <button type="button" class="copy" data-i18n="copy">Copy</button>
+      </div>
+      <div class="hero-buttons">
+        <a class="btn primary" href="https://github.com/fdussert/fremkit/releases/latest/download/Fremkit.dmg" data-i18n="hero.dl">Download for macOS</a>
+        <a class="btn ghost" href="#install" data-i18n="hero.install">Install guide</a>
+      </div>
+      <p class="fine" data-i18n="hero.fine">Free and open source · MIT · macOS 13+ on Apple silicon</p>
+    </div>
+  </div>
+
+  <div class="stage" id="stage">
+    <div class="glow" aria-hidden="true"></div>
+    <div class="edge" id="edge">
+      <div class="edge-screen">
+        <video class="shot is-on" id="demo" src="assets/demo.mp4" poster="assets/demo-poster.webp" muted playsinline preload="auto" width="2560" height="720" aria-label="A recording of a dashboard filled with sample data: a touch on the compact RTK widget opens its savings, a swipe on the bar moves to a page with a printer and Homey, a light and a flow are switched on, another swipe shows the system page, a touch on the disk map goes down into Library, then two swipes go back"></video>
+        <img class="shot" src="assets/dashboard.webp" alt="The Fremkit dashboard on a Xeneon Edge: Claude Code sessions and limits, Spotify, pipelines, Dock badges, shortcuts, volume, next events, CleanShot X, MuteDeck and clocks" width="2560" height="720" loading="lazy">
+        <img class="shot" src="assets/iot.webp" alt="A second page: a Bambu Lab printer with its camera and AMS, Homey devices and Homey flows" width="2560" height="720" loading="lazy">
+        <img class="shot" src="assets/metrics.webp" alt="A third page: uptime, batteries, processes, CPU, memory, clipboard, disks, network, three disk maps and a Synology NAS" width="2560" height="720" loading="lazy">
+        <div class="touch" aria-hidden="true"></div>
+      </div>
+    </div>
+    <div class="edge-foot" aria-hidden="true"></div>
+    <p class="caption" data-i18n="hero.caption">Recorded on the dashboard itself, at the Edge's 2560 × 720, with sample data. The ring marks where the finger lands.</p>
+    <div class="pager" role="tablist" aria-label="Pages">
+      <button type="button" role="tab" class="is-on" data-page="0"><span data-i18n="hero.page0">Live</span> <small data-i18n="hero.page0s">touch & swipe</small></button>
+      <button type="button" role="tab" data-page="1"><span data-i18n="hero.page1">Home</span> <small data-i18n="hero.page1s">dev & AI</small></button>
+      <button type="button" role="tab" data-page="2"><span data-i18n="hero.page2">Lab</span> <small data-i18n="hero.page2s">printer & home</small></button>
+      <button type="button" role="tab" data-page="3"><span data-i18n="hero.page3">Metrics</span> <small data-i18n="hero.page3s">disks & system</small></button>
+    </div>
+  </div>
+
+  <div class="ticker" aria-label="What it shows">
+    <span class="ticker-label" data-i18n="hero.shows">Shows</span>
+    <div class="ticker-track"><div class="ticker-run" id="ticker">
+      <span>Clock</span><span>CPU</span><span>Memory</span><span>Calendar</span><span>Weather</span><span>Spotify</span><span>GitHub</span><span>Azure DevOps</span><span>Bambu Lab</span><span>Homey</span><span>Synology</span><span>Docker</span><span>Ollama</span><span>Claude Code</span><span>Pomodoro</span><span>Dock badges</span><span>Clipboard</span><span>Disk map</span><span>Key Light</span><span>RTK</span>
+    </div></div>
+  </div>
+</section>
+
+<!-- HOW IT WORKS -->
+<section class="section" id="how">
+  <div class="wrap">
+    <p class="kicker" data-i18n="how.kicker">How it works</p>
+    <h2 data-i18n-html="how.title">Four parts, <em>all on your Mac.</em></h2>
+    <p class="sub" data-i18n="how.sub">Nothing from Corsair runs. A small native helper owns the touch panel, a local server feeds the widgets, and your browser is the editor.</p>
+
+    <div class="flow" aria-hidden="true">
+      <div class="node">
+        <div class="node-ico"><svg viewBox="0 0 48 24"><rect x="1" y="4" width="46" height="13" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M20 20h8M24 17v3" stroke="currentColor" stroke-width="1.6"/></svg></div>
+        <b>Xeneon Edge</b><span>2560 × 720 · touch</span>
+      </div>
+      <div class="link"><i></i><label>USB HID</label></div>
+      <div class="node accent">
+        <div class="node-ico"><img src="assets/icon.svg" alt=""></div>
+        <b>Fremkit Helper</b><span data-i18n="how.helper">menu bar · Swift</span>
+      </div>
+      <div class="link"><i></i><label>kiosk · supervise</label></div>
+      <div class="node">
+        <div class="node-ico mono">:4242</div>
+        <b data-i18n="how.server">Local server</b><span>127.0.0.1 · Node</span>
+      </div>
+      <div class="link"><i></i><label>WebSocket</label></div>
+      <div class="node">
+        <div class="node-ico grid4"><i></i><i></i><i></i><i></i></div>
+        <b>Widgets</b><span data-i18n="how.widgets">HTML · sandboxed</span>
+      </div>
+    </div>
+
+    <ol class="steps">
+      <li><span class="n">1</span><h3 data-i18n="how.s1t">The helper takes the panel</h3><p data-i18n="how.s1">A menu bar app reads the Edge's touch reports over USB HID with its own driver, fences the mouse out of the strip and shows the dashboard in a kiosk window.</p></li>
+      <li><span class="n">2</span><h3 data-i18n="how.s2t">A server stays local</h3><p data-i18n="how.s2">It listens on 127.0.0.1 only, polls what the widgets need (your Mac, your calendar, your printer) and pushes it over a WebSocket.</p></li>
+      <li><span class="n">3</span><h3 data-i18n="how.s3t">You arrange it in a browser</h3><p data-i18n="how.s3">The admin shows the real page with live widgets. Drag, resize, theme, and it saves itself.</p></li>
+      <li><span class="n">4</span><h3 data-i18n="how.s4t">You drive it by touch</h3><p data-i18n="how.s4">Swipe between pages, press buttons, open a compact widget into a full popover, all with a finger.</p></li>
+    </ol>
+  </div>
+</section>
+
+<!-- FEATURES -->
+<section class="section alt" id="features">
+  <div class="wrap">
+    <p class="kicker" data-i18n="feat.kicker">What it does</p>
+    <h2 data-i18n-html="feat.title">Made for glancing, <em>not for staring.</em></h2>
+
+    <div class="bento">
+      <article class="card wide">
+        <div class="mock window">
+          <div class="win-bar"><i></i><i></i><i></i><span>Fremkit — admin</span></div>
+          <div class="win-tabs" role="tablist">
+            <button type="button" class="is-on" data-shot="admin.webp" data-i18n="feat.edTab1">Editor</button>
+            <button type="button" data-shot="admin-screen.webp" data-i18n="feat.edTab2">Screen</button>
+            <button type="button" data-shot="admin-connections.webp" data-i18n="feat.edTab3">Connections</button>
+          </div>
+          <img id="admin-shot" src="assets/admin.webp" alt="The Fremkit admin editor" width="2200" height="1215" loading="lazy">
+        </div>
+        <p class="tag" data-i18n="tag.ed">EDITOR</p>
+        <h3 data-i18n="feat.edT">The real page, live, under your mouse.</h3>
+        <p data-i18n="feat.ed">The middle of the admin is the dashboard itself, with live widgets. Drag and resize with snapping, overlap refused, keyboard nudges, undo and redo. Everything saves on its own.</p>
+      </article>
+
+      <article class="card half">
+        <div class="mock navbar-mock">
+          <video src="assets/rtk.mp4" poster="assets/rtk-poster.webp" autoplay muted loop playsinline width="800" height="682" aria-label="A recording: a touch on the compact RTK widget in the navigation bar opens its savings full size above the bar"></video>
+        </div>
+        <p class="tag" data-i18n="tag.nb">NAVIGATION BAR</p>
+        <h3 data-i18n="feat.nbT">Compact widgets, full on touch.</h3>
+        <p data-i18n="feat.nb">The bar under every page holds small widgets. Touch one and it opens full size in a popover.</p>
+      </article>
+
+      <article class="card half">
+        <div class="mock touch-mock">
+          <div class="tm-tile"><small>HOMEY FLOWS</small>
+            <div class="tm-btns"><span class="pressable">▶ <b data-i18n="feat.tm1">Lights on</b></span><span>▶ <b data-i18n="feat.tm2">Gate</b></span><span>▶ <b data-i18n="feat.tm3">Coffee</b></span></div>
+          </div>
+          <div class="finger" aria-hidden="true"></div>
+        </div>
+        <p class="tag" data-i18n="tag.t">TOUCH</p>
+        <h3 data-i18n="feat.tT">Its own touch driver.</h3>
+        <p data-i18n="feat.t">No iCUE, no third-party driver, no kernel extension. The helper reads the panel itself and keeps your mouse out of the strip.</p>
+      </article>
+
+      <article class="card wide">
+        <div class="mock diskmap"><img src="assets/disk-map.webp" alt="The disk map widget: the home folder as rings, 409 GB, with Library, Parallels and Downloads as the largest folders" width="1400" height="557" loading="lazy"></div>
+        <p class="tag" data-i18n="tag.dm">DISK MAP</p>
+        <h3 data-i18n="feat.dmT">Where the space went, in rings.</h3>
+        <p data-i18n="feat.dm">A small Swift scanner shipped with the app walks your home folder or a volume when you ask, never on a timer. Tap a ring to go down a level, long press to show it in the Finder. Nothing is ever deleted.</p>
+      </article>
+
+
+      <article class="card half">
+        <div class="mock consent">
+          <div class="cs-head"><span class="cs-ico">⌁</span><div><b>GitHub inbox</b><small>1.2.5 · usul, FlorianBruniaux · MIT</small></div></div>
+          <p class="cs-q" data-i18n="feat.csQ">This widget will be allowed to:</p>
+          <ul>
+            <li><i class="ok"></i><span data-i18n="feat.cs1">Read the <code>github</code> channels</span></li>
+            <li><i class="ok"></i><span data-i18n="feat.cs2">Use a GitHub connection</span></li>
+            <li><i class="no"></i><span data-i18n="feat.cs3">No network access of its own</span></li>
+          </ul>
+          <span class="cs-btn" data-i18n="feat.csBtn">Install</span>
+        </div>
+        <p class="tag" data-i18n="tag.mp">SIETCH</p>
+        <h3 data-i18n="feat.mpT">A marketplace that asks first.</h3>
+        <p data-i18n="feat.mp">Install widgets and themes from a curated registry. You see what each one may touch, and an update that wants more asks again.</p>
+      </article>
+
+      <article class="card half">
+        <div class="mock backup">
+          <div class="bk-file"><span class="bk-zip">ZIP</span><div><b>fremkit-backup-2026-10-16.zip</b><small>412 KB</small></div></div>
+          <ul>
+            <li><i class="ok"></i><span data-i18n="feat.bk1">Pages and widgets</span></li>
+            <li><i class="ok"></i><span data-i18n="feat.bk2">Connections</span></li>
+            <li><i class="ok"></i><span data-i18n="feat.bk3">Background library</span></li>
+            <li><i class="no"></i><span data-i18n="feat.bk4">Secrets: they stay in the keychain</span></li>
+          </ul>
+        </div>
+        <p class="tag" data-i18n="tag.bk">BACKUP</p>
+        <h3 data-i18n="feat.bkT">Back up without leaking.</h3>
+        <p data-i18n="feat.bk">One zip holds the whole dashboard and never a secret. Restore it on the same Mac and everything works at once.</p>
+      </article>
+      <article class="card wide">
+        <div class="mock gallery">
+          <div class="gallery-screen"><img id="theme-shot" src="assets/theme-fremkit.webp" alt="The demo dashboard in the Fremkit theme" width="2560" height="720" loading="lazy"></div>
+          <div class="th-chips" id="th-chips" role="tablist" aria-label="Themes"></div>
+        </div>
+        <p class="tag" data-i18n="tag.th">THEMES</p>
+        <h3 data-i18n="feat.thT">One JSON file repaints everything.</h3>
+        <p data-i18n="feat.th">Palette, fonts and text size, worn by the dashboard, the editor and every widget. Pick one, or write your own.</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- WIDGETS -->
+<section class="section" id="widgets">
+  <div class="wrap">
+    <div class="w-head">
+      <div>
+        <p class="kicker" data-i18n="w.kicker">Widgets</p>
+        <h2 data-i18n-html="w.title">Built in, or <em>one press away.</em></h2>
+        <p class="sub" data-i18n="w.sub">Widgets that work on any Mac ship with Fremkit. Those that need a printer, a hub, a NAS or an account live on the Sietch, our registry, and install from the admin.</p>
+        <p class="sub" data-i18n="w.sub2">Every card says who wrote it, what it reads and what changed in the last version, before you press Install.</p>
+      </div>
+      <figure class="w-shot"><img src="assets/sietch.webp" alt="The Sietch marketplace open in the admin, listing widgets with their author, licence, permissions and changes" width="1444" height="1531" loading="lazy"></figure>
+    </div>
+    <div class="filters" id="filters" role="tablist">
+      <button type="button" class="is-on" data-f="all"><span data-i18n="w.all">All</span> <small id="c-all"></small></button>
+      <button type="button" data-f="core"><span data-i18n="w.core">Built in</span> <small id="c-core"></small></button>
+      <button type="button" data-f="sietch"><span>Sietch</span> <small id="c-sietch"></small></button>
+    </div>
+    <div class="wgrid" id="wgrid"></div>
+    <p class="fine center" data-i18n-html="w.live">The Sietch list is read live from <a href="https://github.com/fdussert/fremkit-sietch">the registry</a>.</p>
+  </div>
+</section>
+
+<!-- PRIVACY -->
+<section class="section alt" id="privacy">
+  <div class="wrap">
+    <p class="kicker" data-i18n="p.kicker">Privacy</p>
+    <h2 data-i18n-html="p.title">Your Mac, <em>and nothing else.</em></h2>
+    <p class="sub" data-i18n="p.sub">A dashboard of your own machine reads things that belong to you. These hold for every release.</p>
+    <div class="invariants">
+      <div class="inv"><span class="n">01</span><h3 data-i18n="p.1t">Local only</h3><p data-i18n="p.1">The server listens on 127.0.0.1. Nothing on your network, let alone the internet, can reach it.</p></div>
+      <div class="inv"><span class="n">02</span><h3 data-i18n="p.2t">Secrets in the keychain</h3><p data-i18n="p.2">Tokens and passwords go to the macOS keychain. They are never returned by the API, never logged, never in a backup.</p></div>
+      <div class="inv"><span class="n">03</span><h3 data-i18n="p.3t">No telemetry, no account</h3><p data-i18n="p.3">Fremkit talks only to the services you configured. There is nothing to sign up for.</p></div>
+      <div class="inv"><span class="n">04</span><h3 data-i18n="p.4t">Widgets in a sandbox</h3><p data-i18n="p.4">Each widget runs in a sandboxed frame and gets only the channels and connections it declared, and you accepted.</p></div>
+    </div>
+    <p class="fine center" data-i18n-html="p.more">The full list of what Fremkit reads on your Mac is <a href="https://github.com/fdussert/fremkit#what-fremkit-reads-on-your-mac">in the README</a>.</p>
+  </div>
+</section>
+
+<!-- BUILD -->
+<section class="section" id="build">
+  <div class="wrap split">
+    <div>
+      <p class="kicker" data-i18n="b.kicker">Build a widget</p>
+      <h2 data-i18n-html="b.title">A widget is <em>a folder.</em></h2>
+      <p class="sub" data-i18n="b.sub">A manifest and an HTML page. No build step, no framework. The host injects a small SDK, your theme and the data you subscribed to.</p>
+      <ul class="checks">
+        <li data-i18n="b.1">Subscribe to a channel, get live snapshots</li>
+        <li data-i18n="b.2">Settings declared in the manifest, form drawn by the admin</li>
+        <li data-i18n="b.3">French and English, theme tokens, compact mode</li>
+        <li data-i18n="b.4">Publish it on the Sietch with a pull request</li>
+      </ul>
+      <a class="btn ghost" href="https://github.com/fdussert/fremkit/blob/main/docs/writing-widgets.md" data-i18n="b.cta">Read the widget guide</a>
+    </div>
+    <div class="code">
+      <div class="code-tabs" role="tablist">
+        <button type="button" class="is-on" data-code="0">manifest.json</button>
+        <button type="button" data-code="1">index.html</button>
+      </div>
+<pre class="is-on"><code><span class="p">{</span>
+  <span class="k">"id"</span>: <span class="s">"uptime"</span>,
+  <span class="k">"name"</span>: <span class="p">{</span> <span class="k">"fr"</span>: <span class="s">"Uptime"</span>, <span class="k">"en"</span>: <span class="s">"Uptime"</span> <span class="p">}</span>,
+  <span class="k">"version"</span>: <span class="s">"1.0.0"</span>,
+  <span class="k">"category"</span>: <span class="s">"system"</span>,
+  <span class="k">"minSize"</span>: [<span class="n">8</span>, <span class="n">4</span>],
+  <span class="k">"subscriptions"</span>: [<span class="s">"system"</span>]
+<span class="p">}</span></code></pre>
+<pre><code><span class="t">&lt;div</span> <span class="k">id</span>=<span class="s">"value"</span><span class="t">&gt;&lt;/div&gt;</span>
+<span class="t">&lt;script&gt;</span>
+  <span class="c">// Fremkit is injected by the host</span>
+  Fremkit.<span class="f">subscribe</span>(<span class="s">'system'</span>, <span class="k">function</span> (snap) {
+    <span class="k">var</span> h = Math.<span class="f">floor</span>(snap.uptimeSeconds / <span class="n">3600</span>)
+    value.textContent = h + <span class="s">' h'</span>
+  })
+<span class="t">&lt;/script&gt;</span></code></pre>
+    </div>
+  </div>
+</section>
+
+<!-- INSTALL -->
+<section class="section alt" id="install">
+  <div class="wrap">
+    <p class="kicker" data-i18n="i.kicker">Install</p>
+    <h2 data-i18n-html="i.title">Download, <em>then touch.</em></h2>
+    <div class="soon-row">
+      <a class="soon-card live" href="https://github.com/fdussert/fremkit/releases/latest/download/Fremkit.dmg">
+        <span class="soon-ic" aria-hidden="true">⬇</span>
+        <span class="soon-txt"><b data-i18n="i.dmg">Download for macOS</b><small data-i18n="i.dmgSub">Signed and notarised .dmg · updates itself</small></span>
+        <span class="soon-tag">v<span data-fremkit-version>0.5.0</span></span>
+      </a>
+      <div class="soon-card live" data-copy="brew install --cask fdussert/fremkit/fremkit">
+        <span class="soon-ic mono" aria-hidden="true">$</span>
+        <span class="soon-txt"><b><code>brew install --cask fdussert/fremkit/fremkit</code></b><small data-i18n="i.caskSub">Homebrew cask · no Node, no Xcode tools</small></span>
+        <button type="button" class="copy" data-i18n="copy">Copy</button>
+      </div>
+    </div>
+    <div class="install">
+      <div class="term">
+        <div class="win-bar"><i></i><i></i><i></i><span>zsh</span></div>
+<pre><code><span class="prompt">$</span> brew install --cask fdussert/fremkit/fremkit
+<span class="c">==&gt;</span> Tapping fdussert/fremkit
+<span class="c">==&gt;</span> Downloading Fremkit-<span data-fremkit-version>0.5.0</span>.dmg
+<span class="c">==&gt;</span> Installing Cask fremkit
+<span class="c">==&gt;</span> Moving App 'Fremkit.app' to '/Applications/Fremkit.app'
+<span class="ok">🍺</span>  fremkit was successfully installed!</code></pre>
+        <button type="button" class="copy" data-copy="brew install --cask fdussert/fremkit/fremkit" data-i18n="copy">Copy</button>
+      </div>
+      <ol class="after">
+        <li data-i18n-html="i.a1"><b>Drag Fremkit to Applications</b> from the .dmg, or let Homebrew do it.</li>
+        <li data-i18n-html="i.a2"><b>Quit iCUE and Touchscreen Gestures.</b> The touch panel takes one owner.</li>
+        <li data-i18n-html="i.a3"><b>Open Fremkit and grant two permissions</b>, Input Monitoring then Accessibility. One still missing shows in the menu bar menu, and a click opens the right pane of System Settings.</li>
+        <li data-i18n-html="i.a4"><b>Open the admin</b> from the menu bar <span class="kbd">F</span> and add your first widgets. Updates arrive by themselves.</li>
+      </ol>
+    </div>
+    <div class="reqs">
+      <span>macOS 13+</span><span>Apple silicon</span><span data-i18n="i.edge">Corsair Xeneon Edge (any display works, without touch)</span><span data-i18n="i.fda">Full Disk Access, optional, for the disk map</span>
+    </div>
+
+    <details class="source">
+      <summary data-i18n="i.srcT">Build from source, to work on Fremkit</summary>
+      <div class="install">
+        <div class="term">
+          <div class="win-bar"><i></i><i></i><i></i><span>zsh</span></div>
+<pre><code><span class="c"># <span data-i18n="i.c1">clone and set up</span></span>
+<span class="prompt">$</span> git clone https://github.com/fdussert/fremkit.git
+<span class="prompt">$</span> cd fremkit
+<span class="prompt">$</span> pnpm run setup
+<span class="ok">✓</span> <span data-i18n="i.o1">prerequisites</span>   <span class="ok">✓</span> <span data-i18n="i.o2">dependencies</span>   <span class="ok">✓</span> UI · server
+<span class="ok">✓</span> <span data-i18n="i.o3">signing identity</span>   <span class="ok">✓</span> <span data-i18n="i.o4">helper installed in ~/Applications</span></code></pre>
+          <button type="button" class="copy" data-copy="git clone https://github.com/fdussert/fremkit.git &amp;&amp; cd fremkit &amp;&amp; pnpm run setup" data-i18n="copy">Copy</button>
+        </div>
+        <ol class="after">
+          <li data-i18n-html="i.s1"><b>Say yes to the signing identity.</b> macOS ties permissions to the signature, so they survive rebuilds.</li>
+          <li data-i18n-html="i.s2"><b>Grant Input Monitoring and Accessibility</b> to "Fremkit Helper", then relaunch it from the menu bar.</li>
+          <li data-i18n-html="i.s3"><b>Your changes go live on the Edge.</b> The helper runs the server from your checkout.</li>
+        </ol>
+      </div>
+      <div class="reqs"><span>Xcode Command Line Tools</span><span>Node 22+ · pnpm</span></div>
+    </details>
+  </div>
+</section>
+
+<!-- FAQ -->
+<section class="section" id="faq">
+  <div class="wrap narrow">
+    <p class="kicker">FAQ</p>
+    <h2 data-i18n-html="f.title">Fair <em>questions.</em></h2>
+    <details><summary data-i18n="f.q1">Do I need a Xeneon Edge?</summary><p data-i18n="f.a1">No. Everything except the touch driver works on any display, and the admin runs in any browser on the Mac.</p></details>
+    <details><summary data-i18n="f.q2">Can it run beside iCUE?</summary><p data-i18n="f.a2">No. The panel takes a single owner. Fremkit replaces iCUE and Touchscreen Gestures for the Edge rather than sitting beside them.</p></details>
+    <details><summary data-i18n="f.q3">Windows? Intel Macs?</summary><p data-i18n="f.a3">Not today. Fremkit targets macOS 13 or later on Apple silicon.</p></details>
+    <details><summary data-i18n="f.q4">How does it update?</summary><p data-i18n="f.a4">By itself, through Sparkle: each update is signed by the project, and Check for Updates… in the menu bar menu asks right away. Your dashboard, connections and backgrounds live in ~/Library/Application Support/Fremkit, so an update or a reinstall keeps them.</p></details>
+    <details><summary data-i18n="f.q5">Why "Fremkit"?</summary><p data-i18n="f.a5">It is the Fremen survival kit from Dune. The registry is the Sietch, for the same reason.</p></details>
+  </div>
+</section>
+
+<section class="final">
+  <div class="wrap final-inner">
+    <img src="assets/icon.svg" alt="" width="72" height="72">
+    <h2 data-i18n-html="end.title">Give your Edge <em>a job.</em></h2>
+    <p class="sub" data-i18n="end.sub">Clone it, run one command, and put the things you keep checking where a glance is enough.</p>
+    <div class="hero-buttons">
+      <a class="btn primary" href="#install" data-i18n="nav.get">Get Fremkit</a>
+      <a class="btn ghost" href="https://github.com/fdussert/fremkit" data-i18n="end.star">Star on GitHub</a>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer class="footer">
+  <div class="wrap foot">
+    <a class="brand" href="#top"><img src="assets/icon.svg" alt="" width="24" height="24"><span>Fremkit</span></a>
+    <nav>
+      <a href="https://github.com/fdussert/fremkit">GitHub</a>
+      <a href="https://github.com/fdussert/fremkit-sietch">Sietch</a>
+      <a href="https://github.com/fdussert/fremkit/blob/main/CHANGELOG.md">Changelog</a>
+      <a href="https://github.com/fdussert/fremkit/issues">Issues</a>
+      <a href="https://github.com/fdussert/fremkit/blob/main/SECURITY.md" data-i18n="foot.sec">Security</a>
+      <a href="/privacy" data-i18n="foot.privacy">Privacy</a>
+    </nav>
+    <p class="fine" data-i18n="foot.tm">MIT license. Corsair and Xeneon are trademarks of Corsair Gaming, Inc. Fremkit is an independent project, not affiliated with or endorsed by Corsair.</p>
+  </div>
+</footer>
+
+<script src="main.js"></script>
+</body>
+</html>

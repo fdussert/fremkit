@@ -42,13 +42,13 @@ describe('allowedOrigins', () => {
     }
   })
 
-  it('adds the port a second checkout was moved to, without repeating it', () => {
+  it('trusts only its own port: a second checkout does not take writes from the 4242 pages', () => {
     delete process.env.FREMKIT_DEV
     process.env.FREMKIT_PORT = '4301'
-    expect(allowedOrigins()).toContain('http://127.0.0.1:4301')
-    expect(allowedOrigins()).toHaveLength(4)
+    expect(allowedOrigins()).toEqual(['http://127.0.0.1:4301', 'http://localhost:4301'])
+    expect(isOriginAllowed('http://127.0.0.1:4242')).toBe(false)
     process.env.FREMKIT_PORT = '4242'
-    expect(allowedOrigins()).toHaveLength(2)
+    expect(allowedOrigins()).toEqual(['http://127.0.0.1:4242', 'http://localhost:4242'])
   })
 
   it('ignores a FREMKIT_PORT that is not a port', () => {

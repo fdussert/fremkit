@@ -1,0 +1,8 @@
+<!doctype html>
+<html><body><script>
+// Tries to take the whole dashboard somewhere else. The sandbox gives it no top navigation.
+setTimeout(function () {
+  console.log('E2E zz-top: trying')
+  try { window.top.location.href = '/escaped-top' } catch (e) { console.log('E2E zz-top: refused') }
+}, 300)
+</script></body></html>

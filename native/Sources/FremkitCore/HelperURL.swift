@@ -4,6 +4,9 @@ import Foundation
 public enum HelperURLAction: Equatable {
     /// `fremkit://admin` — bring the admin window forward, as the status menu item does.
     case openAdmin
+    /// `fremkit://reveal` — drop the dashboard behind the other windows for a while, so a macOS
+    /// dialog it covers on the Edge (a privacy prompt) can be seen and answered.
+    case reveal
 }
 
 /// Reading of the helper's own URL scheme, kept pure so it can be tested without an NSApplication.
@@ -13,6 +16,8 @@ public enum HelperURL {
 
     /// The full URL the dashboard (through the server) asks LaunchServices to open.
     public static let admin = "\(scheme)://admin"
+    /// The URL that lets the dialogs under the dashboard be seen for a while.
+    public static let reveal = "\(scheme)://reveal"
 
     /// The action a URL names, or `nil` when it is not ours or names nothing we know.
     ///
@@ -26,6 +31,7 @@ public enum HelperURL {
         let target = (host.isEmpty ? url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/")) : host).lowercased()
         switch target {
         case "admin": return .openAdmin
+        case "reveal": return .reveal
         default: return nil
         }
     }

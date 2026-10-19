@@ -4,26 +4,76 @@ A widget is a folder with a manifest and an HTML page. There is no build step, n
 package to install: the page runs in a sandboxed iframe, and a small bridge object talks to the
 dashboard for it.
 
+## Your first widget in five minutes
+
+From a checkout of Fremkit, after `pnpm install`:
+
+```sh
+pnpm dev                     # a server that reads your widgets and reloads them on save
+pnpm open --dev /admin       # in another terminal: the editor, signed in
+pnpm widget:new my-widget    # answers a few questions and writes a working widget
+```
+
+`widget:new` asks for the name and a one-line description in French and English, the
+[category](#categories), the size in grid cells, the [data channel](#channels) it reads (none
+gives you a small touch counter to start from) and your handle. Every answer can be a flag
+instead — `--name-en`, `--name-fr`, `--description-en`, `--description-fr`, `--category`,
+`--size 8x4`, `--channel system`, `--author`, `--no-compact`, and `--yes` to take the defaults.
+It refuses an id that is not `[a-z0-9_-]+` or that is already taken, writes
+`data/widgets-dev/my-widget/` (a `manifest.json`, an `index.html` and a `CHANGELOG.md`), and tells
+the running server to rescan: the widget is in the admin's library, ready to drop on a page.
+
+Now edit `index.html`. Every save reloads the widget wherever it is shown — the dashboard, the
+navigation bar, the admin's preview — and saving `manifest.json` reads the catalogue again first,
+so a new setting or channel is there when the page comes back. The generated page already follows
+the [conventions](#conventions): no background of its own, the theme's accent, a layout for a
+light tile, one for an accent-filled one and one for the bar, every string in both languages.
+
+When it does what you want, check it against the rules the registry and the installer apply:
+
+```sh
+pnpm widget:check data/widgets-dev/my-widget
+```
+
+It reports what would be refused — a text in one language only, a missing `author`, a script
+loaded from outside the folder, a private host, a version with no changelog entry, a file the
+package may not carry — and then [publishing it](#publishing-it) is a pull request.
+
+**Where it lives.** `pnpm dev` exports `FREMKIT_WIDGET_DEV=1`, which makes the server read a third
+folder, the author's: `<data>/widgets-dev`, or the absolute path in `FREMKIT_WIDGET_DEV_DIR`.
+Point that at the `widgets/` of your clone of the
+[registry](https://github.com/fdussert/fremkit-sietch) and you write the widget where its pull
+request comes from (`pnpm widget:new my-widget --dir ../fremkit-sietch/widgets` writes there).
+A widget in the author's folder gets what its manifest asks for, with no consent dialog — you are
+the one writing it — except a channel reserved to built-in widgets, refused as it is everywhere.
+It never takes the id of a built-in or an installed widget. Without the flag — the helper's
+server, the app — the folder is not read and nothing is watched; to try a widget beside the live
+dashboard, run a second server on another port:
+`FREMKIT_WIDGET_DEV=1 FREMKIT_PORT=4301 pnpm start`, then `pnpm widget:new my-widget --port 4301`.
+
 ## The folder
 
 ```
-widgets/
-  my-widget/
-    manifest.json
-    index.html
+my-widget/
+  manifest.json
+  index.html
+  CHANGELOG.md     # for the registry; never packed
+  preview.webp     # optional: its picture in the library and on the Sietch
 ```
 
-The folder name and the manifest's `id` must match the shape `[a-z0-9_-]+`. Drop the folder in
-`widgets/`, then press the rescan button (⟳) at the top of the admin's widget library — it calls
-`POST /api/widgets/rescan` and the widget appears without restarting the server. A manifest that
-does not validate is reported there rather than silently ignored.
+The folder name and the manifest's `id` must match the shape `[a-z0-9_-]+`. A manifest that does
+not validate is reported in the admin's widget library rather than silently ignored; the rescan
+button (⟳) there reads the folders again (`POST /api/widgets/rescan`), which a server reading the
+author's folder does by itself on every manifest save.
 
-Fremkit reads widgets from two folders. `widgets/` in the checkout holds the ones that ship with
-the server: this is where you develop, and they are the reason a fresh install works with no
-network. `data/widgets/` holds the ones installed from the
-[marketplace](marketplace.md), and is written by the admin and by nothing else — it is git-ignored, it moves with `FREMKIT_DATA_DIR`, and a widget
-there can never take the id of a built-in: the installer refuses the collision, and a folder
-dropped in by hand is reported as an error while the built-in keeps the id.
+Fremkit reads widgets from up to three folders. `widgets/` in the checkout holds the ones that
+ship with the server — the reason a fresh install works with no network; a new widget belongs on
+the registry, not there. `data/widgets/` holds the ones installed from the
+[marketplace](marketplace.md), and is written by the admin and by nothing else — it is
+git-ignored, it moves with `FREMKIT_DATA_DIR`, and a widget there can never take the id of a
+built-in: the installer refuses the collision, and a folder dropped in by hand is reported as an
+error while the built-in keeps the id (and is granted nothing, having no consent record). The
+author's folder, above, is read only under `FREMKIT_WIDGET_DEV=1`.
 
 ## manifest.json
 
@@ -62,6 +112,7 @@ dropped in by hand is reported as an error while the built-in keeps the id.
 | `homepage` | no | An `https` URL, shown in the admin. Never fetched, never executed |
 | `author` | no | A name, shown in the admin |
 | `license` | no | An [SPDX](https://spdx.org/licenses/) identifier — `MIT`, `Apache-2.0` |
+| `preview` | no | A picture of the widget at work, a `.webp` or `.png` of its own folder — see [A preview image](#a-preview-image) |
 
 Legacy manifests may declare `sizes` instead of `minSize`; the server converts them, doubling the
 coordinates for the current grid.
@@ -124,7 +175,9 @@ language changes.
 An `enum` may carry a `preview`: `{ "channel": "<one of the widget's commands>", "command":
 "<name>" }`. The admin then shows a ▶ beside the select and, when pressed, sends that command
 with `{ value: <the chosen value> }` — the provider decides what previewing means (the Claude
-sessions widget plays the sound). The provider validates the value like any command payload.
+sessions widget plays the sound). The provider validates the value like any command payload. The
+channel must be covered by `commands` (a manifest naming another is refused), and for an
+installed widget by what the user granted: the ▶ is not shown otherwise.
 
 **`timezone`** — a searchable text field backed by the browser's IANA zone list, red while the
 typed zone is not one of them.
@@ -212,6 +265,7 @@ installing it and leaving the call to fail.
 |---|---|---|
 | `1` | 0.2.0 | Everything not listed below |
 | `2` | 0.3.0 | `favicon(url)`, `image(url)`, `installedApps()`, `appIcon(bundleId)` |
+| `3` | next release | `screen`, `holdSwipe` |
 
 A widget calling `installedApps()` with `"sdk": 1` would install on 0.2.0 and find the method
 missing. Data channels are not generations: a channel the running Fremkit has no provider for
@@ -224,6 +278,8 @@ than wait.
 |---|---|
 | `Fremkit.sdk` | The bridge generation this Fremkit speaks, as a number |
 | `Fremkit.instanceId` | This instance's id |
+| `Fremkit.screen` | The id of the screen the widget is drawn on (the Edge, a paired device), or `null` when the host does not say. For data that is per screen, like brightness. Generation 3 |
+| `Fremkit.holdSwipe()` | Keeps the page from swiping for half a second. Call it on every move of a slider or a knob: a quick slide arrives as wheel events at the finger, and once the finger leaves the widget they would land on the dashboard and turn the page. Generation 3 |
 | `Fremkit.settings` | The settings object, manifest defaults merged in |
 | `Fremkit.locale` | `'fr'` or `'en'` |
 | `Fremkit.showTitle` | Whether the frame drew the title — a widget must never draw its own |
@@ -243,7 +299,7 @@ than wait.
 | `sendCommand(channel, name, payload)` | Sends a command. Returns a promise |
 | `fetch(url, init)` | GET through the server's proxy. Only the host in `permissions.network` is reachable; `body` and `credentials` are ignored |
 | `favicon(url)` | The icon of the site `url` is on, as a `data:` URL for an `<img>`; rejects when there is none. Ask this rather than loading `/api/favicon` in an `<img>`: a widget's frame has an opaque origin, so the server sees that request as cross-site and refuses it |
-| `image(url)` | The image at exactly `url`, as a `data:` URL, under the rules of `favicon` (no SVG, no private address). Fetched only when `url` is a value the user typed into this widget's settings; rejects otherwise — the whole address leaves the machine, so a widget cannot pick it |
+| `image(url)` | The image at exactly `url`, as a `data:` URL, under the rules of `favicon` (no SVG, no private address). Fetched only when `url` is a value the user typed into this widget's settings — a manifest `default` does not count; rejects otherwise — the whole address leaves the machine, so a widget cannot pick it |
 | `installedApps()` | The applications installed on this Mac, as `{ name, bundleId, file }` — enough to match a name the user typed and ask for its icon with `appIcon(bundleId)`, and no filesystem path. Ask this rather than `fetch('/api/apps/installed')`: a widget's frame is served with `connect-src 'none'`, so its own request never leaves the page. Answered only to a widget that subscribes to `dock`, which the consent dialog shows; anything else is refused |
 | `appIcon(bundleId)` | A local application icon as a `data:` URL for an `<img>`. Requires a `dock` subscription, like `installedApps()`. The host fetches it because the opaque widget frame cannot load `/api/apps/icon/<bundleId>` directly |
 | `t(dict, params)` | Resolves a `{ fr, en }` table entry and interpolates `{name}` placeholders |
@@ -299,9 +355,15 @@ document.documentElement.style.setProperty('--h', Fremkit.size.px.height + 'px')
 `system`, `processes`, `volume`, `spotify`, `mutedeck`, `clipboard`, `shortcuts`, `cleanshot`,
 `network`, `battery`, `service-status`, `config`, `claude-sessions`, `claude-usage`,
 `claude-account`, `claude-identity`, `codex`, `codex-live`, `dock`, `docker-local`,
-`local-models`, plus one per connection: `azure-devops:<connectionId>`,
+`local-models`, `rtk`, `disk-map`, plus one per connection: `azure-devops:<connectionId>`,
 `bambu:<connectionId>`, `github:<connectionId>`, `synology:<connectionId>`,
 and `calendar:<connectionId>` for an ICS connection.
+
+`disk-map` and `clipboard` are reserved for their built-in widgets and refused in a third-party
+manifest — at install and when the catalogue reads `data/widgets` — because the first carries the
+names of your folders and files and the second a preview of everything you copy. `brightness`
+may be subscribed to, but listing it in `commands` is refused the same way: setting the screen's
+level is for the built-in widget, the admin and the helper. `config` is refused in every manifest.
 
 A manifest may declare a whole family with a `:*` suffix — `"subscriptions": ["azure-devops:*"]` —
 and build the exact channel from its `connection` setting at runtime.
@@ -404,9 +466,40 @@ under a `Content-Security-Policy` served with its own files, so the two hold eve
 opens `/widgets/<id>/index.html` directly. The document has an opaque origin: nothing it does
 counts as coming from `http://127.0.0.1:4242`, and `localStorage` throws rather than working.
 Scripts and styles load from the widget's own folder; images additionally from `data:` and
-`blob:`. There is no `connect-src` at all — `fetch`, `XMLHttpRequest` and `WebSocket` are dead,
-and every network call goes through `Fremkit.fetch`. Forms cannot submit, frames cannot be
-created, `<base>` cannot be set, and dotfiles in the widget folder are not served.
+`blob:`. `connect-src 'none'` — `fetch`, `XMLHttpRequest`, `WebSocket`, `EventSource`,
+`sendBeacon` and `WebTransport` are dead, and every network call goes through `Fremkit.fetch`.
+Forms cannot submit, frames cannot be created, `<base>` cannot be set, and dotfiles in the widget
+folder are not served. Only `index.html` runs script: another HTML, SVG or XML file in the folder
+is served with `script-src 'none'`.
+
+**No WebRTC.** The bridge is injected ahead of everything in your `index.html` — straight after
+the doctype — and the first thing it does is make `RTCPeerConnection`,
+`webkitRTCPeerConnection`, `RTCDataChannel`, `RTCSessionDescription` and `RTCIceCandidate`
+`undefined`, for good: a peer connection reaches whatever STUN server or candidate it is given,
+which no CSP directive stops. A registry widget cannot ask for it back, by manifest or through
+the consent dialog.
+
+The one exception is a **built-in** widget that needs a peer on this Mac (a browser tab, an app).
+It is opted in by id, in the server, in the commit that adds it:
+
+```ts
+// server/src/widgets/webrtc.ts
+export const WEBRTC_LOCAL_BUILTINS: ReadonlySet<string> = new Set<string>(['fremplay'])
+```
+
+The server then writes `data-webrtc="local"` and this Mac's addresses on the bridge's `<script>`
+tag in that widget's page — only when the id is served from the built-in `widgets/` folder,
+never from an installed one — and the bridge hands the widget a wrapped `RTCPeerConnection`:
+no ICE server whatever it is given (constructor and `setConfiguration`), and only host
+candidates on loopback or one of this Mac's addresses, in `addIceCandidate` and in the SDP of
+`setRemoteDescription`/`setLocalDescription` (its own description may also keep the browser's
+`<uuid>.local` names for this Mac). A remote `.local` name is dropped, so the widget never dials a
+peer by mDNS: the peer reaches it, and the answer goes back to the address it came from.
+`RTCSessionDescription`, `RTCIceCandidate` and `RTCDataChannel` stay available at that level.
+
+**Navigation.** A frame may only ever hold a widget document: the dashboard's and the admin's
+CSP say `frame-src <origin>/widgets/`, and the helper's windows cancel any other frame
+navigation.
 
 **The kiosk rules.** The bridge turns a widget document into a panel rather than a page: no
 context menu (a long press is one of the dashboard's own gestures, and WebKit would answer it
@@ -449,7 +542,9 @@ press arrives as the right button and would only cancel its own hold.
 
 **A widget must not navigate or reload itself.** Setting `location`, or calling
 `location.reload()`, gives the frame a new document behind the same `contentWindow` — so the host
-drops the widget's subscriptions and stops answering it, for good. Re-render from the data you
+drops the widget's subscriptions and stops answering it, for good. The host talks to a widget
+over a `MessagePort` handed to the document that said hello; the new document never gets it.
+Loading the bridge a second time does nothing (the first one is `window.Fremkit`, and stays). Re-render from the data you
 already have, or ask the host. (A rescan that recreates the frame is a different thing and is
 fine.)
 
@@ -461,7 +556,7 @@ one from elsewhere.
 ## Compact widgets
 
 `"compact": { "width": 4 }` says the widget also has a rendering fit for the navigation bar:
-`width` grid cells wide, the bar's height tall. The admin's Screen panel then offers it in the
+`width` grid cells wide, the bar's height tall. The admin's settings window (your screen → Navigation bar widgets) then offers it in the
 bar's widget list.
 
 There the frame draws no title and no surface — the bar is the surface — `Fremkit.compact` is
@@ -469,7 +564,7 @@ There the frame draws no title and no surface — the bar is the surface — `Fr
 everything from `Fremkit.size.px.height`, which is the bar's height: 80 px or 40 px.
 
 `Fremkit.slot` is the cluster the widget sits in, and the matching `slot-left` / `slot-right`
-class is set on `<html>`. The right cluster is pushed against the page dots but each iframe keeps
+class is set on `<html>`. The right cluster is pushed against the page buttons but each iframe keeps
 its allotted width, so a right-hand widget aligns its own content to that edge:
 
 ```css
@@ -514,11 +609,54 @@ dashboard easier to read from across the room:
 The tile's own accent and text colour are painted after the theme, so a colour chosen in the
 editor still wins. See [themes.md](themes.md).
 
+## A preview image
+
+The admin shows a widget's preview when a library card is hovered or focused, and the Sietch shows
+it on the widget's card before anybody installs it. It is one file of the widget's folder, named by
+the manifest's `preview`:
+
+- a `.webp` (preferred) or a `.png`, by a relative path inside the folder;
+- at most **200 KB** — the installer refuses a package whose preview is missing, larger, or not the
+  image its name says;
+- about **twice the default size in pixels**: a cell is 40 px, so a `[16, 10]` widget's preview is
+  1280 × 800. `pnpm widget:check` refuses one more than 15 % off, and warns, for now, when a widget
+  has no preview at all.
+
+Make it with the tool rather than by hand:
+
+```bash
+pnpm widget:preview my-widget --dir data/widgets-dev   # an author's widget
+pnpm widget:preview clock                               # a built-in
+pnpm widget:preview --all                               # every built-in
+```
+
+It starts a [demo server](demo-mode.md) in-process (invented data only — nothing of your own ends
+up in the picture), puts the widget alone on a screen of exactly its default size, opens it in
+headless Chromium at twice the resolution, waits until it shows data rather than a loading line,
+captures the tile with transparent corners, encodes it as WebP (lossless if it fits, lossy
+otherwise) and writes `preview.webp` beside the manifest, setting `preview` in it. Look at the
+result: a widget that needs settings to show anything (a list of services, a calendar) is captured
+with its defaults, which may be an empty state — set better defaults, or capture it from a demo
+server you arranged yourself with `--url http://127.0.0.1:4250` (its config is changed for the
+capture and put back after).
+
+A `connection` setting left empty is pointed at a demo connection of its type: the demo's
+Synology NAS, or, for a connection the widget [declares](#declaring-a-connection), one the tool creates with
+placeholder fields (removed again after a `--url` capture). The demo answers a declared
+connection from invented devices, and only the paths it knows (a Homey's, a Key Light's); any
+other path fails as unreachable, so such a widget is captured in its offline state.
+
+Options: `--wait <ms>` waits longer after the data arrives (default 1500), `--png` writes a PNG,
+`--dry-run` captures without writing. Playwright is not a dependency of the project: point
+`PLAYWRIGHT` at an installed `playwright` package and, if its browser is missing, `CHROMIUM` at a
+Chromium executable — the same two variables as `scripts/check-widget-sandbox.ts`.
+
 ## Publishing it
 
 A widget that works is a pull request on the
 [registry](https://github.com/fdussert/fremkit-sietch): one folder under `widgets/<id>/`, and
-its CONTRIBUTING is the whole procedure. The CI applies the package rules — no dotfile, no
+its CONTRIBUTING is the whole procedure. Run `pnpm widget:check <folder>` first: it applies the
+same rules, so the pull request's CI has nothing new to tell you. The CI applies the package rules — no dotfile, no
 symlink, no off-package script, size ceilings, a manifest that validates, a `version` that goes
 up — and the merge publishes a zip and an index entry that every Fremkit can install from.
 

@@ -17,7 +17,7 @@
  * and holding them to a record nothing ever writes would simply break them.
  */
 
-import { ConnectionDeclSchema, type ConnectionDecl, type WidgetManifest } from '../widgets/manifest.js'
+import { builtinOnlyChannels, commandCovers, ConnectionDeclSchema, type ConnectionDecl, type WidgetManifest } from '../widgets/manifest.js'
 import type { WidgetCatalog, WidgetSource } from '../widgets/catalog.js'
 import type { Config, WidgetConsent } from '../config/schema.js'
 
@@ -146,6 +146,20 @@ function intersect(granted: string[], asked: string[]): string[] {
 }
 
 /**
+ * The settings schema with every `preview` whose channel the granted commands do not cover taken
+ * out. A preview is a command the admin sends with its own authority; the schema already ties it
+ * to `commands`, and this ties it to what the user agreed to — the admin shows no ▶ for it, and a
+ * paired device's channel policy, which reads this manifest, never hears of it.
+ */
+function withPreviewsOn(schema: WidgetManifest['settingsSchema'], commands: string[]): WidgetManifest['settingsSchema'] {
+  return Object.fromEntries(Object.entries(schema).map(([key, field]) => {
+    if (!field.preview || commandCovers(commands, field.preview.channel)) return [key, field]
+    const { preview: _dropped, ...rest } = field
+    return [key, rest]
+  }))
+}
+
+/**
  * The manifest as the rest of the server and the admin should read it.
  *
  * `consent` is undefined for a built-in, and the manifest comes back untouched. For an installed
@@ -155,10 +169,12 @@ function intersect(granted: string[], asked: string[]): string[] {
 export function grantedManifest(manifest: WidgetManifest, consent: WidgetConsent | undefined): WidgetManifest {
   if (!consent) return manifest
   const g = grantedPermissions(consent)
+  const commands = intersect(g.commands, manifest.commands)
   return {
     ...manifest,
     subscriptions: intersect(g.subscriptions, manifest.subscriptions),
-    commands: intersect(g.commands, manifest.commands),
+    commands,
+    settingsSchema: withPreviewsOn(manifest.settingsSchema, commands),
     permissions: { ...manifest.permissions, network: intersect(g.network, manifest.permissions.network) },
     // Granted only while it is the declaration that was agreed to. A widget that edits its own
     // manifest on disk — or an update that slipped past the dialog — reaches nothing, exactly
@@ -184,9 +200,17 @@ export function effectiveManifest(
   consent: WidgetConsent | undefined,
 ): WidgetManifest {
   if (source === 'builtin') return manifest
+  // A widget in the author's folder is code the person running this server is writing, read
+  // only because they started it with `FREMKIT_WIDGET_DEV=1`: what its manifest asks for is what
+  // they are testing, and a consent dialog would be them agreeing with themselves. Never a
+  // built-in-only channel, though — that one falls through to the line below and gets nothing.
+  if (source === 'dev' && builtinOnlyChannels(manifest).length === 0) return manifest
+  // The catalogue refuses such a manifest already; this is the line that holds if it ever did not.
+  if (builtinOnlyChannels(manifest).length > 0) consent = undefined
   if (!consent) {
     return {
       ...manifest, subscriptions: [], commands: [], connection: undefined,
+      settingsSchema: withPreviewsOn(manifest.settingsSchema, []),
       permissions: { ...manifest.permissions, network: [] },
     }
   }

@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process'
 import { z } from 'zod'
-import type { CommandContext, Provider } from './types.js'
+import { isTrusted, type CommandContext, type Provider } from './types.js'
 import { tr } from '../i18n.js'
 
 /**
@@ -93,7 +93,7 @@ export const CLEANSHOT_BUNDLE_ID = 'pl.maketheweb.cleanshotx'
  */
 export async function runningCleanshotPath(run: Runner): Promise<string | undefined> {
   try {
-    const out = await run('lsappinfo', ['info', '-only', 'bundlepath', CLEANSHOT_BUNDLE_ID])
+    const out = await run('/usr/bin/lsappinfo', ['info', '-only', 'bundlepath', CLEANSHOT_BUNDLE_ID])
     const path = /"LSBundlePath"="([^"]+)"/.exec(out)?.[1]
     return path && path.startsWith('/') ? path : undefined
   } catch {
@@ -122,13 +122,13 @@ export function createCleanshotProvider(run: Runner = runProgram): Provider {
       run: async (payload, ctx?: CommandContext): Promise<RunResult> => {
         // `open` acts on the user's Mac, so only a client on that Mac may ask for it. Fail
         // closed: a caller that provides no context is treated as remote.
-        if (!ctx?.loopback) return { ok: false, error: tr(undefined, 'provider.localOnly') }
+        if (!isTrusted(ctx)) return { ok: false, error: tr(undefined, 'provider.localOnly') }
         const parsed = RunPayloadSchema.safeParse(payload)
         if (!parsed.success) {
           return { ok: false, error: parsed.error.issues[0]?.message ?? tr(undefined, 'provider.invalidPayload') }
         }
         try {
-          await run('open', await openArgs(urlFor(parsed.data), run))
+          await run('/usr/bin/open', await openArgs(urlFor(parsed.data), run))
           return { ok: true }
         } catch (err) {
           return { ok: false, error: (err as Error).message || String(err) }

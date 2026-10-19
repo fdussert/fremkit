@@ -6,8 +6,12 @@ import BaseIcon from './BaseIcon.vue'
  * `height`, when given, is the panel's height whatever it holds — capped by the viewport. A
  * panel whose views differ in length (a list, then an empty "all up to date") otherwise
  * changes size at every tab, which reads as the dialog shrinking rather than the list.
+ *
+ * `flush` hands the whole body to the content, unpadded and unscrolled: for a panel that keeps
+ * its own header fixed and scrolls only its list (`ScrollPanel`).
  */
-withDefaults(defineProps<{ title: string; width?: number; height?: number; closeLabel?: string }>(), { width: 560, closeLabel: 'Close' })
+withDefaults(defineProps<{ title: string; width?: number; height?: number; closeLabel?: string; flush?: boolean }>(),
+  { width: 560, closeLabel: 'Close', flush: false })
 const emit = defineEmits<{ close: [] }>()
 
 const panel = ref<HTMLElement | null>(null)
@@ -19,6 +23,12 @@ const panel = ref<HTMLElement | null>(null)
  */
 function onKeyDown(e: KeyboardEvent): void {
   if (e.key !== 'Escape') return
+  // A layer drawn above the dialog (a context menu, the command palette) closes itself on this
+  // Escape: the dialog under it stays. Both listen on the window, and stopPropagation() there
+  // does not keep a second listener of the same window from running.
+  if (e.target instanceof Element && e.target.closest('[data-overlay]')) return
+  // A search box marked so clears itself on this Escape; the next one closes the dialog.
+  if (e.target instanceof HTMLInputElement && e.target.value && e.target.closest('[data-escape-clears]')) return
   e.preventDefault()
   e.stopPropagation()
   emit('close')
@@ -42,7 +52,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeyDown, true))
           <BaseIcon name="x" :size="16" />
         </button>
       </header>
-      <div class="body"><slot /></div>
+      <div class="body" :class="{ flush }"><slot /></div>
     </section>
   </div>
 </template>
@@ -61,4 +71,5 @@ h2 { flex: 1; margin: 0; font-size: var(--fs-lg); font-weight: 600; }
   padding: 6px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--text-muted); }
 .x:hover { background: var(--surface-3); color: var(--text); }
 .body { flex: 1; min-height: 0; overflow-y: auto; padding: var(--space-4); }
+.body.flush { overflow: hidden; padding: 0; display: flex; flex-direction: column; }
 </style>

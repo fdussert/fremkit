@@ -1,8 +1,8 @@
 <script setup lang="ts">
 /**
  * The image half of a background: upload, removal, fit and (optionally) the dim overlay.
- * Shared by the screen background and the per-widget one, which differ only in what else
- * sits around them — the screen also carries a colour, the widget also carries a veil.
+ * Shared by the screen, page and per-widget backgrounds, which differ only in what else sits
+ * around them — the screen and a page also carry a colour, the widget also carries a veil.
  *
  * It emits a *patch*, not a whole value: a key set to `undefined` means "drop this one", which
  * is what lets each parent merge it into its own object and keep undo round-tripping cleanly.
@@ -18,11 +18,13 @@ import { readBase64 } from '../shared/files'
 import { useI18n } from '../shared/i18n'
 import { DEFAULT_WIDGET_DIM, MAX_WIDGET_DIM } from '../shared/background'
 import type { BackgroundFit } from '../shared/types'
+import { useAdminStore } from './store'
 
 /** Matches MAX_BACKGROUND_BYTES on the server; checked here only to fail fast, with a message. */
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024
 
 const { t } = useI18n()
+const s = useAdminStore()
 const FITS = computed(() => (['cover', 'contain'] as const).map((value) => ({
   value, label: t(`admin.background.fit.${value}`),
 })))
@@ -65,6 +67,9 @@ async function removeImage(): Promise<void> {
   if (!name) return
   error.value = ''
   emit('update', { image: undefined, fit: undefined, dim: undefined })
+  // The same image can be shown elsewhere — a duplicated page, a copied page, a pasted style —
+  // and the parent applied the patch synchronously: the file goes only once nothing names it.
+  if (s.backgroundInUse(name)) return
   // Best effort: the config no longer points at it either way, and it may already be gone.
   try { await api.deleteBackground(name) } catch { /* nothing left to do about it */ }
 }

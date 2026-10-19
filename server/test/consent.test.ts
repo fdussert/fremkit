@@ -78,6 +78,18 @@ describe('effectiveManifest', () => {
     expect(effective.name).toBe(asked.name)
   })
 
+  it('grants a widget being written what its manifest asks, with no record', () => {
+    const asked = manifest({ subscriptions: ['system'], commands: ['shortcuts'], permissions: { network: ['api.example.com'] } })
+    expect(effectiveManifest(asked, 'dev', undefined)).toEqual(asked)
+  })
+
+  it('grants a widget being written nothing when it asks for a built-in-only channel', () => {
+    const asked = manifest({ subscriptions: ['clipboard'], permissions: { network: ['api.example.com'] } })
+    const effective = effectiveManifest(asked, 'dev', undefined)
+    expect(effective.subscriptions).toEqual([])
+    expect(effective.permissions.network).toEqual([])
+  })
+
   it('grants an installed widget with no record nothing at all', () => {
     // A folder dropped into data/widgets by hand, or a config restored without the record:
     // neither is a user saying yes, and the safe reading of silence is "no".
@@ -85,6 +97,40 @@ describe('effectiveManifest', () => {
     expect(effective.subscriptions).toEqual([])
     expect(effective.commands).toEqual([])
     expect(effective.permissions.network).toEqual([])
+  })
+
+  it('grants nothing to an installed widget asking for a built-in-only channel, whatever its record says', () => {
+    const asked = manifest({ subscriptions: ['disk-map'], commands: ['disk-map'] })
+    const effective = effectiveManifest(asked, 'installed', consent({ subscriptions: ['disk-map'], commands: ['disk-map'] }))
+    expect(effective.subscriptions).toEqual([])
+    expect(effective.commands).toEqual([])
+    expect(effective.permissions.network).toEqual([])
+    expect(effectiveManifest(asked, 'builtin', undefined).commands).toEqual(['disk-map'])
+    const paste = manifest({ subscriptions: ['clipboard'], commands: ['clipboard'] })
+    const pasted = effectiveManifest(paste, 'installed', consent({ subscriptions: ['clipboard'], commands: ['clipboard'] }))
+    expect(pasted.subscriptions).toEqual([])
+    expect(pasted.commands).toEqual([])
+    expect(pasted.permissions.network).toEqual([])
+    expect(effectiveManifest(paste, 'builtin', undefined).subscriptions).toEqual(['clipboard'])
+  })
+
+  it('keeps a settings preview only while its channel is a granted command', () => {
+    const asked = manifest({
+      commands: ['synology', 'mutedeck'],
+      settingsSchema: {
+        sound: { type: 'enum', label: 'S', default: 'a', options: ['a'], preview: { channel: 'mutedeck', command: 'leave' } },
+        mode: { type: 'enum', label: 'M', default: 'a', options: ['a'], preview: { channel: 'synology', command: 'beep' } },
+      },
+    })
+    const effective = effectiveManifest(asked, 'installed', consent())
+    expect(effective.commands).toEqual(['synology'])
+    expect(effective.settingsSchema.sound.preview).toBeUndefined()
+    expect(effective.settingsSchema.sound.label).toBe('S')
+    expect(effective.settingsSchema.mode.preview).toEqual({ channel: 'synology', command: 'beep' })
+    // No record, nothing: not even the preview of a channel it does declare.
+    expect(effectiveManifest(asked, 'installed', undefined).settingsSchema.mode.preview).toBeUndefined()
+    // A built-in keeps its previews.
+    expect(effectiveManifest(asked, 'builtin', undefined).settingsSchema.sound.preview).toBeDefined()
   })
 
   it('never widens: a grant for something the manifest no longer asks for adds nothing', () => {

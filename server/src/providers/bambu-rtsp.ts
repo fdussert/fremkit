@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process'
+import { execFileSync, spawn } from 'node:child_process'
 import { accessSync, constants, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -24,11 +24,6 @@ const RECONNECT_START_MS = 2000
 const RECONNECT_MAX_MS = 30_000
 /** Past this, stdout is not a JPEG stream and the accumulator must not grow without end. */
 const MAX_PENDING_BYTES = 8 * 1024 * 1024
-/**
- * A run that dies sooner than this never produced a working session, so the transport is allowed
- * to try its other way of passing the URL once before settling on one.
- */
-const EARLY_EXIT_MS = 5000
 
 /** Where ffmpeg usually lives, once PATH has had its say. Homebrew (arm64, x86_64), MacPorts, distro. */
 const FFMPEG_FALLBACK_PATHS = [
@@ -125,27 +120,46 @@ export const spawnFfmpeg: FfmpegSpawn = ({ command, args }) => {
 }
 
 /**
- * How the URL reaches ffmpeg.
- *
- * `list` writes it into a 0600 file in a private temp directory and feeds that to the concat
- * demuxer, so `ps` shows a path and not an access code. `argv` is the plain `-i <url>` form, which
- * every build understands but leaks the code to anyone who can list processes. The transport
- * starts on `list` and only drops to `argv` if that build cannot open a concat input, so the
- * trade-off is taken only where it buys a working preview.
+ * How the URL reaches ffmpeg: never on its command line, where anyone who can list processes
+ * reads the access code. It is written into a 0600 file in a private temp directory and fed to
+ * the concat demuxer, so `ps` shows a path. A build without that demuxer gets no preview (see
+ * `supportsConcat`) rather than the code on argv.
  */
-export type BambuRtspInputMode = 'list' | 'argv'
-
 const FILTER = 'fps=1,scale=960:-2'
 
-export function ffmpegArgs(mode: BambuRtspInputMode, input: string): string[] {
+export function ffmpegArgs(listPath: string): string[] {
   const output = ['-an', '-vf', FILTER, '-q:v', '5', '-f', 'image2pipe', '-vcodec', 'mjpeg', '-']
-  if (mode === 'argv') return ['-loglevel', 'error', '-nostdin', '-rtsp_transport', 'tcp', '-i', input, ...output]
   return [
     '-loglevel', 'error', '-nostdin',
     '-protocol_whitelist', 'file,rtsp,rtsps,tcp,tls,udp,crypto,data',
-    '-f', 'concat', '-safe', '0', '-i', input,
+    '-f', 'concat', '-safe', '0', '-i', listPath,
     ...output,
   ]
+}
+
+/** True when `ffmpeg -demuxers` lists the concat demuxer. */
+export function listsConcatDemuxer(output: string): boolean {
+  return output.split('\n').some((line) => /^\s*D\S*\s+concat\s/.test(line))
+}
+
+const concatSupport = new Map<string, boolean>()
+
+/**
+ * Whether this ffmpeg can read the URL from a concat list, asked of the binary itself and
+ * remembered per path. It used to be inferred from a run that died early — which a printer that
+ * is merely off also does — and the next run then put the access code on argv.
+ */
+export function supportsConcat(command: string): boolean {
+  const known = concatSupport.get(command)
+  if (known !== undefined) return known
+  let answer = false
+  try {
+    answer = listsConcatDemuxer(execFileSync(command, ['-hide_banner', '-demuxers'], { encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] }))
+  } catch {
+    answer = false
+  }
+  concatSupport.set(command, answer)
+  return answer
 }
 
 /**
@@ -186,6 +200,8 @@ export interface BambuRtspCameraOptions {
   accessCode: string
   spawnProcess?: FfmpegSpawn
   resolve?: () => string | null
+  /** Whether a binary has the concat demuxer; asks the binary by default. */
+  canConcat?: (command: string) => boolean
   now?: () => number
   /** Overridden in tests so nothing is written to a real temp directory. */
   writeList?: (line: string) => { path: string; cleanup: () => void }
@@ -205,6 +221,7 @@ const defaultWriteList = (line: string): { path: string; cleanup: () => void } =
 export function createBambuRtspCamera(opts: BambuRtspCameraOptions): BambuCamera {
   const spawnProcess = opts.spawnProcess ?? spawnFfmpeg
   const resolve = opts.resolve ?? (() => resolveFfmpeg())
+  const canConcat = opts.canConcat ?? supportsConcat
   const now = opts.now ?? Date.now
   const writeList = opts.writeList ?? defaultWriteList
 
@@ -218,8 +235,6 @@ export function createBambuRtspCamera(opts: BambuRtspCameraOptions): BambuCamera
   let errorCode: string | undefined
   let frame: BambuFrame | null = null
   let pending: Buffer<ArrayBufferLike> = Buffer.alloc(0)
-  let mode: BambuRtspInputMode = 'list'
-  let modeSettled = false
 
   function armWatchdog(): void {
     if (watchdog) clearTimeout(watchdog)
@@ -240,9 +255,10 @@ export function createBambuRtspCamera(opts: BambuRtspCameraOptions): BambuCamera
   function open(): void {
     if (!running) return
     const command = resolve()
-    if (!command) {
-      // Nothing to retry against: a missing binary will not appear on its own, and the widget has
-      // a message of its own for it rather than a generic "unavailable".
+    if (!command || !canConcat(command)) {
+      // Nothing to retry against: a missing binary, or one that cannot read the URL from a file,
+      // will not change on its own, and the widget has a message of its own for it rather than
+      // a generic "unavailable". The access code is never passed on argv instead.
       state = 'error'
       errorCode = FFMPEG_MISSING
       return
@@ -250,21 +266,17 @@ export function createBambuRtspCamera(opts: BambuRtspCameraOptions): BambuCamera
     errorCode = undefined
     state = 'connecting'
     pending = Buffer.alloc(0)
-    const url = rtspUrl(opts.host, opts.accessCode)
-    let input = url
-    if (mode === 'list') {
-      try {
-        const list = writeList(concatListLine(url))
-        input = list.path
-        cleanup = list.cleanup
-      } catch {
-        // No writable temp directory: the credential has to go through argv or there is no preview.
-        mode = 'argv'
-        modeSettled = true
-      }
+    let list: { path: string; cleanup: () => void }
+    try {
+      list = writeList(concatListLine(rtspUrl(opts.host, opts.accessCode)))
+    } catch {
+      // No writable temp directory: no preview this time, and a later try may find one.
+      state = 'error'
+      schedule()
+      return
     }
-    const startedAt = now()
-    const current = spawnProcess({ command, args: ffmpegArgs(mode, input) })
+    cleanup = list.cleanup
+    const current = spawnProcess({ command, args: ffmpegArgs(list.path) })
     child = current
     armWatchdog()
     current.onStdout((chunk) => {
@@ -277,17 +289,11 @@ export function createBambuRtspCamera(opts: BambuRtspCameraOptions): BambuCamera
       if (!parsed.frames.length) return
       frame = { jpeg: parsed.frames[parsed.frames.length - 1], at: now() }
       state = 'streaming'
-      modeSettled = true
       backoff = RECONNECT_START_MS
       armWatchdog()
     })
     current.onExit(() => {
       if (child !== current) return
-      // A build without the concat demuxer dies immediately and always: try the plain form once.
-      if (!modeSettled && mode === 'list' && now() - startedAt < EARLY_EXIT_MS) {
-        mode = 'argv'
-        modeSettled = true
-      }
       stopChild()
     })
   }

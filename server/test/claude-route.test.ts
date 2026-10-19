@@ -77,7 +77,7 @@ describe('providers', () => {
 describe('buildApp wiring', () => {
   it('registers the route and both channels', async () => {
     await mkdir(join(dir, 'widgets'), { recursive: true })
-    const built = await buildApp({ dataDir: join(dir, 'data'), widgetsDir: join(dir, 'widgets'), claudeTranscriptsDir: join(dir, 'none') })
+    const built = await buildApp({ accessToken: null, dataDir: join(dir, 'data'), widgetsDir: join(dir, 'widgets'), claudeTranscriptsDir: join(dir, 'none') })
     const res = await built.inject({ method: 'POST', url: '/api/hooks/claude', payload: { hook_event_name: 'SessionStart', session_id: 'w', cwd: '/p/w' } })
     expect(res.statusCode).toBe(204)
     await built.close()

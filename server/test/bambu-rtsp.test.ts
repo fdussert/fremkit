@@ -5,6 +5,7 @@ import {
   ffmpegArgs,
   FFMPEG_MISSING,
   resolveFfmpeg,
+  listsConcatDemuxer,
   rtspUrl,
   splitJpegFrames,
   sweepStaleCameraDirs,
@@ -65,17 +66,18 @@ describe('splitJpegFrames', () => {
 
 describe('ffmpegArgs', () => {
   it('feeds the list file to the concat demuxer, so no URL reaches argv', () => {
-    const args = ffmpegArgs('list', '/tmp/x/stream.txt')
+    const args = ffmpegArgs('/tmp/x/stream.txt')
     expect(args).toContain('concat')
     expect(args[args.indexOf('-i') + 1]).toBe('/tmp/x/stream.txt')
     expect(args.join(' ')).not.toContain('rtsps://')
     expect(args.join(' ')).toContain('image2pipe')
   })
 
-  it('passes the URL directly in the fallback form', () => {
-    const args = ffmpegArgs('argv', 'rtsps://bblp:code@printer:322/streaming/live/1')
-    expect(args[args.indexOf('-i') + 1]).toBe('rtsps://bblp:code@printer:322/streaming/live/1')
-    expect(args).toContain('-rtsp_transport')
+  it('reads concat support out of ffmpeg -demuxers', () => {
+    const listing = ' D  aac             raw ADTS AAC\n D  concat          Virtual concatenation script\n DE mp4\n'
+    expect(listsConcatDemuxer(listing)).toBe(true)
+    expect(listsConcatDemuxer(' D  aac             raw ADTS AAC\n D  concatx  other\n')).toBe(false)
+    expect(listsConcatDemuxer('')).toBe(false)
   })
 
   it('builds the printer’s stream URL and escapes a quote in the list line', () => {
@@ -114,7 +116,7 @@ describe('createBambuRtspCamera', () => {
   afterEach(() => { vi.useRealTimers() })
 
   const build = (fake: ReturnType<typeof fakeFfmpeg>, resolve = () => '/usr/bin/ffmpeg' as string | null) =>
-    createBambuRtspCamera({ host: 'printer.local', accessCode: 'code', spawnProcess: fake.spawnProcess, resolve, writeList: () => ({ path: '/tmp/list.txt', cleanup: () => {} }) })
+    createBambuRtspCamera({ host: 'printer.local', accessCode: 'code', spawnProcess: fake.spawnProcess, resolve, canConcat: () => true, writeList: () => ({ path: '/tmp/list.txt', cleanup: () => {} }) })
 
   it('keeps only the last frame of what ffmpeg wrote', () => {
     const fake = fakeFfmpeg()
@@ -137,16 +139,41 @@ describe('createBambuRtspCamera', () => {
     camera.stop()
   })
 
-  it('falls back to the plain -i form when the concat run dies straight away', () => {
+  it('never puts the access code on argv, even after a run that died straight away', () => {
     const fake = fakeFfmpeg()
     const camera = build(fake)
     camera.start()
-    expect(fake.runs[0].args).toContain('concat')
-    fake.last().exit()
-    vi.advanceTimersByTime(2000)
-    expect(fake.runs).toHaveLength(2)
-    expect(fake.runs[1].args).not.toContain('concat')
-    expect(fake.runs[1].args.join(' ')).toContain('rtsps://')
+    // A printer that is off makes ffmpeg exit at once, every time.
+    for (let i = 0; i < 4; i++) {
+      fake.last().exit()
+      vi.advanceTimersByTime(30_000)
+    }
+    expect(fake.runs.length).toBeGreaterThan(2)
+    for (const run of fake.runs) {
+      expect(run.args).toContain('concat')
+      expect(run.args.join(' ')).not.toContain('bblp')
+      expect(run.args.join(' ')).not.toContain('rtsps://')
+    }
+    camera.stop()
+  })
+
+  it('gives no preview, rather than argv, with an ffmpeg that has no concat demuxer', () => {
+    const fake = fakeFfmpeg()
+    const camera = createBambuRtspCamera({ host: 'printer.local', accessCode: 'code', spawnProcess: fake.spawnProcess, resolve: () => '/usr/bin/ffmpeg', canConcat: () => false, writeList: () => ({ path: '/tmp/list.txt', cleanup: () => {} }) })
+    camera.start()
+    expect(camera.state).toBe('error')
+    expect(camera.errorCode).toBe(FFMPEG_MISSING)
+    expect(fake.runs).toHaveLength(0)
+    camera.stop()
+  })
+
+  it('gives no preview, rather than argv, when no list file can be written', () => {
+    const fake = fakeFfmpeg()
+    const camera = createBambuRtspCamera({ host: 'printer.local', accessCode: 'code', spawnProcess: fake.spawnProcess, resolve: () => '/usr/bin/ffmpeg', canConcat: () => true, writeList: () => { throw new Error('EROFS') } })
+    camera.start()
+    vi.advanceTimersByTime(60_000)
+    expect(fake.runs).toHaveLength(0)
+    expect(camera.state).toBe('error')
     camera.stop()
   })
 
@@ -216,7 +243,7 @@ describe('BambuCameras transport choice', () => {
     const dialled: string[] = []
     const cameras = new BambuCameras({
       spawnProcess: fake.spawnProcess,
-      resolveFfmpeg: () => '/usr/bin/ffmpeg',
+      resolveFfmpeg: () => '/usr/bin/ffmpeg', ffmpegCanConcat: () => true,
       connectTls: () => {
         dialled.push('tls')
         return { onReady: () => {}, onData: () => {}, onClose: () => {}, write: () => {}, end: () => {} }
@@ -233,7 +260,7 @@ describe('BambuCameras transport choice', () => {
 
   it('rebuilds the camera when the model switches protocol', () => {
     const fake = fakeFfmpeg()
-    const cameras = new BambuCameras({ spawnProcess: fake.spawnProcess, resolveFfmpeg: () => '/usr/bin/ffmpeg' })
+    const cameras = new BambuCameras({ spawnProcess: fake.spawnProcess, resolveFfmpeg: () => '/usr/bin/ffmpeg', ffmpegCanConcat: () => true })
     cameras.configure('bambu-x', { host: 'printer.local', accessCode: 'code', model: 'P1S' })
     cameras.configure('bambu-x', { host: 'printer.local', accessCode: 'code', model: 'H2C' })
     cameras.snapshot('bambu-x')

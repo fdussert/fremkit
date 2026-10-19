@@ -24,12 +24,12 @@ describe('parseLsof', () => {
 })
 describe('listClaudeProcesses', () => {
   it('combines ps and lsof, returns null on failure', async () => {
-    const run = async (cmd: string) => (cmd === 'ps' ? PS : LSOF)
+    const run = async (cmd: string) => (cmd === '/bin/ps' ? PS : LSOF)
     expect(await listClaudeProcesses(run)).toEqual([
       { pid: 46407, cwd: '/Users/alice', startedAt: expect.any(Number) },
       { pid: 43323, cwd: '/Users/alice/projects/webapp', startedAt: expect.any(Number) },
     ])
     expect(await listClaudeProcesses(async () => { throw new Error('nope') })).toBeNull()
-    expect(await listClaudeProcesses(async (cmd: string) => (cmd === 'ps' ? '' : ''))).toEqual([])
+    expect(await listClaudeProcesses(async (cmd: string) => (cmd === '/bin/ps' ? '' : ''))).toEqual([])
   })
 })

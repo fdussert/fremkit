@@ -15,13 +15,17 @@ const props = withDefaults(defineProps<{
   ariaLabel?: string
 }>(), { min: 0, max: 100, step: 1, unit: '%', ariaLabel: undefined })
 
-const emit = defineEmits<{ change: [value: number] }>()
+/**
+ * `input` is there for the one caller that must act while the thumb moves rather than save:
+ * the brightness slider, which drives a screen, not the config.
+ */
+const emit = defineEmits<{ change: [value: number]; input: [value: number] }>()
 const live = ref(props.modelValue)
 watch(() => props.modelValue, (v) => { live.value = v })
 
 function onInput(e: Event): void {
   const value = Number((e.target as HTMLInputElement).value)
-  if (Number.isFinite(value)) live.value = value
+  if (Number.isFinite(value)) { live.value = value; emit('input', value) }
 }
 function onChange(e: Event): void {
   const value = Number((e.target as HTMLInputElement).value)

@@ -15,6 +15,7 @@ import { pick, t } from '../shared/i18n'
 import { useAdminStore } from './store'
 import { useThemes } from '../shared/theme'
 import { useConnectionsStore } from './connections'
+import { matchesQuery } from './library'
 import type { MarketplaceResponse, MarketplaceTheme, MarketplaceWidget, WidgetPermissionSet } from '../shared/types'
 
 export interface MarketplaceApi {
@@ -196,21 +197,15 @@ export interface MarketplaceDeps {
 
 /** The same, for a theme: it has no connections and no id-in-the-card beyond its own. */
 export function matchesTheme(theme: MarketplaceTheme, query: string): boolean {
-  const q = query.trim().toLowerCase()
-  if (!q) return true
-  const haystack = [theme.id, pick(theme.name), pick(theme.description), theme.author ?? ''].join(' ').toLowerCase()
-  return q.split(/\s+/).every((word) => haystack.includes(word))
+  return matchesQuery([theme.id, pick(theme.name), pick(theme.description), theme.author ?? ''], query)
 }
 
 /** Matches a search box against what a person can actually see on the card. */
 export function matches(widget: MarketplaceWidget, query: string): boolean {
-  const q = query.trim().toLowerCase()
-  if (!q) return true
-  const haystack = [
+  return matchesQuery([
     widget.id, pick(widget.name), pick(widget.description), widget.author ?? '',
     ...widget.connections,
-  ].join(' ').toLowerCase()
-  return q.split(/\s+/).every((word) => haystack.includes(word))
+  ], query)
 }
 
 export function createMarketplaceStore(deps: MarketplaceDeps = {}): MarketplaceStore {

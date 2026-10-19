@@ -27,6 +27,9 @@ onMounted(async () => {
   if (!s.state.loaded) await s.load().catch(() => { /* the banner shows the error */ })
   const wanted = admin.state.newConnectionType
   if (wanted && s.state.types.some((t) => t.id === wanted)) startCreate(wanted)
+  // Or onto an existing one, from a widget's "Open its connection…".
+  const existing = admin.state.editConnectionId
+  if (existing && s.state.connections.some((c) => c.id === existing)) startEdit(existing)
 })
 
 const editing = computed(() => s.state.connections.find((c) => c.id === editingId.value) ?? null)

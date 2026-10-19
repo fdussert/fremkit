@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Entitlements of Fremkit.app's own executable, signed with the hardened runtime by
+  scripts/build-app.sh.
+
+  com.apple.security.automation.apple-events
+    The app is the responsible process for everything the server runs, and the server runs
+    /usr/bin/osascript to bring a Claude Code session's Terminal or iTerm2 tab forward. Under the
+    hardened runtime the Apple events that sends are refused unless the responsible app holds
+    this entitlement; macOS then asks the user once per target application, with the text of
+    NSAppleEventsUsageDescription.
+-->
+<plist version="1.0">
+<dict>
+	<key>com.apple.security.automation.apple-events</key>
+	<true/>
+</dict>
+</plist>

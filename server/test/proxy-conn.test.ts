@@ -9,6 +9,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import Fastify from 'fastify'
 import { proxyRoutes } from '../src/proxy/routes.js'
+import { markRemoteSocket } from '../src/net/remote.js'
 import { DEFAULT_CONFIG, type Config } from '../src/config/schema.js'
 import type { ConfigStore } from '../src/config/store.js'
 import type { SecretStore } from '../src/secrets/types.js'
@@ -48,12 +49,10 @@ function config(over: Partial<Config> = {}): Config {
   return {
     ...DEFAULT_CONFIG,
     connections: [{ id: 'homey-x1', type: TYPE, name: 'Homey', fields: { host: '192.168.1.40' } }],
-    pages: [{
-      id: 'home', name: 'Home',
-      widgets: [{
-        instanceId: 'flows-1', widgetId: 'homey-flows', x: 0, y: 0, w: 8, h: 4,
-        showTitle: true, settings: { connection: 'homey-x1' },
-      }],
+    widgets: { 'flows-1': { widgetId: 'homey-flows', showTitle: true, settings: { connection: 'homey-x1' } } },
+    screens: [{
+      ...DEFAULT_CONFIG.screens[0],
+      pages: [{ id: 'home', name: 'Home', items: [{ instanceId: 'flows-1', x: 0, y: 0, w: 8, h: 4 }] }],
     }],
     marketplace: { installed: { 'homey-flows': {
       kind: 'widget', version: '2.0.0', registry: 'fremkit-sietch',
@@ -146,6 +145,8 @@ describe('the paths a widget may even ask about', () => {
       'api/x', '/a?b=1', '/a#b', '/a/../b', '/a/./b', '/a//b', '/a\\b',
       // `%2e` is `.` and `%2f` is `/`: the service would route on a path the matcher never saw.
       '/a/%2e%2e/b', '/a%2fb', '/a%5cb', '/A/%2E%2E/b',
+      // Tomcat-style routers drop `;` parameters before resolving dot segments.
+      '/a/..;/b', '/a/.;x/b', '/a/;/b', '/a/..%3b/b', '/a/..;jsessionid=1/b',
     ]) {
       expect(checkPath(path), path).toBeNull()
     }
@@ -162,6 +163,7 @@ describe('the paths a widget may even ask about', () => {
   it('takes an ordinary one', () => {
     expect(checkPath('/api/manager/flow/flow')).toBe('/api/manager/flow/flow')
     expect(checkPath('/a/b%20c')).toBe('/a/b%20c')
+    expect(checkPath('/a;v=1/b')).toBe('/a;v=1/b')
   })
 })
 
@@ -217,10 +219,8 @@ describe('what the route refuses before it touches the network', () => {
     // An instance id is not a capability: a widget asking on behalf of another one is asking for
     // somebody else's connection.
     const cfg = config()
-    cfg.pages[0].widgets.push({
-      instanceId: 'other-1', widgetId: 'some-other', x: 0, y: 8, w: 8, h: 4,
-      showTitle: true, settings: { connection: 'homey-x1' },
-    } as never)
+    cfg.widgets['other-1'] = { widgetId: 'some-other', showTitle: true, settings: { connection: 'homey-x1' } }
+    cfg.screens[0].pages[0].items.push({ instanceId: 'other-1', x: 0, y: 8, w: 8, h: 4 })
     const res = await app({ cfg }).inject({
       method: 'POST', url: '/api/proxy/homey-flows/conn',
       payload: { instanceId: 'other-1', method: 'GET', path: '/api/manager/flow/flow' } as never,
@@ -264,7 +264,7 @@ describe('what the route refuses before it touches the network', () => {
 
   it('says so when no connection is chosen for the instance', async () => {
     const cfg = config()
-    cfg.pages[0].widgets[0].settings = {}
+    cfg.widgets['flows-1'].settings = {}
     const res = await app({ cfg }).inject({
       method: 'POST', url: '/api/proxy/homey-flows/conn',
       payload: { instanceId: 'flows-1', method: 'GET', path: '/api/manager/flow/flow' } as never,
@@ -464,10 +464,10 @@ describe('a host that is not a host', () => {
   })
 
   it('makes no request at all, and says so without quoting the string', async () => {
-    // `10.0.0.1:x@evil.example` was read as the private `10.0.0.1` — so plain http was allowed
+    // `10.1.0.1:x@evil.example` was read as the private `10.1.0.1` — so plain http was allowed
     // — while the key went to `evil.example`. The widget writes the label, the placeholder and
     // the hint beside that box, so "paste this address" is the whole attack.
-    for (const raw of ['10.0.0.1:x@evil.example', 'user:pw@evil.example', '10.0.0.1/../x', '10.0.0.1?a=b']) {
+    for (const raw of ['10.1.0.1:x@evil.example', 'user:pw@evil.example', '10.1.0.1/../x', '10.1.0.1?a=b']) {
       const res = await ask(raw)
       expect(res.statusCode, raw).toBe(409)
       expect(res.body).not.toContain('evil.example')
@@ -551,5 +551,76 @@ describe('a connection shared with another widget', () => {
     })
     expect(res.statusCode).toBe(403)
     expect(calls).toHaveLength(0)
+  })
+})
+
+describe('a paired device and the stored credential', () => {
+  /**
+   * The route itself, on a request that looks exactly as the devices gate leaves it: a socket the
+   * remote listener marked, and the device the token named. The fetch and the secret store are
+   * spies, so the test sees whether the credential was ever read or sent, not just a status code.
+   */
+  function deviceApp(deviceId: string | null) {
+    const catalog = new WidgetCatalog('/nonexistent')
+    catalog.entries.set('homey-flows', { manifest: manifestWith(), source: 'installed', folder: '/nonexistent/homey-flows' })
+    const base = config()
+    const cfg = {
+      ...base,
+      widgets: {
+        ...base.widgets,
+        'flows-tab': { widgetId: 'homey-flows', showTitle: true, settings: { connection: 'homey-x1' } },
+      },
+      screens: [
+        ...base.screens,
+        { ...base.screens[0], id: 'tab', name: 'Tablet', kind: 'device',
+          pages: [{ id: 'p', name: 'P', items: [{ instanceId: 'flows-tab', x: 0, y: 0, w: 8, h: 4 }] }] },
+      ],
+    } as unknown as Config
+    const read = vi.fn(async (key: string) => (key === 'homey-x1/token' ? SECRET : null))
+    const secrets: SecretStore = { get: read, set: async () => {}, delete: async () => {} }
+    const doFetch = vi.fn(async () => new Response('{"ok":true}', { status: 200 }))
+    const f = Fastify({ logger: false })
+    f.decorateRequest('deviceId', null)
+    f.addHook('onRequest', async (req) => {
+      markRemoteSocket(req.raw.socket)
+      req.deviceId = deviceId
+    })
+    f.register(proxyRoutes, {
+      catalog, store: { get: () => cfg } as unknown as ConfigStore, secrets, isPrivate: async () => false,
+      fetch: doFetch as never, screenOfDevice: (id) => (id === 'dev-tab' ? 'tab' : null),
+    })
+    const post = (instanceId: string) => f.inject({
+      method: 'POST', url: '/api/proxy/homey-flows/conn',
+      payload: { instanceId, method: 'POST', path: '/api/manager/flow/flow/abc/trigger' },
+    })
+    return { post, doFetch, read }
+  }
+
+  it('never reads or sends the secret for an instance on another screen', async () => {
+    const { post, doFetch, read } = deviceApp('dev-tab')
+    const res = await post('flows-1')
+    expect(res.statusCode).toBe(404)
+    expect(res.body).not.toContain(SECRET)
+    expect(read).not.toHaveBeenCalled()
+    expect(doFetch).not.toHaveBeenCalled()
+  })
+
+  it('never reads or sends it for a device with no screen, or a remote request with no device', async () => {
+    for (const id of ['dev-none', null]) {
+      const { post, doFetch, read } = deviceApp(id)
+      expect((await post('flows-tab')).statusCode).toBe(404)
+      expect(read).not.toHaveBeenCalled()
+      expect(doFetch).not.toHaveBeenCalled()
+    }
+  })
+
+  it('uses it for an instance on the device\'s own screen', async () => {
+    const { post, doFetch, read } = deviceApp('dev-tab')
+    const res = await post('flows-tab')
+    expect(res.statusCode).toBe(200)
+    expect(read).toHaveBeenCalledTimes(1)
+    expect(doFetch).toHaveBeenCalledTimes(1)
+    const [, init] = doFetch.mock.calls[0] as unknown as [URL, RequestInit]
+    expect(JSON.stringify(init.headers)).toContain(SECRET)
   })
 })

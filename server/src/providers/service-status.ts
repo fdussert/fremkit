@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process'
 import { connect as netConnect, type Socket } from 'node:net'
 import { z } from 'zod'
-import type { CommandContext, Provider } from './types.js'
+import { isTrusted, type CommandContext, type Provider } from './types.js'
 import { noInstances, type InstanceLookup } from '../config/instances.js'
 import { USER_AGENT } from '../version.js'
 import { tr } from '../i18n.js'
@@ -238,13 +238,14 @@ export function createServiceStatusProvider(
       probe: async (payload, ctx?: CommandContext): Promise<ProbeResult> => {
         // A probe reaches out from this Mac, onto whatever network it sits on — a home lab a
         // remote caller cannot see. Fail closed: no context means remote.
-        if (!ctx?.loopback) return { ok: false, error: tr(undefined, 'provider.localOnly') }
+        if (!isTrusted(ctx)) return { ok: false, error: tr(undefined, 'provider.localOnly') }
         const request = ProbeRequestSchema.safeParse(payload)
         if (!request.success) {
           return { ok: false, error: request.error.issues[0]?.message ?? tr(undefined, 'provider.invalidPayload') }
         }
-        // The targets come from the user's saved settings, never from the message.
-        const resolved = resolveServices(instances, request.data.instanceId)
+        // The targets come from the user's saved settings, never from the message; a paired
+        // device finds only the instances of its own screen.
+        const resolved = resolveServices((id) => instances(id, ctx), request.data.instanceId)
         if (!resolved.ok) return { ok: false, error: resolved.error }
         // All at once: twenty services one after the other would take longer than the interval.
         const results = await Promise.all(resolved.services.map((s) => probeOne(s, deps)))

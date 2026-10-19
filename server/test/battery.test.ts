@@ -107,20 +107,20 @@ describe('merge', () => {
 describe('battery provider', () => {
   it('polls the three commands and assembles the snapshot', async () => {
     const exec = vi.fn(async (file: string) => {
-      if (file === 'pmset') return "Now drawing from 'AC Power'\n -InternalBattery-0 (id=1)\t80%; charging; 1:00 remaining present: true\n"
-      if (file === 'system_profiler') return BLUETOOTH
-      if (file === 'ioreg') return IOREG
+      if (file === '/usr/bin/pmset') return "Now drawing from 'AC Power'\n -InternalBattery-0 (id=1)\t80%; charging; 1:00 remaining present: true\n"
+      if (file === '/usr/sbin/system_profiler') return BLUETOOTH
+      if (file === '/usr/sbin/ioreg') return IOREG
       return ''
     })
     const snapshot = (await createBatteryProvider(exec).poll!()) as BatterySnapshot
     expect(snapshot.mac).toEqual({ percent: 80, charging: true, minutesLeft: 60 })
     expect(snapshot.devices).toHaveLength(5)
-    expect(exec).toHaveBeenCalledWith('system_profiler', ['SPBluetoothDataType', '-json'])
-    expect(exec).toHaveBeenCalledWith('ioreg', ['-r', '-l', '-n', 'AppleDeviceManagementHIDEventService'])
+    expect(exec).toHaveBeenCalledWith('/usr/sbin/system_profiler', ['SPBluetoothDataType', '-json'])
+    expect(exec).toHaveBeenCalledWith('/usr/sbin/ioreg', ['-r', '-l', '-n', 'AppleDeviceManagementHIDEventService'])
   })
   it('loses only the failing section when a command refuses', async () => {
     const exec = vi.fn(async (file: string) => {
-      if (file === 'ioreg') return IOREG
+      if (file === '/usr/sbin/ioreg') return IOREG
       throw new Error('command not found')
     })
     const snapshot = (await createBatteryProvider(exec).poll!()) as BatterySnapshot

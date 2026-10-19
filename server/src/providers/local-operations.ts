@@ -6,7 +6,7 @@ import si from 'systeminformation'
 import { z } from 'zod'
 import type { Provider } from './types.js'
 
-const localEnv = (env: NodeJS.ProcessEnv): NodeJS.ProcessEnv => {
+export const localEnv = (env: NodeJS.ProcessEnv): NodeJS.ProcessEnv => {
   const safe: NodeJS.ProcessEnv = {}
   for (const key of ['HOME', 'PATH', 'TMPDIR', 'LANG', 'LC_ALL', 'USER', 'LOGNAME']) {
     if (env[key] !== undefined) safe[key] = env[key]

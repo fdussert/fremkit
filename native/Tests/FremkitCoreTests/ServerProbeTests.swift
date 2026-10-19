@@ -2,34 +2,6 @@ import Foundation
 import XCTest
 @testable import FremkitCore
 
-private func json(_ text: String) -> Data { Data(text.utf8) }
-
-final class ServerProbeTests: XCTestCase {
-    func testRecognisesAFremkitConfig() {
-        XCTAssertTrue(ServerProbe.looksLikeFremkitConfig(json(#"{"version":2,"pages":[{"id":"home"}]}"#)))
-        // An empty dashboard is still a dashboard.
-        XCTAssertTrue(ServerProbe.looksLikeFremkitConfig(json(#"{"version":2,"pages":[],"locale":"fr"}"#)))
-        // A future version is still recognisably ours.
-        XCTAssertTrue(ServerProbe.looksLikeFremkitConfig(json(#"{"version":9,"pages":[]}"#)))
-    }
-
-    func testRefusesAnythingElseAnsweringOnThePort() {
-        // The case that made the helper stand down for good: something else on 4242.
-        XCTAssertFalse(ServerProbe.looksLikeFremkitConfig(json("<!doctype html><title>Vite</title>")))
-        XCTAssertFalse(ServerProbe.looksLikeFremkitConfig(json(#"{"status":"ok"}"#)))
-        XCTAssertFalse(ServerProbe.looksLikeFremkitConfig(json(#"{"version":2}"#)))
-        XCTAssertFalse(ServerProbe.looksLikeFremkitConfig(json(#"{"pages":[]}"#)))
-        XCTAssertFalse(ServerProbe.looksLikeFremkitConfig(json(#"{"version":2,"pages":"home"}"#)))
-        XCTAssertFalse(ServerProbe.looksLikeFremkitConfig(json("[]")))
-    }
-
-    func testRefusesNothingAtAll() {
-        XCTAssertFalse(ServerProbe.looksLikeFremkitConfig(nil))
-        XCTAssertFalse(ServerProbe.looksLikeFremkitConfig(Data()))
-        XCTAssertFalse(ServerProbe.looksLikeFremkitConfig(json("not json")))
-    }
-}
-
 final class KioskOriginTests: XCTestCase {
     private let dashboard = URL(string: "http://127.0.0.1:4242/?kiosk=1")!
 
@@ -50,6 +22,28 @@ final class KioskOriginTests: XCTestCase {
 
     func testRefusesNothingAtAll() {
         XCTAssertFalse(KioskOrigin.sameOrigin(nil, as: dashboard))
+    }
+}
+
+final class ExternalLinkTests: XCTestCase {
+    private let admin = URL(string: "http://127.0.0.1:4242/admin")!
+
+    func testOpensAnotherSiteInTheBrowser() {
+        XCTAssertTrue(ExternalLink.opensInBrowser(URL(string: "https://github.com/example/repo"), from: admin))
+        XCTAssertTrue(ExternalLink.opensInBrowser(URL(string: "http://example.com/"), from: admin))
+    }
+
+    func testKeepsTheAdminsOwnPagesInTheWindow() {
+        XCTAssertFalse(ExternalLink.opensInBrowser(URL(string: "http://127.0.0.1:4242/"), from: admin))
+        XCTAssertFalse(ExternalLink.opensInBrowser(URL(string: "http://127.0.0.1:4242/api/backup"), from: admin))
+    }
+
+    func testRefusesEveryOtherScheme() {
+        for candidate in ["file:///etc/passwd", "javascript:alert(1)", "data:text/html,x", "about:blank",
+                          "mailto:someone@example.com", "fremkit://admin", "ftp://example.com/"] {
+            XCTAssertFalse(ExternalLink.opensInBrowser(URL(string: candidate), from: admin), candidate)
+        }
+        XCTAssertFalse(ExternalLink.opensInBrowser(nil, from: admin))
     }
 }
 
@@ -75,5 +69,23 @@ final class NodeVersionOrderTests: XCTestCase {
     func testSurvivesSomethingThatIsNotAVersion() {
         XCTAssertFalse(NodeVersionOrder.newer("system", "system"))
         XCTAssertTrue(NodeVersionOrder.newer("v1.0.0", "not-a-version"))
+    }
+}
+
+final class AdminOriginTests: XCTestCase {
+    private let admin = URL(string: "http://127.0.0.1:4242/admin")!
+
+    func testAllowsTheAdminsOwnOriginAndTheSignInLink() {
+        XCTAssertTrue(AdminOrigin.allows(URL(string: "http://127.0.0.1:4242/admin?tab=screen"), admin: admin))
+        XCTAssertTrue(AdminOrigin.allows(URL(string: "http://127.0.0.1:4242/auth?code=x&next=/admin"), admin: admin))
+        XCTAssertTrue(AdminOrigin.allows(URL(string: "about:blank"), admin: admin))
+    }
+
+    func testRefusesEverythingElseInTheMainFrame() {
+        for candidate in ["https://example.com/", "http://127.0.0.1:4243/admin", "http://localhost:4242/admin",
+                          "file:///etc/passwd", "javascript:alert(1)", "fremkit://admin", "about:srcdoc"] {
+            XCTAssertFalse(AdminOrigin.allows(URL(string: candidate), admin: admin), candidate)
+        }
+        XCTAssertFalse(AdminOrigin.allows(nil, admin: admin))
     }
 }

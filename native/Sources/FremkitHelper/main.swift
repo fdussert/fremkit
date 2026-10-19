@@ -27,6 +27,8 @@ if CommandLine.arguments.contains("--probe") {
     }
     driver.onState = { print("probe: touch \($0)") }
     driver.displayBounds = edge
+    // The driver no longer asks on its own; nothing else is asking here, so ask before opening.
+    Permissions.requestInputMonitoring()
     driver.start()
 
     RunLoop.main.run()

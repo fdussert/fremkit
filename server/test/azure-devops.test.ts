@@ -214,19 +214,28 @@ describe('createAzureDevOpsProvider', () => {
 
   it('opens only an Azure DevOps URL, and only from this machine', async () => {
     const opened: string[] = []
-    const local = { loopback: true }
+    const local = { loopback: true, paired: false }
     const { fetchFn } = responder({ builds: BUILDS, timeline: STAGES })
     const provider = createAzureDevOpsProvider(ctx, { fetchFn, now: () => 0, open: async (u) => { opened.push(u) } })
     const run = 'https://dev.azure.com/example-org/example-project/_build/results?buildId=4821'
     await provider.commands!.open({ url: run }, local)
     expect(opened).toHaveLength(1)
-    await expect(provider.commands!.open({ url: run }, { loopback: false })).rejects.toThrow('commande réservée à cette machine')
+    await expect(provider.commands!.open({ url: run }, { loopback: false, paired: false })).rejects.toThrow('commande réservée à cette machine')
     await expect(provider.commands!.open({ url: run })).rejects.toThrow('commande réservée à cette machine')
     await expect(provider.commands!.open({ url: 'file:///etc/passwd' }, local)).rejects.toThrow('URL refusée')
     await expect(provider.commands!.open({ url: 'https://example.com/' }, local)).rejects.toThrow('URL refusée')
     await expect(provider.commands!.open({ url: 'https://dev.azure.com.evil.com/x' }, local)).rejects.toThrow('URL refusée')
     await expect(provider.commands!.open({ url: 'https://dev.azure.com@evil.com/x' }, local)).rejects.toThrow('URL refusée')
     expect(opened).toHaveLength(1)
+  })
+
+  it('hands open the URL it checked, normalised, not the text it was given', async () => {
+    const opened: string[] = []
+    const { fetchFn } = responder({ builds: BUILDS, timeline: STAGES })
+    const provider = createAzureDevOpsProvider(ctx, { fetchFn, now: () => 0, open: async (u) => { opened.push(u) } })
+    // Whitespace and case a WHATWG parser drops or folds, and another parser might not.
+    await provider.commands!.open({ url: '  HTTPS://DEV.AZURE.COM/example-org/x y\t' }, { loopback: true, paired: false })
+    expect(opened).toEqual(['https://dev.azure.com/example-org/x%20y'])
   })
 })
 

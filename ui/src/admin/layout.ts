@@ -115,3 +115,40 @@ export function fitAround(cell: { x: number; y: number }, size: [number, number]
   }
   return place(sizes[0])
 }
+
+/**
+ * The step (`dx`, `dy`) a group of rectangles can take as one block: cut short so the block stays
+ * fully on screen, like `moveRect` does for one. Their sizes and their places relative to each
+ * other never change.
+ */
+export function groupDelta(rects: Rect[], dx: number, dy: number, grid: Grid): { dx: number; dy: number } {
+  if (!rects.length) return { dx: 0, dy: 0 }
+  const x0 = Math.min(...rects.map((r) => r.x))
+  const y0 = Math.min(...rects.map((r) => r.y))
+  const x1 = Math.max(...rects.map((r) => r.x + r.w))
+  const y1 = Math.max(...rects.map((r) => r.y + r.h))
+  return { dx: clamp(dx, -x0, grid.cols - x1), dy: clamp(dy, -y0, grid.rows - y1) }
+}
+
+/** Every rectangle shifted by (`dx`, `dy`). */
+export const shiftAll = (rects: Rect[], dx: number, dy: number): Rect[] => rects.map((r) => ({ ...r, x: r.x + dx, y: r.y + dy }))
+
+/**
+ * Row-by-row scan for the first place a whole group fits as one block, its rectangles kept where
+ * they are relative to each other: the shift that takes them there, or null when there is none.
+ * Rectangles of the group never collide with each other, only with `others`.
+ */
+export function firstFreeBlock(rects: Rect[], grid: Grid, others: Rect[]): { dx: number; dy: number } | null {
+  if (!rects.length) return null
+  const x0 = Math.min(...rects.map((r) => r.x))
+  const y0 = Math.min(...rects.map((r) => r.y))
+  const w = Math.max(...rects.map((r) => r.x + r.w)) - x0
+  const h = Math.max(...rects.map((r) => r.y + r.h)) - y0
+  for (let y = 0; y + h <= grid.rows; y++) {
+    for (let x = 0; x + w <= grid.cols; x++) {
+      const moved = shiftAll(rects, x - x0, y - y0)
+      if (moved.every((r) => fits(r, grid, others))) return { dx: x - x0, dy: y - y0 }
+    }
+  }
+  return null
+}

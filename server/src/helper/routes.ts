@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process'
 import type { FastifyInstance } from 'fastify'
-import { isLoopbackAddress } from '../net/loopback.js'
+import { isLocalRequest } from '../net/remote.js'
 import { isOriginAllowed } from '../ws/routes.js'
 import { tr } from '../i18n.js'
 
@@ -8,6 +8,11 @@ import { tr } from '../i18n.js'
 export const HELPER_BUNDLE_ID = 'dev.fremkit.helper'
 /** The URL the helper answers with its admin window (see `HelperURL` in FremkitCore). */
 export const HELPER_ADMIN_URL = 'fremkit://admin'
+/**
+ * The URL that drops the dashboard behind the other windows for a while (`HelperURL.reveal`), so
+ * a macOS dialog it covers on the Edge — the privacy prompt a disk map scan waits on — can be seen.
+ */
+export const HELPER_REVEAL_URL = 'fremkit://reveal'
 const OPEN_TIMEOUT_MS = 5000
 /**
  * The two programs this route runs, by absolute path.
@@ -52,10 +57,29 @@ export async function runningHelperPath(run: Runner): Promise<string | undefined
   }
 }
 
-/** `open` argv for the admin URL: the running helper by path, else the bundle id. */
-export async function openArgs(run: Runner): Promise<string[]> {
+/** One of the helper's own URLs: the closed list the helper itself knows. */
+export type HelperUrl = typeof HELPER_ADMIN_URL | typeof HELPER_REVEAL_URL
+
+/** `open` argv for a helper URL: the running helper by path, else the bundle id. */
+export async function openArgs(run: Runner, url: HelperUrl = HELPER_ADMIN_URL): Promise<string[]> {
   const path = await runningHelperPath(run)
-  return path ? ['-a', path, HELPER_ADMIN_URL] : ['-b', HELPER_BUNDLE_ID, HELPER_ADMIN_URL]
+  return path ? ['-a', path, url] : ['-b', HELPER_BUNDLE_ID, url]
+}
+
+/**
+ * Hands a helper URL to the running helper. Rejects when `open` fails (no helper, too old).
+ *
+ * The reveal goes to a running helper or nowhere: with none there is no dashboard to lower, and
+ * `open -b` would launch one (`pnpm dev` in a browser, for one) just to do nothing.
+ */
+export async function openHelperUrl(url: HelperUrl, run: Runner = runProgram): Promise<void> {
+  if (url === HELPER_REVEAL_URL) {
+    const path = await runningHelperPath(run)
+    if (!path) throw new Error('no running helper')
+    await run(OPEN_PROGRAM, ['-a', path, url])
+    return
+  }
+  await run(OPEN_PROGRAM, await openArgs(run, url))
 }
 
 /**
@@ -69,20 +93,28 @@ export async function openArgs(run: Runner): Promise<string[]> {
 export async function helperRoutes(app: FastifyInstance, opts: { run?: Runner } = {}): Promise<void> {
   const run = opts.run ?? runProgram
 
-  app.post('/api/helper/admin', async (req, reply) => {
-    if (!isLoopbackAddress(req.ip)) return reply.code(403).send({ ok: false, error: tr(undefined, 'helper.notLocal') })
+  /**
+   * Both routes run `open` with a fixed URL; nothing of the request reaches the argument list.
+   * `fremkit://reveal` is asked for by the disk map through its provider command too, since a
+   * widget's sandboxed frame cannot call these routes itself.
+   */
+  const route = (path: string, url: HelperUrl) => app.post(path, async (req, reply) => {
+    if (!isLocalRequest(req)) return reply.code(403).send({ ok: false, error: tr(undefined, 'helper.notLocal') })
     if (!isOriginAllowed(req.headers.origin)) {
       return reply.code(403).send({ ok: false, error: tr(undefined, 'connections.originNotAllowed') })
     }
 
     try {
-      await run(OPEN_PROGRAM, await openArgs(run))
+      await openHelperUrl(url, run)
       return { ok: true }
     } catch (err) {
-      // A helper built before the URL scheme existed, or LaunchServices refusing it. Nothing the
-      // server can fix, so it says so and the page can fall back to opening /admin itself.
-      req.log.warn({ err }, 'helper admin open failed')
+      // A helper built before the URL scheme (or this URL) existed, or LaunchServices refusing
+      // it. Nothing the server can fix, so it says so and the page can fall back on its own.
+      req.log.warn({ err, url }, 'helper URL open failed')
       return reply.code(503).send({ ok: false, error: tr(undefined, 'helper.unavailable') })
     }
   })
+
+  route('/api/helper/admin', HELPER_ADMIN_URL)
+  route('/api/helper/reveal', HELPER_REVEAL_URL)
 }

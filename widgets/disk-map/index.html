@@ -1,0 +1,643 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Disk map</title>
+<style>
+  html,body{margin:0;height:100%;background:transparent;color:var(--text, #e6e8eb);font-family:var(--font, -apple-system,system-ui,sans-serif);overflow:hidden}
+  [hidden]{display:none!important}
+  .wrap{box-sizing:border-box;height:100%;padding:10px 14px;position:relative;display:flex;gap:16px;align-items:stretch}
+  .ringbox{position:relative;flex:0 0 auto;aspect-ratio:1/1;height:100%;max-width:100%;align-self:center}
+  html.narrow .ringbox{margin:0 auto}
+  svg{display:block;width:100%;height:100%;overflow:visible}
+  .seg{cursor:pointer;transition:opacity .15s}
+  .seg.other{fill:rgba(128,128,128,.42)}
+  .ring.has-active .seg:not(.active){opacity:.38}
+  .seg.active{stroke:var(--text, #e6e8eb);stroke-width:1.2}
+  html.on-light .seg.active{stroke:var(--on-surface,#0b0d10)}
+  .zoom-in{animation:zin .24s ease-out}
+  .zoom-out{animation:zout .24s ease-out}
+  @keyframes zin{from{transform:scale(.55);opacity:.2}to{transform:none;opacity:1}}
+  @keyframes zout{from{transform:scale(1.35);opacity:.2}to{transform:none;opacity:1}}
+  #rings{transform-origin:100px 100px}
+  .centre{cursor:pointer}
+  .centre circle{fill:rgba(128,128,128,.14)}
+  .centre text{fill:currentColor;text-anchor:middle;font-family:var(--font, -apple-system,system-ui,sans-serif)}
+  .centre .size{font-size:15px;font-weight:600}
+  .centre .name{font-size:7.5px;fill:var(--text-muted, #8b93a0)}
+  .centre .up{font-size:7px;fill:var(--text-muted, #8b93a0)}
+  html.on-light .centre .name,html.on-light .centre .up{fill:var(--on-surface,#0b0d10);opacity:.7}
+  .lock{fill:none;stroke:var(--text, #e6e8eb);stroke-width:1.1;stroke-linecap:round;stroke-linejoin:round;pointer-events:none}
+  html.on-light .lock,html.accent-fill .lock{stroke:var(--on-surface,#0b0d10)}
+  .hatch-line{stroke:rgba(128,128,128,.85);stroke-width:1.4}
+  .side{flex:1;min-width:0;display:flex;flex-direction:column;gap:6px}
+  html.narrow .side{display:none}
+  .head{display:flex;align-items:center;gap:6px;flex:0 0 auto}
+  .crumbs{flex:1;min-width:0;display:flex;align-items:center;overflow:hidden;white-space:nowrap}
+  .crumb{font:inherit;border:0;background:none;color:inherit;min-height:44px;padding:0 6px;cursor:pointer;
+    font-size:calc(16px * var(--text-scale, 1));max-width:14em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:0 1 auto}
+  .crumb:last-child{font-weight:600}
+  .crumb:active{color:var(--accent, #d9b36a)}
+  html.accent-fill .crumb:active{color:var(--on-surface,#0b0d10);opacity:.7}
+  .sep{color:var(--text-muted, #8b93a0);flex:0 0 auto}
+  .btn{font:inherit;border:0;border-radius:10px;min-width:44px;min-height:44px;padding:0 12px;background:rgba(128,128,128,.18);
+    color:inherit;cursor:pointer;font-size:calc(15px * var(--text-scale, 1));flex:0 0 auto}
+  .btn:active{background:var(--accent, #d9b36a);color:var(--on-accent, #0b0d10)}
+  html.accent-fill .btn:active{background:var(--on-surface,#0b0d10);color:var(--accent, #d9b36a)}
+  .btn.icon{padding:0;width:44px;font-size:calc(20px * var(--text-scale, 1))}
+  .status{flex:0 0 auto;font-size:calc(13px * var(--text-scale, 1));color:var(--text-muted, #8b93a0);display:flex;align-items:center;gap:8px;min-height:20px}
+  .status .text{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .warn{flex:0 0 auto;display:flex;align-items:center;gap:10px;font-size:calc(13px * var(--text-scale, 1))}
+  .warn .text{flex:1;min-width:0;color:var(--warn, #e0a64a)}
+  html.on-light .status,html.on-light .warn .text{color:var(--on-surface,#0b0d10);opacity:.75}
+  /* The body is the accent: muted grey and the warning colour would not read on it. */
+  html.accent-fill .status,html.accent-fill .warn .text,html.accent-fill .row .size,html.accent-fill .sep,html.accent-fill .empty{color:var(--on-surface,#0b0d10);opacity:.8}
+  html.accent-fill .centre .name,html.accent-fill .centre .up{fill:var(--on-surface,#0b0d10);opacity:.8}
+  html.on-light .sep,html.on-light .empty{color:var(--on-surface,#0b0d10);opacity:.7}
+  .progress{height:3px;border-radius:2px;background:rgba(128,128,128,.25);overflow:hidden;flex:0 0 auto}
+  .progress>i{display:block;height:100%;width:30%;background:var(--accent, #d9b36a);animation:slide 1.2s linear infinite}
+  html.accent-fill .progress>i{background:var(--on-surface,#0b0d10)}
+  @keyframes slide{from{transform:translateX(-100%)}to{transform:translateX(340%)}}
+  .list{flex:1;min-height:0;overflow-y:auto;touch-action:pan-y;display:flex;flex-direction:column;gap:2px}
+  .row{box-sizing:border-box;width:100%;font:inherit;border:0;border-radius:8px;min-height:44px;padding:4px 10px;background:none;
+    color:inherit;display:grid;grid-template-columns:12px 1fr auto;grid-template-rows:auto 3px;column-gap:10px;row-gap:3px;align-items:center;text-align:left;cursor:pointer}
+  .row.active{background:rgba(128,128,128,.2)}
+  .row .dot{width:10px;height:10px;border-radius:3px;grid-row:1}
+  .row .name{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:calc(15px * var(--text-scale, 1))}
+  .row .size{font-size:calc(13px * var(--text-scale, 1));color:var(--text-muted, #8b93a0);font-variant-numeric:tabular-nums;white-space:nowrap}
+  html.on-light .row .size{color:var(--on-surface,#0b0d10);opacity:.7}
+  .row .bar{grid-column:2 / 4;height:3px;border-radius:2px;background:rgba(128,128,128,.2);overflow:hidden}
+  .row .bar>i{display:block;height:100%;background:var(--accent, #d9b36a)}
+  html.accent-fill .row .bar>i{background:var(--on-surface,#0b0d10)}
+  .row.locked .name{font-style:italic}
+  .row.file .name{opacity:.85}
+  .empty{color:var(--text-muted, #8b93a0);font-size:calc(14px * var(--text-scale, 1));padding:8px 4px}
+  .float{position:absolute;top:4px;right:4px}
+  .float.lockbtn{top:auto;right:auto;bottom:4px;left:4px;width:auto;padding:0 10px;font-size:calc(13px * var(--text-scale, 1))}
+  html:not(.narrow) .float,html.compact .float{display:none}
+  .toast{position:absolute;left:0;right:0;bottom:6px;text-align:center;font-size:calc(13px * var(--text-scale, 1));color:var(--accent,#d9b36a);pointer-events:none}
+  html.accent-fill .toast{color:var(--on-surface,#0b0d10)}
+  html.compact .wrap{padding:4px;justify-content:center}
+  html.compact.slot-right .wrap{justify-content:flex-end}
+  html.compact.slot-left .wrap{justify-content:flex-start}
+  html.compact .ringbox{height:calc(var(--h, 80px) - 8px)}
+  html.compact .side,html.compact .centre text{display:none}
+  html.on-light body{color:var(--on-surface,#0b0d10)}
+  /* Never scanned: one button, and nothing else to look at yet. */
+  .cta{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:10px;box-sizing:border-box;text-align:center}
+  html.never .ringbox,html.never .side{visibility:hidden}
+  html.compact .cta{display:none!important}
+  html.compact.never .ringbox{visibility:visible}
+  .cta .go{min-height:56px;min-width:56px;padding:0 24px;border-radius:14px;font-weight:600;font-size:calc(17px * var(--text-scale, 1));
+    background:var(--accent, #d9b36a);color:var(--on-accent, #0b0d10);max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .cta .go:active{opacity:.75;background:var(--accent, #d9b36a);color:var(--on-accent, #0b0d10)}
+  html.accent-fill .cta .go,html.accent-fill .cta .go:active{background:var(--on-surface,#0b0d10);color:var(--accent, #d9b36a)}
+  .cta .note{font-size:calc(13px * var(--text-scale, 1));color:var(--text-muted, #8b93a0);max-width:32em}
+  html.on-light .cta .note,html.accent-fill .cta .note{color:var(--on-surface,#0b0d10);opacity:.75}
+  /* macOS holds the scan behind a privacy prompt: said over the tile, wide or narrow. */
+  .ask{position:absolute;left:8px;right:8px;bottom:8px;display:flex;align-items:center;gap:10px;box-sizing:border-box;padding:8px 12px;
+    border-radius:12px;border-left:4px solid var(--accent, #d9b36a);background:rgba(128,128,128,.3);
+    -webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);color:var(--text, #e6e8eb);font-size:calc(14px * var(--text-scale, 1));line-height:1.3}
+  .ask .text{flex:1;min-width:0}
+  .ask .btn{white-space:nowrap}
+  html.on-light .ask{color:var(--on-surface,#0b0d10)}
+  html.accent-fill .ask{border-left-color:var(--on-surface,#0b0d10);color:var(--on-surface,#0b0d10)}
+  html.compact .ask{display:none!important}
+</style></head>
+<body>
+<div class="wrap" id="wrap">
+  <div class="ringbox">
+    <svg id="svg" viewBox="0 0 200 200" aria-hidden="true">
+      <defs>
+        <pattern id="hatch" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+          <rect width="5" height="5" fill="rgba(128,128,128,.18)"/><line class="hatch-line" x1="0" y1="0" x2="0" y2="5"/>
+        </pattern>
+      </defs>
+      <g id="rings" class="ring"></g>
+      <g class="centre" id="centre">
+        <circle cx="100" cy="100" r="29"/>
+        <text class="up" id="cUp" x="100" y="85"></text>
+        <text class="size" id="cSize" x="100" y="104"></text>
+        <text class="name" id="cName" x="100" y="116"></text>
+      </g>
+    </svg>
+    <button class="btn icon float" id="floatScan" type="button">↻</button>
+    <button class="btn icon float lockbtn" id="floatLock" type="button" hidden></button>
+  </div>
+  <div class="side">
+    <div class="head">
+      <div class="crumbs" id="crumbs"></div>
+      <button class="btn icon" id="scanBtn" type="button">↻</button>
+    </div>
+    <div class="status"><span class="text" id="status"></span></div>
+    <div class="progress" id="progress" hidden><i></i></div>
+    <div class="warn" id="warn" hidden><span class="text" id="warnText"></span><button class="btn" id="fda" type="button"></button></div>
+    <div class="list" id="list"></div>
+  </div>
+  <div class="cta" id="cta" hidden>
+    <button class="btn go" id="ctaBtn" type="button"></button>
+    <div class="note" id="ctaNote"></div>
+  </div>
+  <div class="ask" id="ask" role="status" hidden><span class="text" id="askText"></span><button class="btn" id="askShow" type="button"></button></div>
+  <div class="toast" id="toast" hidden></div>
+</div>
+<script src="sunburst.js"></script>
+<script>
+  var L = {
+    home: { fr: 'Dossier personnel', en: 'Home folder' },
+    scanning: { fr: 'Analyse… {n} dossiers', en: 'Scanning… {n} folders' },
+    scanningIn: { fr: 'Analyse… {n} dossiers · {where}', en: 'Scanning… {n} folders · {where}' },
+    asking: { fr: 'macOS demande à Fremkit l’accès à «\u00a0{name}\u00a0» — réponds à la fenêtre sur le Mac (elle peut être derrière le dashboard).',
+      en: 'macOS is asking whether Fremkit may open “{name}” — answer the window on the Mac (it may be behind the dashboard).' },
+    showPrompt: { fr: 'Afficher la demande', en: 'Show the request' },
+    queued: { fr: 'En attente : une autre analyse est en cours', en: 'Waiting: another scan is running' },
+    scanned: { fr: 'Analysé {ago}', en: 'Scanned {ago}' },
+    viaDu: { fr: 'Analysé {ago} · du (sans l’assistant)', en: 'Scanned {ago} · du (no helper)' },
+    never: { fr: 'Jamais analysé', en: 'Never scanned' },
+    scan: { fr: 'Analyser', en: 'Scan' },
+    scanRoot: { fr: 'Analyser {name}', en: 'Scan {name}' },
+    homeShort: { fr: 'le dossier personnel', en: 'the home folder' },
+    firstScan: { fr: 'Jamais analysé. L’analyse lit chaque dossier et peut prendre quelques minutes ; rien n’est supprimé.',
+      en: 'Never scanned. A scan reads every folder and can take a few minutes; nothing is deleted.' },
+    rescan: { fr: 'Analyser de nouveau', en: 'Scan again' },
+    cancel: { fr: 'Annuler', en: 'Cancel' },
+    scanFolder: { fr: 'Analyser ce dossier', en: 'Scan this folder' },
+    unreadableOne: { fr: '1 dossier n’a pas pu être lu', en: '1 folder could not be read' },
+    unreadableMany: { fr: '{n} dossiers n’ont pas pu être lus', en: '{n} folders could not be read' },
+    fda: { fr: 'Accès complet au disque', en: 'Full Disk Access' },
+    others: { fr: 'Autres ({n})', en: 'Others ({n})' },
+    locked: { fr: 'illisible', en: 'unreadable' },
+    up: { fr: '▲ remonter', en: '▲ up' },
+    empty: { fr: 'Rien à montrer ici', en: 'Nothing to show here' },
+    deeper: { fr: 'Ce dossier n’a pas encore été analysé en détail', en: 'This folder has not been scanned in detail yet' },
+    revealed: { fr: 'Montré dans le Finder', en: 'Shown in Finder' },
+    failed: { fr: 'Échec', en: 'Failed' },
+    error_missing: { fr: 'Dossier introuvable', en: 'Folder not found' },
+    error_unreadable: { fr: 'Lecture refusée : voir l’accès complet au disque', en: 'Reading was refused: see Full Disk Access' },
+    error_failed: { fr: 'L’analyse a échoué', en: 'The scan failed' },
+    error_gone: { fr: 'Ce dossier n’existe plus', en: 'This folder is gone' },
+    error_volume: { fr: 'Volume « {name} » absent', en: 'Volume “{name}” is not mounted' }
+  }
+  var S = FremkitSunburst
+
+  Fremkit.whenReady(function () {
+    var snap = null
+    var view = null
+    var path = []
+    var viewKey = ''
+    var activeKey = null
+    var autoScanned = {}
+    var arcs = []
+    var requestId = 0
+    var suppressClick = 0
+    var $ = function (id) { return document.getElementById(id) }
+
+    function settings() { return Fremkit.settings || {} }
+    function rootId() {
+      var s = settings()
+      var vol = typeof s.volume === 'string' ? s.volume.trim() : ''
+      return s.root === 'volume' && vol && vol.indexOf('/') < 0 ? 'volume:' + vol : 'home'
+    }
+    function rings() {
+      if (Fremkit.compact) return 2
+      var r = parseInt(settings().rings, 10)
+      return r >= 1 && r <= 4 ? r : 3
+    }
+    function rootLabel() {
+      var id = rootId()
+      return id === 'home' ? '~' : id.slice('volume:'.length)
+    }
+    /** The last failure of this root, when it was about the folder on screen or the root itself. */
+    function currentError() {
+      var e = snap && snap.errors ? snap.errors[rootId()] : null
+      if (!e) return null
+      var at = (e.path || []).join('\u0000')
+      return at === '' || at === path.join('\u0000') ? e : null
+    }
+    function result() { return snap && snap.results ? snap.results[rootId()] || null : null }
+    function scanningHere() { return !!(snap && snap.scanning && snap.scanning.root === rootId()) }
+    /** Asked for while another root was being scanned: it runs next, the server keeps the turn. */
+    function queuedHere() { return !!(snap && (snap.queued || []).indexOf(rootId()) >= 0) }
+    function busyHere() { return scanningHere() || queuedHere() }
+    function rootListed() {
+      return !snap || (snap.roots || []).some(function (r) { return r.id === rootId() })
+    }
+
+    function applySize() {
+      var px = (Fremkit.size && Fremkit.size.px) || { width: 400, height: 300 }
+      document.documentElement.style.setProperty('--h', px.height + 'px')
+      var wide = !Fremkit.compact && px.width >= px.height * 1.6 && px.width >= 420
+      document.documentElement.classList.toggle('narrow', !wide)
+    }
+
+    function toast(text) {
+      var t = $('toast')
+      t.textContent = text
+      t.hidden = false
+      clearTimeout(toast.timer)
+      toast.timer = setTimeout(function () { t.hidden = true }, 1800)
+    }
+
+    // ---- data ---------------------------------------------------------------------------------
+
+    function fetchView(direction) {
+      var id = ++requestId
+      var root = rootId()
+      Fremkit.sendCommand('disk-map', 'view', { root: root, path: path, rings: rings(), minDegrees: 3.5 }).then(function (r) {
+        if (id !== requestId) return
+        if (!r || !r.ok) {
+          if (r && r.error === 'gone' && path.length) { path = []; fetchView('out'); return }
+          view = null
+          render()
+          return
+        }
+        view = r.view
+        viewKey = root + '|' + (result() ? result().generation : 0)
+        activeKey = null
+        render(direction)
+        maybeScanFolder()
+      }).catch(function () { if (id === requestId) { view = null; render() } })
+    }
+
+    /**
+     * A folder the tree holds nothing inside of, drilled into with a tap: rescan that folder, never
+     * the whole root. A root is never scanned on its own — showing the tile, in the admin's preview
+     * too, would otherwise walk the home folder and have macOS ask for Desktop, Documents and
+     * Downloads before anybody asked for anything. Its first scan waits for the button.
+     */
+    function maybeScanFolder() {
+      if (Fremkit.compact || !snap || snap.scanning || !rootListed() || !result() || path.length === 0) return
+      var key = rootId() + '|' + path.join('/')
+      if (autoScanned[key]) return
+      if (view && view.more && !(view.children || []).length) { autoScanned[key] = true; scan(path) }
+    }
+
+    function scan(at) {
+      Fremkit.sendCommand('disk-map', 'scan', { root: rootId(), path: at || [] }).then(function (r) {
+        if (r && !r.ok) { toast(Fremkit.t(L.failed)); return }
+        // Say so now rather than at the provider's next tick, up to five seconds away.
+        if (snap && r && r.queued) {
+          snap.queued = (snap.queued || []).concat([rootId()])
+          renderStatus()
+        } else if (snap) {
+          snap.scanning = { root: rootId(), path: at || [], startedAt: Date.now(), directories: 0, files: 0, current: [] }
+          renderStatus()
+        }
+      }).catch(function () { toast(Fremkit.t(L.failed)) })
+    }
+
+    function onSnapshot(d) {
+      if (!d || typeof d !== 'object') return
+      var before = viewKey
+      snap = d
+      var r = result()
+      var key = rootId() + '|' + (r ? r.generation : 0)
+      if (key !== before) fetchView()
+      else { renderStatus(); maybeScanFolder() }
+    }
+
+    // ---- drawing ------------------------------------------------------------------------------
+
+    function baseColor() {
+      return getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#d9b36a'
+    }
+
+    function fillFor(arc, topCount) {
+      if (arc.kind === 'o') return null
+      if (arc.kind === 'x') return 'url(#hatch)'
+      if (document.documentElement.classList.contains('accent-fill')) return 'var(--on-surface, #0b0d10)'
+      return S.colorFor(baseColor(), arc.top, arc.ring, topCount)
+    }
+
+    function opacityFor(arc) {
+      if (!document.documentElement.classList.contains('accent-fill') || arc.kind === 'x' || arc.kind === 'o') return 1
+      return Math.max(0.3, 0.9 - 0.18 * (arc.ring - 1) - (arc.top % 2) * 0.15)
+    }
+
+    var NS = 'http://www.w3.org/2000/svg'
+    function svgEl(tag, attrs) {
+      var e = document.createElementNS(NS, tag)
+      for (var k in attrs) e.setAttribute(k, attrs[k])
+      return e
+    }
+
+    function keyOf(p) { return p ? p.join('\u0000') : null }
+    // No folder name contains a NUL, so this can never be a folder's key.
+    var OTHERS = '\u0000others'
+
+    function drawRing(direction) {
+      var g = $('rings')
+      while (g.firstChild) g.removeChild(g.firstChild)
+      arcs = []
+      if (!view) return
+      var n = rings()
+      var lay = S.layout(view, { rings: n, minDegrees: 3.5, lockDegrees: 4 })
+      arcs = lay.arcs
+      var topCount = arcs.filter(function (a) { return a.ring === 1 && a.kind !== 'o' && a.kind !== 'x' }).length
+      var inner = 32, outer = 98, band = (outer - inner) / n
+      arcs.forEach(function (arc, i) {
+        var r0 = inner + band * (arc.ring - 1) + 0.6, r1 = inner + band * arc.ring - 0.6
+        var a1 = arc.a1 - arc.a0 > 1.2 ? arc.a1 - 0.35 : arc.a1
+        var p = svgEl('path', { d: S.arcPath(100, 100, r0, r1, arc.a0, a1), 'class': 'seg' + (arc.kind === 'o' ? ' other' : ''), 'data-i': String(i) })
+        var fill = fillFor(arc, topCount)
+        if (fill) p.setAttribute('fill', fill)
+        var op = opacityFor(arc)
+        if (op !== 1) p.setAttribute('fill-opacity', String(op))
+        g.appendChild(p)
+        if (arc.kind === 'x' && arc.a1 - arc.a0 >= 6 && band >= 12) {
+          var c = S.centroid(100, 100, r0, r1, arc.a0, arc.a1)
+          var lock = svgEl('path', { 'class': 'lock', d: 'M' + (c[0] - 3) + ' ' + (c[1] - 0.5) + 'h6v4.5h-6z'
+            + 'M' + (c[0] - 1.8) + ' ' + (c[1] - 0.5) + 'v-1.6a1.8 1.8 0 0 1 3.6 0v1.6' })
+          g.appendChild(lock)
+        }
+      })
+      g.classList.remove('zoom-in', 'zoom-out')
+      if (direction) { void g.getBoundingClientRect(); g.classList.add(direction === 'in' ? 'zoom-in' : 'zoom-out') }
+      paintActive()
+    }
+
+    function drawCentre() {
+      $('cSize').textContent = view ? S.formatBytes(view.size, Fremkit.locale) : (scanningHere() ? '…' : '')
+      var name = path.length ? path[path.length - 1] : (rootId() === 'home' ? Fremkit.t(L.home) : rootLabel())
+      $('cName').textContent = name.length > 22 ? name.slice(0, 21) + '…' : name
+      $('cUp').textContent = path.length ? Fremkit.t(L.up) : ''
+    }
+
+    function drawCrumbs() {
+      var box = $('crumbs')
+      box.textContent = ''
+      var all = [rootLabel()].concat(path)
+      var start = Math.max(0, all.length - 4)
+      if (start > 0) box.appendChild(Fremkit.el('span', 'sep', '… ›'))
+      for (var i = start; i < all.length; i++) {
+        if (i > start) box.appendChild(Fremkit.el('span', 'sep', '›'))
+        var b = Fremkit.el('button', 'crumb', all[i])
+        b.type = 'button'
+        b.dataset.depth = String(i)
+        box.appendChild(b)
+      }
+    }
+
+    function rowFor(child, maxSize, arcIndex) {
+      var b = document.createElement('button')
+      b.type = 'button'
+      b.className = 'row' + (child.kind === 'x' ? ' locked' : child.kind === 'f' ? ' file' : '')
+      var key = child.kind === 'o' ? OTHERS : keyOf(path.concat([child.name]))
+      b.dataset.key = key
+      var arc = child.kind === 'o' ? arcIndex.others : arcIndex.byName.get(child.name)
+      var dot = Fremkit.el('span', 'dot')
+      var fill = arc ? fillFor(arc, arcIndex.top) : null
+      dot.style.background = child.kind === 'x' ? 'repeating-linear-gradient(45deg, rgba(128,128,128,.85) 0 2px, transparent 2px 4px)'
+        : fill && fill.indexOf('url(') !== 0 ? fill : 'rgba(128,128,128,.42)'
+      var label = child.kind === 'o' ? Fremkit.t(L.others, { n: child.count || 0 })
+        : child.kind === 'x' ? '🔒 ' + child.name : child.name
+      var size = child.kind === 'x' ? Fremkit.t(L.locked) : S.formatBytes(child.size, Fremkit.locale)
+      var bar = Fremkit.el('span', 'bar')
+      var fillBar = document.createElement('i')
+      var pct = maxSize > 0 ? Math.max(0, Math.min(100, child.size / maxSize * 100)) : 0
+      fillBar.style.width = pct.toFixed(1) + '%'
+      bar.appendChild(fillBar)
+      b.appendChild(dot)
+      b.appendChild(Fremkit.el('span', 'name', label))
+      b.appendChild(Fremkit.el('span', 'size', size))
+      b.appendChild(bar)
+      b._child = child
+      return b
+    }
+
+    function drawList() {
+      var list = $('list')
+      list.textContent = ''
+      if (!view) {
+        if (!busyHere()) list.appendChild(Fremkit.el('div', 'empty', result() ? '' : Fremkit.t(L.never)))
+        return
+      }
+      var children = view.children || []
+      if (view.more && !children.length) {
+        list.appendChild(Fremkit.el('div', 'empty', Fremkit.t(L.deeper)))
+        if (!busyHere()) {
+          var b = Fremkit.el('button', 'btn', Fremkit.t(L.scanFolder))
+          b.type = 'button'
+          b.addEventListener('click', function () { scan(path) })
+          list.appendChild(b)
+        }
+        return
+      }
+      if (!children.length) { list.appendChild(Fremkit.el('div', 'empty', Fremkit.t(L.empty))); return }
+      // A Map: folder names are anything at all, `constructor` and `__proto__` included.
+      var arcIndex = { byName: new Map(), others: null, top: 0 }
+      arcs.forEach(function (a) {
+        if (a.ring !== 1) return
+        if (a.kind === 'o') arcIndex.others = a
+        else arcIndex.byName.set(a.name, a)
+        if (a.kind !== 'o' && a.kind !== 'x') arcIndex.top++
+      })
+      var maxSize = children.reduce(function (m, c) { return Math.max(m, c.size || 0) }, 0)
+      children.forEach(function (c) { list.appendChild(rowFor(c, maxSize, arcIndex)) })
+    }
+
+    /** The held folder below the scanned one; [] is the scanned folder itself. */
+    function waitingName(sc, waiting) {
+      if (waiting.length) return waiting.join('/')
+      return sc.path && sc.path.length ? sc.path[sc.path.length - 1] : rootLabel()
+    }
+
+    function renderStatus() {
+      var r = result()
+      var status = ''
+      var scanningNow = scanningHere()
+      var busy = busyHere()
+      if (!rootListed()) status = Fremkit.t(L.error_volume, { name: rootLabel() })
+      else if (!scanningNow && busy) status = Fremkit.t(L.queued)
+      else if (scanningNow) {
+        var sc = snap.scanning
+        var where = (sc.path && sc.path.length ? sc.path : sc.current || []).join(' › ')
+        status = Fremkit.t(where ? L.scanningIn : L.scanning, { n: (sc.directories || 0).toLocaleString(Fremkit.locale), where: where })
+      } else if (currentError()) {
+        status = Fremkit.t(L['error_' + currentError().code] || L.error_failed)
+      } else if (r) {
+        status = Fremkit.t(r.scanner === 'du' ? L.viaDu : L.scanned, { ago: S.ago(r.scannedAt, Date.now(), Fremkit.locale) })
+      } else status = Fremkit.t(L.never)
+      $('status').textContent = status
+      // Never scanned: the call to action, with whatever went wrong last time under it.
+      var never = !r && !busy && rootListed()
+      document.documentElement.classList.toggle('never', never)
+      $('cta').hidden = !never
+      if (never) {
+        $('ctaBtn').textContent = Fremkit.t(L.scanRoot, { name: rootId() === 'home' ? Fremkit.t(L.homeShort) : rootLabel() })
+        $('ctaNote').textContent = currentError() ? status : Fremkit.t(L.firstScan)
+      }
+      $('progress').hidden = !scanningNow
+      // The scan is held by a privacy prompt: say which folder, and where the question is.
+      var waiting = scanningNow && Array.isArray(snap.scanning.waiting) ? snap.scanning.waiting : null
+      $('ask').hidden = !waiting
+      if (waiting) {
+        $('askText').textContent = Fremkit.t(L.asking, { name: waitingName(snap.scanning, waiting) })
+        $('askShow').textContent = Fremkit.t(L.showPrompt)
+      }
+      var label = busy ? '✕' : '↻'
+      $('scanBtn').textContent = label
+      $('floatScan').textContent = label
+      // A narrow tile has no room for the warning line: a lock with the count opens the settings.
+      $('floatLock').hidden = !(r && r.unreadable > 0) || busy
+      if (r && r.unreadable > 0) {
+        $('floatLock').textContent = '🔒 ' + r.unreadable.toLocaleString(Fremkit.locale)
+        $('floatLock').setAttribute('aria-label', Fremkit.t(L.fda))
+      }
+      $('scanBtn').setAttribute('aria-label', Fremkit.t(busy ? L.cancel : r ? L.rescan : L.scan))
+      var unreadable = r ? r.unreadable || 0 : 0
+      $('warn').hidden = !(unreadable > 0) || busy
+      if (unreadable > 0) {
+        $('warnText').textContent = unreadable === 1 ? Fremkit.t(L.unreadableOne) : Fremkit.t(L.unreadableMany, { n: unreadable.toLocaleString(Fremkit.locale) })
+        $('fda').textContent = Fremkit.t(L.fda)
+      }
+    }
+
+    function render(direction) {
+      document.documentElement.lang = Fremkit.locale
+      drawRing(direction)
+      drawCentre()
+      drawCrumbs()
+      drawList()
+      renderStatus()
+    }
+
+    // ---- highlighting -------------------------------------------------------------------------
+
+    // Rows are keyed by the full path, arcs carry the path from the centre: same space for both.
+    function arcKey(arc) { return arc.kind === 'o' ? (arc.ring === 1 ? OTHERS : null) : keyOf(path.concat(arc.path)) }
+
+    function paintActive() {
+      var g = $('rings')
+      g.classList.toggle('has-active', activeKey !== null)
+      Array.prototype.forEach.call(g.querySelectorAll('.seg'), function (p) {
+        var arc = arcs[+p.getAttribute('data-i')]
+        p.classList.toggle('active', !!arc && activeKey !== null && arcKey(arc) === activeKey)
+      })
+      Array.prototype.forEach.call($('list').querySelectorAll('.row'), function (row) {
+        var on = activeKey !== null && row.dataset.key === activeKey
+        row.classList.toggle('active', on)
+        if (on && row.scrollIntoView) row.scrollIntoView({ block: 'nearest' })
+      })
+    }
+
+    /** The key a row stands for in the ring: its own segment, or the grey one it was merged into. */
+    function ringKeyForRow(row) {
+      var key = row.dataset.key
+      if (key === OTHERS) return OTHERS
+      var drawn = arcs.some(function (a) { return a.ring === 1 && arcKey(a) === key })
+      return drawn ? key : OTHERS
+    }
+
+    function highlight(key) {
+      activeKey = key
+      paintActive()
+    }
+
+    // ---- moving -------------------------------------------------------------------------------
+
+    function go(newPath, direction) {
+      path = newPath
+      activeKey = null
+      fetchView(direction)
+    }
+
+    function drill(name, kind) {
+      if (kind !== 'd') return false
+      go(path.concat([name]), 'in')
+      return true
+    }
+
+    function reveal(at) {
+      Fremkit.sendCommand('disk-map', 'reveal', { root: rootId(), path: at }).then(function (r) {
+        toast(Fremkit.t(r && r.ok ? L.revealed : L.failed))
+      }).catch(function () { toast(Fremkit.t(L.failed)) })
+    }
+
+    function arcFromEvent(e) {
+      var t = e.target
+      if (!t || !t.classList || !t.classList.contains('seg')) return null
+      return arcs[+t.getAttribute('data-i')] || null
+    }
+
+    var svg = $('svg')
+    svg.addEventListener('pointerdown', function (e) {
+      if (Fremkit.compact || e.button !== 0) return
+      var arc = arcFromEvent(e)
+      if (arc) highlight(arcKey(arc))
+    })
+    svg.addEventListener('click', function (e) {
+      if (Fremkit.compact || Date.now() < suppressClick) return
+      var arc = arcFromEvent(e)
+      if (arc) {
+        if (arc.kind === 'd') go(path.concat(arc.path), 'in')
+        return
+      }
+      if (e.target.closest && e.target.closest('#centre') && path.length) go(path.slice(0, -1), 'out')
+    })
+    svg.addEventListener('contextmenu', function (e) {
+      if (Fremkit.compact) return
+      var arc = arcFromEvent(e)
+      if (arc && arc.path) { suppressClick = Date.now() + 500; reveal(path.concat(arc.path)) }
+      else if (e.target.closest && e.target.closest('#centre')) { suppressClick = Date.now() + 500; reveal(path) }
+    })
+
+    var list = $('list')
+    list.addEventListener('pointerdown', function (e) {
+      if (e.button !== 0) return
+      var row = e.target.closest && e.target.closest('.row')
+      if (row) {
+        activeKey = ringKeyForRow(row)
+        paintActive()
+        row.classList.add('active')
+      }
+    })
+    list.addEventListener('click', function (e) {
+      if (Date.now() < suppressClick) return
+      var row = e.target.closest && e.target.closest('.row')
+      if (!row || !row._child) return
+      drill(row._child.name, row._child.kind)
+    })
+    list.addEventListener('contextmenu', function (e) {
+      var row = e.target.closest && e.target.closest('.row')
+      if (!row || !row._child || row._child.kind === 'o') return
+      suppressClick = Date.now() + 500
+      reveal(path.concat([row._child.name]))
+    })
+
+    $('crumbs').addEventListener('click', function (e) {
+      var b = e.target.closest && e.target.closest('.crumb')
+      if (!b) return
+      var depth = +b.dataset.depth
+      if (depth < path.length + 0 && depth >= 0) go(path.slice(0, depth), 'out')
+    })
+
+    function onScanButton() {
+      if (busyHere()) Fremkit.sendCommand('disk-map', 'cancel', { root: rootId() }).catch(function () {})
+      else scan(path.length && view && view.more ? path : [])
+    }
+    $('scanBtn').addEventListener('click', onScanButton)
+    $('ctaBtn').addEventListener('click', function () { scan([]) })
+    $('floatScan').addEventListener('click', onScanButton)
+    $('floatLock').addEventListener('click', openPrivacy)
+    function openPrivacy() {
+      Fremkit.sendCommand('disk-map', 'openPrivacy', {}).catch(function () { toast(Fremkit.t(L.failed)) })
+    }
+    $('fda').addEventListener('click', openPrivacy)
+    // The prompt opens under the dashboard on the Edge: the helper lowers it for a while.
+    // Without the helper (a browser on `pnpm dev`) the command answers "failed" and nothing moves.
+    $('askShow').addEventListener('click', function () {
+      Fremkit.sendCommand('disk-map', 'revealPrompt', {}).then(function (r) {
+        if (!r || !r.ok) toast(Fremkit.t(L.failed))
+      }, function () { toast(Fremkit.t(L.failed)) })
+    })
+
+    // ---- wiring -------------------------------------------------------------------------------
+
+    applySize()
+    Fremkit.onResize(function () { applySize(); render() })
+    Fremkit.onLocale(function () { render() })
+    Fremkit.onSettings(function () { path = []; viewKey = ''; fetchView() })
+    Fremkit.subscribe('disk-map', onSnapshot)
+    // The "scanned 2 h ago" line ages on its own.
+    setInterval(renderStatus, 60000)
+    render()
+  })
+</script></body></html>

@@ -1,0 +1,8 @@
+<!doctype html>
+<html><body><script>
+// Navigates its own frame off /widgets/: the host page's frame-src refuses the load.
+setTimeout(function () {
+  console.log('E2E zz-away: trying')
+  location.href = '/escaped-frame'
+}, 300)
+</script></body></html>

@@ -1,6 +1,8 @@
 import type { FastifyInstance } from 'fastify'
 import { FaviconStore } from './store.js'
-import { isLoopbackAddress } from '../net/loopback.js'
+import { isLocalRequest, pairedDeviceOf } from '../net/remote.js'
+import type { Config } from '../config/schema.js'
+import { iconInScope, requestScope, type ScreenOfDevice } from '../devices/scope.js'
 import { resolvesToPrivate } from '../net/private.js'
 import { isCrossSiteFetch } from '../http/guard.js'
 
@@ -15,15 +17,26 @@ import { isCrossSiteFetch } from '../http/guard.js'
  *
  * `GET /api/favicon?image=…` is the exception that keeps the whole address: one image the user
  * typed into a widget's settings, for a site whose pages declare no icon of their own. The host
- * page only asks for an address it found in that widget's settings (`useWidgetBridge`).
+ * page only asks for an address it found in that widget's settings (`useWidgetBridge`); for
+ * `?url=` it forwards the origin of any http(s) link a widget hands it. On this Mac that is all;
+ * for a paired device the route itself holds both to its own screen's settings (`iconInScope`).
  */
-export async function faviconRoutes(app: FastifyInstance, opts: { dir: string; store?: FaviconStore }): Promise<void> {
+export async function faviconRoutes(
+  app: FastifyInstance,
+  opts: {
+    dir: string
+    store?: FaviconStore
+    /** The config, for what a paired device's screen points at. Absent, devices get nothing. */
+    config?: () => Config
+    screenOfDevice?: ScreenOfDevice
+  },
+): Promise<void> {
   const store = opts.store ?? new FaviconStore({ dir: opts.dir })
   // A cache written by an older version may hold SVG icons, which are no longer served.
   await store.purgeUnservable()
 
   app.get<{ Querystring: { url?: string; image?: string } }>('/api/favicon', async (req, reply) => {
-    if (!isLoopbackAddress(req.ip)) return reply.code(403).send()
+    if (!isLocalRequest(req) && pairedDeviceOf(req) === null) return reply.code(403).send()
     // A page on another site can embed this as an <img> and send no Origin at all, which would
     // make the server go and fetch whatever host that page named. A widget's own <img> looks the
     // same — its sandboxed frame has an opaque origin, which is cross-site to everything — so a
@@ -35,6 +48,14 @@ export async function faviconRoutes(app: FastifyInstance, opts: { dir: string; s
     let target: URL
     try { target = new URL(raw) } catch { return reply.code(400).send() }
     if (target.protocol !== 'http:' && target.protocol !== 'https:') return reply.code(400).send()
+    // Before any lookup: a paired device gets only the icons its own screen's settings point at (devices/scope.ts):
+    // not a relay that makes this Mac fetch any public address a token holder names.
+    if (!isLocalRequest(req)) {
+      const config = opts.config?.()
+      if (!config || !iconInScope(config, requestScope(req, opts.screenOfDevice ?? (() => null)), target, raw, exact)) {
+        return reply.code(403).send()
+      }
+    }
     // The same rule as the widget proxy: this server must not be a way to knock on the machine's
     // own services or on a cloud metadata endpoint. A 404 rather than a 403, like every other
     // refusal here, so the answer says nothing about the URL it was given.

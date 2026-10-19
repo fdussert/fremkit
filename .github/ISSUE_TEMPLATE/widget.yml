@@ -1,0 +1,30 @@
+name: Widget idea
+description: A widget you would like on your Edge.
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Most widgets live in the registry, [fremkit-sietch](https://github.com/fdussert/fremkit-sietch),
+        and install from the editor's marketplace. Fremkit itself ships only what works on any Mac
+        with no account and no device. A widget is plain HTML and JavaScript: if you want to write
+        it yourself, [writing-widgets.md](https://github.com/fdussert/fremkit/blob/main/docs/writing-widgets.md)
+        is the place to start.
+  - type: textarea
+    id: what
+    attributes:
+      label: What it would show, or let you do
+      description: A sketch or a screenshot of something similar is welcome.
+    validations:
+      required: true
+  - type: textarea
+    id: source
+    attributes:
+      label: Where the data comes from
+      description: A service, a device on your network, an app on the Mac… Link its API if you know it.
+  - type: checkboxes
+    id: help
+    attributes:
+      label: Help
+      options:
+        - label: I would like to write it, with some guidance.

@@ -14,7 +14,7 @@ import {
 import type { InstanceLookup } from '../src/config/instances.js'
 import { USER_AGENT } from '../src/version.js'
 
-const LOCAL = { loopback: true }
+const LOCAL = { loopback: true, paired: false }
 
 /** Every outbound call replaced: nothing in this file touches a network or a process. */
 function probes(over: Partial<Probes> = {}): Probes {
@@ -32,7 +32,7 @@ function probes(over: Partial<Probes> = {}): Probes {
  * `saved` is what the user configured on the widget instance — which is the only place the
  * targets can come from — so the command itself is sent nothing but the instance's id.
  */
-async function probe(saved: unknown, deps: Partial<Probes> = {}, ...ctx: [{ loopback: boolean } | undefined] | []) {
+async function probe(saved: unknown, deps: Partial<Probes> = {}, ...ctx: [{ loopback: boolean; paired: boolean } | undefined] | []) {
   const instances: InstanceLookup = (id) =>
     (id === INSTANCE ? { widgetId: 'service-status', settings: saved as Record<string, unknown> } : null)
   const p = createServiceStatusProvider(probes(deps), instances)
@@ -217,7 +217,7 @@ describe('service-status probe command', () => {
   it('refuses a probe that did not come from this machine', async () => {
     const deps = probes()
     const services = [{ kind: 'http', name: 'Site', url: 'https://example.com' }]
-    expect(await probe({ services }, deps, { loopback: false })).toMatchObject({ ok: false })
+    expect(await probe({ services }, deps, { loopback: false, paired: false })).toMatchObject({ ok: false })
     expect(await probe({ services }, deps, undefined)).toMatchObject({ ok: false })
     expect(deps.fetchFn).not.toHaveBeenCalled()
   })

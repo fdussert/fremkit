@@ -20,7 +20,7 @@ type Convert = (icns: string, out: string) => Promise<void>
  * inside `/Applications` is still someone else's string.
  */
 const sipsConvert: Convert = async (icns, out) => {
-  await run('sips', ['-s', 'format', 'png', '-Z', String(ICON_SIZE), icns, '--out', out], { maxBuffer: 1024 * 1024 })
+  await run('/usr/bin/sips', ['-s', 'format', 'png', '-Z', String(ICON_SIZE), icns, '--out', out], { maxBuffer: 1024 * 1024 })
 }
 
 /**

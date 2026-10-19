@@ -14,6 +14,8 @@
 // gesture lock makes only the first trigger count: once either path fires
 // a swipe, both paths ignore further triggers for LOCK_MS, so a drag never
 // "swipes and immediately comes back".
+import { HOLD_SWIPE_EVENT } from '../shared/widgetMessages'
+
 const DRAG_THRESHOLD = 50
 const WHEEL_THRESHOLD = 50
 const LOCK_MS = 500
@@ -24,6 +26,11 @@ const WHEEL_IDLE_RESET_MS = 300
 // (or a drag on the nav bar followed by momentum wheel events reaching the stage)
 // must still count as a single swipe.
 let lockUntil = 0
+
+// A widget working a slider holds every swipe off, the bar's and the stage's alike.
+if (typeof window !== 'undefined') {
+  window.addEventListener(HOLD_SWIPE_EVENT, () => { lockUntil = performance.now() + LOCK_MS })
+}
 
 export function useSwipe(onSwipe: (delta: 1 | -1) => void) {
   let startX: number | null = null

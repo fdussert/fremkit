@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process'
-import type { CommandContext, Provider } from './types.js'
+import { isTrusted, type CommandContext, type Provider } from './types.js'
 import { osascript, type Runner } from './osascript.js'
 import { tr } from '../i18n.js'
 
@@ -96,7 +96,7 @@ export function createSpotifyProvider(run: Runner = osascript, open: Opener = op
        * Loopback-gated like every other command that acts on the Mac.
        */
       activate: async (_payload, ctx?: CommandContext) => {
-        if (!ctx?.loopback) return { ok: false, error: tr(undefined, 'provider.localOnly') }
+        if (!isTrusted(ctx)) return { ok: false, error: tr(undefined, 'provider.localOnly') }
         try {
           await open(OPEN_PROGRAM, ['-b', SPOTIFY_BUNDLE_ID])
           return { ok: true }

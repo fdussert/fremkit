@@ -27,6 +27,9 @@ enum TouchState: Equatable, CustomStringConvertible {
     case active
     /// Input Monitoring has not been granted.
     case notPermitted
+    /// Input Monitoring is granted, but the panel still refuses this process: macOS wants it
+    /// relaunched before the grant applies.
+    case needsRelaunch
     /// The HID interface could not be opened.
     case busy(TouchBusyReason)
     /// The Edge display is not connected, so touches cannot be mapped.
@@ -38,6 +41,7 @@ enum TouchState: Equatable, CustomStringConvertible {
         switch self {
         case .active: return "active"
         case .notPermitted: return "notPermitted"
+        case .needsRelaunch: return "needsRelaunch"
         case let .busy(reason): return "busy(\(reason))"
         case .noDisplay: return "noDisplay"
         case .disabled: return "disabled"
@@ -82,11 +86,15 @@ final class TouchDriver {
     private var timer: Timer?
     private var wakeObserver: NSObjectProtocol?
     private var running = false
+    /// True while the HID manager is really open; a display coming back says nothing about that.
+    private var opened = false
     private var reopenPending = false
     /// Current re-open delay: doubles on every failed open, back to `reopenDelay` on success.
     private var reopenBackoff = TouchDriver.reopenDelay
     /// Guarded by `queue`.
     private var mapper: DisplayMapper?
+    /// Tells a missing grant from one this process cannot see until it is relaunched.
+    private var accessGate = TouchAccessGate()
 
     /// Called on the main thread whenever the state changes.
     var onState: ((TouchState) -> Void)?
@@ -128,9 +136,10 @@ final class TouchDriver {
             guard running else { return }
             if bounds == nil {
                 state = .noDisplay
-            } else if state == .noDisplay {
+            } else if state == .noDisplay && opened {
                 state = .active
             }
+            // Not open: the retry already scheduled by the failed open sets the real state.
         }
     }
 
@@ -141,9 +150,9 @@ final class TouchDriver {
         running = true
         reopenBackoff = Self.reopenDelay
 
-        // Ask for Input Monitoring before opening, otherwise the open fails silently
-        // the first time and the user never sees a prompt.
-        _ = IOHIDRequestAccess(kIOHIDRequestTypeListenEvent)
+        // Input Monitoring is asked by the caller, not here: a request fired at launch alongside
+        // the Accessibility prompt was lost (macOS shows one privacy prompt at a time). See
+        // `PermissionSequencer`.
 
         openManager()
 
@@ -231,15 +240,25 @@ final class TouchDriver {
         let result = IOHIDManagerOpen(manager, IOOptionBits(kIOHIDOptionsTypeSeizeDevice))
         switch result {
         case IOResult.success:
+            opened = true
+            accessGate.reset()
             state = displayBounds == nil ? .noDisplay : .active
             reopenBackoff = Self.reopenDelay
         case IOResult.notPermitted:
-            state = .notPermitted
+            // The retry below, at most `reopenDelayCap` apart, is also the re-check of the grant:
+            // the panel opens on its own once Input Monitoring is given, or the menu learns that
+            // the grant needs a relaunch to apply.
+            switch accessGate.refused(inputMonitoring: Permissions.inputMonitoring) {
+            case .missing: state = .notPermitted
+            case .relaunchNeeded: state = .needsRelaunch
+            }
             failedToOpen()
         case IOResult.exclusiveAccess:
+            accessGate.reset()
             state = .busy(.exclusiveAccess)
             failedToOpen()
         default:
+            accessGate.reset()
             state = .busy(.openFailed(UInt32(bitPattern: result)))
             failedToOpen()
         }
@@ -257,6 +276,7 @@ final class TouchDriver {
     }
 
     private func closeManager() {
+        opened = false
         guard let manager else { return }
         IOHIDManagerUnscheduleFromRunLoop(manager, CFRunLoopGetMain(), CFRunLoopMode.commonModes.rawValue)
         IOHIDManagerClose(manager, IOOptionBits(kIOHIDOptionsTypeNone))

@@ -1,4 +1,4 @@
-{ "id": "spotify", "name": "Spotify", "version": "1.1.0",
+{ "id": "spotify", "name": "Spotify", "version": "1.1.0", "preview": "preview.webp",
   "description": { "fr": "Contrôle Spotify", "en": "Spotify controls" },
   "category": "media",
   "icon": "music", "minSize": [8, 4], "defaultSize": [16, 5], "subscriptions": ["spotify"], "commands": ["spotify"],

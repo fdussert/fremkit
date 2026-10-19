@@ -1,0 +1,17 @@
+{ "id": "disk-map",
+  "name": { "fr": "Carte du disque", "en": "Disk map" },
+  "version": "1.0.1", "preview": "preview.webp",
+  "description": { "fr": "Ce qui occupe le disque : les dossiers en anneaux, touchez pour descendre, appui long pour montrer dans le Finder. Rien n’est jamais supprimé.",
+                   "en": "What fills the disk: folders as rings, tap to drill in, long press to show in Finder. Nothing is ever deleted." },
+  "category": "system",
+  "icon": "chart-pie", "minSize": [8, 6], "defaultSize": [24, 9],
+  "compact": { "width": 2 },
+  "subscriptions": ["disk-map"], "commands": ["disk-map"],
+  "settingsSchema": {
+    "root": { "type": "enum", "default": "home", "label": { "fr": "Dossier analysé", "en": "Scanned folder" },
+      "options": [{ "value": "home", "label": { "fr": "Dossier personnel", "en": "Home folder" } },
+                  { "value": "volume", "label": { "fr": "Un volume", "en": "A volume" } }] },
+    "volume": { "type": "string", "default": "", "label": { "fr": "Nom du volume (dans /Volumes)", "en": "Volume name (under /Volumes)" } },
+    "rings": { "type": "enum", "scope": "tile", "default": "3", "label": { "fr": "Anneaux", "en": "Rings" },
+      "options": [{ "value": "2", "label": "2" }, { "value": "3", "label": "3" }, { "value": "4", "label": "4" }] }
+  } }

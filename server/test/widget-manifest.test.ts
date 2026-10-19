@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { ManifestSchema } from '../src/widgets/manifest.js'
+import { builtinOnlyChannels, ManifestSchema } from '../src/widgets/manifest.js'
 
 const base = { id: 'clock', name: 'Horloge', version: '1.0.0' }
 
@@ -198,6 +198,49 @@ describe('channels a manifest may not ask for', () => {
     expect(ManifestSchema.safeParse({ ...base, commands: ['config'] }).success).toBe(false)
     expect(ManifestSchema.safeParse({ ...base, subscriptions: ['config:*'] }).success).toBe(false)
     expect(ManifestSchema.safeParse({ ...base, subscriptions: ['config:anything'] }).success).toBe(false)
+  })
+
+  it('refuses the device channel, which only the hub speaks on', () => {
+    expect(ManifestSchema.safeParse({ ...base, subscriptions: ['device'] }).success).toBe(false)
+    expect(ManifestSchema.safeParse({ ...base, commands: ['device'] }).success).toBe(false)
+    expect(ManifestSchema.safeParse({ ...base, subscriptions: ['device:*'] }).success).toBe(false)
+    expect(ManifestSchema.safeParse({
+      ...base,
+      settingsSchema: { s: { type: 'string', label: 'S', default: '', preview: { channel: 'device', command: 'x' } } },
+    }).success).toBe(false)
+    // The same field on an ordinary channel the widget commands is accepted, so the refusal
+    // above is the channel's.
+    expect(ManifestSchema.safeParse({
+      ...base, commands: ['volume'],
+      settingsSchema: { s: { type: 'string', label: 'S', default: '', preview: { channel: 'volume', command: 'x' } } },
+    }).success).toBe(true)
+  })
+
+  it('refuses a preview on a channel the widget does not command', () => {
+    // A preview is sent by the admin with its own authority: off `commands`, it would be a
+    // channel the consent dialog never listed (MuteDeck, Spotify, github markAllRead…).
+    const preview = (channel: string, commands: string[]) => ManifestSchema.safeParse({
+      ...base, commands,
+      settingsSchema: { s: { type: 'enum', label: 'S', default: 'a', options: ['a'], preview: { channel, command: 'leave' } } },
+    })
+    const refused = preview('mutedeck', [])
+    expect(refused.success).toBe(false)
+    if (!refused.success) {
+      expect(refused.error.issues[0].path).toEqual(['settingsSchema', 's', 'preview', 'channel'])
+      expect(refused.error.issues[0].message).toMatch(/commands/)
+    }
+    expect(preview('mutedeck', ['spotify']).success).toBe(false)
+    expect(preview('github:gh-1', ['github']).success).toBe(false)
+    expect(preview('mutedeck', ['mutedeck']).success).toBe(true)
+    expect(preview('github:gh-1', ['github:*']).success).toBe(true)
+  })
+
+  it('counts a preview as a command for the built-in-only rule', () => {
+    const m = ManifestSchema.parse({
+      ...base, commands: ['brightness'],
+      settingsSchema: { s: { type: 'enum', label: 'S', default: 'a', options: ['a'], preview: { channel: 'brightness', command: 'set' } } },
+    })
+    expect(builtinOnlyChannels({ ...m, commands: [] })).toEqual(['brightness'])
   })
 
   it('names the reason', () => {

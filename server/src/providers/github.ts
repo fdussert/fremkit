@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { execFile } from 'node:child_process'
 import type { ConnectionProviderContext } from '../connections/types.js'
-import type { Provider } from './types.js'
+import { isTrusted, type Provider } from './types.js'
 import { USER_AGENT } from '../version.js'
 import { readJsonCapped } from '../net/json.js'
 import { tr } from '../i18n.js'
@@ -607,7 +607,7 @@ export function createGithubProvider(ctx: ConnectionProviderContext, deps: Githu
       // The widget supplies an id, never a destination. Only rows already received for this
       // connection can be opened, on its own web host, from the local dashboard.
       open: async (payload, context) => {
-        if (!context?.loopback) return { ok: false, error: tr(undefined, 'provider.localOnly') }
+        if (!isTrusted(context)) return { ok: false, error: tr(undefined, 'provider.localOnly') }
         const parsed = OpenRowPayload.safeParse(payload)
         if (!parsed.success) throw new Error(tr(undefined, 'github.invalidCommand'))
         const { kind, id } = parsed.data

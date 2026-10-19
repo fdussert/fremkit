@@ -6,12 +6,14 @@ import type { ConfigStore } from '../config/store.js'
 import type { SecretStore } from '../secrets/types.js'
 import { grantedFor } from '../marketplace/consent.js'
 import { resolvesToPrivate } from '../net/private.js'
+import { publicFetch, type PublicFetch } from '../net/pinned.js'
 import { isCrossSiteFetch } from '../http/guard.js'
 import { findInstance } from '../config/instances.js'
 import { authFor, declaredTypeId, isDeclaredType, originOf, parseDeclaredHost, secretField, slugText } from '../connections/declared.js'
 import { ConnCache, allowedRequest, checkHeaders, checkPath } from './conn.js'
 import { tr } from '../i18n.js'
 import { WIDGET_ID_RE, type Config } from '../config/schema.js'
+import { instanceInScope, requestScope, widgetInScope, type ScreenOfDevice } from '../devices/scope.js'
 
 const TIMEOUT_MS = 10_000
 const MAX_REDIRECTS = 5
@@ -65,6 +67,11 @@ export interface ProxyOptions {
   secrets?: SecretStore
   /** Only ever passed by the tests; production uses the global `fetch`. */
   fetch?: typeof fetch
+  /**
+   * The fetch for `GET /api/proxy/:widgetId`. Production uses `publicFetch`, which refuses at
+   * connect time a name that resolves to a private address (DNS rebinding). Tests may stand in.
+   */
+  publicFetch?: PublicFetch
   /** Only ever passed by the tests, to make a cache expiry happen without waiting for it. */
   now?: () => number
   /**
@@ -76,10 +83,17 @@ export interface ProxyOptions {
    * it was granted before.
    */
   cache?: ConnCache
+  /**
+   * The device screen a paired device is attached to (`DeviceService.deviceScreenOf`). A paired
+   * device reaches only the widgets and instances of that screen; without it, none at all.
+   */
+  screenOfDevice?: ScreenOfDevice
 }
 
 export async function proxyRoutes(app: FastifyInstance, opts: ProxyOptions): Promise<void> {
   const isPrivate = opts.isPrivate ?? resolvesToPrivate
+  const screenOfDevice: ScreenOfDevice = opts.screenOfDevice ?? (() => null)
+  const fetchPublic = opts.publicFetch ?? publicFetch
   const checkUrl = (url: URL, allowedHosts: string[]): { ok: true } | { error: string; code: number } => {
     if (url.protocol !== 'http:' && url.protocol !== 'https:') return { error: tr(undefined, 'proxy.badScheme'), code: 400 }
     if (!allowedHosts.includes(url.hostname)) return { error: tr(undefined, 'proxy.hostNotAllowed', { host: url.hostname }), code: 403 }
@@ -114,6 +128,11 @@ export async function proxyRoutes(app: FastifyInstance, opts: ProxyOptions): Pro
     // A GET, so the Origin gate never sees it — and this one makes the server go out onto the
     // network on the caller's behalf. Same refusal as /api/favicon.
     if (isCrossSiteFetch(req.headers)) return reply.code(403).send({ error: tr(undefined, 'http.originNotAllowed') })
+    // A paired device fetches for the widgets of its own screen only: one not shown there is, to
+    // it, a widget that does not exist (see devices/scope.ts).
+    if (!widgetInScope(opts.store.get(), requestScope(req, screenOfDevice), req.params.widgetId)) {
+      return reply.code(404).send({ error: tr(undefined, 'widgets.unknown') })
+    }
     // Granted, not declared: an installed widget reaches the hosts the user accepted, not the
     // ones its manifest happens to name after an update.
     const manifest = grantedFor(opts.catalog, opts.store.get(), req.params.widgetId)
@@ -135,7 +154,9 @@ export async function proxyRoutes(app: FastifyInstance, opts: ProxyOptions): Pro
     let hops = 0
     try {
       for (;;) {
-        upstream = await fetch(current, { signal: AbortSignal.timeout(TIMEOUT_MS), redirect: 'manual' })
+        // The check above judged the name; `fetchPublic` judges the address it connects to, so a
+        // name that flips to a private address in between is refused there (net/pinned.ts).
+        upstream = await fetchPublic(current, { signal: AbortSignal.timeout(TIMEOUT_MS), redirect: 'manual' })
         if (![301, 302, 303, 307, 308].includes(upstream.status)) break
         const location = upstream.headers.get('location')
         void upstream.body?.cancel().catch(() => {})
@@ -176,7 +197,7 @@ export async function proxyRoutes(app: FastifyInstance, opts: ProxyOptions): Pro
    * not in an error, not in a log line.
    *
    * Order matters and is deliberate. Everything that can be refused without touching the network
-   * is refused first: the origin, the body's shape, the path's shape, the grant, the instance,
+   * is refused first: the origin, the body's shape, the caller's screen, the path's shape, the grant, the instance,
    * the connection, then the allow-list. Only then is the secret read, and only then is a request
    * made.
    */
@@ -188,6 +209,13 @@ export async function proxyRoutes(app: FastifyInstance, opts: ProxyOptions): Pro
     const parsed = ConnBody.safeParse(req.body)
     if (!parsed.success) return reply.code(400).send({ error: tr(undefined, 'proxy.badRequest') })
     const { instanceId, method, body: sent } = parsed.data
+
+    // A paired device is the host page here, so it names the instance; one not shown on its own
+    // screen carries a credential that is not its to use (see devices/scope.ts), and a device
+    // with no screen names none. Refused first, as the unknown instance it is to the device.
+    if (!instanceInScope(opts.store.get(), requestScope(req, screenOfDevice), instanceId)) {
+      return reply.code(404).send({ error: tr(undefined, 'proxy.unknownInstance') })
+    }
 
     // Refused before it is matched against anything: see `checkPath`.
     const path = checkPath(parsed.data.path)

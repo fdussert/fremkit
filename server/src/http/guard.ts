@@ -1,7 +1,8 @@
 /**
  * The gate every HTTP request passes before it reaches a route.
  *
- * The server has no authentication: it listens on loopback and treats its own origin as trusted.
+ * Who sent a request is the access secret's business (`access.ts`); this is about where it came
+ * from. The server listens on loopback and treats its own origin as trusted.
  * Two browser tricks get around "loopback only" without ever leaving the user's machine, and
  * both are answered here.
  *

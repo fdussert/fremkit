@@ -153,7 +153,7 @@ describe('Codex provider snapshots', () => {
     const changed = await provider.poll!()
     expect(changed.history.freshness).toBe('stale')
     expect(changed.history.data?.threads.map((item) => item.id)).not.toContain(C)
-    expect(await provider.commands!.open({ threadId: C }, { loopback: true })).toMatchObject({ ok: false })
+    expect(await provider.commands!.open({ threadId: C }, { loopback: true, paired: false })).toMatchObject({ ok: false })
   })
   it('clears account sections before a new client fails after account reads are disabled', async () => {
     const h = harness()
@@ -369,8 +369,8 @@ describe('Codex provider snapshots', () => {
     const h = harness()
     await h.provider.poll!()
     const count = h.calls.length
-    expect(await h.provider.commands!.open({ threadId: A }, { loopback: true })).toEqual({ ok: true })
-    expect(await h.provider.commands!.open({ threadId: B }, { loopback: true })).toEqual({ ok: true })
+    expect(await h.provider.commands!.open({ threadId: A }, { loopback: true, paired: false })).toEqual({ ok: true })
+    expect(await h.provider.commands!.open({ threadId: B }, { loopback: true, paired: false })).toEqual({ ok: true })
     expect(h.opens).toEqual([`codex://threads/${A}`, `codex://threads/${B}`])
     expect(h.calls).toHaveLength(count)
   })
@@ -379,16 +379,16 @@ describe('Codex provider snapshots', () => {
     await h.provider.poll!()
     for (const [payload, ctx] of [
       [{ threadId: A }, undefined],
-      [{ threadId: A }, { loopback: false }],
-      [{ title: 'Same title' }, { loopback: true }],
-      [{ threadId: 'new' }, { loopback: true }],
-      [{ threadId: C }, { loopback: true }],
-      [{ threadId: A, prompt: 'start' }, { loopback: true }],
+      [{ threadId: A }, { loopback: false, paired: false }],
+      [{ title: 'Same title' }, { loopback: true, paired: false }],
+      [{ threadId: 'new' }, { loopback: true, paired: false }],
+      [{ threadId: C }, { loopback: true, paired: false }],
+      [{ threadId: A, prompt: 'start' }, { loopback: true, paired: false }],
     ])
       expect(await h.provider.commands!.open(payload, ctx as never)).toMatchObject({ ok: false })
     h.values['thread/list'] = new CodexError('offline')
     await h.provider.poll!()
-    expect(await h.provider.commands!.open({ threadId: A }, { loopback: true })).toMatchObject({ ok: false })
+    expect(await h.provider.commands!.open({ threadId: A }, { loopback: true, paired: false })).toMatchObject({ ok: false })
     expect(h.opens).toEqual([])
   })
   it('allows a CLI-origin record only when the desktop catalog proves the exact existing chat', async () => {
@@ -400,7 +400,7 @@ describe('Codex provider snapshots', () => {
       liveActivity: null,
     })
     expect(
-      await h.provider.commands!.open({ threadId: C, instanceId: 'codex-widget-1' }, { loopback: true }),
+      await h.provider.commands!.open({ threadId: C, instanceId: 'codex-widget-1' }, { loopback: true, paired: false }),
     ).toEqual({ ok: true })
     expect(h.opens).toEqual([`codex://threads/${C}`])
   })
@@ -414,7 +414,7 @@ describe('Codex provider snapshots', () => {
       { threadId: A, instanceId: '' },
       { threadId: A, instanceId: 'x'.repeat(201) },
     ]) {
-      expect(await h.provider.commands!.open(payload, { loopback: true })).toMatchObject({ ok: false })
+      expect(await h.provider.commands!.open(payload, { loopback: true, paired: false })).toMatchObject({ ok: false })
     }
     expect(h.opens).toEqual([])
   })
@@ -482,7 +482,7 @@ describe('Codex provider snapshots', () => {
       },
     )
     expect((await p.poll!()).history.data?.threads.every((t) => t.navigation === 'unavailable')).toBe(true)
-    expect(await p.commands!.open({ threadId: A }, { loopback: true })).toEqual({
+    expect(await p.commands!.open({ threadId: A }, { loopback: true, paired: false })).toEqual({
       ok: false,
       error: 'unavailable',
     })
@@ -526,7 +526,7 @@ describe('Codex provider snapshots', () => {
     )
     await p.poll!()
     defer = true
-    const opening = p.commands!.open({ threadId: A }, { loopback: true })
+    const opening = p.commands!.open({ threadId: A }, { loopback: true, paired: false })
     await Promise.resolve()
     p.stop!()
     resolve(true)
@@ -537,7 +537,7 @@ describe('Codex provider snapshots', () => {
     const h = harness()
     await h.provider.poll!()
     for (let i = 0; i < 121; i++) h.tick()
-    expect(await h.provider.commands!.open({ threadId: A }, { loopback: true })).toEqual({
+    expect(await h.provider.commands!.open({ threadId: A }, { loopback: true, paired: false })).toEqual({
       ok: false,
       error: 'unavailable',
     })

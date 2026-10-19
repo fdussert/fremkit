@@ -3,6 +3,13 @@ export interface SecretStore {
   get(key: string): Promise<string | null>
   set(key: string, value: string): Promise<void>
   delete(key: string): Promise<void>
+  /**
+   * Every key stored under one connection id (`<id>/<field>`), whatever its field names. What
+   * lets a connection whose type is no longer registered — its widget was uninstalled — still be
+   * forgotten whole, and a new connection start from nothing. Optional: a store that cannot list
+   * is asked only for the field names the type declares.
+   */
+  keysOf?(connectionId: string): Promise<string[]>
 }
 
 /**

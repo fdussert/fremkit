@@ -1,0 +1,2 @@
+/* Shown by macOS the first time the server asks Terminal or iTerm2 to bring a Claude Code session forward. */
+"NSAppleEventsUsageDescription" = "Fremkit brings the window of the Claude Code session you touched to the front.";

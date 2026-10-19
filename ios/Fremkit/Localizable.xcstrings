@@ -1,0 +1,356 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "Allow the camera in Settings" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Autoriser l’appareil photo dans Réglages"
+          }
+        }
+      }
+    },
+    "Cancel" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Annuler"
+          }
+        }
+      }
+    },
+    "Can’t reach the Mac" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le Mac n’est pas joignable"
+          }
+        }
+      }
+    },
+    "Check that it is on, on the same network, and that “Allow an iPad on the local network” is turned on." : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vérifiez qu’il est allumé, sur le même réseau, et que « Autoriser un iPad sur le réseau local » est activé."
+          }
+        }
+      }
+    },
+    "Check that the Mac shows the same words." : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vérifiez que le Mac affiche les mêmes mots."
+          }
+        }
+      }
+    },
+    "Choose your Mac" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Choisissez votre Mac"
+          }
+        }
+      }
+    },
+    "Code" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Code"
+          }
+        }
+      }
+    },
+    "Connecting to %@…" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Connexion à %@…"
+          }
+        }
+      }
+    },
+    "Connecting…" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Connexion…"
+          }
+        }
+      }
+    },
+    "Enter the code" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Saisir le code"
+          }
+        }
+      }
+    },
+    "If you reset its certificate in Fremkit, pair this iPad again. Otherwise, check you are on the right network." : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Si vous avez réinitialisé son certificat dans Fremkit, appairez à nouveau cet iPad. Sinon, vérifiez que vous êtes sur le bon réseau."
+          }
+        }
+      }
+    },
+    "It was removed on the Mac. Pair it again to show the dashboard." : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il a été retiré sur le Mac. Appairez-le à nouveau pour afficher le tableau de bord."
+          }
+        }
+      }
+    },
+    "Looking for its address…" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Recherche de son adresse…"
+          }
+        }
+      }
+    },
+    "No Mac found yet. In Fremkit on the Mac, turn on “Allow an iPad on the local network” (Screen tab)." : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aucun Mac trouvé pour l’instant. Dans Fremkit sur le Mac, activez « Autoriser un iPad sur le réseau local » (onglet Écran)."
+          }
+        }
+      }
+    },
+    "Open Settings" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ouvrir Réglages"
+          }
+        }
+      }
+    },
+    "Other Mac" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Autre Mac"
+          }
+        }
+      }
+    },
+    "Pair" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Appairer"
+          }
+        }
+      }
+    },
+    "Pair again" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Appairer à nouveau"
+          }
+        }
+      }
+    },
+    "Pairing with %@" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Appairage avec %@"
+          }
+        }
+      }
+    },
+    "Point the camera at the code the Mac shows." : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Visez le code affiché par le Mac."
+          }
+        }
+      }
+    },
+    "Replace" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Remplacer"
+          }
+        }
+      }
+    },
+    "Replace the pairing with %@?" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Remplacer l’appairage avec %@ ?"
+          }
+        }
+      }
+    },
+    "Scan the code" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scanner le code"
+          }
+        }
+      }
+    },
+    "Show your Mac’s Fremkit dashboard on this iPad." : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Affichez sur cet iPad le tableau de bord Fremkit de votre Mac."
+          }
+        }
+      }
+    },
+    "The Mac did not accept the request. Update Fremkit on the Mac." : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le Mac n’a pas accepté la demande. Mettez Fremkit à jour sur le Mac."
+          }
+        }
+      }
+    },
+    "The Mac is not showing a pairing code any more. Make a new one in Fremkit and scan it." : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le Mac n’affiche plus de code d’appairage. Créez-en un nouveau dans Fremkit et scannez-le."
+          }
+        }
+      }
+    },
+    "The Mac refused the code." : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le Mac a refusé le code."
+          }
+        }
+      }
+    },
+    "The camera is not available." : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "L’appareil photo n’est pas disponible."
+          }
+        }
+      }
+    },
+    "The pairing could not be saved on this iPad." : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "L’appairage n’a pas pu être enregistré sur cet iPad."
+          }
+        }
+      }
+    },
+    "The saved pairing could not be read. Pairing again replaces it." : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "L’appairage enregistré n’a pas pu être lu. Appairer à nouveau le remplace."
+          }
+        }
+      }
+    },
+    "This Mac’s key has changed" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La clé de ce Mac a changé"
+          }
+        }
+      }
+    },
+    "This iPad is no longer allowed" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cet iPad n’est plus autorisé"
+          }
+        }
+      }
+    },
+    "This iPad will show the dashboard of %@ instead." : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cet iPad affichera à la place le tableau de bord de %@."
+          }
+        }
+      }
+    },
+    "This is not the Mac that showed the code" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ce n’est pas le Mac du code"
+          }
+        }
+      }
+    },
+    "Try again" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Réessayer"
+          }
+        }
+      }
+    }
+  },
+  "version" : "1.0"
+}

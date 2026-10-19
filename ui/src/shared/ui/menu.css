@@ -1,0 +1,29 @@
+/*
+ * The look the editor's floating lists share: the context menu (`ContextMenu.vue`) and the
+ * command palette (`admin/CommandPalette.vue`). The panel is the theme's raised surface, made
+ * translucent and blurred, so it reads as a macOS menu on a dark theme and on a light one alike:
+ * every colour comes from the theme's tokens. Each component keeps its own size and position.
+ */
+.fk-menu {
+  box-sizing: border-box;
+  background: color-mix(in srgb, var(--surface-2) 80%, transparent);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid color-mix(in srgb, var(--border-strong) 70%, transparent);
+  border-radius: 10px;
+  box-shadow: 0 10px 32px rgba(0, 0, 0, .32), 0 0 0 .5px rgba(0, 0, 0, .25);
+  color: var(--text); font-family: var(--font); font-size: var(--fs-sm); line-height: 1.2;
+}
+.fk-menu:focus { outline: none; }
+.fk-menu-item {
+  display: flex; align-items: center; gap: 6px; min-height: 24px; box-sizing: border-box;
+  padding: 3px 10px 3px 8px; border-radius: 5px; white-space: nowrap;
+}
+.fk-menu-item .fk-menu-tail { flex: 0 0 auto; margin-left: 24px; display: inline-flex; align-items: center; color: var(--text-muted); }
+.fk-menu-item .fk-menu-key { font-size: var(--fs-xs); letter-spacing: .04em; }
+.fk-menu-item.danger { color: var(--danger); }
+.fk-menu-item.active { background: var(--accent); color: var(--on-accent); }
+.fk-menu-item.active .fk-menu-tail { color: inherit; opacity: .85; }
+.fk-menu-item.danger.active { background: var(--danger); color: #fff; }
+.fk-menu-item.disabled, .fk-menu-item.disabled .fk-menu-tail { color: var(--text-dim); }
+.fk-menu-sep { height: 1px; margin: 5px 8px; background: color-mix(in srgb, var(--border-strong) 80%, transparent); }

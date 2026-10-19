@@ -145,13 +145,13 @@ describe('the focus command', () => {
     calls.length = 0
     const tracker = new ClaudeTracker()
     tracker.handle(ev({ client: ORCA }))
-    const out = await provider(tracker).commands!.focus({ sessionId: 's1' }, { loopback: true })
+    const out = await provider(tracker).commands!.focus({ sessionId: 's1' }, { loopback: true, paired: false })
     expect(out).toEqual({ ok: true, how: 'pane' })
     expect(calls[0].args).toContain('term_abc123')
   })
 
   it('answers rather than throws for a session it does not know', async () => {
-    const out = await provider(new ClaudeTracker()).commands!.focus({ sessionId: 'nope' }, { loopback: true })
+    const out = await provider(new ClaudeTracker()).commands!.focus({ sessionId: 'nope' }, { loopback: true, paired: false })
     expect(out).toEqual({ ok: false, reason: 'unknownSession' })
   })
 
@@ -159,13 +159,13 @@ describe('the focus command', () => {
     calls.length = 0
     const tracker = new ClaudeTracker()
     tracker.handle(ev({ client: ORCA }))
-    const out = await provider(tracker).commands!.focus({ sessionId: 's1' }, { loopback: false }) as { ok: boolean }
+    const out = await provider(tracker).commands!.focus({ sessionId: 's1' }, { loopback: false, paired: false }) as { ok: boolean }
     expect(out.ok).toBe(false)
     expect(calls).toHaveLength(0)
   })
 
   it('refuses a payload that is not a session id', async () => {
-    await expect(provider(new ClaudeTracker()).commands!.focus({}, { loopback: true })).rejects.toThrow()
+    await expect(provider(new ClaudeTracker()).commands!.focus({}, { loopback: true, paired: false })).rejects.toThrow()
   })
 })
 

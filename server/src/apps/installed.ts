@@ -69,7 +69,7 @@ type ReadPlist = (path: string) => Promise<Record<string, unknown> | null>
  */
 export async function readInfoPlist(path: string): Promise<Record<string, unknown> | null> {
   try {
-    const { stdout } = await run('plutil', ['-convert', 'json', '-o', '-', path], { maxBuffer: 4 * 1024 * 1024 })
+    const { stdout } = await run('/usr/bin/plutil', ['-convert', 'json', '-o', '-', path], { maxBuffer: 4 * 1024 * 1024 })
     const parsed: unknown = JSON.parse(stdout)
     return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : null
   } catch {

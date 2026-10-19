@@ -1,35 +1,40 @@
 {
-  "version": 3,
-  "display": {
-    "cols": 64,
-    "rows": 16,
-    "cell": 40,
-    "autoCycleSeconds": 0,
-    "background": {
-      "image": "fremkit-wallpaper.png",
-      "fit": "cover"
-    }
-  },
+  "version": 4,
   "connections": [],
   "secrets": {
     "backend": "keychain"
   },
   "locale": "en",
-  "pages": [
+  "widgets": {
+    "clock-1": {
+      "widgetId": "clock",
+      "showTitle": true,
+      "settings": {}
+    }
+  },
+  "screens": [
     {
-      "id": "home",
-      "name": "Home",
-      "widgets": [
+      "id": "edge",
+      "name": "Xeneon Edge",
+      "kind": "edge",
+      "display": {
+        "cols": 64,
+        "rows": 16,
+        "cell": 40,
+        "autoCycleSeconds": 0,
+        "background": {
+          "image": "fremkit-wallpaper.png",
+          "fit": "cover"
+        }
+      },
+      "nav": [],
+      "pages": [
         {
-          "instanceId": "clock-1",
-          "widgetId": "clock",
-          "x": 0,
-          "y": 0,
-          "w": 16,
-          "h": 4,
-          "showTitle": true,
-          "appearance": "panel",
-          "settings": {}
+          "id": "home",
+          "name": "Home",
+          "items": [
+            { "instanceId": "clock-1", "x": 0, "y": 0, "w": 16, "h": 4 }
+          ]
         }
       ]
     }

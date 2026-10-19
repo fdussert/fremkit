@@ -126,13 +126,13 @@ export function createNetworkProvider(exec: Exec = execCommand): Provider<Networ
     stop() { previous = null; history = []; ports = null },
 
     async poll(): Promise<NetworkSnapshot> {
-      const iface = parseDefaultInterface(await run('route', ['-n', 'get', 'default']))
+      const iface = parseDefaultInterface(await run('/sbin/route', ['-n', 'get', 'default']))
       if (!iface) {
         previous = null
         return { iface: null, kind: 'other', downBps: 0, upBps: 0, history }
       }
 
-      const counters = parseNetstatBytes(await run('netstat', ['-ib']), iface)
+      const counters = parseNetstatBytes(await run('/usr/sbin/netstat', ['-ib']), iface)
       const at = Date.now()
       let downBps = 0
       let upBps = 0
@@ -148,13 +148,13 @@ export function createNetworkProvider(exec: Exec = execCommand): Provider<Networ
         history = [...history, [downBps, upBps] as [number, number]].slice(-NETWORK_HISTORY)
       }
 
-      if (!ports) ports = parseHardwarePorts(await run('networksetup', ['-listallhardwareports']))
+      if (!ports) ports = parseHardwarePorts(await run('/usr/sbin/networksetup', ['-listallhardwareports']))
       const kind = classifyPort(ports[iface])
-      const ip = parseIfaddr(await run('ipconfig', ['getifaddr', iface]))
+      const ip = parseIfaddr(await run('/usr/sbin/ipconfig', ['getifaddr', iface]))
       let ssid: string | undefined
       if (kind === 'wifi') {
-        ssid = parseSsid(await run('ipconfig', ['getsummary', iface]))
-          ?? parseSsid(await run('networksetup', ['-getairportnetwork', iface]))
+        ssid = parseSsid(await run('/usr/sbin/ipconfig', ['getsummary', iface]))
+          ?? parseSsid(await run('/usr/sbin/networksetup', ['-getairportnetwork', iface]))
       }
 
       return { iface, kind, ...(ip ? { ip } : {}), ...(ssid ? { ssid } : {}), downBps, upBps, history }

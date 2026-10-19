@@ -172,3 +172,17 @@ describe('permissions.network in a manifest', () => {
     }
   })
 })
+
+describe('DNS rebinding', () => {
+  it('refuses at connect time a name that the first check passed but resolves to loopback', async () => {
+    // `isPrivate` says "public", as a rebinding name's first answer would; the connection's own
+    // lookup then gets 127.0.0.1 for `localhost`, and must not connect even though the upstream
+    // is listening there.
+    const res = await app(['localhost']).inject({ url: `/api/proxy/weather?url=${encodeURIComponent(`http://localhost:${port}/x`)}` })
+    expect(res.statusCode).toBe(502)
+    // The same upstream by literal address (which the route judges itself) is reached: the
+    // refusal above is the lookup's, not a dead upstream.
+    expect((await app(['127.0.0.1']).inject({ url: at('/x') })).statusCode).toBe(200)
+  })
+})
+

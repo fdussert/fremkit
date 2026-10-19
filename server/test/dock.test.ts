@@ -146,23 +146,41 @@ describe('createDockProvider', () => {
     const provider = createDockProvider(state, { activate: async (b) => { activated.push(b) } })
     expect(provider.channel).toBe('dock')
     expect(await provider.poll!()).toEqual({ apps: APPS, available: true })
-    await provider.commands!.activate({ bundleId: 'com.example.mail' }, { loopback: true })
+    await provider.commands!.activate({ bundleId: 'com.example.mail' }, { loopback: true, paired: false })
     expect(activated).toEqual(['com.example.mail'])
-    await expect(provider.commands!.activate({ bundleId: '../etc' }, { loopback: true })).rejects.toThrow('identifiant de bundle invalide')
+    await expect(provider.commands!.activate({ bundleId: '../etc' }, { loopback: true, paired: false })).rejects.toThrow('identifiant de bundle invalide')
   })
 
   it('refuses activate from a socket that is not on this machine', async () => {
     const state = new DockState({ iconsDir: join(await mkdtemp(join(tmpdir(), 'fremkit-dock-')), 'icons') })
+    state.update(APPS)
     const activated: string[] = []
     const provider = createDockProvider(state, { activate: async (b) => { activated.push(b) } })
-    await expect(provider.commands!.activate({ bundleId: 'com.example.mail' }, { loopback: false }))
+    await expect(provider.commands!.activate({ bundleId: 'com.example.mail' }, { loopback: false, paired: false }))
       .rejects.toThrow('commande réservée à cette machine')
     // No context at all is treated the same way: fail closed.
     await expect(provider.commands!.activate({ bundleId: 'com.example.mail' }))
       .rejects.toThrow('commande réservée à cette machine')
     expect(activated).toEqual([])
-    await provider.commands!.activate({ bundleId: 'com.example.mail' }, { loopback: true })
+    await provider.commands!.activate({ bundleId: 'com.example.mail' }, { loopback: true, paired: false })
     expect(activated).toEqual(['com.example.mail'])
+  })
+})
+
+describe('activate is held to the Dock', () => {
+  it('opens only an app the current Dock snapshot shows', async () => {
+    const state = new DockState({ iconsDir: join(await mkdtemp(join(tmpdir(), 'fremkit-dock-')), 'icons') })
+    state.update(APPS)
+    const activated: string[] = []
+    const provider = createDockProvider(state, { activate: async (b) => { activated.push(b) } })
+    const local = { loopback: true, paired: false }
+    await expect(provider.commands!.activate({ bundleId: 'com.apple.Terminal' }, local)).rejects.toThrow('cette app n’est pas dans le Dock')
+    expect(activated).toEqual([])
+    await provider.commands!.activate({ bundleId: APPS[0].bundleId }, local)
+    expect(activated).toEqual([APPS[0].bundleId])
+    // Gone from the Dock, gone from reach.
+    state.update(APPS.filter((a) => a.bundleId !== APPS[0].bundleId))
+    await expect(provider.commands!.activate({ bundleId: APPS[0].bundleId }, local)).rejects.toThrow()
   })
 })
 
@@ -171,10 +189,12 @@ describe('the hub carries the socket origin into the dock command', () => {
     sent: unknown[] = []
     send(data: string) { this.sent.push(JSON.parse(data)) }
     receive(msg: unknown) { this.emit('message', Buffer.from(JSON.stringify(msg))) }
+    close() { this.emit('close') }
   }
 
   const setup = async () => {
     const state = new DockState({ iconsDir: join(await mkdtemp(join(tmpdir(), 'fremkit-dock-')), 'icons') })
+    state.update(APPS)
     const activated: string[] = []
     let hub!: Hub
     const registry = new ProviderRegistry((c, d) => hub.broadcast(c, d))
@@ -186,14 +206,14 @@ describe('the hub carries the socket origin into the dock command', () => {
   it('refuses activate from a remote socket and runs it from a local one', async () => {
     const { hub, activated } = await setup()
     const remote = new FakeSocket()
-    hub.attach(remote, { loopback: false })
+    hub.attach(remote, { loopback: false, paired: false })
     remote.receive({ type: 'command', id: '1', channel: 'dock', name: 'activate', payload: { bundleId: 'com.example.mail' } })
     await new Promise((r) => setImmediate(r))
     expect(remote.sent).toEqual([{ type: 'error', id: '1', error: 'commande réservée à cette machine' }])
     expect(activated).toEqual([])
 
     const local = new FakeSocket()
-    hub.attach(local, { loopback: true })
+    hub.attach(local, { loopback: true, paired: false })
     local.receive({ type: 'command', id: '2', channel: 'dock', name: 'activate', payload: { bundleId: 'com.example.mail' } })
     await new Promise((r) => setImmediate(r))
     expect(activated).toEqual(['com.example.mail'])
@@ -216,12 +236,16 @@ describe('dock routes', () => {
   beforeEach(async () => {
     dataDir = await mkdtemp(join(tmpdir(), 'fremkit-dockapp-'))
     await writeFile(join(dataDir, 'fremkit.json'), JSON.stringify({
-      version: 3,
-      display: { cols: 64, rows: 16, cell: 40, autoCycleSeconds: 0 },
+      version: 4,
       connections: [], secrets: { backend: 'file' },
-      pages: [{ id: 'home', name: 'Accueil', widgets: [] }],
+      widgets: {},
+      screens: [{
+        id: 'edge', name: 'Xeneon Edge', kind: 'edge',
+        display: { cols: 64, rows: 16, cell: 40, autoCycleSeconds: 0 },
+        pages: [{ id: 'home', name: 'Accueil', items: [] }],
+      }],
     }), 'utf8')
-    app = await buildApp({ dataDir, widgetsDir: join(process.cwd(), '..', 'widgets'), providers: [], connectionTypes: [] })
+    app = await buildApp({ accessToken: null, dataDir, widgetsDir: join(process.cwd(), '..', 'widgets'), providers: [], connectionTypes: [] })
   })
   afterEach(async () => { await app.close() })
 

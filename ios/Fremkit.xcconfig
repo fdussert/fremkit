@@ -1,0 +1,35 @@
+// The app target's settings. Signing values (team, bundle id) come from the git-ignored
+// Local.xcconfig next to this file; copy Local.example.xcconfig to start one. Without it the app
+// still builds for the simulator, signed ad hoc, as com.example.fremkit.
+FREMKIT_BUNDLE_ID = com.example.fremkit
+#include? "Local.xcconfig"
+
+PRODUCT_BUNDLE_IDENTIFIER = $(FREMKIT_BUNDLE_ID)
+PRODUCT_NAME = Fremkit
+INFOPLIST_KEY_CFBundleDisplayName = Fremkit
+MARKETING_VERSION = 1.0
+CURRENT_PROJECT_VERSION = 1
+
+SDKROOT = iphoneos
+SUPPORTED_PLATFORMS = iphoneos iphonesimulator
+SUPPORTS_MACCATALYST = NO
+SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO
+SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO
+TARGETED_DEVICE_FAMILY = 2
+IPHONEOS_DEPLOYMENT_TARGET = 17.0
+SWIFT_VERSION = 6.0
+CODE_SIGN_STYLE = Automatic
+
+GENERATE_INFOPLIST_FILE = YES
+INFOPLIST_FILE = Fremkit/Info.plist
+INFOPLIST_KEY_UILaunchScreen_Generation = YES
+// Only TLS through the system and PBKDF2 (CommonCrypto): exempt, so App Store Connect does not ask
+// about export compliance on every upload.
+INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO
+INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight
+ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon
+ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor
+
+LOCALIZATION_PREFERS_STRING_CATALOGS = YES
+SWIFT_EMIT_LOC_STRINGS = YES
+ENABLE_USER_SCRIPT_SANDBOXING = YES

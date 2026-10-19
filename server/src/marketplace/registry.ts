@@ -13,6 +13,7 @@
  */
 
 import { THEME_LIMITS } from './install.js'
+import { PREVIEW_MAX_BYTES, previewImageInfo } from '../widgets/manifest.js'
 import { RegistryIndexSchema, type IndexWidget, type RegistryIndex } from './index-schema.js'
 import { resolvesToPrivate } from '../net/private.js'
 import { USER_AGENT } from '../version.js'
@@ -141,6 +142,11 @@ export class Registry {
         if (!this.onRegistryHost(url)) throw new RegistryError('marketplace.badUrl')
       }
     }
+    // A preview elsewhere is dropped, not fatal: it is a picture on a card, never fetched from
+    // anywhere but this host, and the package rule above still holds for the rest of the row.
+    for (const entry of parsed.data.widgets) {
+      if (entry.preview !== undefined && !this.onRegistryHost(entry.preview)) delete entry.preview
+    }
     this.cached = parsed.data
     this.fetchedAt = this.now()
     return parsed.data
@@ -178,6 +184,18 @@ export class Registry {
     if (entry.size > max) throw new RegistryError('marketplace.tooLarge')
     const body = await this.get(entry.url, Math.min(entry.size, max), PACKAGE_TIMEOUT_MS)
     return body
+  }
+
+  /**
+   * A widget's preview image from the registry, checked: on the registry's host, at most
+   * `PREVIEW_MAX_BYTES`, and really a PNG or a WebP whatever the server said its type was.
+   */
+  async preview(url: string): Promise<{ type: 'image/png' | 'image/webp'; bytes: Buffer }> {
+    if (!this.onRegistryHost(url)) throw new RegistryError('marketplace.badUrl')
+    const bytes = await this.get(url, PREVIEW_MAX_BYTES)
+    const info = previewImageInfo(bytes)
+    if (!info) throw new RegistryError('marketplace.badIndex')
+    return { type: info.format === 'png' ? 'image/png' : 'image/webp', bytes }
   }
 
   private async get(url: string, max: number, timeout = INDEX_TIMEOUT_MS): Promise<Buffer> {

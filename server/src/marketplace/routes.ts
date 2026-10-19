@@ -20,6 +20,7 @@ import type { ThemeCatalog } from '../themes/catalog.js'
 import { isCrossSiteFetch } from '../http/guard.js'
 import { SDK_VERSION } from '../bridge/sdk.js'
 import { tr, type MessageKey } from '../i18n.js'
+import { placeLabel } from '../config/instances.js'
 import { Registry, RegistryError, releaseOf } from './registry.js'
 import { InstallError, readPackage, removePackage, writePackage, type PackageKind, type ReadPackageResult } from './install.js'
 import { NO_PERMISSIONS, addedPermissions, grantedFor, grantedPermissions, isEmpty, permissionsOf, unionPermissions, type Permissions } from './consent.js'
@@ -137,7 +138,8 @@ export interface MarketplaceEntry extends IndexWidget {
    */
   history: { version: string; changes: string }[]
   /**
-   * The pages this widget is placed on, by name — empty for almost every row.
+   * The pages and bars this widget is shown on, as `placeLabel` names them — empty for almost
+   * every row.
    *
    * A dashboard can hold an instance of a widget that is not installed: the widget moved to the
    * registry, or the config came from another machine. The tile then paints as missing, and
@@ -190,7 +192,7 @@ function themeEntryFor(theme: IndexTheme, config: Config, themes: ThemeCatalog):
     installedVersion: installed ? record.version : null,
     updateAvailable: installed && compareSemver(theme.version, record.version) > 0,
     shadowsBuiltin: local?.source === 'builtin',
-    inUse: config.display.theme === theme.id,
+    inUse: config.theme === theme.id,
     history: historyOf(theme),
   }
 }
@@ -241,16 +243,21 @@ function entryFor(widget: IndexWidget, config: Config, catalog: WidgetCatalog): 
   }
 }
 
-/** Where a widget is still placed, so an uninstall can say what would break. */
+/**
+ * Where a widget is still shown, so an uninstall can say what would break: each page or bar once,
+ * named as `placeLabel` names it, in the order the screens hold them.
+ */
 export function usedBy(config: Config, id: string): string[] {
-  const places: string[] = []
-  for (const page of config.pages) {
-    if (page.widgets.some((w) => w.widgetId === id)) places.push(page.name)
+  const shows = (item: { instanceId: string }): boolean =>
+    Object.hasOwn(config.widgets, item.instanceId) && config.widgets[item.instanceId].widgetId === id
+  const places = new Set<string>()
+  for (const screen of config.screens) {
+    for (const page of screen.pages) {
+      if (page.items.some(shows)) places.add(placeLabel(config, { screen, page }))
+    }
+    if (screen.nav.some(shows)) places.add(placeLabel(config, { screen, page: null }))
   }
-  if ((config.display.navWidgets ?? []).some((w) => w.widgetId === id)) {
-    places.push(tr(config.locale, 'marketplace.navBar'))
-  }
-  return places
+  return [...places]
 }
 
 /**
@@ -317,6 +324,35 @@ export async function marketplaceRoutes(app: FastifyInstance, opts: MarketplaceO
     // cross-site `<img>` or `fetch` in `no-cors` mode gives, and it is enough.
     if (isCrossSiteFetch(req.headers)) return reply.code(403).send({ errors: [tr(locale(), 'http.originNotAllowed')] })
     return view()
+  })
+
+  /**
+   * Preview images already fetched, by URL. A URL names one version's picture, so an entry never
+   * goes stale; the map is capped so a long-running server holding a large registry does not
+   * keep every picture it was ever asked for.
+   */
+  const previews = new Map<string, { type: string; bytes: Buffer }>()
+  const MAX_PREVIEWS = 64
+
+  /**
+   * `GET /api/marketplace/preview/:id` — a registry widget's preview, through the server.
+   *
+   * The admin's CSP loads images from its own origin only, and should: this route is how a card
+   * shows a picture published on the registry. Only the URL the index gives that id is fetched,
+   * so the caller chooses a widget, never an address.
+   */
+  app.get<{ Params: { id: string } }>('/api/marketplace/preview/:id', async (req, reply) => {
+    if (isCrossSiteFetch(req.headers)) return reply.code(403).send()
+    const index = registry.last ?? await registry.index().catch(() => null)
+    const entry = index?.widgets.find((w) => w.id === req.params.id)
+    if (!entry?.preview) return reply.code(404).send(fail('marketplace.unknownWidget'))
+    let image = previews.get(entry.preview)
+    if (!image) {
+      try { image = await registry.preview(entry.preview) } catch { return reply.code(502).send(fail('marketplace.unreachable')) }
+      if (previews.size >= MAX_PREVIEWS) previews.delete(previews.keys().next().value as string)
+      previews.set(entry.preview, image)
+    }
+    return reply.type(image.type).header('cache-control', 'private, max-age=3600').send(image.bytes)
   })
 
   app.post('/api/marketplace/refresh', async (_req, reply) => {
@@ -715,7 +751,7 @@ export async function marketplaceRoutes(app: FastifyInstance, opts: MarketplaceO
     if (!recordOf(config, id, 'theme') && themes.entry(id)?.source !== 'installed') {
       return reply.code(404).send(fail('marketplace.themeNotInstalled'))
     }
-    if (config.display.theme === id) return reply.code(409).send(fail('marketplace.themeInUse'))
+    if (config.theme === id) return reply.code(409).send(fail('marketplace.themeInUse'))
 
     try { await removePackage(installedThemesDir, id) }
     catch (err) { req.log.warn({ err }, 'marketplace uninstall could not remove the theme'); return reply.code(500).send(fail('marketplace.writeFailed')) }

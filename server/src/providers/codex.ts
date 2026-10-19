@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process'
 import { z } from 'zod'
-import type { Provider } from './types.js'
+import { isTrusted, type Provider } from './types.js'
 import {
   createCodexSessionsProvider,
   type createSessionReader,
@@ -332,7 +332,7 @@ export function createCodexProvider(
           .object({ threadId: ThreadIdSchema, instanceId: z.string().min(1).max(200).optional() })
           .strict()
           .safeParse(payload)
-        if (!context?.loopback || !request.success) return { ok: false, error: 'refused' }
+        if (!isTrusted(context) || !request.success) return { ok: false, error: 'refused' }
         const history = last.history
         const epoch = generation
         const thread = history.data?.threads.find((t) => t.id === request.data.threadId)

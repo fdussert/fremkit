@@ -45,6 +45,13 @@ until you agree. Accepting records that grant in your config, beside the version
 registry it came from. A widget that asks for nothing at all — a clock, a timer — has nothing
 to show, so it installs without a dialog.
 
+Some channels are not on offer at all. `disk-map` carries the names of your folders and files,
+`clipboard` a preview of everything you copy; both are reserved for their built-in widgets, so a
+package that asks for either is refused before any dialog, and there is no answer that grants it.
+`brightness` may be read by any widget but commanded only by the built-in one, the admin and the
+helper, since it changes the screen itself: a package listing it under `commands` is refused the
+same way. `config` is refused in every manifest.
+
 What you accept is what is checked. The card is drawn from the registry's index, which is text
 the registry writes; the permissions that end up granted are read from the manifest *inside* the
 package, which is the thing whose hash was verified. If the two disagree, the install is refused
@@ -122,8 +129,8 @@ tokens: no code, nothing served, nothing subscribed to, no network host. So:
 - **Removing the one in use is refused**, naming it, rather than repainting the screen in
   something nobody chose.
 
-Install them from *Sietch* → **Themes**; they land in `data/themes/` and show up in Screen →
-Theme at once. See [themes.md](themes.md).
+Install them from *Sietch* → **Themes**; they land in `data/themes/` and show up in Settings →
+Appearance → Theme at once. See [themes.md](themes.md).
 
 ## When a widget declares a connection
 
@@ -156,6 +163,11 @@ whoever owns a DNS record. Neither trusts the other.
   2 MB ceiling. A redirect is refused rather than followed.
 - Every URL the index names must be **https and on that same host**. A registry publishes files;
   it does not get to name other servers.
+- A widget's **preview image** (the index entry's optional `preview`, a URL on that same host —
+  one elsewhere is dropped) is fetched by the server, never by the admin: at most 200 KB, and only
+  if its bytes are really a PNG or a WebP. The admin shows it as `/api/marketplace/preview/<id>`.
+- A package whose manifest names a `preview` must carry that file, under 200 KB and of the format
+  its name says (see [A preview image](writing-widgets.md#a-preview-image)).
 - The download stops at the size the index declared, and its **sha256 is verified before a single
   zip entry is read**.
 - The package must be a plain folder: no dotfile, no symlink, no nested archive, no absolute or

@@ -6,19 +6,21 @@ import Foundation
 enum EdgeDisplay {
     /// Bounds of the first active display whose size matches, in global coordinates.
     static func find(width: Int, height: Int) -> CGRect? {
+        findID(width: width, height: height).map(CGDisplayBounds)
+    }
+
+    /// The first active display whose size matches: the one the kiosk goes on.
+    static func findID(width: Int, height: Int) -> CGDirectDisplayID? {
         var count: UInt32 = 0
         guard CGGetActiveDisplayList(0, nil, &count) == .success, count > 0 else { return nil }
 
         var ids = [CGDirectDisplayID](repeating: 0, count: Int(count))
         guard CGGetActiveDisplayList(count, &ids, &count) == .success else { return nil }
 
-        for id in ids.prefix(Int(count)) {
+        return ids.prefix(Int(count)).first { id in
             let bounds = CGDisplayBounds(id)
-            if Int(bounds.width.rounded()) == width, Int(bounds.height.rounded()) == height {
-                return bounds
-            }
+            return Int(bounds.width.rounded()) == width && Int(bounds.height.rounded()) == height
         }
-        return nil
     }
 
     /// Re-runs `find` whenever the screen layout changes and reports the result.

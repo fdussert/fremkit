@@ -23,10 +23,41 @@ interface State {
   inFlight: boolean
   /** Poll again as soon as the one in flight returns: it may have read a setting since changed. */
   pollAgain: boolean
+  /** A `refresh()` arrived while a poll was in flight: poll once more, and publish that one. */
+  refreshAgain: boolean
+  /**
+   * What the last poll said about itself, for the diagnostics report: `null` for a snapshot
+   * without an error, an error code otherwise, `undefined` before the first poll.
+   */
+  lastError: string | null | undefined
+}
+
+/** One channel as the diagnostics report sees it. */
+export interface ChannelStatus {
+  channel: string
+  /** Widgets watching it right now. */
+  watched: boolean
+  /** `null` when the last poll was clean, a code when it was not, absent before any poll. */
+  lastError?: string | null
+}
+
+/**
+ * An error a snapshot carries, as a code fit for a public report. A provider's `error` is meant
+ * to be a code (`offline`, `unauthorized`…); anything that does not look like one — a thrown
+ * error's message, which may quote a host or a path — is reported as `error` and nothing more.
+ */
+export function errorCode(data: unknown, threw: boolean): string | null {
+  if (threw) return 'exception'
+  if (typeof data !== 'object' || data === null || !('error' in data)) return null
+  const error = (data as { error: unknown }).error
+  if (error === undefined || error === null || error === false) return null
+  return typeof error === 'string' && /^[a-z][a-z0-9_-]{0,39}$/i.test(error) ? error : 'error'
 }
 
 export class ProviderRegistry {
   private states = new Map<string, State>()
+  /** Told whenever `status()` would answer differently: see `onStatus`. */
+  private statusListeners = new Set<() => void>()
 
   /**
    * `forget` is told when a channel stops having anything to say: its provider was torn down,
@@ -50,9 +81,10 @@ export class ProviderRegistry {
     // away because the connection behind it was edited, so the replacement inherits them.
     const subscribers = previous?.subscribers ?? 0
     if (previous) this.teardown(previous, 'gone')
-    const state: State = { provider, subscribers, started: false, timer: null, backoffMs: 0, lastJson: undefined, inFlight: false, pollAgain: false }
+    const state: State = { provider, subscribers, started: false, timer: null, backoffMs: 0, lastJson: undefined, inFlight: false, pollAgain: false, refreshAgain: false, lastError: undefined }
     this.states.set(provider.channel, state)
     if (state.subscribers > 0) this.activate(state)
+    this.statusChanged()
   }
 
   /** Removes a channel entirely: used when a connection disappears from the config. */
@@ -61,9 +93,35 @@ export class ProviderRegistry {
     if (!s) return
     this.teardown(s, 'gone')
     this.states.delete(channel)
+    this.statusChanged()
   }
 
   channels(): string[] { return [...this.states.keys()] }
+
+  /** Every channel, whether anybody watches it and how its last poll went. */
+  status(): ChannelStatus[] {
+    return [...this.states.values()].map((s) => ({
+      channel: s.provider.channel,
+      watched: s.subscribers > 0,
+      ...(s.lastError !== undefined ? { lastError: s.lastError } : {}),
+    }))
+  }
+
+  /**
+   * Calls `cb` whenever a channel appears, goes away, or its last poll ends differently from the
+   * one before (clean → `offline`, `unauthorized` → clean…). Not on every poll: a channel that
+   * keeps failing the same way says so once. Returns the function that stops listening.
+   */
+  onStatus(cb: () => void): () => void {
+    this.statusListeners.add(cb)
+    return () => { this.statusListeners.delete(cb) }
+  }
+
+  private statusChanged(): void {
+    for (const cb of this.statusListeners) {
+      try { cb() } catch { /* a listener's failure is not the registry's */ }
+    }
+  }
 
   /**
    * `privacy.showAccountEmail` changed: every provider that can publish the address answers again
@@ -86,6 +144,18 @@ export class ProviderRegistry {
   }
 
   has(channel: string): boolean { return this.states.has(channel) }
+
+  /**
+   * Polls a watched channel now rather than at its next tick: for a provider whose state changes
+   * by push (a command, a report from the helper) and that wants the change on screen at once.
+   * Does nothing when nobody is watching; the first subscriber polls anyway.
+   */
+  refresh(channel: string): void {
+    const s = this.states.get(channel)
+    if (!s || s.subscribers === 0 || !s.provider.poll) return
+    if (s.inFlight) s.refreshAgain = true
+    else this.schedule(s, 0)
+  }
 
   addSubscriber(channel: string): void {
     const s = this.states.get(channel)
@@ -178,10 +248,12 @@ export class ProviderRegistry {
     if (!this.isCurrent(s) || s.subscribers === 0 || !s.provider.poll) return
     s.inFlight = true
     let data: unknown
+    let threw = false
     try {
       data = await s.provider.poll()
       s.backoffMs = 0
     } catch (err) {
+      threw = true
       data = { error: (err as Error).message ?? String(err) }
       s.backoffMs = Math.min(s.backoffMs === 0 ? (s.provider.intervalMs ?? MAX_BACKOFF_MS) : s.backoffMs * 2, MAX_BACKOFF_MS)
     } finally {
@@ -189,6 +261,10 @@ export class ProviderRegistry {
     }
     // Checked again after the await, not only before it: this is where the replacement happens.
     if (!this.isCurrent(s)) return
+    const lastError = errorCode(data, threw)
+    const changed = lastError !== s.lastError
+    s.lastError = lastError
+    if (changed) this.statusChanged()
     if (s.pollAgain) {
       // Computed under a privacy setting the user has changed since: never published. Forgotten
       // again in case the channel went idle meanwhile, so nothing is cached for the next widget.
@@ -203,6 +279,8 @@ export class ProviderRegistry {
       s.lastJson = json
       this.publish(s.provider.channel, data)
     }
-    if (s.subscribers > 0) this.schedule(s, s.backoffMs || s.provider.intervalMs || MAX_BACKOFF_MS)
+    const again = s.refreshAgain
+    s.refreshAgain = false
+    if (s.subscribers > 0) this.schedule(s, again ? 0 : s.backoffMs || s.provider.intervalMs || MAX_BACKOFF_MS)
   }
 }

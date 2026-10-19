@@ -38,14 +38,16 @@ const ASKS: WidgetPermissionSet = {
 
 function config(): Config {
   return {
-    version: 3,
-    display: { cols: 64, rows: 16, cell: 40, autoCycleSeconds: 0 },
+    version: 4,
     connections: [], secrets: { backend: 'file' }, locale: 'en',
     privacy: { claudeAccountUsage: false, showAccountEmail: false, codexAccount: false, codexHistorySources: [], macmonTemperature: false },
     marketplace: { installed: {} },
-    pages: [{
-      id: 'home', name: 'Home',
-      widgets: [{ instanceId: 'nas-1', widgetId: 'nas', x: 0, y: 0, w: 8, h: 4, showTitle: true, settings: {} }],
+    widgets: { 'nas-1': { widgetId: 'nas', showTitle: true, settings: {} } },
+    screens: [{
+      id: 'edge', name: 'Edge', kind: 'edge',
+      display: { cols: 64, rows: 16, cell: 40, autoCycleSeconds: 0 },
+      nav: [],
+      pages: [{ id: 'home', name: 'Home', items: [{ instanceId: 'nas-1', x: 0, y: 0, w: 8, h: 4 }] }],
     }],
   } as unknown as Config
 }

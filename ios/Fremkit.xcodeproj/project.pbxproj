@@ -1,0 +1,230 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		F00000000000000000000003 /* FremkitKit in Frameworks */ = {isa = PBXBuildFile; productRef = F00000000000000000000081 /* FremkitKit */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		F00000000000000000000001 /* Fremkit.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Fremkit.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		F00000000000000000000002 /* Fremkit.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Fremkit.xcconfig; sourceTree = "<group>"; };
+		F00000000000000000000004 /* Local.example.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Local.example.xcconfig; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		F00000000000000000000011 /* Exceptions for "Fremkit" folder in "Fremkit" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = F00000000000000000000040 /* Fremkit */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		F00000000000000000000010 /* Fremkit */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				F00000000000000000000011 /* Exceptions for "Fremkit" folder in "Fremkit" target */,
+			);
+			path = Fremkit;
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		F00000000000000000000020 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				F00000000000000000000003 /* FremkitKit in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		F00000000000000000000030 = {
+			isa = PBXGroup;
+			children = (
+				F00000000000000000000002 /* Fremkit.xcconfig */,
+				F00000000000000000000004 /* Local.example.xcconfig */,
+				F00000000000000000000010 /* Fremkit */,
+				F00000000000000000000031 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		F00000000000000000000031 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				F00000000000000000000001 /* Fremkit.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		F00000000000000000000040 /* Fremkit */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = F00000000000000000000060 /* Build configuration list for PBXNativeTarget "Fremkit" */;
+			buildPhases = (
+				F00000000000000000000041 /* Sources */,
+				F00000000000000000000020 /* Frameworks */,
+				F00000000000000000000042 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				F00000000000000000000010 /* Fremkit */,
+			);
+			name = Fremkit;
+			packageProductDependencies = (
+				F00000000000000000000081 /* FremkitKit */,
+			);
+			productName = Fremkit;
+			productReference = F00000000000000000000001 /* Fremkit.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		F00000000000000000000050 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2700;
+				LastUpgradeCheck = 2700;
+			};
+			buildConfigurationList = F00000000000000000000070 /* Build configuration list for PBXProject "Fremkit" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				fr,
+				Base,
+			);
+			mainGroup = F00000000000000000000030;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				F00000000000000000000080 /* XCLocalSwiftPackageReference "FremkitKit" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = F00000000000000000000031 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				F00000000000000000000040 /* Fremkit */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		F00000000000000000000042 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		F00000000000000000000041 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		F00000000000000000000071 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				ONLY_ACTIVE_ARCH = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		F00000000000000000000072 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		F00000000000000000000061 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = F00000000000000000000002 /* Fremkit.xcconfig */;
+			buildSettings = {
+			};
+			name = Debug;
+		};
+		F00000000000000000000062 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = F00000000000000000000002 /* Fremkit.xcconfig */;
+			buildSettings = {
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		F00000000000000000000060 /* Build configuration list for PBXNativeTarget "Fremkit" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				F00000000000000000000061 /* Debug */,
+				F00000000000000000000062 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		F00000000000000000000070 /* Build configuration list for PBXProject "Fremkit" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				F00000000000000000000071 /* Debug */,
+				F00000000000000000000072 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		F00000000000000000000080 /* XCLocalSwiftPackageReference "FremkitKit" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = FremkitKit;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		F00000000000000000000081 /* FremkitKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = FremkitKit;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = F00000000000000000000050 /* Project object */;
+}

@@ -11,7 +11,14 @@ installed and nothing runs unless Claude Code calls it.
 
 ## Setup
 
-Add this to `~/.claude/settings.json`, replacing `<repo>` with the path to your checkout:
+Add this to `~/.claude/settings.json`, replacing `<repo>/scripts` with where the scripts are:
+
+- **the app**: `/Applications/Fremkit.app/Contents/Resources/scripts` — they ship inside it, and
+  an update replaces them in place, so the path stays valid;
+- **a source install**: `<checkout>/scripts`.
+
+Fremkit does not edit this file for you: it is Claude Code's, and holds your own hooks too.
+
 
 ```json
 "statusLine": { "type": "command", "command": "<repo>/scripts/claude-statusline.sh" },
@@ -31,8 +38,11 @@ Add this to `~/.claude/settings.json`, replacing `<repo>` with the path to your 
 }
 ```
 
-Both scripts POST to `/api/hooks/claude`. The hooks are asynchronous and never block Claude Code,
-even when Fremkit is not running. The status line needs `jq` and degrades to one line of text
+Both scripts POST to `/api/hooks/claude`, with the server's access secret read from
+`~/Library/Application Support/Fremkit/access-4242.token` (the port follows `FREMKIT_HOOK_URL`;
+`FREMKIT_ACCESS_TOKEN_FILE` names another file). They source `lib/access.sh` from beside
+themselves, so keep the two together if you copy them. The hooks are asynchronous and never block
+Claude Code, even when Fremkit is not running. The status line needs `jq` and degrades to one line of text
 without it.
 
 ## What is sent
@@ -96,7 +106,7 @@ may change without notice.
 
 Nothing the Claude providers publish carries the account's e-mail address. Should one ever do so,
 it is held to the rule every account provider is: the address is left out unless **/admin →
-Screen → Privacy → Show the account e-mail address** is ticked (see
+Settings → Privacy → Show the account e-mail address** is ticked (see
 [connections.md](connections.md#the-accounts-e-mail-address)).
 
 The usage tile also shows a plan badge when the local Claude CLI reports a known subscription.

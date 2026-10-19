@@ -1,0 +1,525 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Fremplay</title>
+<style>
+  html,body{margin:0;height:100%;background:transparent;color:var(--text, #e6e8eb);font-family:var(--font, -apple-system,system-ui,sans-serif);overflow:hidden;
+    -webkit-user-select:none;user-select:none}
+  .stage{position:relative;height:100%;width:100%;overflow:hidden}
+  /*
+   * The only painted area is the picture itself. Hidden by opacity rather than `display:none`
+   * until it plays: WebKit pauses a muted autoplaying video it does not render.
+   */
+  video{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:transparent;opacity:0;pointer-events:none}
+  .stage.playing video{opacity:1}
+  .stage.cover video{object-fit:cover}
+
+  /* One sentence and at most one hint, in the tile's own colours. */
+  .msg{position:absolute;inset:0;box-sizing:border-box;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    gap:clamp(6px,2.4vh,14px);padding:clamp(10px,4vh,24px) clamp(12px,4vw,32px);text-align:center}
+  .stage.playing .msg{display:none}
+  .stage.show .msg{opacity:0}
+  .line{font-size:calc(clamp(14px,min(7vh,3.2vw),32px) * var(--text-scale, 1));font-weight:600;line-height:1.2;max-width:36em;overflow-wrap:anywhere}
+  .sub{font-size:calc(clamp(11px,min(4.4vh,2vw),18px) * var(--text-scale, 1));color:var(--text-muted, #8b93a0);max-width:40em;overflow-wrap:anywhere}
+  .sub:empty{display:none}
+  /* The quiet progress mark while the picture is on its way. */
+  .mark{width:clamp(8px,2.4vh,14px);height:clamp(8px,2.4vh,14px);border-radius:50%;background:var(--accent, #d9b36a);
+    animation:pulse 1.4s ease-in-out infinite}
+  @keyframes pulse{0%,100%{opacity:.25}50%{opacity:1}}
+  @media (prefers-reduced-motion:reduce){.mark{animation:none;opacity:.7}}
+  .glyph{display:none}
+
+  /* The overlay: over the picture, so it reads on video whatever the tile's colours are. */
+  .scrim{position:absolute;inset:0;background:rgba(0,0,0,.38);opacity:0;transition:opacity .2s;pointer-events:none}
+  .info{position:absolute;left:0;right:0;bottom:0;box-sizing:border-box;padding:clamp(18px,6vh,40px) clamp(12px,3vw,24px) clamp(8px,3vh,18px);
+    background:linear-gradient(transparent,rgba(0,0,0,.72));color:#fff;opacity:0;transition:opacity .2s;pointer-events:none}
+  .title{font-size:calc(clamp(13px,min(5vh,2.4vw),26px) * var(--text-scale, 1));font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .where{font-size:calc(clamp(11px,min(3.6vh,1.8vw),18px) * var(--text-scale, 1));opacity:.8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+    font-variant-numeric:tabular-nums}
+  .controls{position:absolute;left:0;right:0;top:0;bottom:0;box-sizing:border-box;padding:12px;display:flex;flex-wrap:wrap;align-content:center;
+    justify-content:center;gap:10px;opacity:0;transition:opacity .2s;pointer-events:none}
+  .stage.show .scrim,.stage.show .info,.stage.show .controls{opacity:1}
+  /* Only the buttons take touches, and only while shown: a tap anywhere else reaches the stage,
+     which shows or hides them. */
+  .controls button{pointer-events:none}
+  .stage.show .controls button{pointer-events:auto}
+  button{box-sizing:border-box;min-width:56px;height:56px;padding:0 12px;border:0;border-radius:14px;
+    background:rgba(16,18,22,.74);color:#fff;font:inherit;font-size:calc(19px * var(--text-scale, 1));font-weight:600;
+    display:inline-flex;align-items:center;justify-content:center;gap:2px;font-variant-numeric:tabular-nums}
+  button svg{width:26px;height:26px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  button.primary{background:var(--accent, #d9b36a);color:var(--on-accent, #0b0d10)}
+  button:active{background:var(--accent, #d9b36a);color:var(--on-accent, #0b0d10)}
+  button:disabled{opacity:.4}
+
+  /* The host says which way round the tile is: on-light means dark text on a light body. */
+  html.on-light body{color:var(--on-surface, #0b0d10)}
+  html.on-light .sub{color:var(--on-surface, #0b0d10);opacity:.75}
+  /* An accent mark vanishes when the body *is* the accent, so it flips to the text colour. */
+  html.accent-fill .mark{background:var(--on-surface, #0b0d10)}
+  html.accent-fill button.primary{background:var(--on-surface, #0b0d10);color:var(--accent, #d9b36a)}
+
+  /*
+   * Compact: the live picture as a thumbnail and nothing to touch — a tap on a bar tile opens the
+   * host's popover, which mounts the full widget with its controls.
+   */
+  html.compact body{pointer-events:none}
+  html.compact .stage{display:flex;align-items:center;justify-content:center}
+  html.compact.slot-left .stage,html.compact.slot-left .msg{justify-content:flex-start}
+  html.compact.slot-right .stage,html.compact.slot-right .msg{justify-content:flex-end}
+  html.compact video{position:relative;inset:auto;width:auto;height:84%;max-width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:6px}
+  html.compact .msg{flex-direction:row;padding:0 4px}
+  html.compact .line,html.compact .sub,html.compact .scrim,html.compact .info,html.compact .controls{display:none}
+  html.compact .glyph{display:block;width:clamp(18px,40vh,32px);height:clamp(18px,40vh,32px);fill:none;stroke:currentColor;stroke-width:2;
+    stroke-linecap:round;stroke-linejoin:round;opacity:.6}
+  html.compact .mark{position:absolute}
+
+  /* Drawn on a paired device: the one sentence, nothing else (onMac in logic.js). */
+  .stage.elsewhere video,.stage.elsewhere .scrim,.stage.elsewhere .info,.stage.elsewhere .controls,.stage.elsewhere .sub{display:none}
+  html.compact .stage.elsewhere .line{display:block;font-size:calc(11px * var(--text-scale, 1));font-weight:500;white-space:nowrap;
+    overflow:hidden;text-overflow:ellipsis}
+</style></head><body>
+<div id="stage" class="stage">
+  <video id="video" muted playsinline autoplay></video>
+  <div class="msg"><svg id="glyph" class="glyph" viewBox="0 0 24 24"></svg><div id="line" class="line"></div><i id="mark" class="mark" hidden></i><div id="sub" class="sub"></div></div>
+  <div class="scrim"></div>
+  <div class="info"><div id="title" class="title"></div><div id="where" class="where"></div></div>
+  <div id="controls" class="controls">
+    <button data-a="back"></button><button data-a="toggle" class="primary"></button><button data-a="fwd"></button>
+    <button data-a="voldown"></button><button data-a="volup"></button><button data-a="mute"></button>
+    <button data-a="fill"></button><button data-a="show"></button><button data-a="stop"></button>
+  </div>
+</div>
+<script src="logic.js"></script>
+<script>
+  var L = {
+    unpaired: { fr: 'Installez Fremkit Companion dans Chrome, puis cliquez Connecter dans son menu', en: 'Install Fremkit Companion in Chrome, then click Connect in its menu' },
+    where: { fr: 'Où le trouver : docs/companion.md dans le dépôt de Fremkit', en: 'Where to get it: docs/companion.md in the Fremkit repository' },
+    offline: { fr: 'Navigateur fermé ou extension inactive', en: 'Browser closed or extension inactive' },
+    idle: { fr: 'Lancez une vidéo, puis cliquez l’icône Fremkit (⌃⇧F)', en: 'Play a video, then click the Fremkit icon (⌃⇧F)' },
+    protocol: { fr: 'Fremplay et Fremkit ne parlent pas la même version : mettez Fremkit à jour', en: 'Fremplay and Fremkit speak different versions: update Fremkit' },
+    video: { fr: 'Vidéo', en: 'Video' },
+    slow: { fr: 'La vidéo n’arrive pas : arrêtez le partage puis relancez-le', en: 'The video is not coming through: stop the share and start it again' },
+    offerRefused: { fr: 'L’Edge a refusé cette connexion vidéo.', en: 'The Edge refused this video connection.' },
+    elsewhere: { fr: 'Fremplay ne s\'affiche que sur l\'Edge du Mac.', en: 'Fremplay only shows on the Mac\'s Edge.' },
+    back: { fr: 'Reculer de 10 secondes', en: 'Back 10 seconds' },
+    fwd: { fr: 'Avancer de 10 secondes', en: 'Forward 10 seconds' },
+    play: { fr: 'Lecture', en: 'Play' },
+    pause: { fr: 'Pause', en: 'Pause' },
+    voldown: { fr: 'Baisser le volume', en: 'Volume down' },
+    volup: { fr: 'Monter le volume', en: 'Volume up' },
+    mute: { fr: 'Couper le son', en: 'Mute' },
+    unmute: { fr: 'Rétablir le son', en: 'Unmute' },
+    fill: { fr: 'Remplir', en: 'Fill' },
+    fit: { fr: 'Afficher en entier', en: 'Show whole' },
+    show: { fr: 'Afficher l’onglet', en: 'Show the tab' },
+    stop: { fr: 'Arrêter le partage', en: 'Stop sharing' }
+  }
+
+  // Lucide paths (ISC), the same set the admin draws from.
+  var ICON = {
+    video: '<path d="m22 8-6 4 6 4V8Z"/><rect x="2" y="6" width="14" height="12" rx="2"/>',
+    play: '<path d="M6 3l14 9-14 9V3z"/>',
+    pause: '<rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/>',
+    speaker: '<path d="M11 4.7a.7.7 0 0 0-1.2-.5L6.4 7.6A1.4 1.4 0 0 1 5.4 8H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.4a1.4 1.4 0 0 1 1 .4l3.4 3.4a.7.7 0 0 0 1.2-.5Z"/>',
+    wave: '<path d="M16 9a5 5 0 0 1 0 6"/><path d="M19.4 18.4a9 9 0 0 0 0-12.8"/>',
+    cross: '<line x1="22" x2="16" y1="9" y2="15"/><line x1="16" x2="22" y1="9" y2="15"/>',
+    expand: '<path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/>',
+    shrink: '<path d="M4 14h6v6"/><path d="M20 10h-6V4"/><path d="M14 10l7-7"/><path d="M3 21l7-7"/>',
+    show: '<path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>',
+    stop: '<rect x="5" y="5" width="14" height="14" rx="2"/>'
+  }
+  function svg(inner) { return '<svg viewBox="0 0 24 24">' + inner + '</svg>' }
+
+  var FP = FremkitFremplay
+  var CONNECT_MS = 10000
+  var CONTROLS_MS = 4000
+
+  Fremkit.whenReady(function () {
+    var $ = function (id) { return document.getElementById(id) }
+    var stage = $('stage'), video = $('video')
+
+    // Not this Mac (a paired iPad): no peer to receive the share with, and no channel to hear it
+    // on. One sentence in place of everything else, and nothing subscribed or asked.
+    if (!FP.onMac(typeof RTCPeerConnection === 'undefined' ? undefined : RTCPeerConnection)) {
+      stage.classList.add('elsewhere')
+      var say = function () {
+        $('line').textContent = Fremkit.t(L.elsewhere)
+        $('glyph').innerHTML = ICON.video
+      }
+      Fremkit.onLocale(say)
+      say()
+      return
+    }
+    var buttons = {}
+    Array.prototype.forEach.call(document.querySelectorAll('#controls button'), function (b) { buttons[b.dataset.a] = b })
+
+    /** A version 4 UUID; `randomUUID` first, the bytes by hand where it is missing. */
+    function uuid() {
+      if (crypto.randomUUID) return crypto.randomUUID()
+      var b = crypto.getRandomValues(new Uint8Array(16))
+      b[6] = (b[6] & 0x0f) | 0x40
+      b[8] = (b[8] & 0x3f) | 0x80
+      var h = Array.prototype.map.call(b, function (x) { return (x + 0x100).toString(16).slice(1) }).join('')
+      return h.slice(0, 8) + '-' + h.slice(8, 12) + '-' + h.slice(12, 16) + '-' + h.slice(16, 20) + '-' + h.slice(20)
+    }
+
+    /** What this frame's receiver holds; `FremkitFremplay.plan` reads it. One receiver per mounted frame. */
+    var local = {
+      receiverId: uuid(), sessionId: null, viewed: false, pending: false, live: false, connected: false,
+      lastOffer: null, hidden: document.visibilityState === 'hidden'
+    }
+    var snap = null
+    /** The `volume` provider's last snapshot: the Mac's output, which the volume buttons drive by default. */
+    var vol = null
+    var pc = null
+    var playing = false
+    /** The "remplir" toggle: overrides the `fit` setting for the current share only. */
+    var fitOverride = null
+    /** The server's refusal, shown as the error line until the share changes. */
+    var error = null
+    var slow = false
+    /** The server refused this receiver's offer in this share (`tab.refused`): no asking again. */
+    var offerRefused = false
+    var connectTimer = null, controlsTimer = null, tickTimer = null
+    /**
+     * The snapshot lost the share while the peer is still connected: a server restart, until the
+     * extension comes back with it. The picture stays, the controls are unavailable. An extension
+     * that is connected and still shares nothing after `HOLD_MS` really stopped.
+     */
+    var held = false, holdTimer = null, lastMeta = null
+    var HOLD_MS = 3000
+    /** When the position last moved, so it can run on between two meta updates. */
+    var metaAt = 0, lastTime = null, lastPaused = null
+
+    function send(name, payload) { return Fremkit.sendCommand('companion', name, payload) }
+    function sharing() { return FP.stateOf(snap) === 'sharing' }
+    /** What the page shows: the share, or the one it holds on to. */
+    function showing() { return sharing() || held }
+    function meta() { return sharing() ? snap.tab.meta : held ? lastMeta : null }
+    /** 'mac' or 'video': what −, + and mute act on just now. */
+    function target() { return FP.volumeTarget(Fremkit.settings.volumeTarget, vol) }
+    function fit() {
+      if (Fremkit.compact) return 'cover'
+      return fitOverride || (Fremkit.settings.fit === 'cover' ? 'cover' : 'contain')
+    }
+
+    function armTimer() {
+      clearTimeout(connectTimer)
+      connectTimer = setTimeout(function () {
+        if (playing || !sharing() || local.hidden || offerRefused) return
+        slow = true
+        render()
+        rejoin()
+      }, CONNECT_MS)
+    }
+
+    function closePeer() {
+      if (pc) {
+        pc.ontrack = null
+        pc.onconnectionstatechange = null
+        pc.close()
+        pc = null
+      }
+      local.live = false
+      local.connected = false
+      playing = false
+      video.srcObject = null
+    }
+
+    /** Back to no share at all: no peer, no view, no override of the fit. */
+    function forget() {
+      closePeer()
+      held = false
+      clearTimeout(holdTimer)
+      holdTimer = null
+      local.sessionId = null
+      local.viewed = false
+      local.pending = false
+      local.lastOffer = null
+      fitOverride = null
+      error = null
+      slow = false
+      offerRefused = false
+      clearTimeout(connectTimer)
+    }
+
+    function refused(message) {
+      error = message || null
+      clearTimeout(connectTimer)
+      render()
+    }
+
+    function view() {
+      local.viewed = true
+      local.pending = true
+      armTimer()
+      // A refusal is shown and not retried on every snapshot: four frames already watch, or this
+      // dashboard is not this Mac's. The next share, or the page coming back, asks again.
+      send('view', { receiverId: local.receiverId }).then(function (r) {
+        if (r && r.ok === false) refused(r.error)
+      }, function (e) { refused(e && e.message) })
+    }
+
+    function leave() {
+      return send('leave', { receiverId: local.receiverId }).catch(function () {})
+    }
+
+    /**
+     * The peer is gone while the share goes on. The server still holds the offer it answered, and
+     * a plain `view` of a receiver with an offer asks the extension for nothing: leave, then view.
+     */
+    function rejoin() {
+      closePeer()
+      local.viewed = true
+      local.pending = true
+      leave().then(function () {
+        if (sharing() && !local.hidden && !pc && !offerRefused) view()
+      })
+    }
+
+    async function answer(sdp) {
+      local.lastOffer = sdp
+      closePeer()
+      var conn = new RTCPeerConnection({ iceServers: [] })
+      pc = conn
+      local.live = true
+      conn.ontrack = function (e) {
+        if (pc !== conn) return
+        video.srcObject = e.streams[0] || new MediaStream([e.track])
+        video.play().catch(function () {})
+      }
+      conn.onconnectionstatechange = function () {
+        if (pc !== conn) return
+        local.connected = conn.connectionState === 'connected'
+        if (held && !local.connected) { forget(); return render() }
+        if (conn.connectionState === 'failed' || conn.connectionState === 'closed') rejoin()
+      }
+      try {
+        await conn.setRemoteDescription({ type: 'offer', sdp: sdp })
+        await conn.setLocalDescription(await conn.createAnswer())
+        // No trickle: the answer carries its host candidates, so it waits for the gathering, or
+        // three seconds, whichever comes first.
+        await new Promise(function (done) {
+          if (conn.iceGatheringState === 'complete') return done()
+          conn.onicegatheringstatechange = function () { if (conn.iceGatheringState === 'complete') done() }
+          setTimeout(done, 3000)
+        })
+        if (pc !== conn) return
+        var r = await send('answer', { receiverId: local.receiverId, sdp: conn.localDescription.sdp })
+        if (r && r.ok === false && pc === conn) { closePeer(); refused(r.error) }
+      } catch (e) {
+        if (pc !== conn) return
+        closePeer()
+        refused(e && e.message)
+      }
+    }
+
+    function onSnapshot(s) {
+      snap = s
+      var m = meta()
+      if (m && (m.currentTime !== lastTime || m.paused !== lastPaused)) {
+        metaAt = Date.now()
+        lastTime = m.currentTime
+        lastPaused = m.paused
+      }
+      if (sharing()) {
+        lastMeta = m
+        if (Array.isArray(s.tab.receivers) && s.tab.receivers.indexOf(local.receiverId) >= 0) local.pending = false
+      }
+      var p = FP.plan(s, local)
+      if (p.hold) {
+        held = true
+        if (s.extensions && s.extensions.connected > 0) {
+          if (!holdTimer) holdTimer = setTimeout(function () { if (held) { forget(); render() } }, HOLD_MS)
+        } else {
+          clearTimeout(holdTimer)
+          holdTimer = null
+        }
+        return render()
+      }
+      held = false
+      clearTimeout(holdTimer)
+      holdTimer = null
+      if (p.reset) {
+        // From one share straight to another, the session asks every receiver it knows for the
+        // new one itself: this frame counts as having asked, and the 10 s timer covers a server
+        // that did not.
+        var asked = FP.switched(local)
+        forget()
+        local.sessionId = sharing() ? s.tab.sessionId : null
+        local.viewed = asked && local.sessionId !== null
+        if (local.sessionId && !local.hidden) armTimer()
+      }
+      if (p.refused) {
+        // Asking again would get the same offer refused: say so, and wait for another share.
+        if (!offerRefused) closePeer()
+        offerRefused = true
+        slow = false
+        error = Fremkit.t(L.offerRefused)
+        clearTimeout(connectTimer)
+      } else if (p.answer !== null) answer(p.answer)
+      else if (p.view) view()
+      render()
+    }
+
+    function position() {
+      var m = meta()
+      if (!m) return ''
+      var t = m.currentTime + (m.paused ? 0 : (Date.now() - metaAt) / 1000)
+      if (m.duration > 0) return FP.clock(Math.min(t, m.duration)) + ' / ' + FP.clock(m.duration)
+      return FP.clock(t)
+    }
+
+    function renderInfo() {
+      var m = meta()
+      $('title').textContent = (m && m.title) || Fremkit.t(L.video)
+      var where = [m && m.host, position()].filter(Boolean)
+      $('where').textContent = where.join(' · ')
+    }
+
+    function render() {
+      var state = held ? 'sharing' : FP.stateOf(snap)
+      var m = meta()
+      stage.classList.toggle('playing', state === 'sharing' && playing)
+      stage.classList.toggle('cover', fit() === 'cover')
+      if (state !== 'sharing') hideControls()
+
+      var line = '', sub = '', mark = false
+      if (state === 'unpaired') { line = Fremkit.t(L.unpaired); sub = Fremkit.t(L.where) }
+      else if (state === 'offline') line = Fremkit.t(L.offline)
+      else if (state === 'idle') line = Fremkit.t(L.idle)
+      else if (state === 'protocol') line = Fremkit.t(L.protocol)
+      else if (state === 'sharing' && !playing) {
+        line = (m && m.title) || Fremkit.t(L.video)
+        if (error) sub = error
+        else if (slow) sub = Fremkit.t(L.slow)
+        mark = !error && !slow
+      }
+      $('line').textContent = line
+      $('sub').textContent = sub
+      $('mark').hidden = !mark
+      $('glyph').innerHTML = state === null ? '' : ICON.video
+
+      // The extension's socket is how the controls reach the tab: without it they are shown
+      // unavailable, while the picture, which goes peer to peer, keeps playing.
+      var steer = !held && state === 'sharing' && snap.extensions.connected > 0
+      ;['back', 'toggle', 'fwd', 'voldown', 'volup', 'mute', 'show', 'stop'].forEach(function (a) { buttons[a].disabled = !steer })
+      // The Mac's volume needs no extension: those three stay usable while the picture is up.
+      if (state === 'sharing' && target() === 'mac') ['voldown', 'volup', 'mute'].forEach(function (a) { buttons[a].disabled = false })
+      var paused = !m || m.paused
+      buttons.toggle.innerHTML = svg(paused ? ICON.play : ICON.pause)
+      buttons.toggle.setAttribute('aria-label', Fremkit.t(paused ? L.play : L.pause))
+      buttons.back.textContent = '−10'
+      buttons.back.setAttribute('aria-label', Fremkit.t(L.back))
+      buttons.fwd.textContent = '+10'
+      buttons.fwd.setAttribute('aria-label', Fremkit.t(L.fwd))
+      buttons.voldown.innerHTML = svg(ICON.speaker) + '−'
+      buttons.voldown.setAttribute('aria-label', Fremkit.t(L.voldown))
+      buttons.volup.innerHTML = svg(ICON.speaker) + '+'
+      buttons.volup.setAttribute('aria-label', Fremkit.t(L.volup))
+      var muted = target() === 'mac' ? !!vol.muted : !!(m && m.muted)
+      buttons.mute.innerHTML = svg(ICON.speaker + (muted ? ICON.cross : ICON.wave))
+      buttons.mute.setAttribute('aria-label', Fremkit.t(muted ? L.unmute : L.mute))
+      var covering = fit() === 'cover'
+      buttons.fill.innerHTML = svg(covering ? ICON.shrink : ICON.expand)
+      buttons.fill.setAttribute('aria-label', Fremkit.t(covering ? L.fit : L.fill))
+      buttons.show.innerHTML = svg(ICON.show)
+      buttons.show.setAttribute('aria-label', Fremkit.t(L.show))
+      buttons.stop.innerHTML = svg(ICON.stop)
+      buttons.stop.setAttribute('aria-label', Fremkit.t(L.stop))
+      renderInfo()
+    }
+
+    function showControls() {
+      stage.classList.add('show')
+      renderInfo()
+      clearTimeout(controlsTimer)
+      controlsTimer = setTimeout(hideControls, CONTROLS_MS)
+      if (!tickTimer) tickTimer = setInterval(renderInfo, 1000)
+    }
+    function hideControls() {
+      stage.classList.remove('show')
+      clearTimeout(controlsTimer)
+      clearInterval(tickTimer)
+      tickTimer = null
+    }
+
+    function act(a) {
+      var m = meta()
+      if (a === 'fill') { fitOverride = fit() === 'cover' ? 'contain' : 'cover'; return render() }
+      var c
+      if (a === 'back') c = { action: 'seek', delta: -10 }
+      else if (a === 'fwd') c = { action: 'seek', delta: 10 }
+      else if (target() === 'mac' && (a === 'voldown' || a === 'volup' || a === 'mute')) {
+        // The Mac's output, from the live snapshot; shown at once, corrected by the next poll.
+        if (a === 'mute') {
+          vol.muted = !vol.muted
+          Fremkit.sendCommand('volume', 'mute', { muted: vol.muted }).catch(function () {})
+        } else {
+          vol.level = FP.stepLevel(vol.level, a === 'volup' ? FP.MAC_STEP : -FP.MAC_STEP)
+          Fremkit.sendCommand('volume', 'set', { level: vol.level }).catch(function () {})
+        }
+        return render()
+      } else if (a === 'voldown' || a === 'volup') {
+        var value = FP.stepVolume(m && m.volume, a === 'volup' ? 0.1 : -0.1)
+        // Shown at once, and corrected by the next meta if the tab disagrees.
+        if (m) m.volume = value
+        c = { action: 'volume', value: value }
+      } else c = { action: a }
+      send('control', c).catch(function () {})
+    }
+
+    // A tap shows the controls, a tap beside them hides them. The compact tile has none: its tap
+    // belongs to the host, which opens the popover.
+    stage.addEventListener('click', function (e) {
+      if (Fremkit.compact || !showing()) return
+      var b = e.target.closest && e.target.closest('button')
+      // A button under hidden controls is only the tap that shows them.
+      if (b && stage.classList.contains('show')) {
+        if (!b.disabled) act(b.dataset.a)
+        showControls()
+        return
+      }
+      if (stage.classList.contains('show')) hideControls()
+      else showControls()
+    })
+
+    video.addEventListener('playing', function () {
+      playing = true
+      slow = false
+      error = null
+      clearTimeout(connectTimer)
+      render()
+    })
+    video.addEventListener('emptied', function () {
+      if (!playing) return
+      playing = false
+      render()
+    })
+
+    // A frame that is not on screen holds no peer: the extension drops it, and the page coming
+    // back asks for a fresh one.
+    document.addEventListener('visibilitychange', function () {
+      if (document.visibilityState === 'hidden') {
+        local.hidden = true
+        if (held) forget()
+        clearTimeout(connectTimer)
+        if (local.viewed || pc) {
+          closePeer()
+          local.viewed = false
+          leave()
+        }
+        render()
+      } else {
+        local.hidden = false
+        if (snap) onSnapshot(snap)
+      }
+    })
+    window.addEventListener('pagehide', function () { leave() })
+
+    Fremkit.onLocale(render)
+    Fremkit.onSettings(render)
+    Fremkit.subscribe('companion', onSnapshot)
+    Fremkit.subscribe('volume', function (v) { vol = v && typeof v === 'object' ? v : null; render() })
+    render()
+  })
+</script>
+</body></html>

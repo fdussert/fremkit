@@ -46,21 +46,22 @@ describe('seedDefaultBackground', () => {
 
 describe('the default config and its background', () => {
   it('names the seeded wallpaper, and validates', () => {
-    expect(DEFAULT_CONFIG.display.background).toEqual({ image: DEFAULT_BACKGROUND, fit: 'cover' })
+    expect(DEFAULT_CONFIG.screens[0].display.background).toEqual({ image: DEFAULT_BACKGROUND, fit: 'cover' })
     expect(ConfigSchema.safeParse(DEFAULT_CONFIG).success).toBe(true)
   })
 
   it('expresses "no background" as an absent key, so remove really removes', () => {
     // No hardcoded fallback to fight: the schema simply allows the key to be gone.
-    const without = { ...DEFAULT_CONFIG, display: { ...DEFAULT_CONFIG.display, background: undefined } }
+    const edge = DEFAULT_CONFIG.screens[0]
+    const without = { ...DEFAULT_CONFIG, screens: [{ ...edge, display: { ...edge.display, background: undefined } }] }
     const parsed = ConfigSchema.safeParse(without)
     expect(parsed.success).toBe(true)
-    if (parsed.success) expect(parsed.data.display.background).toBeUndefined()
+    if (parsed.success) expect(parsed.data.screens[0].display.background).toBeUndefined()
   })
 
   it('matches the example config shipped in data/', async () => {
     const example = JSON.parse(await readFile(new URL('../../data/fremkit.example.json', import.meta.url), 'utf8'))
-    expect(example.display.background).toEqual({ image: DEFAULT_BACKGROUND, fit: 'cover' })
+    expect(example.screens[0].display.background).toEqual({ image: DEFAULT_BACKGROUND, fit: 'cover' })
     expect(ConfigSchema.safeParse(example).success).toBe(true)
   })
 })

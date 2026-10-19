@@ -1,13 +1,13 @@
 import { onUnmounted, ref, type Ref } from 'vue'
-import type { NavWidget } from '../shared/types'
+import type { NavItem } from '../shared/types'
 import type { Anchor } from '../shared/popover'
 
 /** How long a popover stays up with nothing touching it. */
 export const POPOVER_TIMEOUT_MS = 15000
 
-/** The popover currently up: which bar widget opened it, and where it hangs from. */
+/** The popover currently up: which bar item opened it, and where it hangs from. */
 export interface OpenPopover {
-  widget: NavWidget
+  item: NavItem
   anchor: Anchor
   /** The box the popover must stay inside, in the same space as `anchor`. */
   screen: { width: number; height: number }
@@ -74,12 +74,12 @@ export function useNavPopover(host: PopoverHost = {}) {
   }
 
   /** A tap on a compact frame: opens its popover, or closes it if that one is already up. */
-  function toggle(widget: NavWidget, el: Element): void {
-    if (open.value?.widget.instanceId === widget.instanceId) { close(); return }
+  function toggle(item: NavItem, el: Element): void {
+    if (open.value?.item.instanceId === item.instanceId) { close(); return }
     const { anchor, screen } = project(el.getBoundingClientRect())
     anchorEl = el
     popoverEl = null
-    open.value = { widget, anchor, screen }
+    open.value = { item, anchor, screen }
     keepAlive()
     window.addEventListener('pointerdown', onWindowPointerDown, true)
   }

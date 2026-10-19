@@ -1,0 +1,7 @@
+# Sparkle's public EdDSA key for Fremkit.app, written into Info.plist as SUPublicEDKey by
+# scripts/build-app.sh. It is public: it only lets the app check that an update was signed by the
+# private key, which lives in the release owner's login keychain and nowhere else.
+#
+# Generate the pair once with Sparkle's `generate_keys` (see docs/releasing.md) and paste the
+# base64 public key it prints on the line below, alone. Lines starting with # are ignored.
+6kw68iswxMDe30notBFNa/+WEOJN3PX613akcUi6OFc=

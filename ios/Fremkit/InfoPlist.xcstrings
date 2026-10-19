@@ -1,0 +1,40 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "NSCameraUsageDescription" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fremkit utilise l’appareil photo pour scanner le code d’appairage affiché par votre Mac."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fremkit uses the camera to scan the pairing code your Mac shows."
+          }
+        }
+      },
+      "extractionState" : "extracted_with_value"
+    },
+    "NSLocalNetworkUsageDescription" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fremkit trouve votre Mac et affiche son tableau de bord sur le réseau local."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fremkit finds your Mac and shows its dashboard over the local network."
+          }
+        }
+      },
+      "extractionState" : "extracted_with_value"
+    }
+  },
+  "version" : "1.0"
+}

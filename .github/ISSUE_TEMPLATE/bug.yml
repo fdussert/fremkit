@@ -1,0 +1,74 @@
+name: Bug
+description: Something on the dashboard, the editor, touch or the app does not work as it should.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time. A question rather than a bug? Ask it in
+        [Q&A](https://github.com/fdussert/fremkit/discussions/categories/q-a).
+        Most first-run problems (touch, permissions, iCUE) are covered in
+        [troubleshooting](https://github.com/fdussert/fremkit/blob/main/docs/troubleshooting.md).
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, what you saw instead. A screenshot or a photo of the Edge helps.
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: How Fremkit is installed
+      options:
+        - The app (DMG or Homebrew)
+        - From source (git clone + pnpm run setup)
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Fremkit version
+      description: In the editor, Screen → About.
+      placeholder: "0.4.1"
+    validations:
+      required: true
+  - type: input
+    id: macos
+    attributes:
+      label: macOS version and Mac
+      placeholder: "macOS 15.4, MacBook Pro M3"
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Where
+      options:
+        - Touch or the kiosk window
+        - The dashboard
+        - The editor (/admin)
+        - A widget
+        - A connection (Homey, GitHub, Synology, …)
+        - Install, permissions or updates
+        - Something else
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: Diagnostics
+      description: |
+        Use **Copy diagnostics** (editor: Screen → About → Diagnostics, or the menu bar **F**) and
+        paste the result here: it holds the versions, the widgets in use and the recent server log,
+        with secrets, addresses, e-mails and names removed. Read it before posting. On an older
+        version without it: the last lines of `~/Library/Logs/Fremkit/server.log`, and for a source
+        install the output of `pnpm run setup --check`.
+      render: text
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: iCUE and Corsair's Touchscreen Gestures are not running (they hold the touch panel).
+        - label: I searched the existing issues.

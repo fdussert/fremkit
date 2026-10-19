@@ -1,6 +1,6 @@
 { "id": "uptime",
   "name": { "fr": "Uptime", "en": "Uptime" },
-  "version": "1.0.0",
+  "version": "1.0.0", "preview": "preview.webp",
   "description": { "fr": "Durée depuis le dernier démarrage du système", "en": "Time since the last system boot" },
   "category": "system",
   "icon": "timer", "minSize": [8, 4], "defaultSize": [8, 4], "subscriptions": ["system"] }

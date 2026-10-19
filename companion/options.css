@@ -1,0 +1,4 @@
+/* The options page reuses the popup's tokens and parts, wider. */
+body.page { width: auto; max-width: 520px; margin: 24px auto; }
+body.page p { margin: 0; }
+.hint.left { text-align: left; }

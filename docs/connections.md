@@ -64,10 +64,12 @@ this version. A LAN device serving https with its own certificate needs a coded 
 Non-secret fields live in `data/fremkit.json`, which is git-ignored. Fields marked secret never
 do: they go to a secret store chosen by `secrets.backend`.
 
-- `keychain` (the default on macOS) — one generic-password item per secret, service `fremkit`,
-  account `<connectionId>/<fieldKey>`. Caveat: `security` takes the value as a command-line
-  argument, so it is briefly visible in `ps` to other processes of the same user. On a shared
-  machine, prefer the file backend.
+- `keychain` (the default on macOS) — one generic-password item per secret, service
+  `fremkit:<12 hex characters>` (a hash of the data folder, so a second checkout or a scratch run
+  never shares or deletes the live instance's items), account `<connectionId>/<fieldKey>`. The
+  value is handed to `security` on its standard input, never on its command line, where `ps`
+  would show it to every account on the Mac. Items an earlier version filed under plain `fremkit`
+  are moved to the live instance's own service (the server on 4242) the first time it reads them.
 - `file` (the default elsewhere) — `data/secrets.json`, mode 600, git-ignored.
 
 Changing the backend migrates nothing: the secrets have to be typed again.

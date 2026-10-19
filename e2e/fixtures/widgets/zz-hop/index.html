@@ -1,0 +1,8 @@
+<!doctype html>
+<html><body><script>
+// Navigates its frame to a second page of its own: served, but with no script allowed to run.
+setTimeout(function () {
+  console.log('E2E zz-hop: trying')
+  location.href = 'second.html'
+}, 300)
+</script></body></html>

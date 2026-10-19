@@ -9,23 +9,37 @@ import BaseInput from '../shared/ui/BaseInput.vue'
 import BaseRange from '../shared/ui/BaseRange.vue'
 import BaseSection from '../shared/ui/BaseSection.vue'
 import BaseSegmented from '../shared/ui/BaseSegmented.vue'
+import ScrollPanel from '../shared/ui/ScrollPanel.vue'
 import BackgroundPicker from './BackgroundPicker.vue'
 import CopySettingsFrom from './CopySettingsFrom.vue'
 import MissingWidget from './MissingWidget.vue'
+import HealthBanner from './HealthBanner.vue'
+import UpdateNote from './UpdateNote.vue'
+import { useHealth } from './useHealth'
 import SettingsForm from './SettingsForm.vue'
 import TileIconPicker from './TileIconPicker.vue'
 import WidgetPermissions from './WidgetPermissions.vue'
 import { pick, useI18n } from '../shared/i18n'
+import { screensShowing } from '../shared/screens'
 import { surfaceOpacity } from '../shared/background'
 import { useAdminStore } from './store'
+import { widgetDelete, widgetDeleteKey } from './widgetDelete'
 import { fits, type Rect } from './layout'
 import { THEME_ACCENT, THEME_SURFACE } from '../shared/color'
 import { themeColor, useAppliedTheme } from '../shared/theme'
 import { fieldsInScope, type AccentMode, type WidgetBackground } from '../shared/types'
 
 const s = useAdminStore()
-const { t } = useI18n()
+const { t, locale } = useI18n()
 const inst = computed(() => s.selected.value)
+const health = useHealth()
+/** A missing widget has its own notice below, with the install button: the banner would repeat it. */
+const wellness = computed(() => {
+  const h = inst.value ? health.of(inst.value.instanceId) : null
+  return h && h.problems.length > 0 && h.problems[0].code !== 'missing' ? h : null
+})
+/** A newer version in the registry: a calm note of its own, not part of the banner. */
+const update = computed(() => (inst.value ? health.of(inst.value.instanceId).update : null))
 const manifest = computed(() => (inst.value ? s.state.manifests[inst.value.widgetId] : undefined))
 /**
  * What the widget's manifest asks for, beside what it may do.
@@ -109,8 +123,38 @@ function onSetting(key: string, value: unknown): void {
   s.updateInstance(inst.value!.instanceId, { settings: { ...inst.value!.settings, [key]: value } })
 }
 
-/** The pages the selected tile could go to: every one but the page it already sits on. */
-const otherPages = computed(() => (s.state.config?.pages ?? [])
+/** The sections "expand all" folds and unfolds: the settings one only when the widget has settings. */
+const sectionIds = computed(() => [
+  'widget.background', 'widget.accent',
+  ...(manifest.value && Object.keys(schema.value).length ? ['widget.settings'] : []),
+  'widget.geometry',
+])
+
+/** What the user calls this widget: its own title, else its manifest's name. */
+const name = computed(() => (inst.value ? inst.value.title?.trim() || pick(manifest.value?.name) || inst.value.widgetId : ''))
+/**
+ * The other screens showing this same widget, named. Its look and settings are shared, so the
+ * inspector says where else an edit will show; the geometry below is this screen's only.
+ */
+const alsoOn = computed(() => {
+  const cfg = s.state.config
+  const here = s.screen.value?.id
+  if (!cfg || !inst.value) return ''
+  const names = screensShowing(cfg, inst.value.instanceId).filter((x) => x.id !== here).map((x) => x.name)
+  return names.length ? new Intl.ListFormat(locale.value, { type: 'conjunction' }).format(names) : ''
+})
+/** On its last screen, removing the widget deletes it: that takes a confirmation naming it. */
+const lastPlace = computed(() => !!inst.value && s.isLastPlace(inst.value.instanceId))
+const deleteArmed = computed(() => !!inst.value && widgetDelete.armed(widgetDeleteKey(inst.value.instanceId)))
+function remove(): void {
+  const id = inst.value?.instanceId
+  if (!id) return
+  if (!lastPlace.value) { s.removeFromScreen(id); return }
+  widgetDelete.ask(widgetDeleteKey(id), () => s.removeFromScreen(id))
+}
+
+/** The pages of this screen the selected tile could go to: every one but the page it sits on. */
+const otherPages = computed(() => (s.screen.value?.pages ?? [])
   .map((p, index) => ({ index, name: p.name }))
   .filter((p) => p.index !== s.state.pageIndex))
 /** Nothing is moved until the button is pressed, so a mis-click on the list costs nothing. */
@@ -126,11 +170,17 @@ function moveToPage(): void {
 
 <template>
   <p v-if="!inst" class="empty">{{ t('admin.inspector.widget.empty') }}</p>
-  <template v-else>
+  <!-- The widget's name and the fold buttons stay at the top; its sections scroll under them. -->
+  <ScrollPanel v-else class="widget" :section-ids="sectionIds">
+    <template #title>
     <div class="head">
       <BaseIcon :name="manifest?.icon ?? 'layout-grid'" :size="20" />
       <strong>{{ manifest ? pick(manifest.name) : inst.widgetId }}</strong>
     </div>
+    </template>
+    <HealthBanner v-if="wellness" :health="wellness" @action="health.run(inst!.instanceId, $event)" />
+    <UpdateNote v-if="update" :update="update" @action="health.run(inst!.instanceId, $event)" />
+    <p v-if="alsoOn" class="hint shared"><BaseIcon name="monitor" :size="14" />{{ t('admin.inspector.widget.alsoOn', { screens: alsoOn }) }}</p>
     <MissingWidget v-if="!manifest" :widget-id="inst.widgetId" />
 
     <BaseField :label="t('admin.inspector.widget.title')">
@@ -177,19 +227,22 @@ function moveToPage(): void {
       <CopySettingsFrom :widget-id="inst.widgetId" :instance-id="inst.instanceId"
         @copy="s.updateInstance(inst!.instanceId, { settings: $event })" />
       <SettingsForm :schema="manifest.settingsSchema" scope="tile" :values="inst.settings"
-        :widget-id="inst.widgetId" @change="onSetting" />
+        :widget-id="inst.widgetId" :commands="manifest.commands" @change="onSetting" />
     </BaseSection>
 
     <WidgetPermissions :manifest="manifest" :asks="asks" />
 
     <BaseSection id="widget.geometry" :title="t('admin.inspector.widget.geometry')">
     <div class="grid4">
-      <BaseField :label="t('admin.inspector.widget.x')"><BaseInput type="number" :min="0" :invalid="!geomOk" :model-value="geom.x" @update:model-value="geom.x = Number($event); commitGeom()" /></BaseField>
-      <BaseField :label="t('admin.inspector.widget.y')"><BaseInput type="number" :min="0" :invalid="!geomOk" :model-value="geom.y" @update:model-value="geom.y = Number($event); commitGeom()" /></BaseField>
-      <BaseField :label="t('admin.inspector.widget.width')"><BaseInput type="number" :min="1" :invalid="!geomOk" :model-value="geom.w" @update:model-value="geom.w = Number($event); commitGeom()" /></BaseField>
-      <BaseField :label="t('admin.inspector.widget.height')"><BaseInput type="number" :min="1" :invalid="!geomOk" :model-value="geom.h" @update:model-value="geom.h = Number($event); commitGeom()" /></BaseField>
+      <BaseField :label="t('admin.inspector.widget.x')"><BaseInput type="number" :min="0" :invalid="!geomOk" :disabled="inst.locked" :model-value="geom.x" @update:model-value="geom.x = Number($event); commitGeom()" /></BaseField>
+      <BaseField :label="t('admin.inspector.widget.y')"><BaseInput type="number" :min="0" :invalid="!geomOk" :disabled="inst.locked" :model-value="geom.y" @update:model-value="geom.y = Number($event); commitGeom()" /></BaseField>
+      <BaseField :label="t('admin.inspector.widget.width')"><BaseInput type="number" :min="1" :invalid="!geomOk" :disabled="inst.locked" :model-value="geom.w" @update:model-value="geom.w = Number($event); commitGeom()" /></BaseField>
+      <BaseField :label="t('admin.inspector.widget.height')"><BaseInput type="number" :min="1" :invalid="!geomOk" :disabled="inst.locked" :model-value="geom.h" @update:model-value="geom.h = Number($event); commitGeom()" /></BaseField>
     </div>
     <p class="hint" v-if="manifest" :class="{ bad: tooSmall }">{{ t('admin.inspector.widget.minSize', { w: minSize[0], h: minSize[1] }) }}</p>
+    <BaseCheckbox :model-value="!!inst.locked" :label="t('admin.inspector.widget.lock')"
+      @update:model-value="s.setLocked(inst!.instanceId, $event)" />
+    <p v-if="inst.locked" class="hint">{{ t('admin.inspector.widget.lock.hint') }}</p>
 
     <!-- A single page leaves nowhere to go, so the whole row is disabled rather than hidden. -->
     <BaseField :label="t('admin.inspector.widget.moveToPage')">
@@ -207,20 +260,28 @@ function moveToPage(): void {
 
     <div class="actions">
       <BaseButton @click="s.duplicateWidget(inst!.instanceId)"><BaseIcon name="copy" :size="16" />{{ t('common.duplicate') }}</BaseButton>
-      <BaseButton variant="danger" @click="s.removeWidget(inst!.instanceId)"><BaseIcon name="trash-2" :size="16" />{{ t('common.remove') }}</BaseButton>
+      <!-- Shown elsewhere: taking it off this screen is all there is, and undo covers it. On its
+           last screen the same press deletes the widget, so it asks first, by name. -->
+      <BaseButton v-if="!lastPlace" @click="remove()"><BaseIcon name="x" :size="16" />{{ t('admin.inspector.widget.removeFromScreen') }}</BaseButton>
+      <BaseButton v-else-if="deleteArmed" variant="danger" @click="remove()">{{ t('admin.inspector.widget.deleteConfirm', { name }) }}</BaseButton>
+      <BaseButton v-else variant="danger" @click="remove()"><BaseIcon name="trash-2" :size="16" />{{ t('admin.inspector.widget.delete') }}</BaseButton>
     </div>
-  </template>
+    <p v-if="deleteArmed" class="hint bad">{{ t('admin.inspector.widget.deleteHint', { name }) }}</p>
+  </ScrollPanel>
 </template>
 
 <style scoped>
 .empty { color: var(--text-muted); font-size: var(--fs-sm); }
-.head { display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-3); }
+.widget { --scroll-panel-pad: var(--space-3); padding-top: var(--space-3); }
+.head { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.head strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 h3 { font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: .08em; color: var(--text-muted);
   margin: var(--space-4) 0 var(--space-2); }
 .grid4 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 var(--space-2); }
 .hint { font-size: var(--fs-xs); color: var(--text-dim); margin: 0 0 var(--space-3); }
 .hint.bad { color: var(--danger); }
-.actions { display: flex; gap: var(--space-2); margin-top: var(--space-4); }
+.hint.shared { display: flex; align-items: center; gap: var(--space-1); color: var(--text-muted); }
+.actions { display: flex; flex-wrap: wrap; gap: var(--space-2); margin: var(--space-4) 0 var(--space-2); }
 .move { display: flex; gap: var(--space-2); align-items: center; }
 .move select { flex: 1; min-width: 0; box-sizing: border-box; font: inherit; font-size: var(--fs-sm); color: var(--text);
   background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--radius-sm); padding: 6px 8px; }

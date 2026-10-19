@@ -1,0 +1,27 @@
+{
+  "manifest_version": 3,
+  "name": "__MSG_extName__",
+  "short_name": "Fremkit",
+  "version": "0.1.0",
+  "description": "__MSG_extDescription__",
+  "default_locale": "fr",
+  "minimum_chrome_version": "116",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAqoY43GViKYTDkiDWr3d9BPQd2zA1nDvgvj10077v9gQRcr2Zr/gtGBMemDlbshDtkT7g4pWP3YjFw5WlzF+HIB6qRMbPaptUoHj+h40jNOWaDI1mKvEEEeYRYG7awG0TzceeMZ/EwReVz3xE3mvXVFH5Q1QWgqFPjKrcAjb0IXH/O52Z/K4jiE3rYp9BoQC4ldOx6jpoxSmFgS2+p1vi0fJ0HARLSX1UFUtpr6L3tpSb/W4r1j7yd08tR3DdQNT6iA1zw+uwd8iLRlXc/TeA2JrCkJlaieW2+578zllUT59W48aQjMTi958/ShJhmLJQow3QlOAQFMV3GlN92hnNPwIDAQAB",
+  "permissions": ["tabCapture", "offscreen", "scripting", "activeTab", "storage"],
+  "host_permissions": ["http://127.0.0.1:4242/*"],
+  "optional_host_permissions": ["https://*/*", "http://*/*"],
+  "background": { "service_worker": "worker.js", "type": "module" },
+  "action": {
+    "default_title": "__MSG_actionTitle__",
+    "default_popup": "popup.html",
+    "default_icon": { "16": "icons/icon-16.png", "32": "icons/icon-32.png" }
+  },
+  "options_page": "options.html",
+  "commands": {
+    "fremplay-toggle": {
+      "suggested_key": { "default": "Ctrl+Shift+F", "mac": "MacCtrl+Shift+F" },
+      "description": "__MSG_commandToggle__"
+    }
+  },
+  "icons": { "16": "icons/icon-16.png", "32": "icons/icon-32.png", "48": "icons/icon-48.png", "128": "icons/icon-128.png" }
+}

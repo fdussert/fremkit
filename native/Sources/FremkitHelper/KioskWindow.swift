@@ -68,17 +68,22 @@ private final class FirstMouseWebView: WKWebView {
 /// single reload three seconds later, so the window comes up black and fills in once the dashboard
 /// answers.
 final class KioskWindow: NSObject, WKNavigationDelegate {
+    /// Above the menu bar and status items (see `init`). System alerts are drawn below it.
+    static let kioskLevel = NSWindow.Level(rawValue: NSWindow.Level.statusBar.rawValue + 1)
     /// Delay between a failed navigation and the next attempt.
     private static let retryDelay: TimeInterval = 3
 
     private let window: NSWindow
     private let webView: WKWebView
     private let url: URL
+    /// Signs the web view in (a one-time link, see `ServerAccess.signInURL`) before every load.
+    private let access: ServerAccess
     /// Pending retry, so a burst of failures queues only one and a manual reload can cancel it.
     private var retryWork: DispatchWorkItem?
 
-    init(frame: NSRect, url: URL) {
+    init(frame: NSRect, url: URL, access: ServerAccess) {
         self.url = url
+        self.access = access
 
         window = KioskNSWindow(contentRect: frame,
                                styleMask: .borderless,
@@ -86,7 +91,7 @@ final class KioskWindow: NSObject, WKNavigationDelegate {
                                defer: false)
         // Above the menu bar and status items: with "Displays have separate Spaces" macOS draws
         // a menu bar on every display, and a floating window would leave it visible on the Edge.
-        window.level = NSWindow.Level(rawValue: NSWindow.Level.statusBar.rawValue + 1)
+        window.level = Self.kioskLevel
         window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
         window.backgroundColor = .black
         window.isMovable = false
@@ -121,8 +126,17 @@ final class KioskWindow: NSObject, WKNavigationDelegate {
 
     // MARK: - Content
 
+    /// Loads the dashboard through a fresh one-time sign-in link, so the web view holds a session
+    /// of the server that answers now: a server restarted since (sessions die with it) is caught
+    /// up with on the next load. Without a link — nothing proved it is our server on the port,
+    /// or it is not up yet — nothing is loaded: whatever holds the port is not shown on the Edge.
+    /// The current page stays, and the load is tried again shortly.
     private func load() {
-        webView.load(URLRequest(url: url))
+        access.signInURL(for: url) { [weak self] signIn in
+            guard let self else { return }
+            guard let signIn else { self.scheduleRetry(); return }
+            self.webView.load(URLRequest(url: signIn))
+        }
     }
 
     /// Reloads the dashboard; used when the server comes up or restarts.
@@ -184,7 +198,36 @@ final class KioskWindow: NSObject, WKNavigationDelegate {
     }
 
     func close() {
+        endReveal()
         window.orderOut(nil)
+    }
+
+    // MARK: - Reveal
+
+    /// Pending return to the kiosk level after a reveal.
+    private var revealWork: DispatchWorkItem?
+
+    /// Lets what sits behind the dashboard be seen and touched for `seconds`: a macOS dialog — a
+    /// privacy prompt the disk map is waiting on — opens on the Edge *under* the kiosk, which sits
+    /// above the status bar. The window drops to the normal level, behind the other windows, and
+    /// comes back on its own; a second reveal starts the time again.
+    func reveal(for seconds: TimeInterval) {
+        revealWork?.cancel()
+        window.level = .normal
+        // A dashboard the user hid stays hidden: ordering it back would show it.
+        if visibility.shouldShow { window.orderBack(nil) }
+        let work = DispatchWorkItem { [weak self] in self?.endReveal() }
+        revealWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + seconds, execute: work)
+    }
+
+    /// Back to the kiosk level, at once; nothing to do when no reveal is running.
+    func endReveal() {
+        guard let work = revealWork else { return }
+        work.cancel()
+        revealWork = nil
+        window.level = Self.kioskLevel
+        if visibility.shouldShow { window.orderFrontRegardless() }
     }
 
     // MARK: - WKNavigationDelegate
@@ -203,7 +246,14 @@ final class KioskWindow: NSObject, WKNavigationDelegate {
                  decidePolicyFor navigationAction: WKNavigationAction,
                  decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
         guard navigationAction.targetFrame?.isMainFrame != false else {
-            decisionHandler(.allow)
+            // A frame is a widget, and a widget may only ever be another widget document: a
+            // sandboxed frame can still navigate itself, and the request would carry its data.
+            if WidgetFrames.allows(navigationAction.request.url, on: url) {
+                decisionHandler(.allow)
+            } else {
+                NSLog("fremkit: kiosk refused a frame navigation outside /widgets/")
+                decisionHandler(.cancel)
+            }
             return
         }
         let target = navigationAction.request.url
@@ -213,6 +263,23 @@ final class KioskWindow: NSObject, WKNavigationDelegate {
             NSLog("fremkit: kiosk refused a navigation away from the dashboard")
             decisionHandler(.cancel)
         }
+    }
+
+    /**
+     A dashboard the server refused (401) is retried like one that failed to load.
+
+     It happens when the session the web view holds is not one the server knows — the server was
+     restarted (sessions live in its memory), or the session expired. The server's refusal page is
+     shown meanwhile, and the retry signs in again with a new one-time link.
+     */
+    func webView(_ webView: WKWebView,
+                 decidePolicyFor navigationResponse: WKNavigationResponse,
+                 decisionHandler: @escaping (WKNavigationResponsePolicy) -> Void) {
+        if navigationResponse.isForMainFrame,
+           (navigationResponse.response as? HTTPURLResponse)?.statusCode == 401 {
+            scheduleRetry()
+        }
+        decisionHandler(.allow)
     }
 
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {

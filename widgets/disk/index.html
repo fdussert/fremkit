@@ -19,15 +19,41 @@
   /* A bar painted in the accent vanishes when the body *is* the accent, so it flips to the text colour. */
   html.on-light .bar,html.accent-fill .bar{background:rgba(128,128,128,.35)}
   html.accent-fill .bar>i{background:var(--on-surface,#0b0d10)}
+  /* A disk holding several volumes: one segment per volume, then what the rest of the disk holds. */
+  .bar.split{display:flex;gap:2px;background:var(--surface-3, #252a32)}
+  .bar.split>i{flex:none;transition:none}
+  .bar.split>i:nth-child(2){opacity:.6}
+  .bar.split>i:nth-child(3){opacity:.4}
+  .bar.split>i:nth-child(n+4){opacity:.3}
+  .bar.split>i.rest{background:var(--text-muted, #8b93a0);opacity:.55}
+  html.accent-fill .bar.split>i.rest,html.on-light .bar.split>i.rest{background:var(--on-surface,#0b0d10);opacity:.3}
+  .legend{display:flex;flex-wrap:wrap;gap:2px 12px;font-size:calc(11px * var(--text-scale, 1));margin-bottom:4px}
+  .legend b{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:5px;background:var(--accent, #d9b36a);vertical-align:baseline}
+  .legend span:nth-child(2) b{opacity:.6}
+  .legend span:nth-child(3) b{opacity:.4}
+  .legend span:nth-child(n+4) b{opacity:.3}
+  .legend span.rest b{background:var(--text-muted, #8b93a0);opacity:.55}
+  html.accent-fill .legend b{background:var(--on-surface,#0b0d10)}
+  html.compact .legend{display:none}
 </style></head><body><div class="wrap" id="list"></div>
 <script>
   var L = {
     gigabytes: { fr: '{n} Go', en: '{n} GB' },
+    terabytes: { fr: '{n} To', en: '{n} TB' },
     free: { fr: '{n} libres', en: '{n} free' },
     unknown: { fr: 'Libre ?', en: 'Free ?' },
-    system: { fr: 'Disque du Mac', en: 'Mac disk' }
+    system: { fr: 'Disque du Mac', en: 'Mac disk' },
+    data: { fr: 'Données', en: 'Data' },
+    rest: { fr: 'Système', en: 'System' }
   }
-  function gb(b) { return Fremkit.t(L.gigabytes, { n: Math.round(b / 1073741824) }) }
+  /** Decimal units, as Finder and Disk Utility count them. */
+  function gb(b) {
+    var n = Math.max(0, Number(b) || 0) / 1e9
+    if (n < 1000) return Fremkit.t(L.gigabytes, { n: Math.round(n) })
+    var t = (n / 1000).toFixed(n < 10000 ? 1 : 0)
+    return Fremkit.t(L.terabytes, { n: Fremkit.locale === 'fr' ? t.replace('.', ',') : t })
+  }
+  function pct(part, whole) { return whole > 0 ? Math.max(0, Math.min(100, part / whole * 100)) : 0 }
   Fremkit.whenReady(function () {
     var last = null
     document.documentElement.lang = Fremkit.locale
@@ -44,9 +70,26 @@
       el.innerHTML = d.disks.map(function (k) {
         var use = Math.max(0, Math.min(100, Number(k.use) || 0))
         var free = k.available == null ? Fremkit.t(L.unknown) : Fremkit.t(L.free, { n: gb(k.available) })
-        return '<div class="row"><span>' + Fremkit.esc(k.mount==='/'?Fremkit.t(L.system):k.mount) + '</span><span class="muted">'
+        var head = '<div class="row"><span>' + Fremkit.esc(k.mount==='/'?Fremkit.t(L.system):k.mount) + '</span><span class="muted">'
           + Fremkit.esc(gb(k.used)) + ' / ' + Fremkit.esc(gb(k.size)) + ' · ' + Fremkit.esc(free) + '</span></div>'
-          + '<div class="bar"><i style="width:' + use + '%"></i></div>'
+        if (!Array.isArray(k.volumes) || k.volumes.length < 2) {
+          return head + '<div class="bar"><i style="width:' + use + '%"></i></div>'
+        }
+        // Volumes share the disk: a segment each, then whatever else the disk holds (the system
+        // volumes, snapshots), so the segments add up to the row's used space.
+        var size = Number(k.size) || 0
+        var parts = k.volumes.map(function (v) {
+          var name = v.mount === '/' ? Fremkit.t(L.data) : String(v.mount).replace(/^\/Volumes\//, '')
+          return { name: name, used: Math.max(0, Number(v.used) || 0) }
+        })
+        var listed = parts.reduce(function (sum, p) { return sum + p.used }, 0)
+        var rest = Math.max(0, (Number(k.used) || 0) - listed)
+        var bar = parts.map(function (p) { return '<i style="width:' + pct(p.used, size) + '%"></i>' }).join('')
+          + (rest > 0 ? '<i class="rest" style="width:' + pct(rest, size) + '%"></i>' : '')
+        var legend = parts.map(function (p) {
+          return '<span class="muted"><b></b>' + Fremkit.esc(p.name) + ' ' + Fremkit.esc(gb(p.used)) + '</span>'
+        }).join('') + (rest > 0 ? '<span class="muted rest"><b></b>' + Fremkit.esc(Fremkit.t(L.rest)) + ' ' + Fremkit.esc(gb(rest)) + '</span>' : '')
+        return head + '<div class="bar split">' + bar + '</div><div class="legend">' + legend + '</div>'
       }).join('')
     }
   })

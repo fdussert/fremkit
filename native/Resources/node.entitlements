@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Entitlements of Contents/Resources/server/fremkit-server, the Node single executable that runs
+  the dashboard server inside Fremkit.app. Signed with the hardened runtime.
+
+  com.apple.security.cs.allow-jit
+    V8 compiles JavaScript (and WebAssembly, which Node's fetch uses for its HTTP parser) to
+    machine code at run time, in memory mapped with MAP_JIT. The hardened runtime refuses that
+    mapping without this entitlement, and Node dies at start-up with "Failed to reserve virtual
+    memory for CodeRange". Verified: signed with no entitlement it does exactly that; with this
+    one alone it serves the dashboard.
+
+  Deliberately absent, although the official node binary carries them: allow-unsigned-executable-
+  memory, disable-executable-page-protection, disable-library-validation (the server loads no
+  native addon) and allow-dyld-environment-variables. get-task-allow is a debugging entitlement
+  that notarization refuses.
+-->
+<plist version="1.0">
+<dict>
+	<key>com.apple.security.cs.allow-jit</key>
+	<true/>
+</dict>
+</plist>

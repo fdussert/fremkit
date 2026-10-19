@@ -113,12 +113,12 @@ describe('the host field, which is the one string the user types', () => {
     // reason it matters: read as private, so `http` is honoured, and sent to `evil.example`
     // with the user's key in the clear.
     for (const raw of [
-      '10.0.0.1:x@evil.example',
+      '10.1.0.1:x@evil.example',
       'user:pw@evil.example',
       'evil.example.',
-      '10.0.0.1/../x',
-      '10.0.0.1?a=b',
-      '10.0.0.1#f',
+      '10.1.0.1/../x',
+      '10.1.0.1?a=b',
+      '10.1.0.1#f',
       'a b',
       'a\r\nb',
       'evil.example/',
@@ -145,15 +145,15 @@ describe('the scheme a request really uses', () => {
     // to take somebody's API key off TLS on the open internet.
     expect(schemeFor(decl({ scheme: 'http' }), at('api.example.com'))).toBe('https')
     expect(schemeFor(decl({ scheme: 'http' }), at('203.0.113.5'))).toBe('https')
-    for (const host of ['192.168.1.10', '10.0.0.4', '127.0.0.1', '[::1]', '172.16.0.1']) {
+    for (const host of ['192.168.1.10', '10.1.0.4', '127.0.0.1', '[::1]', '172.16.0.1']) {
       expect(schemeFor(decl({ scheme: 'http' }), at(host)), host).toBe('http')
     }
   })
 
   it('judges the address the parser produced, not the string that was typed', () => {
-    // `10.0.0.1:x@evil.example` used to read as `10.0.0.1` — private, so plain http — while the
+    // `10.1.0.1:x@evil.example` used to read as `10.1.0.1` — private, so plain http — while the
     // request went to `evil.example`. There is no such string to judge any more.
-    expect(parseDeclaredHost('10.0.0.1:x@evil.example')).toBeNull()
+    expect(parseDeclaredHost('10.1.0.1:x@evil.example')).toBeNull()
   })
 
   it('keeps the port and strips the brackets only to judge the address', () => {
@@ -245,7 +245,7 @@ describe('the type a declaration amounts to', () => {
 })
 
 describe('keeping the registry in step with what is installed', () => {
-  const entry = (source: 'builtin' | 'installed', connection?: ConnectionDecl) =>
+  const entry = (source: 'builtin' | 'installed' | 'dev', connection?: ConnectionDecl) =>
     ({ manifest: { connection } as never, source })
 
   it('registers a declared type for an installed widget and drops it when it goes', () => {
@@ -266,6 +266,12 @@ describe('keeping the registry in step with what is installed', () => {
     ]
     const found = declaredFromCatalog(entries, (id) => entries.find(([i]) => i === id)?.[1].manifest)
     expect(found.map((f) => f.widgetId)).toEqual(['homey-flows'])
+  })
+
+  it('registers one for a widget being written, as it will once published', () => {
+    const entries: [string, ReturnType<typeof entry>][] = [['my-widget', entry('dev', bearer())]]
+    const found = declaredFromCatalog(entries, (id) => entries.find(([i]) => i === id)?.[1].manifest)
+    expect(found.map((f) => f.widgetId)).toEqual(['my-widget'])
   })
 
   it('registers nothing for a widget whose declaration was not granted', () => {
@@ -310,7 +316,7 @@ describe('the guard the connection save applies', () => {
   it('refuses a declared type whose address is not an address', () => {
     // The route's own expression, as a function: a declared type exists only while a widget
     // that declares it is installed, so the route cannot be reached from a connections test.
-    for (const host of ['10.0.0.1:x@evil.example', 'user:pw@evil.example', '10.0.0.1/../x', '10.0.0.1?a=b', '']) {
+    for (const host of ['10.1.0.1:x@evil.example', 'user:pw@evil.example', '10.1.0.1/../x', '10.1.0.1?a=b', '']) {
       expect(rejectsHost('decl:w:thing', { host }), host).toBe(true)
     }
     expect(rejectsHost('decl:w:thing', { host: '192.168.1.40:9123' })).toBe(false)

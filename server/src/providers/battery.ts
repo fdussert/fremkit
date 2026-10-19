@@ -223,9 +223,9 @@ export function createBatteryProvider(exec: Exec = execCommand): Provider<Batter
     intervalMs: BATTERY_INTERVAL_MS,
     async poll(): Promise<BatterySnapshot> {
       const [pmset, bluetooth, ioreg] = await Promise.all([
-        run('pmset', ['-g', 'batt']),
-        run('system_profiler', ['SPBluetoothDataType', '-json']),
-        run('ioreg', ['-r', '-l', '-n', 'AppleDeviceManagementHIDEventService']),
+        run('/usr/bin/pmset', ['-g', 'batt']),
+        run('/usr/sbin/system_profiler', ['SPBluetoothDataType', '-json']),
+        run('/usr/sbin/ioreg', ['-r', '-l', '-n', 'AppleDeviceManagementHIDEventService']),
       ])
       const mac = parsePmset(pmset)
       const devices = mergeBatteryDevices(parseBluetoothDevices(bluetooth), parseIoregBatteries(ioreg))

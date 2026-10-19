@@ -1,12 +1,20 @@
-import { onMounted, onUnmounted, ref, watch, type Ref } from 'vue'
+import { inject, onMounted, onUnmounted, ref, watch, type InjectionKey, type Ref } from 'vue'
 import { useSocket } from './socket'
 import { t, useI18n } from './i18n'
 import { isHexColor, tileText } from './color'
 import { useAppliedTheme, useThemeColors } from './theme'
 import { channelAllowed, mergeSettings, type AccentMode, type NavSlot, type WidgetInstance, type WidgetManifest, type WidgetSize } from './types'
-import { FrameTrust, appIconTarget, connRequest, faviconTarget, fetchTarget, imageTarget, mayListApps, nonEmptyString, stampInstance } from './widgetMessages'
+import { onWidgetReload } from './widgetDev'
+import { FrameTrust, HOLD_SWIPE_EVENT, appIconTarget, connRequest, faviconTarget, fetchTarget, helloNonce, imageTarget, mayListApps, nonEmptyString, stampInstance } from './widgetMessages'
 
 export type BridgeState = 'loading' | 'ready' | 'error'
+
+/**
+ * The id of the screen the frames below are drawn on, provided by the dashboard (the screen it
+ * shows) and the admin (the screen being edited). Handed to each widget as `Fremkit.screen`, for
+ * the few whose data is per screen — brightness. Absent, a widget is told `null`.
+ */
+export const SCREEN_ID: InjectionKey<() => string | undefined> = Symbol('fremkit-screen-id')
 
 /** A blob as a `data:` URL, the one form of an image a sandboxed frame can show without fetching. */
 function dataUrl(blob: Blob): Promise<string> {
@@ -50,6 +58,7 @@ export function useWidgetBridge(
   options: BridgeOptions = {},
 ): { state: Ref<BridgeState> } {
   const socket = useSocket()
+  const screenId = inject(SCREEN_ID, () => undefined)
   // The tokens the host is painting, handed on so a widget wears the same theme as its frame.
   const theme = useAppliedTheme()
   const themeColors = useThemeColors()
@@ -89,7 +98,15 @@ export function useWidgetBridge(
   // Settings and data come out of Vue's reactive config as Proxies, which postMessage cannot
   // structured-clone (a DataCloneError on the first array-valued setting). JSON round-trip
   // strips the proxies; every message here is plain JSON anyway.
-  const post = (msg: unknown) => iframe.value?.contentWindow?.postMessage(JSON.parse(JSON.stringify(msg)), '*')
+  //
+  // Everything goes over the port of the document that said hello, never to the frame's window:
+  // a window survives a navigation, a port does not. A frame's origin is opaque, so a window post
+  // could only ever be addressed to '*' — that is, to whichever document is in it by then.
+  let port: MessagePort | null = null
+  /** True once the port's first message proved it is held by the document that said hello. */
+  let connected = false
+  let expectedNonce: string | null = null
+  const post = (msg: unknown) => { if (port && connected) port.postMessage(JSON.parse(JSON.stringify(msg))) }
   const reply = (id: string, result?: unknown, error?: string) => post({ type: 'fremkit:result', id, result, error })
 
   const str = nonEmptyString
@@ -97,35 +114,68 @@ export function useWidgetBridge(
   /** See widgetMessages.ts: the rules live there so they can be tested without a DOM. */
   const trust = new FrameTrust()
 
-  function onLoad() {
-    trust.onLoad(iframe.value?.getAttribute('src') ?? '')
-    if (trust.trusted) return
-    // A document that navigated itself keeps nothing of the one we were talking to.
+  /** Stops talking to the current document: its port, its subscriptions. */
+  function hangUp() {
+    port?.close()
+    port = null
+    connected = false
+    expectedNonce = null
     unsubs.forEach((f) => f())
     unsubs.clear()
+  }
+
+  function disown() {
+    // A document that navigated itself keeps nothing of the one we were talking to.
+    hangUp()
     state.value = 'error'
   }
 
+  function onLoad() {
+    trust.onLoad(iframe.value?.getAttribute('src') ?? '')
+    if (!trust.trusted) disown()
+  }
+
+  /**
+   * The window channel carries one thing: a document's hello. The answer is a port, and nothing
+   * else — no settings, no data — until that document has repeated its nonce on the port.
+   */
   function onMessage(ev: MessageEvent) {
     if (!iframe.value || ev.source !== iframe.value.contentWindow) return
+    const nonce = helloNonce(ev.data)
+    if (!nonce) return
+    trust.onHello(iframe.value.getAttribute('src') ?? '')
+    if (!trust.trusted) { disown(); return }
+    hangUp()
+    const channel = new MessageChannel()
+    port = channel.port1
+    expectedNonce = nonce
+    port.onmessage = onPortMessage
+    iframe.value.contentWindow?.postMessage({ type: 'fremkit:connect' }, '*', [channel.port2])
+  }
+
+  function onPortMessage(ev: MessageEvent) {
     if (!trust.trusted) return
     const m = ev.data
+    if (!connected) {
+      if (helloNonce(m) !== expectedNonce) { hangUp(); return }
+      connected = true
+      post({
+        type: 'fremkit:init',
+        instanceId: instance().instanceId,
+        screen: screenId() ?? null,
+        settings: mergeSettings(manifest(), instance().settings),
+        size: size(),
+        ...chrome(),
+        showTitle: instance().showTitle,
+        compact: options.compact?.() === true,
+        locale: locale.value,
+      })
+      state.value = 'ready'
+      window.clearTimeout(timer)
+      return
+    }
     if (!m || typeof m.type !== 'string') return
     switch (m.type) {
-      case 'fremkit:hello':
-        post({
-          type: 'fremkit:init',
-          instanceId: instance().instanceId,
-          settings: mergeSettings(manifest(), instance().settings),
-          size: size(),
-          ...chrome(),
-          showTitle: instance().showTitle,
-          compact: options.compact?.() === true,
-          locale: locale.value,
-        })
-        state.value = 'ready'
-        window.clearTimeout(timer)
-        break
       case 'fremkit:subscribe': {
         const channel = str(m.channel)
         if (!channel || !channelAllowed(manifest()?.subscriptions ?? [], channel)) break
@@ -133,6 +183,10 @@ export function useWidgetBridge(
         unsubs.set(channel, socket.subscribe(channel, (data) => post({ type: 'fremkit:data', channel, data })))
         break
       }
+      case 'fremkit:hold-swipe':
+        // useSwipe listens on the host window; the admin has no swipe and ignores it.
+        window.dispatchEvent(new Event(HOLD_SWIPE_EVENT))
+        break
       case 'fremkit:unsubscribe': {
         // A widget whose settings now point at another connection drops the old channel.
         const channel = str(m.channel)
@@ -199,7 +253,9 @@ export function useWidgetBridge(
         // only an address found in this widget's own settings: the whole URL leaves the machine.
         const id = str(m.id)
         if (!id) break
-        const url = imageTarget(m, mergeSettings(manifest(), instance().settings))
+        // The instance's own settings, not merged with the manifest's defaults: a default is the
+        // widget author's text, and would let a widget fetch an address of its choosing.
+        const url = imageTarget(m, instance().settings)
         if (!url) { reply(id, undefined, t('bridge.badRequest')); break }
         fetch(`/api/favicon?image=${encodeURIComponent(url)}`)
           .then(async (r) => {
@@ -248,16 +304,54 @@ export function useWidgetBridge(
     timer = window.setTimeout(() => { if (state.value === 'loading') state.value = 'error' }, 5000)
   }
 
+  /**
+   * Loads the frame's document again, as a fresh one: the subscriptions it held are dropped (the
+   * new document asks for its own) and the trust state starts over, since the load that follows
+   * is ours and not the widget navigating itself.
+   */
+  function reloadFrame() {
+    const el = iframe.value
+    const src = el?.getAttribute('src')
+    if (!el || !src) return
+    unsubs.forEach((f) => f())
+    unsubs.clear()
+    trust.reset()
+    state.value = 'loading'
+    armTimeout()
+    // Setting the attribute navigates even to the same value; the server sends the page no-store.
+    el.setAttribute('src', src)
+  }
+
+  /** A pending wait for a new manifest, so an unmount or a second save can drop it. */
+  let stopWaiting: (() => void) | undefined
+  /**
+   * The widget's files were saved (`FREMKIT_WIDGET_DEV=1` only). After a manifest change the
+   * frame waits for the page to have the new manifest — its channels, its settings defaults —
+   * so the document that loads is answered with it; a second is the most it waits.
+   */
+  const offReload = onWidgetReload((reload) => {
+    if (!reload.ids.includes(instance().widgetId)) return
+    stopWaiting?.()
+    if (!reload.manifest) { reloadFrame(); return }
+    const before = manifest()
+    let stopWatch: (() => void) | undefined
+    const done = () => { window.clearTimeout(fallback); stopWatch?.(); stopWaiting = undefined }
+    const fallback = window.setTimeout(() => { done(); reloadFrame() }, 1000)
+    stopWatch = watch(manifest, (m) => { if (m !== before) { done(); reloadFrame() } })
+    stopWaiting = done
+  })
+
   onMounted(() => {
     window.addEventListener('message', onMessage)
     if (!manifest()) { state.value = 'error'; return }
     armTimeout()
   })
   onUnmounted(() => {
+    offReload()
+    stopWaiting?.()
     window.removeEventListener('message', onMessage)
     iframe.value?.removeEventListener('load', onLoad)
-    unsubs.forEach((f) => f())
-    unsubs.clear()
+    hangUp()
     window.clearTimeout(timer)
   })
   // The frame is behind a `v-if="manifest"`, so it appears after this runs — and reappears as a
@@ -266,6 +360,7 @@ export function useWidgetBridge(
   // self-navigation and the frame stayed disowned for the rest of its life.
   watch(iframe, (el, old) => {
     old?.removeEventListener('load', onLoad)
+    if (old !== el) hangUp()
     trust.reset()
     if (state.value === 'error' && manifest()) { state.value = 'loading'; armTimeout() }
     el?.addEventListener('load', onLoad)

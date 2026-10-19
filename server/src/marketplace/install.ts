@@ -14,7 +14,7 @@ import { createHash } from 'node:crypto'
 import { mkdir, mkdtemp, readdir, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { readZip, ZipError } from '../backup/zip.js'
-import { ManifestSchema, type WidgetManifest } from '../widgets/manifest.js'
+import { builtinOnlyChannels, ManifestSchema, previewProblems, type WidgetManifest } from '../widgets/manifest.js'
 import { ThemeSchema, type Theme } from '../themes/theme.js'
 import { SDK_VERSION } from '../bridge/sdk.js'
 import { isPrivateLiteral } from '../net/private.js'
@@ -83,6 +83,7 @@ export type InstallErrorKey =
   | 'marketplace.idMismatch'
   | 'marketplace.sdkTooNew'
   | 'marketplace.hashMismatch'
+  | 'marketplace.builtinOnlyChannel'
 
 export class InstallError extends Error {
   constructor(readonly key: InstallErrorKey, locale?: Locale) {
@@ -159,8 +160,10 @@ export function readPackage(
     if (!safeEntryName(entry.name, kind)) throw new InstallError('marketplace.badPackage', locale)
     if (entry.data.byteLength > limits.maxFileBytes) throw new InstallError('marketplace.badPackage', locale)
     // Two entries of the same name: which one ends up on disk would depend on the write order,
-    // which is exactly the kind of question an archive should not get to ask.
-    const key = entry.name.toLowerCase()
+    // which is exactly the kind of question an archive should not get to ask. "The same" as the
+    // disk sees it: APFS ignores case and Unicode normalisation, so `é` written precomposed (NFC)
+    // and decomposed (NFD) name one file, and the second would silently replace the first.
+    const key = entry.name.normalize('NFC').toLowerCase()
     if (seen.has(key)) throw new InstallError('marketplace.badPackage', locale)
     seen.add(key)
   }
@@ -181,10 +184,18 @@ export function readPackage(
   // could land under a name they never saw — including one they already trust.
   if (manifest.id !== expected.id) throw new InstallError('marketplace.idMismatch', locale)
   if (manifest.sdk > SDK_VERSION) throw new InstallError('marketplace.sdkTooNew', locale)
+  // Before the consent dialog, not after: there is no answer the user could give that grants it.
+  if (builtinOnlyChannels(manifest).length > 0) throw new InstallError('marketplace.builtinOnlyChannel', locale)
   // The schema refuses these already. Said twice because it is the rule that turns the proxy
   // into a way to read this machine's own services, and one check is never enough for that one.
   if (manifest.permissions.network.some((host) => isPrivateLiteral(host))) {
     throw new InstallError('marketplace.badManifest', locale)
+  }
+  // A preview the manifest names has to be in the package, small, and the image it claims to be:
+  // the admin draws it in an <img>. Its dimensions are the registry's business, not this one's.
+  if (manifest.preview !== undefined) {
+    const file = entries.find((e) => e.name === manifest.preview)
+    if (previewProblems(manifest, file?.data ?? null).length > 0) throw new InstallError('marketplace.badPackage', locale)
   }
 
   return { kind: 'widget', version: manifest.version, manifest, files: entries }

@@ -6,6 +6,10 @@ import FremkitCore
 enum ServerState: Equatable {
     /// The port already answered at startup: someone else's `pnpm dev` owns the server.
     case external
+    /// Something that is not our server holds the port: it could not prove it holds the secret
+    /// (`AccessProof`). Nothing is sent to it and nothing it serves is shown; the helper keeps
+    /// watching and starts its own server once the port is free.
+    case foreign(Int)
     /// A child process has been spawned but has not answered `/api/config` yet.
     case starting
     /// The child process is up and serving.
@@ -19,6 +23,7 @@ enum ServerState: Equatable {
     var label: String {
         switch self {
         case .external: return L10n.string(.serverExternal)
+        case let .foreign(port): return L10n.string(.serverForeign, port)
         case .starting: return L10n.string(.serverStarting)
         case .running: return L10n.string(.serverRunning)
         case .stopped: return L10n.string(.serverStopped)
@@ -27,7 +32,8 @@ enum ServerState: Equatable {
     }
 }
 
-/// Supervises `pnpm --filter server start` in the repo, or steps aside when the port is already taken.
+/// Supervises the dashboard server — the checkout's under tsx, or the one bundled in the app (see
+/// `ServerLaunch`) — or steps aside when the port is already taken.
 ///
 /// All mutable state is touched on the main thread only: the probe and the termination handler hop
 /// back before changing anything.
@@ -46,6 +52,10 @@ final class ServerProcess {
     private static let quietTimeout: TimeInterval = 4
 
     private let config: HelperConfig
+    /// The access secret this helper hands its servers and presents to whichever one answers.
+    private let access: ServerAccess
+    /// Checkout or bundle, decided once at launch from `repoPath` and what the bundle carries.
+    let launch: ServerLaunch
     private let probeQueue = DispatchQueue(label: "dev.fremkit.helper.server.probe")
 
     /// The child we currently supervise. Cleared the moment we ask it to die, so a rapid
@@ -60,10 +70,12 @@ final class ServerProcess {
     private var backoffIndex = 0
     private var startedAt: Date?
     private var restartWork: DispatchWorkItem?
-    /// Set once the startup probe found someone else on the port. While it is set we keep probing:
-    /// if that server goes away (a `pnpm dev` stopped, or a previous helper's child that was still
-    /// dying when we probed), we take over and spawn our own.
+    /// Set once a probe found someone else on the port — a server of ours we did not start, or a
+    /// foreign listener. While it is set we keep probing: if it goes away (a `pnpm dev` stopped, a
+    /// previous helper's child that was still dying when we probed), we take over and spawn our own.
     private var isExternal = false
+    /// What stands on the port while `isExternal` is set: `.external` or `.foreign`.
+    private var asideState: ServerState = .external
     private var externalWatch: DispatchWorkItem?
     private var healthWatch: DispatchWorkItem?
     private var healthMisses = 0
@@ -85,14 +97,19 @@ final class ServerProcess {
         }
     }
 
-    init(config: HelperConfig) {
+    init(config: HelperConfig, access: ServerAccess) {
         self.config = config
+        self.access = access
+        // Resolved like proc_pidpath resolves the child's executable, for the orphan guard.
+        let resources = Bundle.main.resourcePath.map(Self.realPath)
+        launch = ServerLaunch.decide(repoPath: config.repoPath, resourcesPath: resources) {
+            FileManager.default.isExecutableFile(atPath: $0)
+        }
     }
 
-    /// `~/Library/Logs/Fremkit/server.log`. Never rotated.
+    /// `~/Library/Logs/Fremkit/server.log`, rolled over by `openLog`.
     static var logURL: URL {
-        URL(fileURLWithPath: NSHomeDirectory())
-            .appendingPathComponent("Library/Logs/Fremkit/server.log")
+        HelperPaths.logDirectory().appendingPathComponent("server.log")
     }
 
     /// `~/Library/Application Support/Fremkit/server.pid`, holding the pid of the live child.
@@ -125,12 +142,10 @@ final class ServerProcess {
         // and wrongly declare an external server, so settle first.
         waitForQuiet(deadline: Date().addingTimeInterval(Self.quietTimeout)) { [weak self] in
             guard let self, self.managed else { return }
-            self.probe { [weak self] alive in
+            self.probe { [weak self] verdict in
                 guard let self, self.managed else { return }
-                if alive {
-                    self.isExternal = true
-                    self.state = .external
-                    self.watchExternal()
+                if verdict != .absent {
+                    self.standAside(verdict)
                     return
                 }
                 self.isExternal = false
@@ -139,16 +154,35 @@ final class ServerProcess {
         }
     }
 
-    /// Keeps probing an external server; after two consecutive misses (~10 s) we spawn our own.
+    /// Something else holds the port: our server under someone else's hand, or a foreign listener.
+    private func standAside(_ verdict: AccessProof.Verdict) {
+        access.forgetSpawn()
+        isExternal = true
+        noteAside(verdict)
+        watchExternal()
+    }
+
+    private func noteAside(_ verdict: AccessProof.Verdict) {
+        if verdict == .foreign {
+            NSLog("fremkit: port %d is held by a listener that cannot prove it is our server", config.port)
+        }
+        asideState = verdict == .foreign ? .foreign(config.port) : .external
+        state = asideState
+    }
+
+    /// Keeps probing what holds the port; after two consecutive misses (~10 s) we spawn our own.
+    /// A listener that proves itself later (a `pnpm dev` that had not written its token file yet)
+    /// moves from foreign to external, and the other way round.
     private func watchExternal() {
         externalWatch?.cancel()
         externalMisses = 0
         let work = DispatchWorkItem { [weak self] in
             guard let self, self.managed, self.isExternal else { return }
-            self.probe { [weak self] alive in
+            self.probe { [weak self] verdict in
                 guard let self, self.managed, self.isExternal else { return }
-                if alive {
+                if verdict != .absent {
                     self.externalMisses = 0
+                    self.noteAside(verdict)
                 } else {
                     self.externalMisses += 1
                     if self.externalMisses >= Self.externalMissesBeforeTakeover {
@@ -170,6 +204,7 @@ final class ServerProcess {
     func stop() {
         managed = false
         Self.removePidFile()
+        access.forgetSpawn()
         restartWork?.cancel()
         restartWork = nil
         externalWatch?.cancel()
@@ -181,7 +216,7 @@ final class ServerProcess {
         guard let child = process, child.isRunning else {
             process = nil
             closeLog()
-            state = isExternal ? .external : .stopped
+            state = isExternal ? asideState : .stopped
             return
         }
 
@@ -206,6 +241,7 @@ final class ServerProcess {
     func stopAndWait(timeout: TimeInterval) {
         managed = false
         Self.removePidFile()
+        access.forgetSpawn()
         restartWork?.cancel()
         restartWork = nil
         externalWatch?.cancel()
@@ -217,7 +253,7 @@ final class ServerProcess {
         guard let child = process, child.isRunning else {
             process = nil
             closeLog()
-            state = isExternal ? .external : .stopped
+            state = isExternal ? asideState : .stopped
             return
         }
 
@@ -252,8 +288,8 @@ final class ServerProcess {
     /// After a stop, checks the port really went quiet; a survivor means the tree kill missed one.
     private func verifyPortReleased() {
         let port = config.port
-        probe { alive in
-            guard alive else { return }
+        probe { verdict in
+            guard verdict != .absent else { return }
             NSLog("fremkit: something still answers port %d after stopping the server", port)
         }
     }
@@ -321,80 +357,34 @@ final class ServerProcess {
 
     // MARK: - Probe
 
-    /// GETs `/api/config` on the configured port; `alive` is called on the main thread.
-    func probe(_ alive: @escaping (Bool) -> Void) {
-        guard let url = URL(string: "http://127.0.0.1:\(config.port)/api/config") else {
-            DispatchQueue.main.async { alive(false) }
-            return
-        }
-
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.timeoutIntervalForRequest = Self.probeTimeout
-        configuration.timeoutIntervalForResource = Self.probeTimeout
-        let queue = OperationQueue()
-        queue.maxConcurrentOperationCount = 1
-        queue.underlyingQueue = probeQueue
-        let session = URLSession(configuration: configuration, delegate: nil, delegateQueue: queue)
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        request.timeoutInterval = Self.probeTimeout
-
-        session.dataTask(with: request) { data, response, _ in
-            // Any 2xx-4xx from anything at all used to count as "a server is here", so a
-            // completely unrelated program on 4242 made the helper stand down and stop
-            // supervising — with no way back but a relaunch. The answer has to look like ours:
-            // a 200 whose body is a Fremkit config.
-            let http = response as? HTTPURLResponse
-            let ok = http?.statusCode == 200 && ServerProbe.looksLikeFremkitConfig(data)
-            session.finishTasksAndInvalidate()
-            DispatchQueue.main.async { alive(ok) }
-        }.resume()
+    /// Asks the listener on the configured port to prove it is our server (see `AccessProof` and
+    /// `ServerAccess.probe`); `done` is called on the main thread. No credential is sent: a
+    /// listener that cannot answer is `.foreign`, and is never handed the secret.
+    func probe(_ done: @escaping (AccessProof.Verdict) -> Void) {
+        access.probe(timeout: Self.probeTimeout, queue: probeQueue, done)
     }
 
     // MARK: - Spawning
 
     private func spawn() {
-        let server = URL(fileURLWithPath: config.repoPath).appendingPathComponent("server")
-        let entry = server.appendingPathComponent("src/index.ts")
-        // A repoPath that is not a checkout — never configured, renamed, on an unmounted volume —
-        // used to be spawned anyway, failing once a second for ever behind the backoff. Say so
-        // once and stop instead.
-        guard FileManager.default.fileExists(atPath: entry.path) else {
-            NSLog("fremkit: no server/src/index.ts under repoPath; not starting a server. "
-                + "Fix repoPath in helper.json and relaunch the helper — this does not retry on its own.")
-            state = .stopped
-            return
-        }
-        let tsx = server.appendingPathComponent("node_modules/tsx/dist/cli.mjs")
-        guard FileManager.default.fileExists(atPath: tsx.path) else {
-            NSLog("fremkit: tsx is not installed in the checkout; run pnpm install, then relaunch "
-                + "the helper — this does not retry on its own.")
-            state = .stopped
-            return
-        }
-        guard let node = Self.resolveNode() else {
-            NSLog("fremkit: no node executable found; install Node 22 or later, then relaunch the "
-                + "helper — this does not retry on its own.")
-            state = .stopped
-            return
-        }
-
         let process = Process()
-        // Run the server itself, not a pnpm wrapper around it: the supervised process must be
-        // the one that binds the port, so its death (or a stray kill) is what we observe. node and
-        // tsx are named by absolute path rather than looked up through `env` and PATH, so a login
-        // item's environment cannot decide which interpreter runs the dashboard.
-        process.executableURL = node
-        process.arguments = [tsx.path, "src/index.ts"]
-        process.currentDirectoryURL = server
-
-        var environment = ProcessInfo.processInfo.environment
-        // A login item inherits a bare PATH; node lives in the usual Homebrew spots and tsx in the
-        // server package's own bin directory.
-        let extra = "\(config.repoPath)/server/node_modules/.bin:/opt/homebrew/bin:/usr/local/bin:\(NSHomeDirectory())/Library/pnpm"
-        environment["PATH"] = extra + ":" + (environment["PATH"] ?? "/usr/bin:/bin:/usr/sbin:/sbin")
-        process.environment = environment
+        switch launch {
+        case let .checkout(repoPath):
+            guard configureCheckout(process, repoPath: repoPath) else { return }
+        case let .bundled(resourcesPath):
+            // Nothing to look for: decide() only picks this when the executable is there.
+            process.executableURL = URL(fileURLWithPath: resourcesPath)
+                .appendingPathComponent(ServerLaunch.bundledExecutable)
+            process.arguments = []
+            process.currentDirectoryURL = URL(fileURLWithPath: resourcesPath)
+        }
+        process.environment = launch.environment(
+            inheriting: ProcessInfo.processInfo.environment,
+            port: config.port,
+            dataDirectory: HelperPaths.supportDirectory().path,
+            home: NSHomeDirectory(),
+            scanner: Self.diskScanner(),
+            accessToken: access.newSpawnToken())
 
         // The handle has to exist before run(), so a failed launch closes it again rather than
         // leaking a descriptor on every retry of the backoff loop.
@@ -412,6 +402,7 @@ final class ServerProcess {
             try process.run()
         } catch {
             try? handle?.close()
+            access.forgetSpawn()
             NSLog("fremkit: cannot start server: %@", String(describing: error))
             scheduleRestart()
             return
@@ -425,6 +416,44 @@ final class ServerProcess {
         pollReady()
     }
 
+    /// Points `process` at `node tsx src/index.ts` in the checkout, or says why it cannot and
+    /// returns false.
+    private func configureCheckout(_ process: Process, repoPath: String) -> Bool {
+        let server = URL(fileURLWithPath: repoPath).appendingPathComponent("server")
+        let entry = server.appendingPathComponent("src/index.ts")
+        // A repoPath that is not a checkout — never configured, renamed, on an unmounted volume —
+        // used to be spawned anyway, failing once a second for ever behind the backoff. Say so
+        // once and stop instead.
+        guard FileManager.default.fileExists(atPath: entry.path) else {
+            NSLog("fremkit: no server/src/index.ts under repoPath; not starting a server. "
+                + "Fix repoPath in helper.json and relaunch the helper — this does not retry on its own.")
+            state = .stopped
+            return false
+        }
+        let tsx = server.appendingPathComponent("node_modules/tsx/dist/cli.mjs")
+        guard FileManager.default.fileExists(atPath: tsx.path) else {
+            NSLog("fremkit: tsx is not installed in the checkout; run pnpm install, then relaunch "
+                + "the helper — this does not retry on its own.")
+            state = .stopped
+            return false
+        }
+        guard let node = Self.resolveNode() else {
+            NSLog("fremkit: no node executable found; install Node 22 or later, then relaunch the "
+                + "helper — this does not retry on its own.")
+            state = .stopped
+            return false
+        }
+
+        // Run the server itself, not a pnpm wrapper around it: the supervised process must be
+        // the one that binds the port, so its death (or a stray kill) is what we observe. node and
+        // tsx are named by absolute path rather than looked up through `env` and PATH, so a login
+        // item's environment cannot decide which interpreter runs the dashboard.
+        process.executableURL = node
+        process.arguments = [tsx.path, "src/index.ts"]
+        process.currentDirectoryURL = server
+        return true
+    }
+
     /// Asks the port whether the fresh child is serving yet, once a second.
     ///
     /// `pnpm start` reports nothing on readiness, and mere survival is not proof that it bound the
@@ -436,17 +465,17 @@ final class ServerProcess {
     private func pollReady() {
         guard managed, state == .starting, let child = process, child.isRunning else { return }
 
-        probe { [weak self] alive in
+        probe { [weak self] verdict in
             guard let self, self.managed, self.state == .starting,
                   let running = self.process, running === child, running.isRunning else { return }
-            if alive {
+            if verdict == .ours {
                 self.state = .running
                 self.watchHealth(child)
                 return
             }
             if let startedAt = self.startedAt,
                Date().timeIntervalSince(startedAt) >= Self.healthyAfter {
-                NSLog("fremkit: server child alive for %.0f s but /api/config never answered; reporting it as running",
+                NSLog("fremkit: server child alive for %.0f s but never proved itself on /auth/proof; reporting it as running",
                       Self.healthyAfter)
                 self.state = .running
                 self.watchHealth(child)
@@ -465,9 +494,9 @@ final class ServerProcess {
         let work = DispatchWorkItem { [weak self] in
             guard let self, self.managed, self.state == .running,
                   let running = self.process, running === child, running.isRunning else { return }
-            self.probe { [weak self] alive in
+            self.probe { [weak self] verdict in
                 guard let self, self.managed, let running = self.process, running === child else { return }
-                self.healthMisses = alive ? 0 : self.healthMisses + 1
+                self.healthMisses = verdict == .ours ? 0 : self.healthMisses + 1
                 if self.healthMisses >= Self.healthMissesBeforeRestart {
                     NSLog("fremkit: server child no longer answers on port %d; restarting it", self.config.port)
                     self.healthMisses = 0
@@ -489,6 +518,8 @@ final class ServerProcess {
         }
         process = nil
         closeLog()
+        // Its secret dies with it: nothing is presented until the next listener proves itself.
+        access.forgetSpawn()
 
         guard managed else {
             state = .stopped
@@ -512,7 +543,12 @@ final class ServerProcess {
         let work = DispatchWorkItem { [weak self] in
             guard let self, self.managed else { return }
             self.restartWork = nil
-            self.spawn()
+            // The port may have been taken while ours was down — by a `pnpm dev`, or by a
+            // listener that is not ours at all. Look before spawning onto it.
+            self.probe { [weak self] verdict in
+                guard let self, self.managed, self.restartWork == nil, self.process == nil else { return }
+                if verdict == .absent { self.spawn() } else { self.standAside(verdict) }
+            }
         }
         restartWork = work
         DispatchQueue.main.asyncAfter(deadline: .now() + .seconds(delay), execute: work)
@@ -550,19 +586,12 @@ final class ServerProcess {
             return
         }
 
-        // Both, not either: "contains server and (repoPath or pnpm or node)" matched almost any
-        // Node process on the machine — the pid file is stale often enough that this was a real
-        // way to kill something else entirely. Our own child is `node …/tsx/… src/index.ts` run
-        // from this checkout, so it carries both the repo path and the entry point.
-        // An empty repoPath would make `contains` true for everything, which is how a guard
-        // meant to protect an unrelated process would kill it instead.
-        guard !config.repoPath.isEmpty else {
-            NSLog("fremkit: no repoPath configured; leaving pid %d alone", pid)
-            Self.removePidFile()
-            return
-        }
+        // The match is ServerLaunch's: both the repo path and the entry point for a checkout,
+        // the bundle's own executable for the app. "contains server and (repoPath or pnpm or
+        // node)" once matched almost any Node process on the machine — the pid file is stale
+        // often enough that this was a real way to kill something else entirely.
         let command = Self.commandLine(of: pid)
-        guard command.contains(config.repoPath), command.contains("src/index.ts") else {
+        guard launch.isOwnServer(commandLine: command, executablePath: Self.executablePath(of: pid)) else {
             // The command line is not logged: it is another process's, and the log is a file the
             // user may hand to someone else.
             NSLog("fremkit: pid %d from server.pid is not our server, leaving it alone", pid)
@@ -581,6 +610,28 @@ final class ServerProcess {
             Self.killTree(pid, signal: SIGKILL)
         }
         Self.removePidFile()
+    }
+
+    /// The executable `pid` runs, as the kernel knows it (symlinks resolved), or nil.
+    /// The disk map's scanner, built into `Contents/MacOS` beside this executable, if it is there.
+    private static func diskScanner() -> String? {
+        guard let scanner = Bundle.main.executableURL?.deletingLastPathComponent()
+            .appendingPathComponent("fremkit-scan"),
+            FileManager.default.isExecutableFile(atPath: scanner.path) else { return nil }
+        return scanner.path
+    }
+
+    private static func executablePath(of pid: pid_t) -> String? {
+        var buffer = [CChar](repeating: 0, count: Int(MAXPATHLEN) * 4)
+        guard proc_pidpath(pid, &buffer, UInt32(buffer.count)) > 0 else { return nil }
+        return String(cString: buffer)
+    }
+
+    /// `path` with every symlink resolved, or `path` itself when it cannot be.
+    private static func realPath(_ path: String) -> String {
+        guard let resolved = realpath(path, nil) else { return path }
+        defer { free(resolved) }
+        return String(cString: resolved)
     }
 
     /// Full command line of `pid` via `ps`, or an empty string when it cannot be read.

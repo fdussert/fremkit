@@ -1,0 +1,2 @@
+/* Affiché par macOS la première fois que le serveur demande à Terminal ou iTerm2 de ramener une session Claude Code. */
+"NSAppleEventsUsageDescription" = "Fremkit ramène au premier plan la fenêtre de la session Claude Code que vous avez touchée.";

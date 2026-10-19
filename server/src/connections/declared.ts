@@ -15,6 +15,7 @@ import { isPrivateLiteral } from '../net/private.js'
 import { tr } from '../i18n.js'
 import type { ConnectionDecl, ConnectionKind, WidgetManifest } from '../widgets/manifest.js'
 import type { ConnectionFieldSpec, ConnectionType, TestResult } from './types.js'
+import type { WidgetSource } from '../widgets/catalog.js'
 import type { Locale } from '../config/schema.js'
 
 /** The prefix that keeps a declared id out of the coded types' namespace, for ever. */
@@ -270,8 +271,9 @@ export function declaredType(widgetId: string, decl: ConnectionDecl, deps: Decla
 /**
  * Which declared types the type registry should be holding, given what is installed.
  *
- * Only *installed* widgets: a built-in that wanted a connection would have a coded type written
- * for it, in this repository, reviewed with it. And only the declaration the user consented to —
+ * Only *installed* widgets, and those in the author's folder under `FREMKIT_WIDGET_DEV=1`: a
+ * built-in that wanted a connection would have a coded type written for it, in this repository,
+ * reviewed with it. And only the declaration the user consented to —
  * a widget cannot widen what it may reach by editing its own manifest on disk, any more than it
  * can widen its channels.
  *
@@ -281,12 +283,13 @@ export function declaredType(widgetId: string, decl: ConnectionDecl, deps: Decla
  * removed a widget is not a decision this code gets to make.
  */
 export function declaredFromCatalog(
-  entries: Iterable<[string, { manifest: WidgetManifest; source: 'builtin' | 'installed' }]>,
+  entries: Iterable<[string, { manifest: WidgetManifest; source: WidgetSource }]>,
   granted: (id: string) => WidgetManifest | undefined,
 ): { widgetId: string; decl: ConnectionDecl }[] {
   const out: { widgetId: string; decl: ConnectionDecl }[] = []
   for (const [id, entry] of entries) {
-    if (entry.source !== 'installed') continue
+    // A widget in the author's folder declares one exactly as it will once published.
+    if (entry.source === 'builtin') continue
     const decl = granted(id)?.connection
     if (decl) out.push({ widgetId: id, decl })
   }

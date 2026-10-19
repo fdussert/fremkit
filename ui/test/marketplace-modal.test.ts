@@ -56,11 +56,15 @@ const MANIFEST: WidgetManifest = {
 
 function config(): Config {
   return {
-    version: 3,
-    display: { cols: 64, rows: 16, cell: 40, autoCycleSeconds: 0 },
+    version: 4,
     connections: [], secrets: { backend: 'file' }, locale: 'en',
     privacy: { claudeAccountUsage: false, showAccountEmail: false, codexAccount: false, codexHistorySources: [], macmonTemperature: false }, marketplace: { installed: {} },
-    pages: [{ id: 'home', name: 'Home', widgets: [] }],
+    widgets: {},
+    screens: [{
+      id: 'edge', name: 'Edge', kind: 'edge',
+      display: { cols: 64, rows: 16, cell: 40, autoCycleSeconds: 0 },
+      nav: [], pages: [{ id: 'home', name: 'Home', items: [] }],
+    }],
   } as unknown as Config
 }
 
@@ -528,7 +532,7 @@ describe('themes in the panel', () => {
     const wrapper = await panel([theme({ installed: true, installedVersion: '1.0.0', inUse: false })])
     expect(wrapper.find('[data-theme="nuit"] button.danger').attributes('disabled')).toBeUndefined()
 
-    s.state.config = { ...config(), display: { ...config().display, theme: 'nuit' } } as Config
+    s.state.config = { ...config(), theme: 'nuit' }
     await wrapper.vm.$nextTick()
     expect(wrapper.find('[data-theme="nuit"] button.danger').attributes('disabled')).toBeDefined()
     wrapper.unmount()

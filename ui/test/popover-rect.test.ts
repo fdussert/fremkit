@@ -49,11 +49,13 @@ describe('popoverRect', () => {
 })
 
 describe('the popover hands the widget its real instanceId', () => {
-  it('reads the nav entry id, unsuffixed', () => {
+  it('reads the bar item id, unsuffixed', () => {
     // The popover used to build `<instanceId>:popup`, which is in no config, so every command
     // resolving its target from the dashboard came back "unknown widget".
     const source = readFileSync(fileURLToPath(new URL('../src/dashboard/NavPopover.vue', import.meta.url)), 'utf8')
-    expect(source).toContain('instanceId: props.navWidget.instanceId')
+    // The id comes from the bar item through compactOf, which nothing in the popover overrides.
+    expect(source).toContain('compactOf({ widgets: props.widgets }, props.item,')
+    expect(source).not.toMatch(/instanceId:/)
     // No suffix built onto the id anywhere in the code (the comment above it may name the old one).
     expect(source).not.toMatch(/instanceId:\s*`/)
   })

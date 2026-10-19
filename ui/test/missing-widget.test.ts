@@ -12,12 +12,13 @@ import { describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
 import WidgetFrame from '../src/dashboard/WidgetFrame.vue'
 import CompactWidgetFrame from '../src/dashboard/CompactWidgetFrame.vue'
-import type { NavWidget, WidgetInstance, WidgetManifest } from '../src/shared/types'
+import type { Config, NavItem, WidgetInstance, WidgetManifest } from '../src/shared/types'
 
 const instance: WidgetInstance = {
   instanceId: 'w-1', widgetId: 'homey-devices', x: 0, y: 0, w: 8, h: 4, showTitle: false, settings: {},
 }
-const navWidget: NavWidget = { instanceId: 'n-1', widgetId: 'homey-devices', slot: 'left', settings: {} }
+const item: NavItem = { instanceId: 'n-1', slot: 'left' }
+const widgets: Config['widgets'] = { 'n-1': { widgetId: 'homey-devices', showTitle: false, settings: {} } }
 
 const MANIFEST: WidgetManifest = {
   id: 'homey-devices', name: { fr: 'Appareils Homey', en: 'Homey devices' }, version: '1.0.0', sdk: 1,
@@ -45,7 +46,7 @@ describe('a tile with no widget behind it', () => {
 
 describe('a bar slot with no widget behind it', () => {
   it('spends its one line on the words rather than on the id', () => {
-    const wrapper = mount(CompactWidgetFrame, { props: { navWidget, cell: 40, height: 80 } })
+    const wrapper = mount(CompactWidgetFrame, { props: { item, widgets, cell: 40, height: 80 } })
     const missing = wrapper.find('.missing')
     expect(missing.text()).toMatch(/non installé|not installed/)
     expect(missing.text()).not.toContain('homey-devices')

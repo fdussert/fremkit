@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { z } from 'zod'
-import type { CommandContext, Provider } from './types.js'
+import { isTrusted, type CommandContext, type Provider } from './types.js'
 import { tr } from '../i18n.js'
 
 /**
@@ -113,18 +113,18 @@ export function isPrivatePasteboard(types: string[]): boolean {
 
 export const pbPasteboard: Pasteboard = {
   read: () => new Promise((resolve, reject) => {
-    execFile('pbpaste', [], { timeout: 5000, maxBuffer: 1024 * 1024 }, (err, stdout) => {
+    execFile('/usr/bin/pbpaste', [], { timeout: 5000, maxBuffer: 1024 * 1024 }, (err, stdout) => {
       // A pasteboard holding no text at all is not an error: it is simply nothing to record.
       if (err) reject(new Error(err.message))
       else resolve(stdout)
     })
   }),
   write: (text) => new Promise((resolve, reject) => {
-    const child = execFile('pbcopy', [], { timeout: 5000 }, (err) => (err ? reject(new Error(err.message)) : resolve()))
+    const child = execFile('/usr/bin/pbcopy', [], { timeout: 5000 }, (err) => (err ? reject(new Error(err.message)) : resolve()))
     child.stdin?.end(text)
   }),
   types: () => new Promise((resolve) => {
-    execFile('osascript', ['-l', 'JavaScript', '-e', TYPES_SCRIPT], { timeout: 5000 }, (err, stdout) => {
+    execFile('/usr/bin/osascript', ['-l', 'JavaScript', '-e', TYPES_SCRIPT], { timeout: 5000 }, (err, stdout) => {
       // A machine that will not run this simply gets the old behaviour, not an empty widget.
       resolve(err ? [] : stdout.split('\n').map((t) => t.trim()).filter(Boolean))
     })
@@ -264,7 +264,7 @@ export function createClipboardProvider(pasteboard: Pasteboard = pbPasteboard, n
     commands: {
       copy: async (payload, ctx?: CommandContext) => {
         // Writing the pasteboard acts on the user's Mac: only a client on that Mac may ask.
-        if (!ctx?.loopback) return { ok: false, error: tr(undefined, 'provider.localOnly') }
+        if (!isTrusted(ctx)) return { ok: false, error: tr(undefined, 'provider.localOnly') }
         const parsed = CopyPayloadSchema.safeParse(payload)
         if (!parsed.success) return { ok: false, error: tr(undefined, 'provider.invalidPayload') }
         const entry = entries.find((e) => e.id === parsed.data.id)
@@ -282,7 +282,7 @@ export function createClipboardProvider(pasteboard: Pasteboard = pbPasteboard, n
       clear: async (_payload, ctx?: CommandContext) => {
         // Emptying the history is acting on what the user's Mac has copied, exactly as `copy` is:
         // same gate, for the same reason.
-        if (!ctx?.loopback) return { ok: false, error: tr(undefined, 'provider.localOnly') }
+        if (!isTrusted(ctx)) return { ok: false, error: tr(undefined, 'provider.localOnly') }
         entries = []
         hashes.clear()
         // `lastHash` deliberately survives: it is what keeps the text still sitting on the

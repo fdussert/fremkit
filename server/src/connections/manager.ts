@@ -59,7 +59,7 @@ export class ConnectionManager {
    * another family — `ics` publishes calendars, so its channel is `calendar:<id>`. The prefix is
    * read from the registry here and nowhere else, so registering and unregistering cannot drift.
    */
-  channelFor(connection: Connection): string {
+  channelFor(connection: Pick<Connection, 'id' | 'type'>): string {
     const prefix = this.deps.types.get(connection.type)?.channelPrefix ?? connection.type
     return `${prefix}:${connection.id}`
   }
@@ -76,12 +76,34 @@ export class ConnectionManager {
     return out
   }
 
+  /**
+   * Every secret key stored for a connection id: what the store holds under it when it can list,
+   * plus the field names its type declares when the type is registered. A connection whose type
+   * is gone (its widget was uninstalled) is still covered by the first.
+   */
+  private async storedKeys(connectionId: string, type: string): Promise<string[]> {
+    const registered = this.deps.types.get(type)
+    const declared = registered ? this.deps.types.secretKeys(registered).map((k) => `${connectionId}/${k}`) : []
+    const listed = this.deps.secrets.keysOf ? await this.deps.secrets.keysOf(connectionId) : []
+    return [...new Set([...declared, ...listed])]
+  }
+
+  /**
+   * Removes whatever is stored under an id before a *new* connection takes it: a secret left by
+   * an earlier connection of that id (deleted while its type was unregistered, or by an older
+   * version) must not be adopted without the checks a secret goes through on the way in.
+   */
+  async purgeStale(connectionId: string, type: string): Promise<void> {
+    return this.enqueue(async () => {
+      for (const key of await this.storedKeys(connectionId, type)) await this.deps.secrets.delete(key)
+    })
+  }
+
   /** Deletes every secret of a connection and drops its provider. Runs on the `sync` queue. */
   async forget(connection: Connection): Promise<void> {
     return this.enqueue(async () => {
-      const type = this.deps.types.get(connection.type)
-      for (const key of type ? this.deps.types.secretKeys(type) : []) {
-        await this.deps.secrets.delete(`${connection.id}/${key}`)
+      for (const key of await this.storedKeys(connection.id, connection.type)) {
+        await this.deps.secrets.delete(key)
       }
       const channel = this.channelFor(connection)
       this.disposeProvider(channel)

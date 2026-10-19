@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process'
 import { z } from 'zod'
-import type { CommandContext, Provider } from './types.js'
+import { isTrusted, type CommandContext, type Provider } from './types.js'
 import { noInstances, type InstanceLookup } from '../config/instances.js'
 import { tr } from '../i18n.js'
 
@@ -113,9 +113,9 @@ export const runProgram: Runner = (file, args) =>
 /** Which program opens which kind of target, as an argv. */
 export function argvFor(payload: OpenPayload): [string, string[]] {
   switch (payload.kind) {
-    case 'app': return ['open', ['-a', payload.target]]
-    case 'url': return ['open', [payload.target]]
-    case 'shortcut': return ['shortcuts', ['run', payload.target]]
+    case 'app': return ['/usr/bin/open', ['-a', payload.target]]
+    case 'url': return ['/usr/bin/open', [payload.target]]
+    case 'shortcut': return ['/usr/bin/shortcuts', ['run', payload.target]]
   }
 }
 
@@ -140,13 +140,14 @@ export function createShortcutsProvider(
       open: async (payload, ctx?: CommandContext): Promise<OpenResult> => {
         // `open` acts on the user's Mac, so only a client on that Mac may ask for it. Fail
         // closed: a caller that provides no context is treated as remote.
-        if (!ctx?.loopback) return { ok: false, error: tr(undefined, 'provider.localOnly') }
+        if (!isTrusted(ctx)) return { ok: false, error: tr(undefined, 'provider.localOnly') }
         const request = OpenRequestSchema.safeParse(payload)
         if (!request.success) {
           return { ok: false, error: request.error.issues[0]?.message ?? tr(undefined, 'provider.invalidPayload') }
         }
-        // The target comes from the user's saved settings, never from the message.
-        const resolved = resolveButton(instances, request.data)
+        // The target comes from the user's saved settings, never from the message; a paired
+        // device finds only the instances of its own screen.
+        const resolved = resolveButton((id) => instances(id, ctx), request.data)
         if (!resolved.ok) return { ok: false, error: resolved.error }
         const [file, args] = argvFor(resolved.payload)
         try {

@@ -15,11 +15,16 @@ import type { Config, ThemesResponse } from '../src/shared/types'
 
 function config(theme: string): Config {
   return {
-    version: 3,
-    display: { cols: 64, rows: 16, cell: 40, autoCycleSeconds: 0, theme },
+    version: 4,
+    theme,
     connections: [], secrets: { backend: 'file' }, locale: 'en',
     privacy: { claudeAccountUsage: false, showAccountEmail: false, codexAccount: false, codexHistorySources: [], macmonTemperature: false }, marketplace: { installed: {} },
-    pages: [{ id: 'home', name: 'Home', widgets: [] }],
+    widgets: {},
+    screens: [{
+      id: 'edge', name: 'Edge', kind: 'edge',
+      display: { cols: 64, rows: 16, cell: 40, autoCycleSeconds: 0 },
+      nav: [], pages: [{ id: 'home', name: 'Home', items: [] }],
+    }],
   } as unknown as Config
 }
 
