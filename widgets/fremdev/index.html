@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Fremdev</title>
+<style>
+  html,body{margin:0;height:100%;background:transparent;color:var(--text, #e6e8eb);font-family:var(--font, -apple-system,system-ui,sans-serif);overflow:hidden;
+    -webkit-user-select:none;user-select:none}
+  .stage{position:relative;height:100%;width:100%;box-sizing:border-box;overflow:hidden}
+
+  /* One sentence when there is nothing to list, in the tile's own colours. */
+  .msg{position:absolute;inset:0;box-sizing:border-box;display:flex;align-items:center;justify-content:center;
+    padding:clamp(10px,4vh,24px) clamp(12px,4vw,32px);text-align:center;
+    font-size:calc(clamp(14px,min(7vh,3.2vw),28px) * var(--text-scale, 1));font-weight:600;line-height:1.2;overflow-wrap:anywhere}
+  .msg:empty,.stage.rows .msg{display:none}
+
+  /* The rows: one per dev tab, worst first. The list scrolls when the tile is short. */
+  .list{height:100%;overflow-y:auto;overscroll-behavior:contain;box-sizing:border-box;padding:clamp(4px,1.6vh,10px) clamp(6px,1.4vw,12px);
+    display:none;flex-direction:column;gap:6px;scrollbar-width:none}
+  .list::-webkit-scrollbar{display:none}
+  .stage.rows .list{display:flex}
+  .row{flex:none;box-sizing:border-box;min-height:56px;display:flex;align-items:center;gap:12px;padding:4px 6px 4px 12px;border-radius:12px;
+    background:rgba(255,255,255,.04);cursor:pointer}
+  .row:active{background:rgba(255,255,255,.1)}
+  .row.flash{animation:flash 1.2s ease-out 1}
+  @keyframes flash{0%{background:color-mix(in srgb, var(--danger, #ff6b5e) 45%, transparent)}100%{background:rgba(255,255,255,.04)}}
+  @media (prefers-reduced-motion:reduce){.row.flash{animation:none}}
+
+  .light{flex:none;width:14px;height:14px;border-radius:50%;background:var(--ok, #46c46e)}
+  .light.orange{background:var(--warn, #f0a020)}
+  .light.red{background:var(--danger, #ff6b5e)}
+
+  .body{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+  .head,.facts{display:flex;align-items:baseline;gap:10px;min-width:0;white-space:nowrap}
+  .app{font-size:calc(17px * var(--text-scale, 1));font-weight:600;overflow:hidden;text-overflow:ellipsis;min-width:0}
+  .browser,.down{flex:none;font-size:calc(13px * var(--text-scale, 1));color:var(--text-muted, #8b93a0)}
+  .down{color:var(--danger, #ff6b5e);font-weight:600}
+  .facts{font-size:calc(14px * var(--text-scale, 1))}
+  .facts:empty{display:none}
+  .fact{display:flex;align-items:baseline;gap:6px;min-width:0;overflow:hidden}
+  .fact.errors{flex:1 1 auto}
+  .fact.requests{flex:0 1 auto;max-width:45%}
+  .n{flex:none;font-weight:700;font-variant-numeric:tabular-nums;color:var(--danger, #ff6b5e)}
+  .fact.requests .n{color:var(--warn, #f0a020)}
+  .t{overflow:hidden;text-overflow:ellipsis;color:var(--text-muted, #8b93a0);font-family:var(--font-mono, ui-monospace, Menlo, monospace)}
+  /* A counter whose events were all dismissed: greyed, with the resolved label in place of the last. */
+  .fact.resolved,.fact.resolved .n{color:var(--text-dim, #6b737c);font-weight:500}
+  .fact.resolved .t{font-family:inherit;color:inherit}
+
+  button.clear{flex:none;box-sizing:border-box;width:44px;height:44px;border:0;border-radius:12px;padding:0;
+    background:transparent;color:var(--text-muted, #8b93a0);font:inherit;font-size:24px;line-height:1;cursor:pointer}
+  button.clear:active{background:var(--accent, #d9b36a);color:var(--on-accent, #0b0d10)}
+  button.clear[hidden]{display:block;visibility:hidden}
+
+  /* The host says which way round the tile is: on-light means dark text on a light body. */
+  html.on-light body{color:var(--on-surface, #0b0d10)}
+  html.on-light .row{background:rgba(0,0,0,.05)}
+  html.on-light .row:active{background:rgba(0,0,0,.12)}
+  html.on-light .browser,html.on-light .t,html.on-light button.clear{color:var(--on-surface, #0b0d10);opacity:.7}
+  html.on-light .fact.resolved,html.on-light .fact.resolved .n{color:var(--on-surface, #0b0d10);opacity:.5}
+  /* An accent body: the accent of the clear button would vanish, so it takes the text colour. */
+  html.accent-fill button.clear:active{background:var(--on-surface, #0b0d10);color:var(--accent, #d9b36a)}
+
+  /*
+   * Compact: the worst light and the open errors, nothing to touch — a tap on a bar tile belongs to
+   * the host, which opens the popover with the full widget and its rows.
+   */
+  .sum{display:none}
+  html.compact body{pointer-events:none}
+  html.compact .stage .list,html.compact .stage .msg{display:none}
+  html.compact .sum{display:flex;height:100%;align-items:center;justify-content:center;gap:8px;padding:0 4px;box-sizing:border-box}
+  html.compact.slot-left .sum{justify-content:flex-start}
+  html.compact.slot-right .sum{justify-content:flex-end}
+  html.compact .sum .light{width:clamp(10px,24vh,18px);height:clamp(10px,24vh,18px)}
+  html.compact .sum .count{font-size:calc(clamp(12px,36vh,28px) * var(--text-scale, 1));font-weight:700;font-variant-numeric:tabular-nums}
+  html.compact .sum .count:empty{display:none}
+  html.compact .sum.idle .light{opacity:.35}
+</style></head><body>
+<div id="stage" class="stage">
+  <div id="msg" class="msg"></div>
+  <div id="list" class="list"></div>
+  <div id="sum" class="sum"><i id="sumLight" class="light"></i><span id="sumCount" class="count"></span></div>
+</div>
+<script src="logic.js"></script>
+<script>
+  var L = {
+    off: { fr: 'Fonction désactivée', en: 'Feature turned off' },
+    unpaired: { fr: 'Reliez le navigateur avec Fremkit Companion', en: 'Link your browser with Fremkit Companion' },
+    offline: { fr: 'Extension hors ligne', en: 'Extension offline' },
+    moduleOff: { fr: 'Activez Fremdev dans l’extension', en: 'Turn Fremdev on in the extension' },
+    empty: { fr: 'Aucun onglet de développement ouvert', en: 'No development tab open' },
+    resolved: { fr: '{n} erreurs, résolues', en: '{n} errors, resolved' },
+    resolvedRequests: { fr: '{n} requêtes en échec, résolues', en: '{n} failed requests, resolved' },
+    down: { fr: 'serveur arrêté', en: 'server down' },
+    noAnswer: { fr: 'sans réponse', en: 'no answer' },
+    clear: { fr: 'Effacer', en: 'Clear' },
+    show: { fr: 'Afficher l’onglet', en: 'Show the tab' }
+  }
+
+  var FD = FremkitFremdev
+  var CHANNEL = 'companion:dev'
+
+  Fremkit.whenReady(function () {
+    var $ = function (id) { return document.getElementById(id) }
+    var stage = $('stage'), list = $('list')
+    var snap = null
+    /** Each row's `errors.total` as last drawn, by `deviceId:tabId`: a growth flashes the row once. */
+    var seen = {}
+
+    function el(tag, cls, text) {
+      var e = document.createElement(tag)
+      if (cls) e.className = cls
+      if (text !== undefined) e.textContent = text
+      return e
+    }
+    function send(name, row) {
+      Fremkit.sendCommand(CHANNEL, name, { deviceId: row.deviceId, tabId: row.tabId }).catch(function () {})
+    }
+
+    /** A counter: the open count and the last event, or greyed with the resolved label. */
+    function fact(kind, tally, lastText, resolvedLabel) {
+      if (!tally || !(tally.total > 0)) return null
+      var f = el('div', 'fact ' + kind)
+      if (tally.open === 0) {
+        f.classList.add('resolved')
+        f.appendChild(el('span', 't', Fremkit.t(resolvedLabel, { n: tally.total })))
+        return f
+      }
+      f.appendChild(el('span', 'n', String(tally.open)))
+      if (lastText) f.appendChild(el('span', 't', lastText))
+      return f
+    }
+
+    function rowEl(row, several) {
+      var r = el('div', 'row')
+      r.setAttribute('role', 'button')
+      r.setAttribute('aria-label', Fremkit.t(L.show) + ' — ' + row.app)
+      r.appendChild(el('i', 'light ' + row.light))
+
+      var body = el('div', 'body')
+      var head = el('div', 'head')
+      head.appendChild(el('span', 'app', row.app || row.host))
+      if (several && row.browser) head.appendChild(el('span', 'browser', row.browser))
+      if (row.server === 'down') head.appendChild(el('span', 'down', Fremkit.t(L.down)))
+      body.appendChild(head)
+
+      var facts = el('div', 'facts')
+      var e = row.errors, q = row.requests
+      var ef = fact('errors', e, e && e.last ? e.last.text : '', L.resolved)
+      var last = q && q.last
+      var rf = fact('requests', q, last ? (last.status === 0 ? Fremkit.t(L.noAnswer) : String(last.status)) + ' ' + last.path : '', L.resolvedRequests)
+      if (ef) facts.appendChild(ef)
+      if (rf) facts.appendChild(rf)
+      body.appendChild(facts)
+      r.appendChild(body)
+
+      var clear = el('button', 'clear', '×')
+      clear.setAttribute('aria-label', Fremkit.t(L.clear))
+      clear.hidden = !((e && e.open > 0) || (q && q.open > 0))
+      clear.addEventListener('click', function (ev) {
+        ev.stopPropagation()
+        send('clear', row)
+      })
+      r.appendChild(clear)
+      r.addEventListener('click', function () { send('focus', row) })
+
+      var key = row.deviceId + ':' + row.tabId
+      var total = e ? e.total : 0
+      if (Object.prototype.hasOwnProperty.call(seen, key) && total > seen[key]) {
+        r.classList.add('flash')
+        r.addEventListener('animationend', function () { r.classList.remove('flash') })
+      }
+      return r
+    }
+
+    function render() {
+      var state = FD.stateOf(snap)
+      stage.classList.toggle('rows', state === 'rows')
+      $('msg').textContent = state === 'loading' || state === 'rows' ? '' : Fremkit.t(L[state])
+
+      var rows = FD.rowsOf(snap)
+      var browsers = {}
+      rows.forEach(function (r) { browsers[r.deviceId] = true })
+      var several = Object.keys(browsers).length > 1
+      var top = list.scrollTop
+      list.replaceChildren.apply(list, rows.map(function (r) { return rowEl(r, several) }))
+      list.scrollTop = top
+      var next = {}
+      rows.forEach(function (r) { next[r.deviceId + ':' + r.tabId] = r.errors ? r.errors.total : 0 })
+      seen = next
+
+      var s = FD.summaryOf(snap)
+      $('sumLight').className = 'light ' + s.light
+      $('sumCount').textContent = s.errors > 0 ? String(s.errors) : ''
+      $('sum').classList.toggle('idle', state !== 'rows')
+    }
+
+    Fremkit.onLocale(render)
+    Fremkit.subscribe(CHANNEL, function (s) { snap = s && typeof s === 'object' ? s : null; render() })
+    render()
+  })
+</script>
+</body></html>

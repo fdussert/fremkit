@@ -1,0 +1,8 @@
+{ "id": "fremdev",
+  "name": { "fr": "Fremdev", "en": "Fremdev" },
+  "version": "1.0.0",
+  "description": { "fr": "Les erreurs de vos onglets de développement", "en": "The errors of your development tabs" },
+  "category": "dev",
+  "icon": "code", "minSize": [8, 4], "defaultSize": [20, 8],
+  "compact": { "width": 2 },
+  "subscriptions": ["companion:dev"], "commands": ["companion:dev"] }
