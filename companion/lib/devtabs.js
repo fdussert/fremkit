@@ -125,7 +125,8 @@ export class Throttle {
   constructor(ms = 500, now = Date.now, setTimer = setTimeout) {
     this.ms = ms
     this.now = now
-    this.setTimer = setTimer
+    // Called bare, never as `this.setTimer(…)`: a browser's setTimeout refuses another `this`.
+    this.setTimer = (fn, ms) => setTimer(fn, ms)
     this.lastRun = -Infinity
     this.pending = null
     this.armed = false

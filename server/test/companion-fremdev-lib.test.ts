@@ -12,7 +12,12 @@ import { DevTabSchema } from '../src/companion/protocol.js'
 describe('devhosts', () => {
   it('lists the built-in permissions and the Fremkit excludes', () => {
     expect(BUILTIN_PERMISSION_ORIGINS).toHaveLength(8)
-    expect(FREMKIT_EXCLUDES).toEqual(expect.arrayContaining(['*://127.0.0.1:4242/*', '*://localhost:4242/*', '*://[::1]:4242/*', '*://*.localhost:4242/*', '*://127.0.0.1:4243/*', '*://*.localhost:4243/*']))
+    // Each host on both ports, under both schemes: Chrome refuses a port under the `*` scheme
+    // ("Invalid port" from registerContentScripts), so they are spelled out.
+    const hosts = ['127.0.0.1', 'localhost', '[::1]', '*.localhost']
+    const want = ['http', 'https'].flatMap((scheme) => ['4242', '4243'].flatMap((port) => hosts.map((h) => `${scheme}://${h}:${port}/*`)))
+    expect([...FREMKIT_EXCLUDES].sort()).toEqual(want.sort())
+    for (const p of FREMKIT_EXCLUDES) expect(p, p).not.toMatch(/^\*:\/\/[^/]*:\d/)
   })
 
   it('recognises dev URLs', () => {
@@ -206,6 +211,23 @@ describe('devtabs', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+
+  it('calls its timer as a plain function, as a browser\'s setTimeout demands', () => {
+    // A browser's setTimeout throws "Illegal invocation" when called as a method of another object.
+    const timers: Array<() => void> = []
+    const strictTimer = function (this: unknown, fn: () => void) {
+      if (this !== undefined && this !== globalThis) throw new TypeError('Illegal invocation')
+      timers.push(fn)
+    }
+    let t = 0
+    const throttle = new Throttle(500, () => t, strictTimer)
+    const calls: number[] = []
+    throttle.push(() => calls.push(1))
+    expect(() => throttle.push(() => calls.push(2))).not.toThrow()
+    t = 500
+    timers.shift()!()
+    expect(calls).toEqual([1, 2])
   })
 })
 

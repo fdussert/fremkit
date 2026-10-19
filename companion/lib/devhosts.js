@@ -13,17 +13,15 @@ export const BUILTIN_PERMISSION_ORIGINS = [
   '*://*.test/*',
 ]
 
-/** Fremkit's own pages are never a dev tab: the admin open in the browser would be watched. */
-export const FREMKIT_EXCLUDES = [
-  '*://127.0.0.1:4242/*',
-  '*://localhost:4242/*',
-  '*://[::1]:4242/*',
-  '*://*.localhost:4242/*',
-  '*://127.0.0.1:4243/*',
-  '*://localhost:4243/*',
-  '*://[::1]:4243/*',
-  '*://*.localhost:4243/*',
-]
+/**
+ * Fremkit's own pages are never a dev tab: the admin open in the browser would be watched. Spelled
+ * out per scheme: Chrome refuses a port under the `*` scheme ("Invalid port").
+ */
+export const FREMKIT_EXCLUDES = ['http', 'https'].flatMap((scheme) =>
+  ['4242', '4243'].flatMap((port) =>
+    ['127.0.0.1', 'localhost', '[::1]', '*.localhost'].map((host) => `${scheme}://${host}:${port}/*`),
+  ),
+)
 
 // The server's two ports: the local one and the paired devices' listener. Another port (a second
 // checkout on 4301, say) is a real dev server and stays watched.
