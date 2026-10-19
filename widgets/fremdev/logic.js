@@ -19,8 +19,9 @@
 
   /**
    * One of 'loading' (no snapshot yet), 'off' (`labs.companion` off), 'unpaired' (no extension
-   * record), 'offline' (no install connected), 'moduleOff' (none has Fremdev on), 'empty' (no
-   * dev tab open) or 'rows'.
+   * record), 'offline' (no install has said hello since Fremkit started), 'moduleOff' (none listed
+   * has Fremdev on), 'empty' (no dev tab open) or 'rows'. A listed install that is not connected is
+   * the ordinary idle state: the extension closes its socket while no dev tab is open.
    */
   function stateOf(snap) {
     if (!snap || typeof snap !== 'object') return 'loading'

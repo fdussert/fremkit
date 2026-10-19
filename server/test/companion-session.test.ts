@@ -565,11 +565,25 @@ describe('CompanionSession with Fremdev', () => {
     const t = withDev()
     t.hello('a', { modules: ['fremdev'] })
     t.session.onMessage('a', { type: 'dev.tabs', tabs: [] })
-    expect(t.dev.snapshot().installs).toEqual([{ deviceId: 'a', name: 'Browser a', on: true, tabs: [] }])
+    expect(t.dev.snapshot().installs).toEqual([{ deviceId: 'a', name: 'Browser a', on: true, connected: true, tabs: [] }])
     t.session.onMessage('a', { type: 'modules', modules: [] })
     expect(t.dev.snapshot().installs[0].on).toBe(false)
     t.session.onMessage('a', { type: 'ping' })
     t.session.disconnect('a')
+    // Still listed, idle: the extension closes its socket while no dev tab is open.
+    expect(t.dev.snapshot().installs).toEqual([{ deviceId: 'a', name: 'Browser a', on: false, connected: false, tabs: [] }])
+  })
+
+  it('forgets a Fremdev install when its device is unpaired, connected or not', () => {
+    const t = withDev()
+    t.hello('a', { modules: ['fremdev'] })
+    t.hello('b', { modules: ['fremdev'] })
+    t.session.disconnect('a')
+    // The store's change: neither is paired any more; only b is still connected.
+    t.session.prune(() => false)
+    expect(t.dev.snapshot().installs).toEqual([])
+    t.hello('c', { modules: ['fremdev'] })
+    t.session.revoke('c')
     expect(t.dev.snapshot().installs).toEqual([])
   })
 

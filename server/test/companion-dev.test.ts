@@ -46,7 +46,7 @@ describe('CompanionDev', () => {
     expect(t.dev.snapshot()).toEqual({
       enabled: true,
       paired: 2,
-      installs: [{ deviceId: A, name: 'Chrome', on: true, tabs: [row(7)] }],
+      installs: [{ deviceId: A, name: 'Chrome', on: true, connected: true, tabs: [row(7)] }],
     })
   })
 
@@ -62,25 +62,55 @@ describe('CompanionDev', () => {
     const t = setup()
     t.dev.connect(A, 'Chrome', ['fremplay'])
     t.tabs(A, [row(7)])
-    expect(t.dev.snapshot().installs).toEqual([{ deviceId: A, name: 'Chrome', on: false, tabs: [] }])
+    expect(t.dev.snapshot().installs).toEqual([{ deviceId: A, name: 'Chrome', on: false, connected: true, tabs: [] }])
     // Turned on, it reports; turned off again, its rows go.
     t.dev.onMessage(A, { type: 'modules', modules: ['fremplay', 'fremdev'] })
     t.tabs(A, [row(7)])
     expect(t.dev.snapshot().installs[0]).toMatchObject({ on: true, tabs: [row(7)] })
     t.dev.onMessage(A, { type: 'modules', modules: ['fremplay'] })
-    expect(t.dev.snapshot().installs).toEqual([{ deviceId: A, name: 'Chrome', on: false, tabs: [] }])
+    expect(t.dev.snapshot().installs).toEqual([{ deviceId: A, name: 'Chrome', on: false, connected: true, tabs: [] }])
   })
 
-  it('drops an install\'s rows when it disconnects', () => {
+  it('keeps an install listed when it disconnects, with no rows: the extension\'s idle state', () => {
     const t = setup()
     t.dev.connect(A, 'Chrome', ['fremdev'])
     t.tabs(A, [row(7)])
     t.changed.mockClear()
     t.dev.disconnect(A)
-    expect(t.dev.snapshot().installs).toEqual([])
+    const idle = { deviceId: A, name: 'Chrome', on: true, connected: false, tabs: [] }
+    expect(t.dev.snapshot().installs).toEqual([idle])
     expect(t.changed).toHaveBeenCalled()
     // A message from it afterwards is not heard.
     t.tabs(A, [row(7)])
+    t.dev.onMessage(A, { type: 'modules', modules: [] })
+    expect(t.dev.snapshot().installs).toEqual([idle])
+    // A second disconnect publishes nothing new.
+    t.changed.mockClear()
+    t.dev.disconnect(A)
+    expect(t.changed).not.toHaveBeenCalled()
+    // It comes back in its place, connected, with what its hello says.
+    t.dev.connect(B, 'Brave', ['fremdev'])
+    t.dev.connect(A, 'Chrome', ['fremplay'])
+    expect(t.dev.snapshot().installs.map((i) => [i.deviceId, i.on, i.connected])).toEqual([[A, false, true], [B, true, true]])
+  })
+
+  it('forgets an install when its device is removed, or comes back unable to run Fremdev', () => {
+    const t = setup()
+    t.dev.connect(A, 'Chrome', ['fremdev'])
+    t.dev.connect(B, 'Brave', ['fremdev'])
+    t.dev.disconnect(A)
+    t.changed.mockClear()
+    t.dev.prune((id) => id === B)
+    expect(t.dev.snapshot().installs.map((i) => i.deviceId)).toEqual([B])
+    expect(t.changed).toHaveBeenCalledTimes(1)
+    t.changed.mockClear()
+    t.dev.prune(() => true)
+    expect(t.changed).not.toHaveBeenCalled()
+    t.dev.forget(B)
+    expect(t.dev.snapshot().installs).toEqual([])
+    // An older extension in place of a known install: no longer listed.
+    t.dev.connect(A, 'Chrome', ['fremdev'])
+    t.dev.connect(A, 'Chrome', undefined)
     expect(t.dev.snapshot().installs).toEqual([])
   })
 
@@ -91,8 +121,8 @@ describe('CompanionDev', () => {
     t.tabs(A, [row(7)])
     t.tabs(B, [row(9), row(10)])
     expect(t.dev.snapshot().installs).toEqual([
-      { deviceId: A, name: 'Chrome', on: true, tabs: [row(7)] },
-      { deviceId: B, name: 'Brave', on: true, tabs: [row(9), row(10)] },
+      { deviceId: A, name: 'Chrome', on: true, connected: true, tabs: [row(7)] },
+      { deviceId: B, name: 'Brave', on: true, connected: true, tabs: [row(9), row(10)] },
     ])
   })
 
@@ -210,6 +240,15 @@ describe('createDevProvider', () => {
     expect(t.send).toHaveBeenLastCalledWith(A, { type: 'dev.clear', tabId: 7 })
     expect(await t.provider.commands!.focus({ deviceId: A, tabId: 8, instanceId: 'dev-1' }, LOCAL))
       .toEqual({ ok: false, error: tr(config.locale, 'companion.devUnknownTab') })
+  })
+
+  it('answers { ok: false } for an install that is not connected', async () => {
+    const t = provider()
+    t.dev.disconnect(A)
+    expect(await t.provider.commands!.focus({ deviceId: A, tabId: 7, instanceId: 'dev-1' }, LOCAL))
+      .toEqual({ ok: false, error: tr(config.locale, 'companion.devUnknownTab') })
+    expect(await t.provider.commands!.clear({ deviceId: A, tabId: 7, instanceId: 'dev-1' }, LOCAL)).toMatchObject({ ok: false })
+    expect(t.send).not.toHaveBeenCalled()
   })
 
   it('refuses focus from a paired device', async () => {

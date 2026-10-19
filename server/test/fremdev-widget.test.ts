@@ -44,7 +44,9 @@ function tab(tabId: number, over: { errors?: [number, number]; requests?: [numbe
     activity: over.activity ?? 1000,
   }
 }
-const install = (deviceId: string, tabs: unknown[], on = true, name = 'Chrome') => ({ deviceId, name, on, tabs })
+const install = (deviceId: string, tabs: unknown[], on = true, name = 'Chrome', connected = true) => ({ deviceId, name, on, connected, tabs })
+/** A listed install whose socket is closed: the extension's idle state, no rows. */
+const idle = (deviceId: string, on = true, name = 'Chrome') => install(deviceId, [], on, name, false)
 const snap = (installs: unknown[], over: { enabled?: boolean; paired?: number } = {}) =>
   ({ enabled: over.enabled ?? true, paired: over.paired ?? 1, installs })
 
@@ -90,6 +92,24 @@ describe('fremdev/logic.js', () => {
     // Rows of an install with the module off do not count.
     expect(stateOf(snap([install(DEV_A, []), install(DEV_B, [tab(1)], false)]))).toBe('empty')
     expect(stateOf(snap([install(DEV_A, [tab(1)])]))).toBe('rows')
+  })
+
+  it('an install listed but not connected is idle, never offline', async () => {
+    const { stateOf } = await loadLogic()
+    // No dev tab open: the extension closed its socket. Fremdev on: nothing to show, not an outage.
+    expect(stateOf(snap([idle(DEV_A)]))).toBe('empty')
+    expect(stateOf(snap([idle(DEV_A, false)]))).toBe('moduleOff')
+    expect(stateOf(snap([idle(DEV_A, false), install(DEV_B, [])]))).toBe('empty')
+    expect(stateOf(snap([idle(DEV_A), install(DEV_B, [tab(1)])]))).toBe('rows')
+    // Offline only while no install at all said hello since Fremkit started.
+    expect(stateOf(snap([], { paired: 2 }))).toBe('offline')
+  })
+
+  it('onMac: this Mac is plain http, a paired device the TLS listener', async () => {
+    const { onMac } = await loadLogic()
+    expect(onMac({ protocol: 'http:' })).toBe(true)
+    expect(onMac({ protocol: 'https:' })).toBe(false)
+    expect(onMac(null)).toBe(false)
   })
 
   it('lightOf: an open error or a down server is red, an open failed request orange, resolved counters green', async () => {

@@ -168,7 +168,7 @@ export class CompanionSession {
 
   /** The device was unpaired: unlike a disconnect, whatever it was sharing ends now. */
   revoke(deviceId: string): void {
-    this.dev?.disconnect(deviceId)
+    this.dev?.forget(deviceId)
     const wasConnected = this.connected.delete(deviceId)
     this.foreign.delete(deviceId)
     this.names.delete(deviceId)
@@ -178,6 +178,8 @@ export class CompanionSession {
 
   /** Revokes every device the session knows of, connected or sharing, that is no longer paired. */
   prune(isPaired: (deviceId: string) => boolean): void {
+    // Fremdev lists installs that are not connected too: it forgets its own.
+    this.dev?.prune(isPaired)
     const known = new Set([...this.connected.keys(), ...(this.share ? [this.share.deviceId] : [])])
     for (const id of known) if (!isPaired(id)) this.revoke(id)
   }
@@ -313,8 +315,8 @@ export class CompanionSession {
     this.send(deviceId, this.ready())
     if (protocol !== PROTOCOL) {
       this.foreign.add(deviceId)
-      // A socket that replaced a Fremdev one leaves no rows behind it.
-      this.dev?.disconnect(deviceId)
+      // A socket that replaced a Fremdev one leaves no rows behind it, nor a listing.
+      this.dev?.forget(deviceId)
       if (session) this.send(deviceId, { type: 'tab.refused', sessionId: session.sessionId, reason: 'protocol' })
       return
     }

@@ -34,8 +34,12 @@ export type DevSnapshot = {
   enabled: boolean
   /** Extension records, connected or not. */
   paired: number
-  /** Connected installs that can run Fremdev, whether or not the user switched it on. */
-  installs: Array<{ deviceId: string; name: string; on: boolean; tabs: DevTab[] }>
+  /**
+   * Every install that announced Fremdev since this server started, whether or not the user
+   * switched it on. `connected` false: its socket is closed (the extension closes it while no dev
+   * tab is open, the normal idle state), it has no rows, and its `on` is the last it said.
+   */
+  installs: Array<{ deviceId: string; name: string; on: boolean; connected: boolean; tabs: DevTab[] }>
 }
 
 export interface CompanionDevOptions {
@@ -51,6 +55,7 @@ export type DevMessage = Extract<ExtensionMessage, { type: 'modules' | 'dev.tabs
 interface Install {
   name: string
   on: boolean
+  connected: boolean
   tabs: DevTab[]
   /** When this install's rows were last published. */
   publishedAt?: number
@@ -64,7 +69,10 @@ export class CompanionDev {
   private readonly changed: () => void
   private readonly enabled: () => boolean
   private readonly pairedCount: () => number
-  /** Connected, Fremdev-capable installs, in connection order. */
+  /**
+   * The Fremdev-capable installs heard since this server started, connected or not, in the order
+   * they first said hello. Forgotten only when their device is removed (`forget`, `prune`).
+   */
   private readonly installs = new Map<string, Install>()
 
   constructor(opts: CompanionDevOptions) {
@@ -76,27 +84,50 @@ export class CompanionDev {
   }
 
   /**
-   * An install said hello. `modules` undefined is an extension older than Fremdev: it is never
-   * listed, and whatever dev message it sends is ignored.
+   * An install said hello. `modules` undefined is an extension older than Fremdev (or one whose
+   * list this server cannot read): it is not listed, and whatever dev message it sends is ignored.
    */
   connect(deviceId: string, name: string, modules: string[] | undefined): void {
-    const dropped = this.drop(deviceId)
     if (modules === undefined) {
-      if (dropped) this.changed()
+      if (this.drop(deviceId)) this.changed()
       return
     }
-    this.installs.set(deviceId, { name, on: modules.includes(FREMDEV_MODULE), tabs: [], timer: null })
+    const known = this.installs.get(deviceId)
+    if (known?.timer) clearTimeout(known.timer)
+    // A known install keeps its place in the list.
+    this.installs.set(deviceId, { name, on: modules.includes(FREMDEV_MODULE), connected: true, tabs: [], timer: null })
     this.changed()
   }
 
-  /** The socket went away, or the device was unpaired: its rows go with it. */
+  /**
+   * The socket went away: the install stays listed, disconnected and with no rows. The extension
+   * closes its socket while no dev tab is open, so this is its ordinary idle state, not an outage.
+   */
   disconnect(deviceId: string): void {
+    const install = this.installs.get(deviceId)
+    if (!install?.connected) return
+    if (install.timer !== null) clearTimeout(install.timer)
+    install.timer = null
+    install.connected = false
+    install.tabs = []
+    this.changed()
+  }
+
+  /** The device was removed (or replaced by a socket that cannot speak Fremdev): no longer listed. */
+  forget(deviceId: string): void {
     if (this.drop(deviceId)) this.changed()
+  }
+
+  /** Forgets every install whose device is no longer paired. */
+  prune(isPaired: (deviceId: string) => boolean): void {
+    let dropped = false
+    for (const id of [...this.installs.keys()]) if (!isPaired(id) && this.drop(id)) dropped = true
+    if (dropped) this.changed()
   }
 
   onMessage(deviceId: string, msg: DevMessage): void {
     const install = this.installs.get(deviceId)
-    if (!install) return
+    if (!install?.connected) return
     switch (msg.type) {
       case 'ping':
         // Only proves the socket alive; nothing to answer.
@@ -116,7 +147,7 @@ export class CompanionDev {
     }
   }
 
-  /** Brings the tab forward in its browser. False unless the install is here and reported that tab. */
+  /** Brings the tab forward in its browser. False unless the install is connected and reported that tab. */
   focus(deviceId: string, tabId: number): boolean {
     return this.relay(deviceId, { type: 'dev.focus', tabId })
   }
@@ -137,7 +168,7 @@ export class CompanionDev {
       enabled,
       paired: this.pairedCount(),
       installs: enabled
-        ? [...this.installs].map(([deviceId, i]) => ({ deviceId, name: i.name, on: i.on, tabs: i.tabs }))
+        ? [...this.installs].map(([deviceId, i]) => ({ deviceId, name: i.name, on: i.on, connected: i.connected, tabs: i.tabs }))
         : [],
     }
   }
@@ -145,7 +176,7 @@ export class CompanionDev {
   private relay(deviceId: string, msg: Extract<ServerMessage, { type: 'dev.focus' | 'dev.clear' }>): boolean {
     if (!this.enabled()) return false
     const install = this.installs.get(deviceId)
-    if (!install?.on || !install.tabs.some((t) => t.tabId === msg.tabId)) return false
+    if (!install?.on || !install.connected || !install.tabs.some((t) => t.tabId === msg.tabId)) return false
     this.send(deviceId, msg)
     return true
   }
