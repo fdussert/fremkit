@@ -33,7 +33,6 @@
   .browser,.down{flex:none;font-size:calc(13px * var(--text-scale, 1));color:var(--text-muted, #8b93a0)}
   .down{color:var(--danger, #ff6b5e);font-weight:600}
   .facts{font-size:calc(14px * var(--text-scale, 1))}
-  .facts:empty{display:none}
   .fact{display:flex;align-items:baseline;gap:6px;min-width:0;overflow:hidden}
   .fact.errors{flex:1 1 auto}
   .fact.requests{flex:0 1 auto;max-width:45%}
@@ -45,9 +44,12 @@
   .fact.resolved .t{font-family:inherit;color:inherit}
 
   button.clear{flex:none;box-sizing:border-box;width:44px;height:44px;border:0;border-radius:12px;padding:0;
-    background:transparent;color:var(--text-muted, #8b93a0);font:inherit;font-size:24px;line-height:1;cursor:pointer}
+    background:transparent;color:var(--text-muted, #8b93a0);cursor:pointer;display:inline-flex;align-items:center;justify-content:center}
+  button.clear svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
   button.clear:active{background:var(--accent, #d9b36a);color:var(--on-accent, #0b0d10)}
-  button.clear[hidden]{display:block;visibility:hidden}
+  button.clear[hidden]{display:inline-flex;visibility:hidden}
+  .facts[hidden],.fact[hidden],.n[hidden],.browser[hidden],.down[hidden]{display:none}
+  .row:focus-visible{outline:2px solid var(--accent, #d9b36a);outline-offset:-2px}
 
   /* The host says which way round the tile is: on-light means dark text on a light body. */
   html.on-light body{color:var(--on-surface, #0b0d10)}
@@ -71,7 +73,8 @@
   html.compact .sum .light{width:clamp(10px,24vh,18px);height:clamp(10px,24vh,18px)}
   html.compact .sum .count{font-size:calc(clamp(12px,36vh,28px) * var(--text-scale, 1));font-weight:700;font-variant-numeric:tabular-nums}
   html.compact .sum .count:empty{display:none}
-  html.compact .sum.idle .light{opacity:.35}
+  html.compact .sum.idle .light{background:var(--text-dim, #6b737c)}
+  html.on-light.compact .sum.idle .light{background:var(--on-surface, #0b0d10);opacity:.35}
 </style></head><body>
 <div id="stage" class="stage">
   <div id="msg" class="msg"></div>
@@ -101,94 +104,158 @@
     var $ = function (id) { return document.getElementById(id) }
     var stage = $('stage'), list = $('list')
     var snap = null
-    /** Each row's `errors.total` as last drawn, by `deviceId:tabId`: a growth flashes the row once. */
-    var seen = {}
+    var SVG = 'http://www.w3.org/2000/svg'
+    /** As long as the flash animation: a row erroring at every snapshot flashes once per this. */
+    var FLASH_MS = 1200
+    /**
+     * The drawn rows by `deviceId:tabId`. Each keeps its element across snapshots, updated in
+     * place and moved rather than rebuilt, so a tap that straddles a snapshot still lands, `:active`
+     * holds, and a flash runs to its end.
+     */
+    var drawn = {}
 
-    function el(tag, cls, text) {
+    function el(tag, cls) {
       var e = document.createElement(tag)
       if (cls) e.className = cls
-      if (text !== undefined) e.textContent = text
       return e
     }
+    function setText(e, text) { if (e.textContent !== text) e.textContent = text }
     function send(name, row) {
       Fremkit.sendCommand(CHANNEL, name, { deviceId: row.deviceId, tabId: row.tabId }).catch(function () {})
     }
 
-    /** A counter: the open count and the last event, or greyed with the resolved label. */
-    function fact(kind, tally, lastText, resolvedLabel) {
-      if (!tally || !(tally.total > 0)) return null
+    /** Lucide's "x" (ISC), built node by node. */
+    function crossIcon() {
+      var s = document.createElementNS(SVG, 'svg')
+      s.setAttribute('viewBox', '0 0 24 24')
+      s.setAttribute('aria-hidden', 'true')
+      ;[['18', '6', '6', '18'], ['6', '6', '18', '18']].forEach(function (c) {
+        var l = document.createElementNS(SVG, 'line')
+        l.setAttribute('x1', c[0]); l.setAttribute('y1', c[1]); l.setAttribute('x2', c[2]); l.setAttribute('y2', c[3])
+        s.appendChild(l)
+      })
+      return s
+    }
+
+    function factEl(kind) {
       var f = el('div', 'fact ' + kind)
-      if (tally.open === 0) {
-        f.classList.add('resolved')
-        f.appendChild(el('span', 't', Fremkit.t(resolvedLabel, { n: tally.total })))
-        return f
-      }
-      f.appendChild(el('span', 'n', String(tally.open)))
-      if (lastText) f.appendChild(el('span', 't', lastText))
+      f.n = el('span', 'n')
+      f.t = el('span', 't')
+      f.appendChild(f.n)
+      f.appendChild(f.t)
       return f
     }
 
-    function rowEl(row, several) {
-      var r = el('div', 'row')
+    /** A counter: the open count and the last event, or greyed with the resolved label; hidden at zero. */
+    function updateFact(f, tally, lastText, resolvedLabel) {
+      var total = tally && tally.total > 0 ? tally.total : 0
+      f.hidden = total === 0
+      if (total === 0) return
+      var resolved = tally.open === 0
+      f.classList.toggle('resolved', resolved)
+      f.n.hidden = resolved
+      setText(f.n, resolved ? '' : String(tally.open))
+      setText(f.t, resolved ? Fremkit.t(resolvedLabel, { n: total }) : lastText)
+    }
+
+    /** A row's elements, built once; `entry.row` is the latest data its handlers act on. */
+    function create() {
+      var entry = { row: null, total: null, flashAt: -Infinity }
+      var r = entry.el = el('div', 'row')
       r.setAttribute('role', 'button')
-      r.setAttribute('aria-label', Fremkit.t(L.show) + ' — ' + row.app)
-      r.appendChild(el('i', 'light ' + row.light))
-
-      var body = el('div', 'body')
-      var head = el('div', 'head')
-      head.appendChild(el('span', 'app', row.app || row.host))
-      if (several && row.browser) head.appendChild(el('span', 'browser', row.browser))
-      if (row.server === 'down') head.appendChild(el('span', 'down', Fremkit.t(L.down)))
+      r.tabIndex = 0
+      entry.light = el('i', 'light')
+      var body = el('div', 'body'), head = el('div', 'head'), facts = entry.facts = el('div', 'facts')
+      entry.app = el('span', 'app')
+      entry.browser = el('span', 'browser')
+      entry.down = el('span', 'down')
+      head.appendChild(entry.app)
+      head.appendChild(entry.browser)
+      head.appendChild(entry.down)
+      entry.errors = factEl('errors')
+      entry.requests = factEl('requests')
+      facts.appendChild(entry.errors)
+      facts.appendChild(entry.requests)
       body.appendChild(head)
-
-      var facts = el('div', 'facts')
-      var e = row.errors, q = row.requests
-      var ef = fact('errors', e, e && e.last ? e.last.text : '', L.resolved)
-      var last = q && q.last
-      var rf = fact('requests', q, last ? (last.status === 0 ? Fremkit.t(L.noAnswer) : String(last.status)) + ' ' + last.path : '', L.resolvedRequests)
-      if (ef) facts.appendChild(ef)
-      if (rf) facts.appendChild(rf)
       body.appendChild(facts)
+      entry.clear = el('button', 'clear')
+      entry.clear.type = 'button'
+      entry.clear.appendChild(crossIcon())
+      r.appendChild(entry.light)
       r.appendChild(body)
+      r.appendChild(entry.clear)
 
-      var clear = el('button', 'clear', '×')
-      clear.setAttribute('aria-label', Fremkit.t(L.clear))
-      clear.hidden = !((e && e.open > 0) || (q && q.open > 0))
-      clear.addEventListener('click', function (ev) {
+      entry.clear.addEventListener('click', function (ev) {
         ev.stopPropagation()
-        send('clear', row)
+        send('clear', entry.row)
       })
-      r.appendChild(clear)
-      r.addEventListener('click', function () { send('focus', row) })
+      r.addEventListener('click', function () { send('focus', entry.row) })
+      r.addEventListener('keydown', function (ev) {
+        if (ev.target !== r || (ev.key !== 'Enter' && ev.key !== ' ')) return
+        ev.preventDefault()
+        send('focus', entry.row)
+      })
+      r.addEventListener('animationend', function () { r.classList.remove('flash') })
+      return entry
+    }
 
-      var key = row.deviceId + ':' + row.tabId
+    function update(entry, row, several) {
+      entry.row = row
+      var r = entry.el, e = row.errors, q = row.requests
+      entry.light.className = 'light ' + row.light
+      r.setAttribute('aria-label', Fremkit.t(L.show) + ' — ' + (row.app || row.host))
+      setText(entry.app, row.app || row.host)
+      setText(entry.browser, several && row.browser ? row.browser : '')
+      entry.browser.hidden = !(several && row.browser)
+      setText(entry.down, Fremkit.t(L.down))
+      entry.down.hidden = row.server !== 'down'
+      updateFact(entry.errors, e, e && e.last ? e.last.text : '', L.resolved)
+      var last = q && q.last
+      updateFact(entry.requests, q, last ? (last.status === 0 ? Fremkit.t(L.noAnswer) : String(last.status)) + ' ' + last.path : '', L.resolvedRequests)
+      entry.facts.hidden = entry.errors.hidden && entry.requests.hidden
+      entry.clear.setAttribute('aria-label', Fremkit.t(L.clear))
+      entry.clear.hidden = !((e && e.open > 0) || (q && q.open > 0))
+
+      // A new error flashes the row, at most once per flash: a page erroring at every snapshot
+      // does not keep it blinking.
       var total = e ? e.total : 0
-      if (Object.prototype.hasOwnProperty.call(seen, key) && total > seen[key]) {
+      var now = Date.now()
+      if (entry.total !== null && total > entry.total && now - entry.flashAt >= FLASH_MS) {
+        entry.flashAt = now
+        r.classList.remove('flash')
+        void r.offsetWidth
         r.classList.add('flash')
-        r.addEventListener('animationend', function () { r.classList.remove('flash') })
       }
-      return r
+      entry.total = total
     }
 
     function render() {
       var state = FD.stateOf(snap)
       stage.classList.toggle('rows', state === 'rows')
-      $('msg').textContent = state === 'loading' || state === 'rows' ? '' : Fremkit.t(L[state])
+      setText($('msg'), state === 'loading' || state === 'rows' ? '' : Fremkit.t(L[state]))
 
       var rows = FD.rowsOf(snap)
       var browsers = {}
       rows.forEach(function (r) { browsers[r.deviceId] = true })
       var several = Object.keys(browsers).length > 1
-      var top = list.scrollTop
-      list.replaceChildren.apply(list, rows.map(function (r) { return rowEl(r, several) }))
-      list.scrollTop = top
       var next = {}
-      rows.forEach(function (r) { next[r.deviceId + ':' + r.tabId] = r.errors ? r.errors.total : 0 })
-      seen = next
+      rows.forEach(function (row, i) {
+        var key = row.deviceId + ':' + row.tabId
+        var entry = drawn[key] || create()
+        next[key] = entry
+        update(entry, row, several)
+        // Moved only when out of place: the node, and the tap on it, survive.
+        if (list.children[i] !== entry.el) list.insertBefore(entry.el, list.children[i] || null)
+      })
+      Object.keys(drawn).forEach(function (key) {
+        if (!next[key] && drawn[key].el.parentNode === list) list.removeChild(drawn[key].el)
+      })
+      drawn = next
 
       var s = FD.summaryOf(snap)
       $('sumLight').className = 'light ' + s.light
-      $('sumCount').textContent = s.errors > 0 ? String(s.errors) : ''
+      setText($('sumCount'), s.errors > 0 ? String(s.errors) : '')
+      // Nothing watched (no rows, whatever the reason): a neutral light, not an "all good" green.
       $('sum').classList.toggle('idle', state !== 'rows')
     }
 
