@@ -23,6 +23,33 @@ class FakeCustomEvent {
   }
 }
 
+/** Events whose fields are prototype getters over a private slot, like the browser's. */
+class FakeErrorEvent {
+  #error: unknown
+  #message: string
+  constructor(error: unknown, message: string) {
+    this.#error = error
+    this.#message = message
+  }
+  get error() {
+    return this.#error
+  }
+  get message() {
+    return this.#message
+  }
+  preventDefault = vi.fn()
+}
+class FakeRejectionEvent {
+  #reason: unknown
+  constructor(reason: unknown) {
+    this.#reason = reason
+  }
+  get reason() {
+    return this.#reason
+  }
+  preventDefault = vi.fn()
+}
+
 function runHook() {
   const listeners: Record<string, Listener> = {}
   const dispatched: Array<{ type: string; detail: unknown }> = []
@@ -59,8 +86,8 @@ function runHook() {
   }
   const original = console.error
   const run = () =>
-    new Function('window', 'console', 'document', 'EventTarget', 'CustomEvent', source('fremdev/hook.js'))(
-      window, console, document, EventTarget, FakeCustomEvent,
+    new Function('window', 'console', 'document', 'EventTarget', 'CustomEvent', 'ErrorEvent', 'PromiseRejectionEvent', source('fremdev/hook.js'))(
+      window, console, document, EventTarget, FakeCustomEvent, FakeErrorEvent, FakeRejectionEvent,
     )
   run()
   const events = () => dispatched.map((d) => (expect(d.type).toBe(EVENT), JSON.parse(d.detail as string)))
@@ -78,7 +105,7 @@ describe('fremdev/hook.js', () => {
     expect(lib).not.toBeNull()
     expect(block(source('fremdev/hook.js'))).toBe(lib)
     // and the intrinsics it reads, taken the same way
-    for (const line of source('lib/devlog.js').split('\n').filter((l) => /^const (gopd|getProto|isArray|ownKeys|quote|symbolDescription) = /.test(l))) {
+    for (const line of source('lib/devlog.js').split('\n').filter((l) => /^const (gopd|getProto|isArray|ownKeys|quote|symbolDescription|domProto|domName|domMessage) = /.test(l))) {
       expect(source('fremdev/hook.js')).toContain(line)
     }
   })
@@ -149,11 +176,34 @@ describe('fremdev/hook.js', () => {
 
   it('reports uncaught errors and rejections without preventing them', () => {
     const h = runHook()
-    const preventDefault = vi.fn()
-    h.listeners.error({ error: new Error('bad'), message: 'ignored', preventDefault })
-    h.listeners.unhandledrejection({ reason: 'nope', preventDefault })
-    expect(h.events().map((e) => e.text)).toEqual(['Uncaught Error: bad', 'Uncaught (in promise) nope'])
-    expect(preventDefault).not.toHaveBeenCalled()
+    const error = new FakeErrorEvent(new Error('bad'), 'ignored')
+    const rejection = new FakeRejectionEvent('nope')
+    h.listeners.error(error)
+    h.listeners.unhandledrejection(rejection)
+    h.listeners.error(new FakeErrorEvent(null, 'Script error.'))
+    expect(h.events().map((e) => e.text)).toEqual(['Uncaught Error: bad', 'Uncaught (in promise) nope', 'Uncaught Script error.'])
+    expect(error.preventDefault).not.toHaveBeenCalled()
+    expect(rejection.preventDefault).not.toHaveBeenCalled()
+  })
+
+  it("reads an event's fields through the getters it took at load, never the page's", () => {
+    const h = runHook()
+    let ran = 0
+    // The page redefines them after the hook ran: on the prototype and on the event itself.
+    const saved = Object.getOwnPropertyDescriptor(FakeErrorEvent.prototype, 'error')!
+    Object.defineProperty(FakeErrorEvent.prototype, 'error', { get: () => (ran++, 'page'), configurable: true })
+    try {
+      const e = new FakeErrorEvent(new TypeError('real'), 'm')
+      Object.defineProperty(e, 'error', { get: () => (ran++, 'page') })
+      h.listeners.error(e)
+      const r = new FakeRejectionEvent('why')
+      Object.defineProperty(r, 'reason', { get: () => (ran++, 'page') })
+      h.listeners.unhandledrejection(r)
+    } finally {
+      Object.defineProperty(FakeErrorEvent.prototype, 'error', saved)
+    }
+    expect(ran).toBe(0)
+    expect(h.events().map((e) => e.text)).toEqual(['Uncaught TypeError: real', 'Uncaught (in promise) why'])
   })
 
   it('hooks a page only once', () => {

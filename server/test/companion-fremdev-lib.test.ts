@@ -98,6 +98,23 @@ describe('devlog', () => {
     expect(gets).toEqual([])
   })
 
+  it('prints a DOMException through its own getters', () => {
+    expect(errorText([new DOMException('The user aborted a request.', 'AbortError')])).toBe('AbortError: The user aborted a request.')
+    // Its prototype without being one: the native getters refuse it, nothing throws.
+    const fake = Object.create(DOMException.prototype)
+    expect(errorText([fake])).toBe('Error')
+  })
+
+  it('looks at a bounded number of keys, enumerable or not', () => {
+    const hidden: Record<string, number> = {}
+    for (let i = 0; i < 100_000; i++) Object.defineProperty(hidden, `h${i}`, { value: i, enumerable: false })
+    hidden.shown = 1
+    let descriptors = 0
+    const counted = new Proxy(hidden, { getOwnPropertyDescriptor: (t, k) => (descriptors++, Reflect.getOwnPropertyDescriptor(t, k)) })
+    expect(errorText([counted])).toBe('{…}')
+    expect(descriptors).toBeLessThanOrEqual(60)
+  })
+
   it('stays cheap on a huge or deep value', () => {
     const wide: Record<string, number> = {}
     for (let i = 0; i < 100_000; i++) wide[`k${i}`] = i

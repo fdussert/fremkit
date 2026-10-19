@@ -47,6 +47,10 @@ const isArray = Array.isArray
 const ownKeys = Reflect.ownKeys
 const quote = JSON.stringify
 const symbolDescription = gopd(Symbol.prototype, 'description').get
+// A DOMException's name and message are accessors on its prototype: their native getters, taken now.
+const domProto = typeof DOMException === 'function' ? DOMException.prototype : null
+const domName = domProto ? gopd(domProto, 'name')?.get : undefined
+const domMessage = domProto ? gopd(domProto, 'message')?.get : undefined
 
 // <errorText> This block is copied byte for byte into fremdev/hook.js, which cannot import it
 // (server/test/companion-fremdev-scripts.test.ts compares them). It never runs the logged value's
@@ -55,6 +59,8 @@ const symbolDescription = gopd(Symbol.prototype, 'description').get
 const WALK_DEPTH = 2
 const WALK_ITEMS = 20
 const WALK_PROTOS = 10
+/** Keys looked at in one object, shown or not (non-enumerable ones count too). */
+const WALK_KEYS = 50
 
 /** A data property of `o` or of its prototypes; an accessor reads as undefined, unrun. */
 function dataOf(o, key) {
@@ -77,6 +83,26 @@ function fnName(f) {
 function classOf(o) {
   const ctor = dataOf(o, 'constructor')
   return (typeof ctor === 'function' && fnName(ctor)) || 'Object'
+}
+
+function inChain(o, proto) {
+  let at = getProto(o)
+  for (let i = 0; i < WALK_PROTOS && at !== null; i++) {
+    if (at === proto) return true
+    at = getProto(at)
+  }
+  return false
+}
+
+/** A native getter called on `o`; undefined when `o` is not what it reads (a brand check throws). */
+function nativeText(o, getter) {
+  if (typeof getter !== 'function') return undefined
+  try {
+    const v = getter.call(o)
+    return typeof v === 'string' ? v : undefined
+  } catch {
+    return undefined
+  }
 }
 
 function isErrorLike(o) {
@@ -124,9 +150,10 @@ function walk(v, depth, budget) {
 }
 
 function walkObject(o, depth, budget) {
-  if (isErrorLike(o)) {
-    const name = dataOf(o, 'name')
-    const message = dataOf(o, 'message')
+  const dom = domProto !== null && inChain(o, domProto)
+  if (dom || isErrorLike(o)) {
+    const name = dom ? nativeText(o, domName) : dataOf(o, 'name')
+    const message = dom ? nativeText(o, domMessage) : dataOf(o, 'message')
     const head = typeof name === 'string' && name ? name : 'Error'
     return typeof message === 'string' && message ? `${head}: ${message}` : head
   }
@@ -152,7 +179,7 @@ function walkObject(o, depth, budget) {
   for (let k = 0; k < keys.length; k++) {
     const key = keys[k]
     if (typeof key !== 'string') continue
-    if (shown >= WALK_ITEMS || budget.left <= 0) {
+    if (k >= WALK_KEYS || shown >= WALK_ITEMS || budget.left <= 0) {
       more = true
       break
     }
@@ -205,6 +232,26 @@ const Custom = CustomEvent
 const defineProperty = Object.defineProperty
 const fnToString = Function.prototype.toString
 const listen = window.addEventListener.bind(window)
+// The events' own getters, taken now: the page may redefine `error`, `message` or `reason` on the
+// prototypes later, and its code must not run from here.
+const getterOf = (proto, key) => {
+  try {
+    const d = proto ? gopd(proto, key) : undefined
+    return d && typeof d.get === 'function' ? d.get : undefined
+  } catch {
+    return undefined
+  }
+}
+const eventError = getterOf(typeof ErrorEvent === 'function' ? ErrorEvent.prototype : null, 'error')
+const eventMessage = getterOf(typeof ErrorEvent === 'function' ? ErrorEvent.prototype : null, 'message')
+const eventReason = getterOf(typeof PromiseRejectionEvent === 'function' ? PromiseRejectionEvent.prototype : null, 'reason')
+const read = (getter, e) => {
+  try {
+    return getter ? getter.call(e) : undefined
+  } catch {
+    return undefined
+  }
+}
 
 const send = (kind, text) => {
   try {
@@ -265,8 +312,15 @@ try {
       if (signal) send(signal)
     })
   }
-  listen('error', (e) => guarded(() => send('error', clip(`Uncaught ${errorText([e.error ?? e.message])}`, MAX_TEXT))))
-  listen('unhandledrejection', (e) => guarded(() => send('error', clip(`Uncaught (in promise) ${errorText([e.reason])}`, MAX_TEXT))))
+  listen('error', (e) =>
+    guarded(() => {
+      const error = read(eventError, e)
+      send('error', clip(`Uncaught ${errorText([error ?? read(eventMessage, e)])}`, MAX_TEXT))
+    }),
+  )
+  listen('unhandledrejection', (e) =>
+    guarded(() => send('error', clip(`Uncaught (in promise) ${errorText([read(eventReason, e)])}`, MAX_TEXT))),
+  )
 } catch {
   // a console the page froze: no hook rather than a broken page
 }
