@@ -194,9 +194,49 @@ describe('parseExtensionMessage', () => {
     expect(parse({ type: 'hello', token, installId, protocol: 3 })).toMatchObject({ protocol: 3 })
   })
 
-  it('lets a hello carry keys it does not know, and strips them, so a newer extension still connects', () => {
-    expect(parse({ type: 'hello', token, installId, protocol: PROTOCOL, modules: ['fremplay'] }))
-      .toEqual({ type: 'hello', token, installId, protocol: PROTOCOL })
+  it('keeps a hello\'s modules list and still strips unknown keys', () => {
+    const modules = ['fremplay', 'fremdev', 'fremfuture']
+    expect(parse({ type: 'hello', token, installId, protocol: PROTOCOL, modules, foo: 1 }))
+      .toEqual({ type: 'hello', token, installId, protocol: PROTOCOL, modules })
+  })
+
+  it('parses modules and ping', () => {
+    expect(parse({ type: 'modules', modules: ['fremplay', 'fremdev'] })).toEqual({ type: 'modules', modules: ['fremplay', 'fremdev'] })
+    expect(parse({ type: 'ping' })).toEqual({ type: 'ping' })
+    expect(parse({ type: 'modules', modules: Array.from({ length: 9 }, (_, i) => `m${i}`) })).toBeNull()
+    expect(parse({ type: 'modules', modules: ['x'.repeat(33)] })).toBeNull()
+  })
+
+  describe('dev.tabs', () => {
+    const row = (over: Record<string, unknown> = {}) => ({
+      tabId: 1,
+      app: 'My app',
+      host: 'localhost:5173',
+      errors: { total: 3, open: 1, last: { text: 'TypeError: x is undefined', at: 1_760_000_000_000 } },
+      requests: { total: 10, open: 0, last: { path: '/api/items', status: 500, at: 1_760_000_000_000 } },
+      server: 'up',
+      activity: 1_760_000_000_000,
+      ...over,
+    })
+    const tabs = (rows: unknown[]) => parse({ type: 'dev.tabs', tabs: rows })
+
+    it('parses a dev.tabs message with two rows', () => {
+      expect(tabs([row(), row({ tabId: 2 })])?.type).toBe('dev.tabs')
+      expect(tabs([row({ errors: { total: 0, open: 0, last: null }, requests: { total: 0, open: 0, last: null } })])).not.toBeNull()
+    })
+
+    it('refuses 33 tabs, a long error text, an unknown key, open above total and a path with a query', () => {
+      expect(tabs(Array.from({ length: 33 }, (_, i) => row({ tabId: i })))).toBeNull()
+      expect(tabs([row({ errors: { total: 1, open: 1, last: { text: 'x'.repeat(301), at: 1 } } })])).toBeNull()
+      expect(tabs([row({ extra: 1 })])).toBeNull()
+      expect(tabs([row({ errors: { total: 1, open: 2, last: null } })])).toBeNull()
+      expect(tabs([row({ requests: { total: 1, open: 0, last: { path: '/a?b=1', status: 200, at: 1 } } })])).toBeNull()
+      expect(tabs([row({ requests: { total: 1, open: 0, last: { path: '/a#b', status: 200, at: 1 } } })])).toBeNull()
+      expect(tabs([row({ requests: { total: 1, open: 0, last: { path: 'a', status: 200, at: 1 } } })])).toBeNull()
+      expect(tabs([row({ requests: { total: 1, open: 0, last: { path: '/a', status: 600, at: 1 } } })])).toBeNull()
+      expect(tabs([row({ host: 'bad host/' })])).toBeNull()
+      expect(tabs([row({ server: 'sideways' })])).toBeNull()
+    })
   })
 })
 

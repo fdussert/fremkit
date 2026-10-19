@@ -139,23 +139,78 @@ const Id = z.uuid()
 const Sdp = z.string().max(MAX_SDP)
 const Token = z.string().refine(isWellFormedToken, 'not a token')
 
+/** The extension's modules. */
+export const FREMPLAY_MODULE = 'fremplay'
+export const FREMDEV_MODULE = 'fremdev'
+
+/**
+ * The names of the modules an extension runs. Unknown names pass, so a newer extension with a module
+ * this server has never heard of still connects.
+ */
+const ModulesSchema = z.array(z.string().min(1).max(32)).max(8)
+
+/** At most this many dev tabs in one `dev.tabs`. */
+export const MAX_DEV_TABS = 32
+/** The longest error text or request path a dev tab row carries. */
+export const MAX_DEV_TEXT = 300
+
+const MAX_COUNT = 1_000_000
+const Count = z.number().int().min(0).max(MAX_COUNT)
+const Stamp = z.number().finite().min(0)
+
+/** A tab's errors or requests: counts, `open` being the ones not yet dismissed or answered. */
+function tally<T extends z.ZodType>(last: T) {
+  return z
+    .strictObject({ total: Count, open: Count, last: last.nullable() })
+    .refine((t) => t.open <= t.total, { message: 'open above total' })
+}
+
+export const DevTabSchema = z.strictObject({
+  tabId: z.number().int().min(0).max(2_147_483_647),
+  /** The tab's title, or its host:port. */
+  app: z.string().max(120),
+  /** host:port, as the URL gives it. */
+  host: z.string().regex(/^[a-z0-9.\-[\]:]{1,260}$/i),
+  errors: tally(z.strictObject({ text: z.string().max(MAX_DEV_TEXT), at: Stamp })),
+  requests: tally(
+    z.strictObject({
+      // A path alone: a query or fragment can carry a token.
+      path: z.string().max(MAX_DEV_TEXT).regex(/^\/[^?#]*$/),
+      /** 0: the request failed before any answer. */
+      status: z.number().int().min(0).max(599),
+      at: Stamp,
+    }),
+  ),
+  server: z.enum(['up', 'down']),
+  /** Milliseconds since the epoch of the tab's last event. */
+  activity: Stamp,
+})
+export type DevTab = z.infer<typeof DevTabSchema>
+
 export const ExtensionMessageSchema = z.discriminatedUnion('type', [
   // The first message of a socket: which record to prove, and the nonce to prove it on.
   z.strictObject({ type: z.literal('challenge'), deviceId: Id, nonce: z.string().regex(NONCE_RE) }),
-  // The one message that is not strict: a newer extension may say more in its hello (the spec
-  // plans a `modules` list) and must still connect. Unknown keys are stripped, not refused.
+  // The one message that is not strict: a newer extension may say more in its hello (it already
+  // lists its `modules`) and must still connect. Unknown keys are stripped, not refused.
   z.object({
     type: z.literal('hello'),
     token: Token,
     installId: Id,
     // Any integer: the server answers a version it does not speak with `tab.refused`.
     protocol: z.number().int(),
+    modules: ModulesSchema.optional(),
     session: z.strictObject({ sessionId: Id, meta: MetaSchema }).optional(),
   }),
   z.strictObject({ type: z.literal('tab.started'), sessionId: Id, meta: MetaSchema }),
   z.strictObject({ type: z.literal('tab.meta'), sessionId: Id, meta: MetaSchema }),
   z.strictObject({ type: z.literal('tab.offer'), sessionId: Id, receiverId: Id, sdp: Sdp }),
   z.strictObject({ type: z.literal('tab.stopped'), sessionId: Id }),
+  // The modules the extension runs now, said again when the user switches one on or off.
+  z.strictObject({ type: z.literal('modules'), modules: ModulesSchema }),
+  // The dev tabs' whole state, replacing the last: a tab missing from it is gone.
+  z.strictObject({ type: z.literal('dev.tabs'), tabs: z.array(DevTabSchema).max(MAX_DEV_TABS) }),
+  // Keeps the extension's service worker awake while a dev tab is open.
+  z.strictObject({ type: z.literal('ping') }),
 ])
 export type ExtensionMessage = z.infer<typeof ExtensionMessageSchema>
 
@@ -173,11 +228,12 @@ export type Control = z.infer<typeof ControlSchema>
 export type ServerMessage =
   | { type: 'proof'; mac: string }
   /**
-   * `modules`: which of the extension's modules this server has switched on, Fremplay alone so
-   * far (`labs.companion`). Optional and new within protocol 2: an extension that does not read
-   * it learns the same from `tab.refused` with `disabled`.
+   * `modules`: which of the extension's modules this server has switched on (`fremplay`:
+   * `labs.companion`). Optional and new within protocol 2: an extension that does not read it
+   * learns the same from `tab.refused` with `disabled`. `fremdev` is present only on a server that
+   * speaks Fremdev, and the extension sends no Fremdev message to a server that leaves it out.
    */
-  | { type: 'ready'; protocol: number; modules?: { fremplay: boolean } }
+  | { type: 'ready'; protocol: number; modules?: { fremplay: boolean; fremdev?: boolean } }
   | { type: 'tab.accepted'; sessionId: string }
   /** `disabled`: Fremplay is off in Fremkit (`labs.companion`). */
   | { type: 'tab.refused'; sessionId: string; reason: 'noWidget' | 'protocol' | 'disabled' }
@@ -189,6 +245,10 @@ export type ServerMessage =
   | { type: 'tab.detach'; receiverId: string }
   | { type: 'tab.stop' }
   | { type: 'revoked' }
+  /** The Edge asks the tab to come to the front. */
+  | { type: 'dev.focus'; tabId: number }
+  /** The Edge dismisses the tab's open errors. */
+  | { type: 'dev.clear'; tabId: number }
 
 /** Null when the text is over the size limit, is not JSON, or is not one of the messages. */
 export function parseExtensionMessage(raw: string): ExtensionMessage | null {
