@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 // @ts-expect-error plain JS module outside server/, no declarations
-import { onlyFremdev, ReconnectGate } from '../../companion/lib/presence.js'
+import { linkAlarm, onlyFremdev, ReconnectGate } from '../../companion/lib/presence.js'
 // @ts-expect-error plain JS module
 import { createFremdev, pageEvent } from '../../companion/fremdev.js'
 
@@ -24,14 +24,33 @@ describe('the worker reconnection policy for Fremdev', () => {
     expect(passed).toEqual([true, false, false, false, true, false, false, true])
   })
 
-  it("worker.js routes Fremdev's attempts through the gate and keeps them off the badge", () => {
+  it("keeps off the badge only an unreachable that Fremdev's own attempts met", () => {
+    expect(linkAlarm({ link: 'unreachable', share: null, linkQuiet: false })).toBe(true)
+    expect(linkAlarm({ link: 'unreachable', share: null, linkQuiet: true })).toBe(false)
+    expect(linkAlarm({ link: 'unreachable', share: { sessionId: 's' }, linkQuiet: false })).toBe(false)
+    // Facts always show, whoever met them.
+    for (const link of ['revoked', 'refused', 'impostor']) expect(linkAlarm({ link, share: null, linkQuiet: true }), link).toBe(true)
+    for (const link of ['ok', 'connecting', 'unpaired']) expect(linkAlarm({ link, share: null, linkQuiet: false }), link).toBe(false)
+  })
+
+  it("worker.js judges an attempt's quietness once, softens only connecting and unreachable", () => {
     const worker = source('worker.js')
     expect(worker).toMatch(/if \(!fremdevGate\.allow\(Date\.now\(\)\)\) return/)
-    for (const link of ["setLink('unreachable')", "setLink('impostor')", "setLink('refused')"]) {
-      const at = worker.indexOf(link)
-      expect(worker.slice(Math.max(0, at - 20), at), link).toContain('!quiet()')
-    }
     expect(worker).toMatch(/if \(!wanted\(\) \|\| quiet\(\)\) \{/)
+    const connect = worker.slice(worker.indexOf('function connect() {'), worker.indexOf('function impostor('))
+    expect(connect).toMatch(/const quietAttempt = quiet\(\)\n\s+if \(!quietAttempt && /)
+    expect(connect).toContain("setLink('unreachable', { quietBadge: quietAttempt })")
+    // Greeted, then gone, with only Fremdev holding on: the link says so at once, quietly.
+    expect(connect).toContain("if (quiet()) setLink('unreachable', { quietBadge: true })")
+    // The facts are recorded whoever asked: no quiet() guard left before them.
+    for (const call of ["setLink('impostor')", "await setLink('refused')"]) {
+      const at = worker.indexOf(call)
+      expect(at, call).toBeGreaterThan(0)
+      expect(worker.slice(at - 15, at), call).not.toContain('quiet()')
+    }
+    const removed = worker.slice(worker.indexOf('async function removed() {'), worker.indexOf('/** No server for a minute'))
+    expect(removed).not.toContain('quiet()')
+    expect(worker).toContain('const bang = linkAlarm(session)')
   })
 })
 

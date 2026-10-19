@@ -29,3 +29,13 @@ export class ReconnectGate {
     return true
   }
 }
+
+/**
+ * Whether the badge shows the `!`. The link state is the truth for the popup; an `unreachable` that
+ * only Fremdev's own attempts met (`linkQuiet`) stays off the badge, and a share waiting for the
+ * server to come back keeps showing itself.
+ */
+export function linkAlarm({ link, share, linkQuiet }) {
+  if (['revoked', 'refused', 'impostor'].includes(link)) return true
+  return link === 'unreachable' && !share && !linkQuiet
+}

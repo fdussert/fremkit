@@ -16,7 +16,7 @@ import { fremplaySwitch } from './lib/errors.js'
 import { confirmCode, normalizeCode, pairingDeadline } from './lib/pairProof.js'
 import { newNonce } from './lib/proof.js'
 import { navigationClearsRect } from './lib/navigation.js'
-import { idleDelay, onlyFremdev, ReconnectGate } from './lib/presence.js'
+import { idleDelay, linkAlarm, onlyFremdev, ReconnectGate } from './lib/presence.js'
 import { isOwnContext } from './lib/sender.js'
 import * as protocol from './lib/protocol.js'
 import { withVolumeHint } from './lib/volume.js'
@@ -48,7 +48,7 @@ const DANGER = '#d9463f'
 
 /** Mirrors of chrome.storage, loaded once per worker life. */
 const local = { installId: null, token: null, deviceId: null, name: null, pairing: null, pairError: null, revoked: false }
-const session = { link: 'unpaired', share: null, lastError: null, fremplayOff: false }
+const session = { link: 'unpaired', linkQuiet: false, share: null, lastError: null, fremplayOff: false }
 
 const ready = (async () => {
   // The token lives in `local`: only the extension's own pages and this worker may read it, never
@@ -93,8 +93,7 @@ const validId = (id) => Number.isInteger(id) && id >= 0
 let flashText = null
 
 function paintBadge() {
-  // While a share waits for the server to come back (a restart), the badge keeps showing it.
-  const bang = ['revoked', 'refused', 'impostor'].includes(session.link) || (session.link === 'unreachable' && !session.share)
+  const bang = linkAlarm(session)
   const text = flashText ?? (bang ? '!' : session.share ? '▶' : '')
   const alarm = text === '!'
   chrome.action.setBadgeBackgroundColor({ color: alarm ? DANGER : GOLD })
@@ -111,9 +110,10 @@ function flash(text) {
   }, FLASH_MS)
 }
 
-async function setLink(link) {
-  if (session.link === link) return
-  await saveSession({ link })
+/** `quietBadge`: an `unreachable` only Fremdev's own attempts met, true for the popup but kept off the badge. */
+async function setLink(link, { quietBadge = false } = {}) {
+  if (session.link === link && session.linkQuiet === quietBadge) return
+  await saveSession({ link, linkQuiet: quietBadge })
   paintBadge()
 }
 
@@ -296,7 +296,9 @@ function send(msg) {
 function connect() {
   if (ws || retryTimer || !local.token || !local.deviceId) return
   // A warning stays up while the next attempts run: they meet it again, or a server that greets.
-  if (!quiet() && !['ok', 'impostor', 'refused', 'revoked'].includes(session.link)) setLink('connecting')
+  // Judged once, as the attempt starts: whoever wanted it then is who its failure is shown to.
+  const quietAttempt = quiet()
+  if (!quietAttempt && !['ok', 'impostor', 'refused', 'revoked'].includes(session.link)) setLink('connecting')
   const socket = new WebSocket(WS_URL)
   ws = socket
   greeted = false
@@ -350,7 +352,9 @@ function connect() {
     if (wasGreeted) {
       retryDelay = RETRY_FIRST_MS
       failingSince = 0
-    } else if (!quiet()) setLink('unreachable')
+      // Only Fremdev holds on: no backoff run will say the server is gone, so the link says it now.
+      if (quiet()) setLink('unreachable', { quietBadge: true })
+    } else setLink('unreachable', { quietBadge: quietAttempt })
     retry()
   }
 }
@@ -366,7 +370,7 @@ function impostor(socket) {
   try {
     socket.close(1000)
   } catch { /* already closed */ }
-  if (!quiet()) setLink('impostor')
+  setLink('impostor')
   retry()
 }
 
@@ -395,7 +399,7 @@ function retry() {
 async function refused() {
   for (const waiter of readyWaiters) waiter(false)
   readyWaiters.clear()
-  if (!quiet()) await setLink('refused')
+  await setLink('refused')
   if (session.share) await endShare({ notify: false, error: 'protocol' })
   retry()
 }
@@ -406,8 +410,6 @@ async function refused() {
  * overwrites it, and a server that proves itself and greets it clears this (`ready`).
  */
 async function removed() {
-  // Nobody asked to see this: the popup's next attempt meets the same answer and shows it.
-  if (quiet()) return
   failingSince = 0
   retryDelay = RETRY_FIRST_MS
   presenceUntil = 0
@@ -415,7 +417,7 @@ async function removed() {
   readyWaiters.clear()
   if (session.share) await endShare({ notify: false })
   await saveLocal({ revoked: true })
-  await saveSession({ link: 'revoked' })
+  await saveSession({ link: 'revoked', linkQuiet: false })
   paintBadge()
 }
 
