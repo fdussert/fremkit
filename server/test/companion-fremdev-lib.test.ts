@@ -66,6 +66,47 @@ describe('devlog', () => {
     expect(MAX_TEXT).toBe(300)
   })
 
+  it('prints values without running any of their code', () => {
+    let ran = 0
+    const getter = { a: 1, get b() { ran += 1; return 2 } }
+    const toJson = { a: 1, toJSON: () => { ran += 1; return 'x' } }
+    const toStr = { toString: () => { ran += 1; return 'x' }, [Symbol.toPrimitive]: () => { ran += 1; return 'x' } }
+    const gets: PropertyKey[] = []
+    const proxy = new Proxy({ a: 1 }, { get: (t, k) => (gets.push(k), Reflect.get(t, k)) })
+    class Thing { x = 1 }
+    const err = new TypeError('boom')
+    Object.defineProperty(err, 'message', { get: () => { ran += 1; return 'no' } })
+    expect(errorText([getter])).toBe('{"a":1,"b":[Getter]}')
+    expect(errorText([toJson])).toBe('{"a":1,"toJSON":[Function: toJSON]}')
+    expect(errorText([toStr])).toBe('{"toString":[Function: toString]}')
+    expect(errorText([proxy])).toBe('{"a":1}')
+    expect(errorText([err])).toBe('TypeError')
+    expect(errorText([new Error('boom'), 'x'])).toBe('Error: boom x')
+    expect(errorText([new Thing(), new Map(), [1, 'a', [2, [3]]], 10n, Symbol('s'), null, undefined])).toBe(
+      'Thing {"x":1} [object Map] [1,"a",[2,[Array]]] 10n Symbol(s) null undefined',
+    )
+    expect(ran).toBe(0)
+    expect(gets).toEqual([])
+  })
+
+  it('stays cheap on a huge or deep value', () => {
+    const wide: Record<string, number> = {}
+    for (let i = 0; i < 100_000; i++) wide[`k${i}`] = i
+    let descriptors = 0
+    const counted = new Proxy(wide, { getOwnPropertyDescriptor: (t, k) => (descriptors++, Reflect.getOwnPropertyDescriptor(t, k)) })
+    const text = errorText([counted])
+    expect(text.length).toBeLessThanOrEqual(MAX_TEXT)
+    expect(descriptors).toBeLessThanOrEqual(25)
+    let deep: unknown = 'bottom'
+    for (let i = 0; i < 10_000; i++) deep = [deep]
+    expect(errorText([deep])).toBe('[[[Array]]]')
+    const long = Array.from({ length: 1_000_000 }, (_, i) => i)
+    expect(errorText([long])).toBe('[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,…]')
+    const loop: Record<string, unknown> = { a: 1 }
+    loop.self = loop
+    expect(errorText([loop])).toBe('{"a":1,"self":{"a":1,"self":{…}}}')
+  })
+
   it('reads hot reload signals', () => {
     for (const t of ['[vite] server connection lost. Polling', '[webpack-dev-server] Disconnected!', '[WDS] Disconnected!']) expect(hotReloadSignal(t)).toBe('down')
     for (const t of ['[vite] connected.', '[webpack-dev-server] Server started', '[webpack-dev-server] Hot Module Replacement enabled', '[webpack-dev-server] Live Reloading enabled']) expect(hotReloadSignal(t)).toBe('up')

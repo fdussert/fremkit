@@ -10,36 +10,158 @@ export function clip(s, max) {
   return cut.length === max && last >= 0xd800 && last <= 0xdbff ? cut.slice(0, -1) : cut
 }
 
-function show(v) {
-  if (typeof v === 'string') return v
-  if (v instanceof Error) return String(v)
-  if (v !== null && typeof v === 'object') {
-    try {
-      const json = JSON.stringify(v)
-      if (typeof json === 'string') return json
-    } catch {
-      // circular, or a toJSON that throws: fall through to the plain string
-    }
+// Taken once: errorText reads values with these alone, so a page that replaces them later runs no
+// code through it.
+const gopd = Object.getOwnPropertyDescriptor
+const getProto = Object.getPrototypeOf
+const isArray = Array.isArray
+const ownKeys = Reflect.ownKeys
+const quote = JSON.stringify
+const symbolDescription = gopd(Symbol.prototype, 'description').get
+
+// <errorText> This block is copied byte for byte into fremdev/hook.js, which cannot import it
+// (server/test/companion-fremdev-scripts.test.ts compares them). It never runs the logged value's
+// code: no getter, no toJSON, no toString, no Proxy `get` trap; only own data properties are read,
+// through property descriptors, within a depth, an item and a character budget.
+const WALK_DEPTH = 2
+const WALK_ITEMS = 20
+const WALK_PROTOS = 10
+
+/** A data property of `o` or of its prototypes; an accessor reads as undefined, unrun. */
+function dataOf(o, key) {
+  let at = o
+  for (let i = 0; i < WALK_PROTOS && at !== null && (typeof at === 'object' || typeof at === 'function'); i++) {
+    const d = gopd(at, key)
+    if (d) return 'value' in d ? d.value : undefined
+    at = getProto(at)
   }
-  return String(v)
+  return undefined
+}
+
+/** The name of a function, when it is a plain string. */
+function fnName(f) {
+  const d = gopd(f, 'name')
+  return d && typeof d.value === 'string' ? d.value : ''
+}
+
+/** The constructor's name of `o` (`Object`, `Map`, `HTMLDivElement`, a class), from data properties. */
+function classOf(o) {
+  const ctor = dataOf(o, 'constructor')
+  return (typeof ctor === 'function' && fnName(ctor)) || 'Object'
+}
+
+function isErrorLike(o) {
+  let at = getProto(o)
+  for (let i = 0; i < WALK_PROTOS && at !== null; i++) {
+    const d = gopd(at, 'constructor')
+    if (d && typeof d.value === 'function' && fnName(d.value) === 'Error') return true
+    at = getProto(at)
+  }
+  return false
+}
+
+function walk(v, depth, budget) {
+  if (budget.left <= 0) return ''
+  let s
+  switch (typeof v) {
+    case 'string':
+      s = depth === 0 ? v : quote(v)
+      break
+    case 'number':
+    case 'boolean':
+    case 'undefined':
+      s = String(v)
+      break
+    case 'bigint':
+      s = `${String(v)}n`
+      break
+    case 'symbol': {
+      const d = symbolDescription.call(v)
+      s = `Symbol(${typeof d === 'string' ? d : ''})`
+      break
+    }
+    case 'function': {
+      const name = fnName(v)
+      s = name ? `[Function: ${name}]` : '[Function]'
+      break
+    }
+    default:
+      // An object's leaves and keys were counted as it was walked.
+      if (v !== null) return walkObject(v, depth, budget)
+      s = 'null'
+  }
+  budget.left -= s.length
+  return s
+}
+
+function walkObject(o, depth, budget) {
+  if (isErrorLike(o)) {
+    const name = dataOf(o, 'name')
+    const message = dataOf(o, 'message')
+    const head = typeof name === 'string' && name ? name : 'Error'
+    return typeof message === 'string' && message ? `${head}: ${message}` : head
+  }
+  if (isArray(o)) {
+    if (depth >= WALK_DEPTH) return '[Array]'
+    const len = gopd(o, 'length')
+    const n = len && typeof len.value === 'number' ? len.value : 0
+    let out = ''
+    let i = 0
+    for (; i < n && i < WALK_ITEMS && budget.left > 0; i++) {
+      const d = gopd(o, String(i))
+      out += (i > 0 ? ',' : '') + (!d ? '' : 'value' in d ? walk(d.value, depth + 1, budget) : '[Getter]')
+    }
+    return `[${out}${i < n ? (i > 0 ? ',…' : '…') : ''}]`
+  }
+  const name = classOf(o)
+  const plain = name === 'Object' || getProto(o) === null
+  if (depth >= WALK_DEPTH) return plain ? '{…}' : `[object ${name}]`
+  const keys = ownKeys(o)
+  let out = ''
+  let shown = 0
+  let more = false
+  for (let k = 0; k < keys.length; k++) {
+    const key = keys[k]
+    if (typeof key !== 'string') continue
+    if (shown >= WALK_ITEMS || budget.left <= 0) {
+      more = true
+      break
+    }
+    const d = gopd(o, key)
+    if (!d || !d.enumerable) continue
+    const value = 'value' in d ? walk(d.value, depth + 1, budget) : '[Getter]'
+    budget.left -= key.length + 4
+    out += `${shown > 0 ? ',' : ''}${quote(key)}:${value}`
+    shown += 1
+  }
+  if (!plain && shown === 0 && !more) return `[object ${name}]`
+  const body = `{${out}${more ? (shown > 0 ? ',…' : '…') : ''}}`
+  return plain ? body : `${name} ${body}`
 }
 
 /** The arguments of a `console.error` joined the way the console prints them. Never throws. */
-export function errorText(args) {
-  const parts = []
+function errorText(args) {
+  const budget = { left: MAX_TEXT + 1 }
+  let out = ''
   try {
-    for (const a of Array.from(args ?? [])) {
+    const n = args && typeof args.length === 'number' ? args.length : 0
+    for (let i = 0; i < n && budget.left > 0; i++) {
+      let part
       try {
-        parts.push(show(a))
+        part = walk(args[i], 0, budget)
       } catch {
-        parts.push('[unprintable]')
+        part = '[unprintable]'
       }
+      out += (i > 0 ? ' ' : '') + part
     }
-    return clip(parts.join(' '), MAX_TEXT)
+    return clip(out, MAX_TEXT)
   } catch {
     return ''
   }
 }
+// </errorText>
+
+export { errorText }
 
 const DOWN = ['[vite] server connection lost', '[webpack-dev-server] Disconnected!', '[WDS] Disconnected!']
 const UP = [
