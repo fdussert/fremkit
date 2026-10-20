@@ -389,8 +389,11 @@ secret, local-only, on no allow-list). The lock is a flag in `companion-lock.jso
 read counts as locked. Fifteen guesses in all is about one chance in 70,000. Nor can guessing go
 unseen: a request is taken only while someone on this Mac could see its code, that is while a
 dashboard page of this Mac's (loopback, unpaired, its socket opened as `?view=dashboard`) is
-subscribed to the `companion` channel, or the admin's **Settings → Devices** pane has polled within
-the last 9 seconds (three of its 3-second polls, `?watch=1`). Otherwise the request is refused
+subscribed to the `companion` channel and on screen, or the admin's **Settings → Devices** pane has
+polled within the last 9 seconds (three of its 3-second polls, `?watch=1`) while on screen. On
+screen is the page's `document.visibilityState`: a background tab, a minimised window, the helper's
+admin window once closed (it is only ordered out) and the kiosk while the dashboard is hidden or the
+Edge unplugged all report `hidden` and stop counting; the kiosk on the Edge reports `visible`. Otherwise the request is refused
 with 409 `unseen` before it exists, after the origin check (`companion/viewers.ts`). A paired
 device never counts. Both signals come from callers holding the access secret, which the pairing
 route does not ask for, so a process that cannot read the secret cannot pass for a viewer; one

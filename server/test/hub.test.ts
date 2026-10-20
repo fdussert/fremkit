@@ -653,3 +653,23 @@ describe('localDashboardsOn', () => {
     expect(hub.localDashboardsOn('companion')).toBe(0)
   })
 })
+
+describe('a dashboard that says it is hidden', () => {
+  it('stops counting until it says it is back, and keeps its subscription meanwhile', () => {
+    const { hub } = setup()
+    const dashboard = new FakeSocket()
+    hub.attach(dashboard, { loopback: true, paired: false }, { dashboard: true })
+    dashboard.receive({ type: 'subscribe', channel: 'companion' })
+    expect(hub.localDashboardsOn('companion')).toBe(1)
+    dashboard.receive({ type: 'visibility', visible: false })
+    expect(hub.localDashboardsOn('companion')).toBe(0)
+    // Still subscribed: what the channel says while hidden reaches the page.
+    hub.broadcast('companion', { pairing: null })
+    expect(dashboard.sent.at(-1)).toEqual({ type: 'data', channel: 'companion', data: { pairing: null } })
+    // Anything but a boolean changes nothing.
+    dashboard.receive({ type: 'visibility', visible: 'yes' })
+    expect(hub.localDashboardsOn('companion')).toBe(0)
+    dashboard.receive({ type: 'visibility', visible: true })
+    expect(hub.localDashboardsOn('companion')).toBe(1)
+  })
+})

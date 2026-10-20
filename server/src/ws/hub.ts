@@ -68,6 +68,8 @@ type Incoming =
   | { type: 'subscribe'; channel: string }
   | { type: 'unsubscribe'; channel: string }
   | { type: 'command'; id: string; channel: string; name: string; payload?: unknown }
+  /** The page went hidden or came back (`document.visibilityState`); a page that never says is visible. */
+  | { type: 'visibility'; visible: boolean }
 
 export class Hub {
   private clients = new Map<SocketLike, Set<string>>()
@@ -94,6 +96,8 @@ export class Hub {
   private hostSent = new Map<SocketLike, Map<string, string>>()
   /** Sockets of this Mac's own dashboard pages (`/ws?view=dashboard` from loopback, unpaired). */
   private dashboards = new Set<SocketLike>()
+  /** Sockets whose page said it is hidden: a background tab, a window ordered out. */
+  private hidden = new Set<SocketLike>()
 
   constructor(private readonly registry: ProviderRegistry) {}
 
@@ -129,6 +133,7 @@ export class Hub {
     this.contexts.delete(socket)
     this.hostSent.delete(socket)
     this.dashboards.delete(socket)
+    this.hidden.delete(socket)
     const deviceId = ctx?.paired ? ctx.deviceId : undefined
     if (deviceId !== undefined) {
       const sockets = this.deviceSockets.get(deviceId)
@@ -139,12 +144,14 @@ export class Hub {
   }
 
   /**
-   * How many of this Mac's dashboard pages are subscribed to `channel`: loopback, unpaired sockets
-   * that said they are a dashboard. A paired device never counts, whatever it subscribes to.
+   * How many of this Mac's dashboard pages are subscribed to `channel` and on screen: loopback,
+   * unpaired sockets that said they are a dashboard and have not said they are hidden. A paired
+   * device never counts, whatever it subscribes to.
    */
   localDashboardsOn(channel: string): number {
     let n = 0
     for (const socket of this.dashboards) {
+      if (this.hidden.has(socket)) continue
       const ctx = this.contexts.get(socket)
       if (ctx?.loopback === true && !ctx.paired && this.clients.get(socket)?.has(channel)) n += 1
     }
@@ -334,6 +341,14 @@ export class Hub {
       case 'unsubscribe': {
         if (msg.channel === DEVICE_CHANNEL) return
         if (channels.delete(msg.channel)) this.registry.removeSubscriber(msg.channel)
+        return
+      }
+      case 'visibility': {
+        // Kept for every socket, read only for a dashboard's (`localDashboardsOn`). A hidden page
+        // keeps its subscriptions, so whatever it missed arrives as soon as it is back.
+        if (typeof msg.visible !== 'boolean') return
+        if (msg.visible) this.hidden.delete(socket)
+        else this.hidden.add(socket)
         return
       }
       case 'command': {

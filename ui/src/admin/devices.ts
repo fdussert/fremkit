@@ -69,9 +69,10 @@ export function createDevices(deviceApi: DevicesApi, pollMs = DEVICES_POLL_MS): 
 
   async function refresh(): Promise<void> {
     try {
-      // While the pane watches, each poll says so: the server takes a companion pairing request
-      // only while someone could see it (`server/src/companion/viewers.ts`).
-      status.value = await deviceApi.getDevices(holders > 0)
+      // While the pane watches and the page is on screen, each poll says so: the server takes a
+      // companion pairing request only while someone could see it (`server/src/companion/viewers.ts`).
+      // A tab in the background or the helper's admin window closed (only ordered out) is hidden.
+      status.value = await deviceApi.getDevices(holders > 0 && document.visibilityState === 'visible')
       pollError.value = ''
     } catch (err) {
       pollError.value = (err as Error).message
