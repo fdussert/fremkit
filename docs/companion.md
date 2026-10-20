@@ -14,16 +14,22 @@ until an extension is linked.
 
 ## Install
 
-The extension lives in `companion/` in this repository. Until it is published on the Chrome Web
-Store, load it unpacked:
+Install **Fremkit Companion** from the [Chrome Web Store](https://chromewebstore.google.com/detail/fremkit-companion/lnckeodobpbbmfbdlpnegjpchgkehdlk): **Add to Chrome**, then pin the
+Fremkit icon to the toolbar if you like. Edge, Brave and Arc install it from the same page. The
+admin links to it too, under **Settings → Devices**.
+
+### From the source, to work on it
+
+The extension lives in `companion/` in this repository. To run your own copy, load it unpacked
+(turn the store version off or remove it first: both have the same ID):
 
 1. Open `chrome://extensions` and turn on **Developer mode**.
 2. Press **Load unpacked** and choose the `companion/` folder.
 3. Pin the Fremkit icon to the toolbar if you like.
 
-The extension's ID is fixed by the `key` in its manifest: `lnckeodobpbbmfbdlpnegjpchgkehdlk`. That
-is the ID the store listing will have (publication is pending), so a link made with the unpacked
-copy keeps working when you switch to the store version. The server answers that extension only:
+The extension's ID is fixed by the `key` in its manifest: `lnckeodobpbbmfbdlpnegjpchgkehdlk`, the
+store listing's own, so a link made with the unpacked copy keeps working with the store version
+and the other way round. The server answers that extension only:
 any other extension is refused (403) before it can ask to pair, and the Edge and **Settings →
 Devices** show the first characters of the asking or linked extension's ID (*extension lnckeo…*).
 That short ID only tells extensions apart (Companion from a developer's copy). It cannot tell
