@@ -213,11 +213,11 @@ describe('createCompanion', () => {
 
   afterEach(async () => { await app?.close() })
 
-  async function build(config: Config = configWith('page'), lockPath?: string) {
+  async function build(config: Config = configWith('page'), lockPath?: string, seen: () => boolean = () => true) {
     app = Fastify()
     await app.register(fastifyWebsocket)
     const registry = { register: vi.fn(), refresh: vi.fn() }
-    const companion = await createCompanion({ app, store, config: { get: () => config }, registry, lockPath })
+    const companion = await createCompanion({ app, store, config: { get: () => config }, registry, lockPath, seen })
     await app.ready()
     return { companion, registry }
   }
@@ -253,7 +253,7 @@ describe('createCompanion', () => {
     app = Fastify()
     await app.register(fastifyWebsocket)
     const registry = { register: vi.fn(), refresh: vi.fn() }
-    const companion = await createCompanion({ app, store, config: { get: () => config }, registry })
+    const companion = await createCompanion({ app, store, config: { get: () => config }, registry, seen: () => true })
     const send = vi.spyOn(companion.sockets, 'send').mockImplementation((_id, msg) => { sent.push(msg) })
     companion.session.onMessage('ext', { type: 'tab.started', sessionId: S1, meta: META })
     expect(sent).toEqual([{ type: 'tab.refused', sessionId: S1, reason: 'noWidget' }])
@@ -270,7 +270,7 @@ describe('createCompanion', () => {
     app = Fastify()
     await app.register(fastifyWebsocket)
     const registry = { register: vi.fn(), refresh: vi.fn() }
-    const companion = await createCompanion({ app, store, registry, config: { get: () => old } })
+    const companion = await createCompanion({ app, store, registry, config: { get: () => old }, seen: () => true })
     const send = vi.spyOn(companion.sockets, 'send').mockImplementation((_id, msg) => { sent.push(msg) })
     companion.session.connect('ext', 'Chrome')
     companion.session.onMessage('ext', { type: 'tab.started', sessionId: S1, meta: META })

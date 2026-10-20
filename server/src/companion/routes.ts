@@ -31,6 +31,8 @@ export interface CompanionRoutesOptions {
   origins: ReadonlySet<string>
   /** How many browser extensions are paired. */
   pairedExtensions: () => number
+  /** Whether a request would show anywhere on this Mac now (`viewers.ts`). */
+  seen: () => boolean
 }
 
 /**
@@ -82,6 +84,13 @@ export async function companionRoutes(app: FastifyInstance, opts: CompanionRoute
   app.post('/api/companion/pair', { onRequest: localOnly }, async (req, reply) => {
     const origin = extensionOrigin(req, opts.origins)
     if (origin === null) return fail(reply, 403, 'companion.originNotAllowed')
+    // Nobody could see the code: no dashboard of this Mac's on the `companion` channel and no
+    // Devices pane open. Refused before the request exists, so guessing never goes unseen; the
+    // lock below still bounds what a seen request can be guessed.
+    if (!opts.seen()) {
+      req.log.warn({ origin }, 'companion pairing request refused: nobody can see it')
+      return fail(reply, 409, 'companion.unseen', 'unseen')
+    }
     const parsed = PairSchema.safeParse(req.body)
     if (!parsed.success) {
       return reply.code(400).send({ errors: parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`) })

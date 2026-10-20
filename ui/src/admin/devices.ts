@@ -69,7 +69,9 @@ export function createDevices(deviceApi: DevicesApi, pollMs = DEVICES_POLL_MS): 
 
   async function refresh(): Promise<void> {
     try {
-      status.value = await deviceApi.getDevices()
+      // While the pane watches, each poll says so: the server takes a companion pairing request
+      // only while someone could see it (`server/src/companion/viewers.ts`).
+      status.value = await deviceApi.getDevices(holders > 0)
       pollError.value = ''
     } catch (err) {
       pollError.value = (err as Error).message

@@ -27,7 +27,8 @@ tagged `vX.Y.Z`.
   starts with a video in that site's frame.
 - **Pairing the extension takes the code shown on the Edge, typed into the extension.** The Edge
   shows the code and the browser's name with a Refuse button; typing the code is the approval, and
-  three wrong tries refuse the request. The code never leaves the Mac's screen, and the extension
+  three wrong tries refuse the request. A request is taken only while the dashboard or **Settings →
+  Devices** is open to show its code. The code never leaves the Mac's screen, and the extension
   checks it is talking to your Fremkit before it signs in, so a program holding Fremkit's port
   cannot link your browser to itself (the popup says *The server on this port is not your
   Fremkit*). After five requests refused for wrong codes within a day, pairing locks until you

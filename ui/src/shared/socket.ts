@@ -11,6 +11,17 @@ export interface Socket {
 
 let instance: Socket | null = null
 
+/**
+ * The socket's URL. A dashboard page says so (`?view=dashboard`): it shows the companion's pairing
+ * prompt, and the server takes a pairing request only while someone could see it
+ * (`server/src/companion/viewers.ts`). The admin lives under `/admin` and says nothing.
+ */
+export function socketUrl(loc: Pick<Location, 'protocol' | 'host' | 'pathname'> = location): string {
+  const proto = loc.protocol === 'https:' ? 'wss' : 'ws'
+  const admin = loc.pathname === '/admin' || loc.pathname.startsWith('/admin/') || loc.pathname.startsWith('/admin.html')
+  return `${proto}://${loc.host}/ws${admin ? '' : '?view=dashboard'}`
+}
+
 export function useSocket(): Socket {
   if (instance) return instance
   const status = ref<'connecting' | 'open' | 'closed'>('connecting')
@@ -47,8 +58,7 @@ export function useSocket(): Socket {
 
   function connect() {
     status.value = 'connecting'
-    const proto = location.protocol === 'https:' ? 'wss' : 'ws'
-    ws = new WebSocket(`${proto}://${location.host}/ws`)
+    ws = new WebSocket(socketUrl())
     ws.onopen = () => {
       status.value = 'open'; retryMs = 500
       for (const ch of subs.keys()) send({ type: 'subscribe', channel: ch })

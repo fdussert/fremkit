@@ -25,6 +25,8 @@ export interface DeviceRoutesOptions {
   config: ConfigStore
   /** Hands a device's brightness report to whoever decides brightness (injected, not imported). */
   reportBrightness: (screenId: string, report: DeviceReport) => void
+  /** The Devices pane polled while open (`?watch=1`): it shows a companion request now. */
+  notePanePoll?: () => void
 }
 
 const NameSchema = z.string().trim().min(1).max(60)
@@ -116,7 +118,9 @@ export async function deviceRoutes(app: FastifyInstance, opts: DeviceRoutesOptio
 
   // --- the admin --------------------------------------------------------------------------------
 
-  app.get('/api/devices', { onRequest: localOnly }, async (_req, reply) => {
+  app.get('/api/devices', { onRequest: localOnly }, async (req, reply) => {
+    // The pane's own poll, not a one-off refresh from a menu: only it shows the request card.
+    if ((req.query as { watch?: unknown } | undefined)?.watch === '1') opts.notePanePoll?.()
     await service.loadKeyHash()
     reply.header('cache-control', 'no-store')
     return service.status()

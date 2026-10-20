@@ -92,14 +92,20 @@ export class Hub {
   private viewChannels = new Set<string>(HOST_CHANNELS)
   /** The last host-channel message each paired socket was sent, so a refresh repeats nothing. */
   private hostSent = new Map<SocketLike, Map<string, string>>()
+  /** Sockets of this Mac's own dashboard pages (`/ws?view=dashboard` from loopback, unpaired). */
+  private dashboards = new Set<SocketLike>()
 
   constructor(private readonly registry: ProviderRegistry) {}
 
-  /** A socket with no known origin is treated as remote: only the route can vouch for one. */
-  attach(socket: SocketLike, ctx: CommandContext = { loopback: false, paired: false }): void {
+  /**
+   * A socket with no known origin is treated as remote: only the route can vouch for one.
+   * `dashboard`: the page said it is a dashboard; held only for a loopback, unpaired socket.
+   */
+  attach(socket: SocketLike, ctx: CommandContext = { loopback: false, paired: false }, opts: { dashboard?: boolean } = {}): void {
     const channels = new Set<string>()
     this.clients.set(socket, channels)
     this.contexts.set(socket, ctx)
+    if (opts.dashboard === true && ctx.loopback && !ctx.paired) this.dashboards.add(socket)
     const deviceId = ctx.paired ? ctx.deviceId : undefined
     if (deviceId !== undefined) {
       let sockets = this.deviceSockets.get(deviceId)
@@ -122,6 +128,7 @@ export class Hub {
     this.clients.delete(socket)
     this.contexts.delete(socket)
     this.hostSent.delete(socket)
+    this.dashboards.delete(socket)
     const deviceId = ctx?.paired ? ctx.deviceId : undefined
     if (deviceId !== undefined) {
       const sockets = this.deviceSockets.get(deviceId)
@@ -129,6 +136,19 @@ export class Hub {
       if (sockets?.size === 0) this.deviceSockets.delete(deviceId)
     }
     for (const ch of channels) this.registry.removeSubscriber(ch)
+  }
+
+  /**
+   * How many of this Mac's dashboard pages are subscribed to `channel`: loopback, unpaired sockets
+   * that said they are a dashboard. A paired device never counts, whatever it subscribes to.
+   */
+  localDashboardsOn(channel: string): number {
+    let n = 0
+    for (const socket of this.dashboards) {
+      const ctx = this.contexts.get(socket)
+      if (ctx?.loopback === true && !ctx.paired && this.clients.get(socket)?.has(channel)) n += 1
+    }
+    return n
   }
 
   setPolicy(policy: DevicePolicy): void {

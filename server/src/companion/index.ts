@@ -23,6 +23,8 @@ export interface CompanionOptions {
   lockPath?: string
   config: Pick<ConfigStore, 'get'>
   registry: Pick<ProviderRegistry, 'register' | 'refresh'>
+  /** Whether a pairing request would show anywhere on this Mac now (`viewers.ts`). */
+  seen: () => boolean
 }
 
 export interface Companion {
@@ -67,7 +69,7 @@ export async function createCompanion(opts: CompanionOptions): Promise<Companion
   const unsubscribeStore = store.onChange(refresh)
 
   const pairedExtensions = (): number => store.list().filter((d) => d.kind === 'extension').length
-  await app.register(companionRoutes, { pairing, config, origins, pairedExtensions })
+  await app.register(companionRoutes, { pairing, config, origins, pairedExtensions, seen: opts.seen })
   await app.register(companionSocket, { store, session, sockets, origins })
 
   const close = (): void => {
