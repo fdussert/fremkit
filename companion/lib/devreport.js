@@ -4,8 +4,9 @@ import { clip, homePath, pathOf } from './devlog.js'
 // what the popup copies. Pure: the words, the time and the date are the caller's (chrome.i18n and
 // the browser's locale in the worker), so a test reads the exact text.
 //
-// The tab is lib/devtabs.js's internal one, stacks included: they leave the worker only here. A
-// build entry's full path stays in the worker too: the report writes its home folder `~/` (homePath).
+// The tab is lib/devtabs.js's internal one, stacks included: they leave the worker only here. Full
+// paths stay in the worker too: every text, origin, frame and path is written with its home folder
+// as `~` (homePath) before it is clipped.
 
 /** The longest report text; the server refuses a longer one (REPORT_MAX in server/src/companion/protocol.ts). */
 export const REPORT_MAX = 48_000
@@ -26,13 +27,13 @@ function entryLines(e, { stack, t, time }) {
   switch (e.kind) {
     case 'error': {
       const out = [`- ${at} ${count}${homeLine(e.text)}${state}`]
-      if (typeof e.origin === 'string' && e.origin !== '') out.push(`  at ${line(e.origin)}`)
+      if (typeof e.origin === 'string' && e.origin !== '') out.push(`  at ${homeLine(e.origin)}`)
       // The first frame is the origin already.
-      if (stack && Array.isArray(e.stack)) for (const frame of e.stack.slice(1)) out.push(`    ${line(frame, Infinity)}`)
+      if (stack && Array.isArray(e.stack)) for (const frame of e.stack.slice(1)) out.push(`    ${homeLine(frame, Infinity)}`)
       return out
     }
     case 'request':
-      return [`- ${at} ${count}${line(e.method)} ${line(e.path)} ${e.status > 0 ? e.status : t('noAnswer')}${state}`]
+      return [`- ${at} ${count}${line(e.method)} ${homeLine(e.path)} ${e.status > 0 ? e.status : t('noAnswer')}${state}`]
     case 'limited':
       return [`- ${at} +${e.n} ${t('reportLimited')}${state}`]
     case 'build': {
@@ -51,9 +52,9 @@ function entryLines(e, { stack, t, time }) {
 function render(tab, entries, opts) {
   const { t, date, now } = opts
   const host = line(tab.host)
-  const title = line(tab.title || tab.host)
+  const title = homeLine(tab.title || tab.host)
   const out = [
-    `## ${t('reportTitle')}: ${title} (${host}${line(pathOf(tab.url))})`,
+    `## ${t('reportTitle')}: ${title} (${host}${homeLine(pathOf(tab.url))})`,
     `${date(now)} · ${t('reportServer')}: ${tab.server === 'down' ? 'down' : 'up'}`,
     t('reportLines'),
   ]

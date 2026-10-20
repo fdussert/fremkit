@@ -10,13 +10,19 @@ export function clip(s, max) {
   return cut.length === max && last >= 0xd800 && last <= 0xdbff ? cut.slice(0, -1) : cut
 }
 
+/** A character that continues a path: `/Users/` after one is inside it (`/@fs/Users/…`). */
+const PATH_CHAR_RE = /[A-Za-z0-9._~@%+\-/]/
+
 /**
- * `s` with every home folder written `~/`: `/Users/<name>/` becomes `~/`, whatever the name holds
- * but a slash or a line break (`/Users/Jane Example/` too). What leaves the extension (the wire, the
- * Edge, the report, the popup) goes through this; the extension keeps the full path for itself.
+ * `s` with every home folder written `~`: `/Users/<name>/` becomes `~/`, whatever the name holds
+ * but a slash or a line break (`/Users/Jane Example/` too), and a name cut by the end of `s` (a
+ * clipped text ending `/Users/Jane Ex`) or by a line break becomes `~`. Inside a path the slash
+ * before it stays: `/@fs/Users/<name>/a.js` becomes `/@fs/~/a.js`. What leaves the extension (the wire, the Edge,
+ * the report, the popup) goes through this, before any clip; the extension keeps the full value.
  */
 export function homePath(s) {
-  return String(s).replace(/\/Users\/[^/\n]+\//g, '~/')
+  return String(s).replace(/\/Users\/[^/\n]+(\/|$|(?=\n))/g, (_, end, at, all) =>
+    (at > 0 && PATH_CHAR_RE.test(all[at - 1]) ? '/~' : '~') + end)
 }
 
 // Taken once: errorText reads values with these alone, so a page that replaces them later runs no

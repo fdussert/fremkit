@@ -250,7 +250,7 @@ segment (`//x/`, `/../`) is refused, so those URLs can only name the tab's own o
 when it shows a **compile error**, and the tab gets a `build` entry, counted among its errors (the
 light turns red), shown on the Edge with "Build" before its text:
 - **Vite**: the `vite-error-overlay` element's open shadow root, its message, its file
-  (`path:line:col`) and, when the message is empty, its code frame;
+  (`path:line:col`) and, when the message is empty or blank, its code frame;
 - **webpack-dev-server**: the overlay's iframe, only while its heading says *Compiled with
   problems* or *Failed to compile*, and only its first `ERROR` (a warning is no failed build): the
   message, and the file, line and column of its `ERROR in ./src/index.js 2:0` header (webpack counts
@@ -263,14 +263,21 @@ Next's runtime dialog add no entry, so an error is never counted twice, and `nex
 (Next's dev indicator) is nothing. The script reads text and attributes only, through the browser's
 own `textContent`, `shadowRoot` and `contentDocument`, never a property the page defined, and runs
 none of the page's code. It looks again 200 ms after the overlay last changed, says only what changed,
-and at most twice a second: an overlay that re-renders as you type stays one entry. A different error
-resolves the one before it; the overlay going away (`build-clear`), a reload or a hot update resolves
-it. What is sent is the message clipped to 300 characters, the file as the overlay names it (an
-absolute path under Vite, `./src/…` under webpack and Next) and its line and column.
+and at most twice a second: an overlay that re-renders as you type stays one entry (the same
+message for the same file, its line and column updated when an edit above it moved it), and an
+overlay that shows but has nothing to read yet changes nothing. A different error resolves the one
+before it; the overlay going away (`build-clear`), a reload or a hot update resolves it, and one the
+history's 20 entries pushed out stops counting. What is sent is the message clipped to 300
+characters, the file as the overlay names it (an absolute path under Vite, `./src/…` under webpack
+and Next) and its line and column.
 
-**Home folders read `~/`.** Whatever leaves the extension (the Edge, the report, the popup) writes a
-path under `/Users/<name>/` as `~/…`, in an error's or a build's text and in a build's file; the
-extension keeps the full path for itself.
+**Home folders read `~`.** Whatever leaves the extension (the Edge, the report, the popup) writes a
+home folder `/Users/<name>/` as `~/`: in the page's title, an error's text, origin and stack frames,
+a request's path, and a build's text and file. Inside a path the slash before it stays
+(`/@fs/Users/<name>/a.js`, Vite's URL for a file outside its root, reads `/@fs/~/a.js`), a request
+path that starts with it reads `/~/…`, and a name cut by the 300-character clip or by a line break
+(`…/Users/Jane Ex`) reads `~`. This happens before anything is clipped for the wire. The extension
+keeps the full values for itself.
 
 ### The history and the bug report
 

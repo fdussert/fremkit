@@ -101,6 +101,12 @@
     return out
   }
 
+  /**
+   * A compile error overlay is showing but has no text to read yet (a frame mid-render): what was
+   * last said stands, never a `build-clear` while the overlay is there.
+   */
+  const KEEP = 'keep'
+
   /** The roots read this pass: watched too, as a change inside them is not the document's. */
   let roots = []
 
@@ -112,8 +118,9 @@
     roots.push(root)
     const place = text(root.querySelector(r.file)).trim()
     const m = /^(.*?):(\d+)(?::(\d+))?$/.exec(place)
-    const message = text(root.querySelector(r.message)) || text(root.querySelector(r.frame))
-    return m ? found(message, m[1], pos(m[2]), pos(m[3])) : found(message, place)
+    // A blank message (whitespace only) is none: the frame says it then.
+    const message = text(root.querySelector(r.message)).trim() || text(root.querySelector(r.frame))
+    return (m ? found(message, m[1], pos(m[2]), pos(m[3])) : found(message, place)) ?? KEEP
   }
 
   function readWebpack() {
@@ -134,7 +141,7 @@
       if (!m) continue
       // webpack counts columns from 0, the editors from 1.
       const col = m[3] === undefined ? undefined : pos(Number(m[3]) + 1)
-      return found(text(header.nextElementSibling) || head, m[1], pos(m[2]), col)
+      return found(text(header.nextElementSibling).trim() || head, m[1], pos(m[2]), col) ?? KEEP
     }
     return null
   }
@@ -151,7 +158,7 @@
       // SWC writes its errors as `  x message`.
       const message = text(dialog.querySelector(r.message)).replace(/^\s*x\s+/, '')
       const m = /:(\d+):(\d+)\]/.exec(text(dialog.querySelector(r.frame)))
-      return found(message, text(dialog.querySelector(r.file)), m ? pos(m[1]) : undefined, m ? pos(m[2]) : undefined)
+      return found(message, text(dialog.querySelector(r.file)), m ? pos(m[1]) : undefined, m ? pos(m[2]) : undefined) ?? KEEP
     }
     return null
   }
@@ -198,6 +205,7 @@
     }
     const now = read()
     watchRoots()
+    if (now === KEEP) return
     const key = now === null ? null : JSON.stringify([now.text, now.file, now.line, now.col])
     if (key === lastKey) return
     lastKey = key

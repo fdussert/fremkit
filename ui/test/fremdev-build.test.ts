@@ -150,9 +150,14 @@ describe('fremdev/build.js', () => {
     expect(p.sent()[1]).toMatchObject({ kind: 'build', text: 'Element is missing end tag.' })
   })
 
-  it('sends at most 2 messages a second', async () => {
+  it('sends at most 2 messages a second: 500 ms or more between two', async () => {
     vi.useFakeTimers()
     const p = page()
+    const stamps: number[] = []
+    p.sendMessage.mockImplementation(() => {
+      stamps.push(Date.now())
+      return Promise.resolve()
+    })
     p.run()
     const [overlay] = addOverlay('vite-overlay.html')
     const body = overlay.shadowRoot!.querySelector('.message-body')!
@@ -168,6 +173,26 @@ describe('fremdev/build.js', () => {
     expect(n).toBeGreaterThan(0)
     await settle()
     expect(p.sent().at(-1)).toMatchObject({ text: 'error 19' })
+    for (let i = 1; i < stamps.length; i++) expect(stamps[i] - stamps[i - 1], `send ${i}`).toBeGreaterThanOrEqual(500)
+  })
+
+  it('reads the frame when the Vite message is blank, and never clears while the overlay shows', async () => {
+    vi.useFakeTimers()
+    const p = page()
+    p.run()
+    const [overlay] = addOverlay('vite-overlay.html')
+    const root = overlay.shadowRoot!
+    root.querySelector('.message-body')!.textContent = '  \n  '
+    await settle()
+    expect(p.sent()).toEqual([expect.objectContaining({ kind: 'build', file: '/Users/example/app/src/App.vue', line: 12 })])
+    expect(p.sent()[0].text).toMatch(/^10 \| <\/button> 11 \| <\/main> 12 \| <\/section>/)
+    // Mid-render: nothing to read at all. What was said stands.
+    root.querySelector('.frame')!.textContent = ''
+    await settle()
+    expect(p.sent()).toHaveLength(1)
+    overlay.remove()
+    await settle()
+    expect(p.sent().at(-1)).toEqual(CLEAR)
   })
 
   it('clips a 2 000-character message to 300', async () => {

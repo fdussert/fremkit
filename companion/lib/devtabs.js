@@ -90,9 +90,11 @@ const sameEntry = (a, b) =>
 const isId = (v) => Number.isInteger(v) && v >= 1 && v <= MAX_ID
 
 /**
- * `{ history, nextId }` after `entry` (n 1 or more, open): put on top of the ring with the tab's
- * `nextId`, the next one counting on (1 again after MAX_ID), or folded into the newest entry, whose
- * id it keeps, when it is the same and open.
+ * `{ history, nextId, errors }` after `entry` (n 1 or more, open): put on top of the ring with the
+ * tab's `nextId`, the next one counting on (1 again after MAX_ID), or folded into the newest entry,
+ * whose id it keeps, when it is the same and open. `errors` is the tab's, less the open or seen
+ * build entries the ring pushed out: nothing could resolve them any more (`build-clear` finds
+ * none), and the light would stay red.
  */
 function record(tab, entry) {
   const ring = tab.history ?? []
@@ -100,10 +102,15 @@ function record(tab, entry) {
   if (top && top.state === 'open' && sameEntry(top, entry)) {
     const merged = { ...top, n: Math.min(MAX_COUNT, top.n + entry.n), at: entry.at }
     if (entry.kind === 'error') merged.stack = entry.stack
-    return { history: [merged, ...ring.slice(1)], nextId: tab.nextId }
+    return { history: [merged, ...ring.slice(1)], nextId: tab.nextId, errors: tab.errors }
   }
   const id = isId(tab.nextId) ? tab.nextId : 1
-  return { history: [{ ...entry, id }, ...ring].slice(0, HISTORY_MAX), nextId: id === MAX_ID ? 1 : id + 1 }
+  const all = [{ ...entry, id }, ...ring]
+  return {
+    history: all.slice(0, HISTORY_MAX),
+    nextId: id === MAX_ID ? 1 : id + 1,
+    errors: uncount(tab.errors, all.slice(HISTORY_MAX).filter(isLive)),
+  }
 }
 const restate = (history, from, to) => (history ?? []).map((e) => (from.includes(e.state) ? { ...e, state: to } : e))
 
@@ -119,18 +126,23 @@ const isLive = (e) => e.kind === 'build' && (e.state === 'open' || e.state === '
 const isPos = (v) => Number.isInteger(v) && v >= 1 && v <= MAX_POS
 
 /**
- * `{ errors, history }` with every open or seen build entry resolved, and the errors tally down by
- * as many (the seen ones off `seen` too), never below zero and `seen` never above `open`.
+ * The errors tally less the open or seen build entries `live` (the seen ones off `seen` too), never
+ * below zero and `seen` never above `open`.
  */
+function uncount(e, live) {
+  if (live.length === 0) return e
+  const open = Math.max(0, e.open - live.length)
+  const seen = Math.min(open, Math.max(0, (e.seen ?? 0) - live.filter((x) => x.state === 'seen').length))
+  return { ...e, open, seen }
+}
+
+/** `{ errors, history }` with every open or seen build entry resolved, and uncounted. */
 function resolveBuilds(tab) {
   const ring = tab.history ?? []
   const live = ring.filter(isLive)
   if (live.length === 0) return { errors: tab.errors, history: ring }
-  const e = tab.errors
-  const open = Math.max(0, e.open - live.length)
-  const seen = Math.min(open, Math.max(0, (e.seen ?? 0) - live.filter((x) => x.state === 'seen').length))
   return {
-    errors: { ...e, open, seen },
+    errors: uncount(tab.errors, live),
     history: ring.map((x) => (isLive(x) ? { ...x, state: 'resolved' } : x)),
   }
 }
@@ -143,8 +155,7 @@ export function reduce(tab, event, now) {
     case 'error':
       return {
         ...tab,
-        errors: bump(tab.errors, { text: event.text, at: now }),
-        ...record(tab, {
+        ...record({ ...tab, errors: bump(tab.errors, { text: event.text, at: now }) }, {
           kind: 'error',
           text: event.text,
           origin: typeof event.origin === 'string' ? event.origin : null,
@@ -172,20 +183,26 @@ export function reduce(tab, event, now) {
       }
     case 'build': {
       // The overlay re-renders as the user types: the same error again is not a new one.
+      // An edit above it moves it: it takes the newest line and column (an editor opened on it
+      // must not land on a stale line), keeping its id, its count and the tally.
       const path = typeof event.file === 'string' ? event.file : null
+      const line = isPos(event.line) ? event.line : null
+      const col = isPos(event.col) ? event.col : null
       const newest = (tab.history ?? []).find(isLive)
-      if (newest && newest.text === event.text && newest.path === path) return tab
+      if (newest && newest.text === event.text && newest.path === path) {
+        if (newest.line === line && newest.col === col) return tab
+        return { ...tab, history: tab.history.map((e) => (e === newest ? { ...e, path, line, col } : e)) }
+      }
       // Another error replaces the one shown: one build entry open at a time.
       const base = { ...tab, ...resolveBuilds(tab) }
       return {
         ...base,
-        errors: bump(base.errors, { text: event.text, at: now }),
-        ...record(base, {
+        ...record({ ...base, errors: bump(base.errors, { text: event.text, at: now }) }, {
           kind: 'build',
           text: event.text,
           path,
-          line: isPos(event.line) ? event.line : null,
-          col: isPos(event.col) ? event.col : null,
+          line,
+          col,
           n: 1,
           at: now,
           state: 'open',
@@ -234,8 +251,7 @@ export function reduce(tab, event, now) {
       const add = (v) => Math.min(MAX_COUNT, v + n)
       return {
         ...tab,
-        errors: { total: add(e.total), open: add(e.open), seen: e.seen ?? 0, last: e.last },
-        ...record(tab, { kind: 'limited', n, at: now, state: 'open' }),
+        ...record({ ...tab, errors: { total: add(e.total), open: add(e.open), seen: e.seen ?? 0, last: e.last } }, { kind: 'limited', n, at: now, state: 'open' }),
         activity: now,
       }
     }
@@ -254,8 +270,9 @@ export function reduce(tab, event, now) {
 }
 
 const count = (n) => Math.max(0, Math.min(MAX_COUNT, Math.trunc(Number.isFinite(n) ? n : 0)))
+/** A request path as it travels: no query or fragment, a home folder `~` (`/@fs/~/…`), then clipped. */
 const pathOnly = (p) => {
-  const bare = String(p ?? '').split(/[?#]/)[0]
+  const bare = homePath(String(p ?? '').split(/[?#]/)[0])
   return clip(bare.startsWith('/') ? bare : `/${bare}`, MAX_TEXT)
 }
 
@@ -284,7 +301,10 @@ export function sessionTabs(tabs) {
   return out
 }
 
-/** One history entry as `dev.tabs` carries it: bounded, and never its stack. Null for what cannot travel. */
+/**
+ * One history entry as `dev.tabs` carries it: bounded, never its stack, and every text or path with
+ * its home folder written `~` before it is clipped (homePath). Null for what cannot travel.
+ */
 function wireEntry(e) {
   const common = { n: count(e?.n), at: Math.max(0, e?.at), state: e?.state }
   if (!isId(e?.id) || common.n < 1 || !Number.isFinite(common.at) || !STATES.includes(common.state)) return null
@@ -295,7 +315,7 @@ function wireEntry(e) {
         kind: 'error',
         id,
         text: clip(homePath(e.text ?? ''), MAX_TEXT),
-        origin: typeof e.origin === 'string' ? clip(e.origin, MAX_TEXT) : null,
+        origin: typeof e.origin === 'string' ? clip(homePath(e.origin), MAX_TEXT) : null,
         ...common,
       }
     case 'build':
@@ -320,7 +340,7 @@ function wireEntry(e) {
 function wireRow(t) {
   return {
     tabId: t.tabId,
-    app: clip(String(t.title || t.host), MAX_APP),
+    app: clip(homePath(t.title || t.host), MAX_APP),
     host: t.host,
     errors: wireTally(t.errors, (l) => ({ text: clip(homePath(l.text ?? ''), MAX_TEXT), at: Math.max(0, l.at) })),
     requests: wireTally(t.requests, (l) => ({

@@ -896,7 +896,93 @@ describe('build entries', () => {
     expect(homePath('at /Users/Jane Example/a.js and /Users/b/c')).toBe('at ~/a.js and ~/c')
     expect(homePath('/var/tmp/x')).toBe('/var/tmp/x')
     // A line break ends the name: the next line is not swallowed.
-    expect(homePath('/Users/a\n/Users/b/c')).toBe('/Users/a\n~/c')
+    expect(homePath('/Users/a\n/Users/b/c')).toBe('~\n~/c')
+    // A name cut by the end of the text (a clipped message) goes too.
+    expect(homePath('failed in /Users/Jane Ex')).toBe('failed in ~')
+    expect(homePath('from /Users/jane')).toBe('from ~')
+    // Inside a path the slash before it stays.
+    expect(homePath('/@fs/Users/Jane Example/a.js')).toBe('/@fs/~/a.js')
+    expect(homePath('http://localhost:5173/@fs/Users/jane/a.js:1:2')).toBe('http://localhost:5173/@fs/~/a.js:1:2')
+    expect(homePath('at f (/Users/jane/a.js:1:2)')).toBe('at f (~/a.js:1:2)')
+  })
+
+  it('never lets a name out when the text was cut inside it', () => {
+    // build.js and the worker clip to 300 before the wire: the cut can land inside the name.
+    const text = `${'x'.repeat(285)} /Users/Jane Ex`
+    expect(text).toHaveLength(300)
+    const tab = reduce(base(), build(text), 200)
+    const [row] = wireTabs([tab])
+    expect(row.history[0].text).toBe(`${'x'.repeat(285)} ~`)
+    expect(row.errors.last.text).toBe(`${'x'.repeat(285)} ~`)
+    const err = wireTabs([reduce(base(), { kind: 'error', text }, 200)])[0]
+    expect(JSON.stringify(err)).not.toContain('Jane')
+    // A file whose cut lands in the name, and one whose home folder only fits after homePath.
+    const cut = wireTabs([reduce(base(), build('x', { file: `/a/${'d'.repeat(285)}/Users/Jane Ex` }), 200)])[0]
+    expect(cut.history[0].file).not.toContain('Jane')
+    const long = wireTabs([reduce(base(), build('x', { file: `/Users/Jane Example/${'d'.repeat(285)}.vue` }), 200)])[0]
+    expect(long.history[0].file).toBe(`~/${'d'.repeat(285)}.vue`)
+  })
+
+  it('writes a home folder ~ in error origins, request paths and the report\'s frames, the extension keeping the full value', () => {
+    let tab = reduce(base(), {
+      kind: 'error',
+      text: 'TypeError: x',
+      origin: '/@fs/Users/Jane Example/pkg/a.js:1:2',
+      stack: ['f /@fs/Users/Jane Example/pkg/a.js:1:2', 'g http://localhost:5173/@fs/Users/Jane Example/pkg/b.js:3:4'],
+    }, 200)
+    tab = reduce(tab, { kind: 'request', method: 'GET', path: '/@fs/Users/Jane Example/pkg/c.js', status: 404 }, 300)
+    tab = reduce(tab, { kind: 'request', method: 'GET', path: '/Users/Jane Example/d.js', status: 500 }, 400)
+    expect(tab.history[2].origin).toBe('/@fs/Users/Jane Example/pkg/a.js:1:2')
+    expect(tab.history[1].path).toBe('/@fs/Users/Jane Example/pkg/c.js')
+    const [row] = wireTabs([tab])
+    expect(row.history[2].origin).toBe('/@fs/~/pkg/a.js:1:2')
+    expect(row.history[1].path).toBe('/@fs/~/pkg/c.js')
+    // A bare leading home folder: `~/`, and a request path keeps its leading slash.
+    expect(row.history[0].path).toBe('/~/d.js')
+    expect(row.requests.last.path).toBe('/~/d.js')
+    expect(JSON.stringify(row)).not.toContain('/Users/')
+    expect(validRow(row)).toBe(true)
+    expect(DevTabSchema.safeParse(row).success).toBe(true)
+
+    const WORDS: Record<string, (...s: unknown[]) => string> = {
+      reportTitle: () => 'Bug report', reportServer: () => 'dev server', reportLines: () => 'Lines.',
+      reportErrors: (open, total) => `Errors (${open} open, ${total} total)`, reportRequests: () => 'Failed requests',
+      noAnswer: () => 'no answer', stateSeen: () => 'seen', stateResolved: () => 'resolved',
+    }
+    const fmt = { stack: true, now: 9_000, t: (key: string, ...subs: unknown[]) => WORDS[key](...subs), time: (ms: number) => `T${ms}`, date: (ms: number) => `D${ms}` }
+    const text = buildReport({ ...tab, title: 'App in /Users/Jane Example/app' }, fmt)
+    expect(text).toContain('## Bug report: App in ~/app (localhost:5173/)')
+    expect(text).toContain('  at /@fs/~/pkg/a.js:1:2\n    g http://localhost:5173/@fs/~/pkg/b.js:3:4')
+    expect(text).toContain('- T300 GET /@fs/~/pkg/c.js 404')
+    expect(text).not.toContain('/Users/')
+    expect(wireTabs([{ ...tab, title: 'App in /Users/Jane Example/app' }])[0].app).toBe('App in ~/app')
+  })
+
+  it('uncounts an open or seen build entry the ring pushed out', () => {
+    let tab = reduce(base(), build('Invalid end tag.'), 200)
+    tab = reduce(tab, { kind: 'clear' }, 210)
+    for (let i = 0; i < HISTORY_MAX; i++) tab = reduce(tab, { kind: 'error', text: `E${i}` }, 300 + i)
+    expect(builds(tab)).toEqual([])
+    // 21 errors counted, the build gone from the ring: 20 open, the seen build off `seen`.
+    expect(tab.errors).toMatchObject({ total: 21, open: 20, seen: 0 })
+    expect(tab.errors.seen).toBeLessThanOrEqual(tab.errors.open)
+    expect(reduce(tab, { kind: 'build-clear' }, 400).errors.open).toBe(20)
+    // A resolved one pushed out was uncounted already.
+    let done = reduce(reduce(base(), build('x'), 200), { kind: 'build-clear' }, 250)
+    for (let i = 0; i < HISTORY_MAX; i++) done = reduce(done, { kind: 'request', path: `/r${i}`, status: 500 }, 300 + i)
+    expect(done.errors).toMatchObject({ total: 1, open: 0, seen: 0 })
+    expect(validRow(wireTabs([tab])[0])).toBe(true)
+  })
+
+  it('a build error that moved takes the newest line and column, with its id and the tally', () => {
+    let tab = reduce(base(), build('Invalid end tag.'), 200)
+    tab = reduce(tab, build('Invalid end tag.', { line: 14, col: 5 }), 300)
+    expect(builds(tab)).toHaveLength(1)
+    expect(tab.history[0]).toMatchObject({ id: 1, line: 14, col: 5, n: 1, state: 'open', path: '/Users/example/app/src/App.vue' })
+    expect(tab.errors).toMatchObject({ total: 1, open: 1 })
+    expect(wireTabs([tab])[0].history[0]).toMatchObject({ file: '~/app/src/App.vue', line: 14, col: 5 })
+    tab = reduce(tab, build('Invalid end tag.', { line: undefined, col: undefined }), 400)
+    expect(tab.history[0]).toMatchObject({ id: 1, line: null, col: null })
   })
 
   it('records a build error once however often the overlay says it again', () => {
@@ -914,6 +1000,7 @@ describe('build entries', () => {
     tab = reduce(tab, build('Invalid end tag.', { line: 13 }), 300)
     // Same text and path, another line: the same error, moved.
     expect(builds(tab)).toHaveLength(1)
+    expect(tab.errors.open).toBe(1)
     tab = reduce(tab, build('Element is missing end tag.'), 400)
     expect(builds(tab).map((e) => e.state)).toEqual(['open', 'resolved'])
     expect(tab.errors).toMatchObject({ total: 2, open: 1, last: { text: 'Element is missing end tag.' } })

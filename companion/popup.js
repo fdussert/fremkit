@@ -5,6 +5,7 @@
 import { localize, t } from './i18n.js'
 import { browserName } from './lib/browser.js'
 import { BUILTIN_PERMISSION_ORIGINS, parsePattern } from './lib/devhosts.js'
+import { homePath } from './lib/devlog.js'
 import { fremplayBlocked, shareErrorKey } from './lib/errors.js'
 import { cleanFrames, embeddedPlayer, pickVideo, survey } from './lib/video.js'
 
@@ -247,7 +248,8 @@ function renderDevTabs(rows) {
   rows.forEach((row, i) => {
     const { li, light, title, button } = devItem(row.tabId)
     light.className = `light ${lightOf(row)}`
-    title.textContent = row.title || row.host || ''
+    // The session copy keeps the page's own title: a home folder in it reads `~` here too.
+    title.textContent = homePath(row.title || row.host || '')
     title.title = row.host || ''
     const state = copied.get(row.tabId)
     button.className = `ghost ${state ?? ''}`.trim()
