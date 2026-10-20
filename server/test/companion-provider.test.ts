@@ -313,7 +313,12 @@ describe('createCompanion', () => {
     const locked = await ask()
     expect(locked.statusCode).toBe(423)
     expect(locked.json()).toEqual({ error: tr(configWith('page').locale, 'companion.pairLocked'), reason: 'locked' })
-    // A restart reads the flag back.
+    // A restart reads the flag back. With nobody watching, still 423: the lock is checked before
+    // whether anyone could see the code, so it says what is in the way and nothing about who looks.
+    await app.close()
+    const unseen = await build(configWith('page'), lockPath, () => false)
+    expect(unseen.companion.pairing.locked).toBe(true)
+    expect((await ask()).json()).toEqual({ error: tr(configWith('page').locale, 'companion.pairLocked'), reason: 'locked' })
     await app.close()
     const again = await build(configWith('page'), lockPath)
     expect(again.companion.pairing.locked).toBe(true)

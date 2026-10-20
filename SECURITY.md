@@ -397,7 +397,10 @@ Edge unplugged all report `hidden` and stop counting; the kiosk on the Edge repo
 with 409 `unseen` before it exists, after the origin check (`companion/viewers.ts`). A paired
 device never counts. Both signals come from callers holding the access secret, which the pairing
 route does not ask for, so a process that cannot read the secret cannot pass for a viewer; one
-that can read it could open such a socket itself, and is beyond what this guard is for. A program that keeps a request of its own waiting can
+that can read it could open such a socket itself, and is beyond what this guard is for. The lock is
+checked before this (423 while locked, whoever watches); what is left is a presence signal: a local
+program without the secret can tell from 409 `unseen` that no dashboard or Devices pane is on screen,
+and gets any other answer only by making a request that one of them shows. A program that keeps a request of its own waiting can
 hold pairing up (you then see a request you did not start, and the Edge counts the other browsers
 turned away since you last answered one, a count only your answer clears, or two minutes with no
 request waiting at all: refuse it), but it cannot swap its request in under the code you type: the
