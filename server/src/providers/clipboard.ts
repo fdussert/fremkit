@@ -111,16 +111,25 @@ export function isPrivatePasteboard(types: string[]): boolean {
   return types.some((t) => PRIVATE_PASTEBOARD_TYPES.includes(t.trim()))
 }
 
+/**
+ * The environment `pbcopy` and `pbpaste` run with. Both pick the text encoding from the locale,
+ * and a server launched by the helper (launchd) has none: they then fall back to Mac Roman and
+ * turn `·`, `×` or an accent into mojibake on the way in or out. UTF-8 is what Node writes.
+ */
+export function pasteboardEnv(): NodeJS.ProcessEnv {
+  return { ...process.env, LC_CTYPE: 'UTF-8', LANG: 'en_US.UTF-8' }
+}
+
 export const pbPasteboard: Pasteboard = {
   read: () => new Promise((resolve, reject) => {
-    execFile('/usr/bin/pbpaste', [], { timeout: 5000, maxBuffer: 1024 * 1024 }, (err, stdout) => {
+    execFile('/usr/bin/pbpaste', [], { timeout: 5000, maxBuffer: 1024 * 1024, env: pasteboardEnv() }, (err, stdout) => {
       // A pasteboard holding no text at all is not an error: it is simply nothing to record.
       if (err) reject(new Error(err.message))
       else resolve(stdout)
     })
   }),
   write: (text) => new Promise((resolve, reject) => {
-    const child = execFile('/usr/bin/pbcopy', [], { timeout: 5000 }, (err) => (err ? reject(new Error(err.message)) : resolve()))
+    const child = execFile('/usr/bin/pbcopy', [], { timeout: 5000, env: pasteboardEnv() }, (err) => (err ? reject(new Error(err.message)) : resolve()))
     child.stdin?.end(text)
   }),
   types: () => new Promise((resolve) => {
