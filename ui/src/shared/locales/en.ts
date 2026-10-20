@@ -622,6 +622,7 @@ export const en: Record<string, string> = {
   'dashboard.remote.noScreen.ipad': 'Choose a screen for this iPad in the Mac’s admin',
   'dashboard.remote.unauthorized': 'This tablet is no longer allowed',
   'dashboard.remote.unauthorized.ipad': 'This iPad is no longer allowed',
+  'dashboard.remote.appSettings': 'App settings',
   'dashboard.companion.request': 'A browser extension wants to connect',
   'dashboard.companion.typeCode': 'Type this code in your browser',
   'dashboard.companion.extensionId': 'extension {id}…',

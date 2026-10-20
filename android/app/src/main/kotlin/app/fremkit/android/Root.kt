@@ -14,6 +14,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onSizeChanged
@@ -136,7 +137,9 @@ fun Root(
                         openSettings = { settingsOpen = true },
                     )
                     AppState.Connecting -> ConnectingScreen(mac?.name)
-                    is AppState.Dashboard -> mac?.let { DashboardScreen(s.host, it, model, hygiene, brightness) }
+                    is AppState.Dashboard -> mac?.let {
+                        DashboardScreen(s.host, it, model, hygiene, brightness, openSettings = { settingsOpen = true })
+                    }
                     is AppState.Unreachable -> UnreachableScreen(s.name, isConnecting, nudge, openSettings = { settingsOpen = true }) {
                         model.reconnect()
                     }
@@ -151,11 +154,12 @@ fun Root(
             }
         }
 
-        // Never over the dashboard, which stays the page's: closed when it comes up.
-        LaunchedEffect(state is AppState.Dashboard) {
-            if (state is AppState.Dashboard) settingsOpen = false
-        }
-        if (settingsOpen && state !is AppState.Dashboard && !isRestarting) {
+        // Over the dashboard too, when the page's menu asked for it (`PageMessage.Settings`): the
+        // sheet is a window of its own, so the bars it may bring back overlay the page without
+        // resizing it, and the activity's window, focused again once it closes, goes back to
+        // immersive (`MainActivity.onWindowFocusChanged`). Forgetting from there is the same
+        // `model.forget`, which restarts the process once a WebView has loaded (`PinChangeGuard`).
+        if (settingsOpen && !isRestarting) {
             SettingsSheet(
                 SettingsInfo(
                     macName = mac?.name,
@@ -179,13 +183,22 @@ fun Root(
 
 /**
  * The dashboard: one [DashboardWebView] per host (a new host, a new view), paused and resumed with
- * the activity, destroyed when the dashboard goes. What the page says goes to the model, and its
- * brightness targets to [brightness], which reports the screen's level to [host] while the
- * dashboard is shown and the app started.
+ * the activity, destroyed when the dashboard goes. What the page says goes to the model, its menu's
+ * settings request to [openSettings], and its brightness targets to [brightness], which reports the
+ * screen's level to [host] while the dashboard is shown and the app started.
  */
 @Composable
-private fun DashboardScreen(host: String, mac: PairedMac, model: AppModel, hygiene: WebViewHygiene, brightness: ScreenBrightness) {
+private fun DashboardScreen(
+    host: String,
+    mac: PairedMac,
+    model: AppModel,
+    hygiene: WebViewHygiene,
+    brightness: ScreenBrightness,
+    openSettings: () -> Unit,
+) {
     val context = LocalContext.current
+    // The WebView is remembered across recompositions; its listener reads the latest callback.
+    val currentOpenSettings by rememberUpdatedState(openSettings)
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     key(host) {
         val dashboard = remember {
@@ -201,6 +214,8 @@ private fun DashboardScreen(host: String, mac: PairedMac, model: AppModel, hygie
                         is PageMessage.Brightness -> brightness.receive(message.target, message.seq)
                         // The screen the Mac shows here: the page's business.
                         is PageMessage.Screen -> Unit
+                        // The page's menu: the app's settings sheet, over the dashboard.
+                        PageMessage.Settings -> currentOpenSettings()
                     }
                 },
                 onFailure = { model.dashboardFailed() },

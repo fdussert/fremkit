@@ -54,6 +54,15 @@ class PageMessageTest {
         assertEquals(PageMessage.Brightness(0.0, 2), PageMessage.parse("""{"type":"brightness","target":0,"seq":2.0}"""))
     }
 
+    // Not shared: the iPad app ignores it (the page offers the entry in the Android app only).
+    @Test
+    fun readsTheSettingsRequest() {
+        assertEquals(PageMessage.Settings, PageMessage.parse("""{"type":"settings"}"""))
+        assertEquals(PageMessage.Settings, PageMessage.parse("""{"type":"settings","extra":1}"""))
+        assertNull(PageMessage.parse("""{"type":"Settings"}"""))
+        assertNull(PageMessage.parse("\"settings\""))
+    }
+
     @Test
     fun theDashboardUrlAndTheMacName() {
         assertEquals("https://192.0.2.10:4243/", Dashboard.url("192.0.2.10", 4243))

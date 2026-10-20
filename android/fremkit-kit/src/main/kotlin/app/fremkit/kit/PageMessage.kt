@@ -23,6 +23,12 @@ sealed interface PageMessage {
     /** The brightness the Mac wants, 0–100, once per [seq]. */
     data class Brightness(val target: Double, val seq: Int) : PageMessage
 
+    /**
+     * The user asked for the app's settings sheet from the page's menu. Android only: the page
+     * offers it in this app alone, and the iPad app ignores it.
+     */
+    data object Settings : PageMessage
+
     companion object {
         /**
          * Reads a message's data. The Android channel carries a string, which the page writes with
@@ -40,6 +46,7 @@ sealed interface PageMessage {
             val type = fields["type"].string() ?: return null
             return when (type) {
                 "unauthorized" -> Unauthorized
+                "settings" -> Settings
                 "screen" -> when (val id = fields["screenId"]) {
                     is JsonNull -> Screen(null)
                     else -> id.string()?.let(::Screen)

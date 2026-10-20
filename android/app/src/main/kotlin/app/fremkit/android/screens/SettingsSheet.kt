@@ -49,8 +49,9 @@ data class SettingsInfo(
 
 /**
  * The app's small settings sheet (decision 3): screen pinning, forgetting the Mac, the versions.
- * Opened from the welcome screen's corner button or a long press on the unreachable screen's Mac
- * name; never over the dashboard, which stays the page's.
+ * Opened from the welcome screen's corner button, a long press on the unreachable screen's Mac
+ * name, or, over the dashboard, the page's own menu (`PageMessage.Settings`), since the app draws
+ * nothing over the page.
  *
  * **Pin this app** is Android's screen pinning (`startLockTask()` without device-owner
  * provisioning): the system asks the user, and they leave with the system's own gesture. It does
