@@ -58,4 +58,18 @@
     <string name="manual_check_words">Vérifiez que le Mac affiche les mêmes mots.</string>
     <string name="manual_code">Code</string>
     <string name="manual_other_mac">Autre Mac</string>
+
+    <string name="settings_title">Réglages</string>
+    <string name="settings_open">Réglages</string>
+    <string name="settings_pin">Épingler cette app</string>
+    <string name="settings_unpin">Désépingler cette app</string>
+    <string name="settings_pin_hint">L’épinglage d’écran doit être activé dans les paramètres du système (Sécurité). Pour quitter une app épinglée, utilisez le geste du système : sur la plupart des tablettes, maintenez Retour et Aperçu.</string>
+    <string name="settings_forget">Oublier l’appairage enregistré</string>
+    <string name="settings_forget_mac">Oublier %1$s</string>
+    <string name="settings_forget_title">Oublier ce Mac ?</string>
+    <string name="settings_forget_body">Cette tablette n’affichera plus son tableau de bord et devra être appairée à nouveau.</string>
+    <string name="settings_forget_confirm">Oublier</string>
+    <string name="settings_app_version">Fremkit pour Android %1$s (build %2$d)</string>
+    <string name="settings_mac_version">Fremkit sur le Mac : %1$s</string>
+    <string name="settings_close">Fermer</string>
 </resources>

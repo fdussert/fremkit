@@ -68,8 +68,8 @@ fun ScreenColumn(content: @Composable ColumnScope.() -> Unit) {
 }
 
 @Composable
-fun Title(text: String) {
-    Text(text, style = MaterialTheme.typography.headlineMedium, textAlign = TextAlign.Center)
+fun Title(text: String, modifier: Modifier = Modifier) {
+    Text(text, style = MaterialTheme.typography.headlineMedium, textAlign = TextAlign.Center, modifier = modifier)
 }
 
 @Composable

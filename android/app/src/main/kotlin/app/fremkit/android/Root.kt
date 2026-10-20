@@ -10,6 +10,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -32,6 +34,8 @@ import app.fremkit.android.screens.ManualPairScreen
 import app.fremkit.android.screens.LinkPairingScreen
 import app.fremkit.android.screens.OutdatedWebViewScreen
 import app.fremkit.android.screens.ScannerScreen
+import app.fremkit.android.screens.SettingsInfo
+import app.fremkit.android.screens.SettingsSheet
 import app.fremkit.android.screens.UnauthorizedScreen
 import app.fremkit.android.screens.UnreachableScreen
 import app.fremkit.android.screens.WelcomeScreen
@@ -69,6 +73,7 @@ fun Root(
     network: LocalNetwork,
     brightness: ScreenBrightness,
     appVersion: String,
+    appBuild: Int,
 ) {
     val state by model.state.collectAsStateWithLifecycle()
     val mac by model.mac.collectAsStateWithLifecycle()
@@ -81,6 +86,7 @@ fun Root(
     val macs by network.macs.collectAsStateWithLifecycle()
     val density = LocalDensity.current.density.toDouble()
     val nudge = VersionNudge.of(serverVersion, appVersion)
+    var settingsOpen by remember { mutableStateOf(false) }
 
     FremkitTheme {
         Box(
@@ -122,10 +128,18 @@ fun Root(
                     cancel = flow::cancel,
                 )
                 else -> when (val s = state) {
-                    AppState.Welcome -> WelcomeScreen(credentialsUnreadable, nudge, scan = flow::scan, enterCode = flow::enterCode)
+                    AppState.Welcome -> WelcomeScreen(
+                        credentialsUnreadable,
+                        nudge,
+                        scan = flow::scan,
+                        enterCode = flow::enterCode,
+                        openSettings = { settingsOpen = true },
+                    )
                     AppState.Connecting -> ConnectingScreen(mac?.name)
                     is AppState.Dashboard -> mac?.let { DashboardScreen(s.host, it, model, hygiene, brightness) }
-                    is AppState.Unreachable -> UnreachableScreen(s.name, isConnecting, nudge) { model.reconnect() }
+                    is AppState.Unreachable -> UnreachableScreen(s.name, isConnecting, nudge, openSettings = { settingsOpen = true }) {
+                        model.reconnect()
+                    }
                     is AppState.KeyChanged -> KeyChangedScreen(
                         s.name,
                         isConnecting,
@@ -135,6 +149,25 @@ fun Root(
                     AppState.Unauthorized -> UnauthorizedScreen(pairAgain = model::forget)
                 }
             }
+        }
+
+        // Never over the dashboard, which stays the page's: closed when it comes up.
+        LaunchedEffect(state is AppState.Dashboard) {
+            if (state is AppState.Dashboard) settingsOpen = false
+        }
+        if (settingsOpen && state !is AppState.Dashboard && !isRestarting) {
+            SettingsSheet(
+                SettingsInfo(
+                    macName = mac?.name,
+                    canForget = mac != null || credentialsUnreadable,
+                    appVersion = appVersion,
+                    appBuild = appBuild,
+                    serverVersion = serverVersion,
+                    nudge = nudge,
+                ),
+                forget = model::forget,
+                close = { settingsOpen = false },
+            )
         }
 
         // A link from another app, or one that would replace a working pairing, waits for the user's word.

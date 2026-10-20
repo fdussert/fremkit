@@ -58,4 +58,18 @@
     <string name="manual_check_words">Check that the Mac shows the same words.</string>
     <string name="manual_code">Code</string>
     <string name="manual_other_mac">Other Mac</string>
+
+    <string name="settings_title">Settings</string>
+    <string name="settings_open">Settings</string>
+    <string name="settings_pin">Pin this app</string>
+    <string name="settings_unpin">Unpin this app</string>
+    <string name="settings_pin_hint">Screen pinning must be turned on in the system settings (Security). To leave a pinned app, use the system’s gesture: on most tablets, touch and hold Back and Overview.</string>
+    <string name="settings_forget">Forget the saved pairing</string>
+    <string name="settings_forget_mac">Forget %1$s</string>
+    <string name="settings_forget_title">Forget this Mac?</string>
+    <string name="settings_forget_body">This tablet will stop showing its dashboard and will have to be paired again.</string>
+    <string name="settings_forget_confirm">Forget</string>
+    <string name="settings_app_version">Fremkit for Android %1$s (build %2$d)</string>
+    <string name="settings_mac_version">Fremkit on the Mac: %1$s</string>
+    <string name="settings_close">Close</string>
 </resources>

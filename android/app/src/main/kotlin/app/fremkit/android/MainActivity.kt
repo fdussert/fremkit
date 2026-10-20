@@ -33,7 +33,11 @@ class MainActivity : ComponentActivity() {
         // The window the Mac's brightness target is set on (re-applied to a new activity).
         app.brightness.attach(window)
         setContent {
-            Root(app.model, app.flow, app.meter, app.hygiene, app.webView, app.restarting, app.network, app.brightness, appVersion = BuildConfig.VERSION_NAME)
+            Root(
+                app.model, app.flow, app.meter, app.hygiene, app.webView, app.restarting, app.network, app.brightness,
+                appVersion = BuildConfig.VERSION_NAME,
+                appBuild = BuildConfig.VERSION_CODE,
+            )
         }
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) { app.model.run() }

@@ -1,7 +1,12 @@
 package app.fremkit.android.screens
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -13,9 +18,18 @@ import androidx.compose.ui.unit.sp
 import app.fremkit.android.R
 import app.fremkit.kit.VersionNudge
 
-/** Not paired yet: scan the Mac's QR code, or pick the Mac and type its code (`WelcomeView.swift`). */
+/**
+ * Not paired yet: scan the Mac's QR code, or pick the Mac and type its code (`WelcomeView.swift`).
+ * The corner button opens the settings sheet.
+ */
 @Composable
-fun WelcomeScreen(credentialsUnreadable: Boolean, nudge: VersionNudge?, scan: () -> Unit, enterCode: () -> Unit) {
+fun WelcomeScreen(
+    credentialsUnreadable: Boolean,
+    nudge: VersionNudge?,
+    scan: () -> Unit,
+    enterCode: () -> Unit,
+    openSettings: () -> Unit,
+) = Box(Modifier.fillMaxSize()) {
     ScreenColumn {
         Text("Fremkit", fontSize = 56.sp, fontWeight = FontWeight.Bold)
         Text(
@@ -31,4 +45,5 @@ fun WelcomeScreen(credentialsUnreadable: Boolean, nudge: VersionNudge?, scan: ()
         if (credentialsUnreadable) Body(stringResource(R.string.welcome_credentials_unreadable))
         NudgeLine(nudge)
     }
+    SettingsButton(Modifier.align(Alignment.TopEnd).padding(8.dp), open = openSettings)
 }
