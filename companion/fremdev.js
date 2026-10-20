@@ -23,7 +23,7 @@
 import { BUILTIN_PERMISSION_ORIGINS, FREMKIT_EXCLUDES, inOrigins, isDevUrl, parsePattern } from './lib/devhosts.js'
 import { boundFrames, clip, isNoise, MAX_FRAME, MAX_TEXT, methodOf, pathOf } from './lib/devlog.js'
 import { buildReport, reportMessage } from './lib/devreport.js'
-import { emptyTab, fremdevSupport, reduce, sessionTabs, Throttle, wireTabs } from './lib/devtabs.js'
+import { emptyTab, fremdevSupport, reduce, restoredTabs, sessionTabs, Throttle, wireTabs } from './lib/devtabs.js'
 import * as protocol from './lib/protocol.js'
 
 const RELAY_ID = 'fremdev-relay'
@@ -382,7 +382,8 @@ export function createFremdev({
     on = saved.on === true
     patterns = cleanPatterns(saved.patterns)
     if (known === null && ['yes', 'disabled', 'unsupported'].includes(session.fremdevSupport)) known = session.fremdevSupport
-    tabs = on && session.devTabs && typeof session.devTabs === 'object' ? session.devTabs : {}
+    // Only well-formed rows come back (restoredTabs): the session copy is not trusted to be ours.
+    tabs = on ? restoredTabs(session.devTabs) : {}
     listen(on)
     if (!on) {
       // Off, nothing may be left registered or kept (a crash between the two writes of `stop`).

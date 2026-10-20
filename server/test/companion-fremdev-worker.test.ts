@@ -380,6 +380,49 @@ describe('companion/fremdev.js', () => {
     expect(text).not.toContain('g /src/b.js:3:4')
   })
 
+  it('restores only well-formed rows from the session copy', async () => {
+    const { api, store } = fakeChrome()
+    api.tabs.query = async () => [7, 8, 9, 10, 11].map((id) => ({ id, url: 'http://localhost:5173/', title: 'App', windowId: 1 }))
+    const good = {
+      tabId: 7, url: 'http://localhost:5173/', host: 'localhost:5173', title: 'App',
+      errors: { total: 1, open: 1, seen: 0, last: { text: 'boom', at: 900 } },
+      requests: { total: 0, open: 0, seen: 0, last: null },
+      history: [{ kind: 'error', text: 'boom', origin: '/src/a.js:1:2', stack: null, n: 1, at: 900, state: 'open' }],
+      server: 'up', activity: 900,
+    }
+    store.session.devTabs = {
+      7: good,
+      // keyed under another id
+      8: { ...good, tabId: 80 },
+      // no tallies: wireRow would throw on it
+      9: { ...good, tabId: 9, errors: undefined },
+      // a history entry that cannot travel
+      10: { ...good, tabId: 10, history: [{ kind: 'error', text: 'x', origin: null, stack: 'not frames', n: 1, at: 1, state: 'open' }] },
+      // not even an object
+      11: 'junk',
+    }
+    const fremdev = createFremdev({
+      send: () => true, wantSocket: vi.fn(), api, now: () => 1_000,
+      setTimer: () => undefined, every: () => 1, stopEvery: () => undefined,
+    })
+    await fremdev.onServer({ type: 'none' })
+    expect(await fremdev.report(7, true)).toContain('boom')
+    for (const id of [8, 9, 10, 11, 80]) expect(await fremdev.report(id, true)).toBeNull()
+  })
+
+  it('restores nothing from a session copy that is not an object of rows', async () => {
+    for (const devTabs of [[{ tabId: 7 }], 'junk', 42]) {
+      const { api, store } = fakeChrome()
+      store.session.devTabs = devTabs
+      const fremdev = createFremdev({
+        send: () => true, wantSocket: vi.fn(), api, now: () => 1_000,
+        setTimer: () => undefined, every: () => 1, stopEvery: () => undefined,
+      })
+      await fremdev.onServer({ type: 'none' })
+      expect(await fremdev.report(7, true)).toBeNull()
+    }
+  })
+
   it('worker.js relays dev.report.ask and answers the popup with the report', () => {
     const worker = source('worker.js')
     const relay = worker.slice(worker.indexOf("case 'dev.focus':"), worker.indexOf('return fremdev.onServer(msg)'))

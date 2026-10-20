@@ -321,6 +321,32 @@ export function wireTabs(tabs) {
   return rows
 }
 
+const isFrames = (v) => v === null || v === undefined || (Array.isArray(v) && v.every((f) => typeof f === 'string'))
+
+/**
+ * The rows read back from chrome.storage.session, keeping only well-formed tabs: keyed by their own
+ * id, with the fields this file reads, whose wire row the server would take and whose every history
+ * entry travels as it is. Anything else (an older build's shape, a corrupted value) is dropped
+ * rather than left to throw in `reduce` or `wireTabs` later.
+ */
+export function restoredTabs(raw) {
+  const out = {}
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return out
+  for (const [key, t] of Object.entries(raw)) {
+    try {
+      if (!t || typeof t !== 'object' || !Number.isInteger(t.tabId) || String(t.tabId) !== key) continue
+      if (typeof t.url !== 'string' || typeof t.host !== 'string' || typeof t.title !== 'string') continue
+      if ((t.server !== 'up' && t.server !== 'down') || !Array.isArray(t.history) || t.history.length > HISTORY_MAX) continue
+      if (!t.history.every((e) => wireEntry(e) !== null && (e.kind !== 'error' || isFrames(e.stack)))) continue
+      if (!validRow(wireRow(t))) continue
+      out[key] = t
+    } catch {
+      // a shape wireRow cannot read: dropped
+    }
+  }
+  return out
+}
+
 /** Whether the server speaks Fremdev: Fremkit 0.5.0 says nothing, and gets no Fremdev message. */
 export function fremdevSupport(ready) {
   const flag = ready?.modules?.fremdev
