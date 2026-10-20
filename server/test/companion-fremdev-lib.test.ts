@@ -606,7 +606,21 @@ describe('devtabs history', () => {
     const green = rows.filter((r: { tabId: number }) => r.tabId % 2 === 0)
     const red = rows.filter((r: { tabId: number }) => r.tabId % 2 === 1)
     expect(green.every((r: { history: unknown[] }) => r.history.length === 0)).toBe(true)
-    expect(red.some((r: { history: unknown[] }) => r.history.length > 0)).toBe(true)
+    // The red rows keep exactly the newest entries across them, each row a newest-first prefix of
+    // its own history, and the next one dropped would not have fitted.
+    const fullAts = (id: number) => tabs[id].history.map((e: { at: number }) => e.at)
+    const kept = red.flatMap((r: { history: Array<{ at: number }> }) => r.history.map((e) => e.at))
+    expect(kept.length).toBeGreaterThan(0)
+    expect(kept.length).toBeLessThan(16 * 20)
+    const cut = Math.min(...kept)
+    const allRed = red.flatMap((r: { tabId: number }) => fullAts(r.tabId))
+    expect(allRed.filter((at: number) => at >= cut).length).toBe(kept.length)
+    for (const r of red) expect(r.history.map((e: { at: number }) => e.at)).toEqual(fullAts(r.tabId).slice(0, r.history.length))
+    const next = Math.max(...allRed.filter((at: number) => at < cut))
+    const owner = red.find((r: { tabId: number }) => fullAts(r.tabId).includes(next))
+    const grown = rows.map((r: { tabId: number; history: unknown[] }) =>
+      r === owner ? { ...r, history: [...r.history, wireTabs([tabs[r.tabId]])[0].history[r.history.length]] } : r)
+    expect(bytes(grown)).toBeGreaterThan(60_000)
     for (const r of rows) expect(DevTabSchema.safeParse(r).success).toBe(true)
   })
 
