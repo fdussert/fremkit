@@ -298,7 +298,11 @@ stacks). **Copy with stack** adds each error's stack. From the Edge, the widget 
 command; the server asks the extension for the text, waits at most 5 seconds, and writes it to the
 clipboard with `pbcopy`, the text going through its standard input. The extension's popup has the
 same button for each tab, with a *stack* checkbox, and writes the clipboard from the popup itself.
-At most 8 reports can be pending per install. The report is built in the extension and goes nowhere
+The popup also has **Copy screenshot**, on the row of the tab it was opened on: the popup's
+`activeTab` grant lets it capture that tab (`tabs.captureVisibleTab`, PNG) and write the image to
+the clipboard itself, so it needs no permission of its own. There is no such button on the Edge: a
+capture needs a grant that only a click on the extension (the popup or its shortcut) gives, and the
+Edge's tap is not one. At most 8 reports can be pending per install. The report is built in the extension and goes nowhere
 else: only to the clipboard, when you press a button. It is available while Fremdev is on and
 `labs.companion` and `labs.fremdev` are ticked, for a tab the extension reported, and only from the Mac itself, never
 from a paired device.

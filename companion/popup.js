@@ -6,6 +6,7 @@ import { localize, t } from './i18n.js'
 import { browserName } from './lib/browser.js'
 import { BUILTIN_PERMISSION_ORIGINS, parsePattern } from './lib/devhosts.js'
 import { homePath } from './lib/devlog.js'
+import { dataUrlBlob } from './lib/devshot.js'
 import { fremplayBlocked, shareErrorKey } from './lib/errors.js'
 import { cleanFrames, embeddedPlayer, pickVideo, survey } from './lib/video.js'
 
@@ -62,6 +63,9 @@ const copied = new Map()
 /** tabId → the timer that puts its button back. */
 const copyTimers = new Map()
 const COPY_SHOWN_MS = 2_000
+/** The same two maps for Copy screenshot. */
+const shotCopied = new Map()
+const shotTimers = new Map()
 
 const hostOf = (url) => {
   try {
@@ -218,6 +222,25 @@ async function copyReport(tabId) {
   }, COPY_SHOWN_MS))
 }
 
+/** The popup's own tab, captured as PNG: the activeTab grant of this popup covers it. */
+async function copyScreenshot(tabId) {
+  let outcome = 'failed'
+  try {
+    // The Blob is a promise handed to ClipboardItem, so the write is made inside the click.
+    const shot = chrome.tabs.captureVisibleTab(tab.windowId, { format: 'png' }).then(dataUrlBlob)
+    await navigator.clipboard.write([new ClipboardItem({ 'image/png': shot })])
+    outcome = 'done'
+  } catch { /* no capture right, or the popup lost focus */ }
+  shotCopied.set(tabId, outcome)
+  render()
+  clearTimeout(shotTimers.get(tabId))
+  shotTimers.set(tabId, setTimeout(() => {
+    shotTimers.delete(tabId)
+    shotCopied.delete(tabId)
+    render()
+  }, COPY_SHOWN_MS))
+}
+
 /** tabId → its list item, kept across renders: the rows change every 500 ms under an error storm, and a button rebuilt mid-press loses the click. */
 const devItems = new Map()
 
@@ -231,8 +254,11 @@ function devItem(tabId) {
   const button = document.createElement('button')
   button.type = 'button'
   button.addEventListener('click', () => void copyReport(tabId))
-  li.append(light, title, button)
-  item = { li, light, title, button }
+  const shotButton = document.createElement('button')
+  shotButton.type = 'button'
+  shotButton.addEventListener('click', () => void copyScreenshot(tabId))
+  li.append(light, title, button, shotButton)
+  item = { li, light, title, button, shotButton }
   devItems.set(tabId, item)
   return item
 }
@@ -246,7 +272,7 @@ function renderDevTabs(rows) {
     devItems.delete(id)
   }
   rows.forEach((row, i) => {
-    const { li, light, title, button } = devItem(row.tabId)
+    const { li, light, title, button, shotButton } = devItem(row.tabId)
     light.className = `light ${lightOf(row)}`
     // The session copy keeps the page's own title: a home folder in it reads `~` here too.
     title.textContent = homePath(row.title || row.host || '')
@@ -254,6 +280,11 @@ function renderDevTabs(rows) {
     const state = copied.get(row.tabId)
     button.className = `ghost ${state ?? ''}`.trim()
     button.textContent = state === 'done' ? t('fremdevCopied') : state === 'failed' ? t('fremdevCopyFailed') : t('fremdevCopy')
+    // Only the tab the popup was opened on can be captured (activeTab).
+    shotButton.hidden = row.tabId !== tab?.id
+    const shot = shotCopied.get(row.tabId)
+    shotButton.className = `ghost ${shot ?? ''}`.trim()
+    shotButton.textContent = shot === 'done' ? t('fremdevCopied') : shot === 'failed' ? t('fremdevCopyFailed') : t('fremdevShot')
     if (list.children[i] !== li) list.insertBefore(li, list.children[i] ?? null)
   })
   list.hidden = rows.length === 0

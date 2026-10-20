@@ -54,6 +54,7 @@ button.switch:focus-visible { outline: 2px solid var(--accent-hi); outline-offse
 .devtabs .light.seen { background: transparent; box-shadow: inset 0 0 0 2px var(--danger); }
 .devtabs .light.orange.seen { box-shadow: inset 0 0 0 2px var(--warn); }
 .devtabs .dtitle { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.devtabs button[hidden] { display: none; }
 .devtabs button { flex: none; height: 30px; padding: 0 10px; font-size: 12px; }
 .devtabs button.done { color: var(--ok); border-color: var(--ok); }
 .devtabs button.failed { color: var(--danger); border-color: var(--danger); }

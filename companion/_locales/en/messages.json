@@ -137,6 +137,9 @@
   "fremdevCopy": {
     "message": "Copy report"
   },
+  "fremdevShot": {
+    "message": "Copy screenshot"
+  },
   "fremdevCopied": {
     "message": "Copied"
   },

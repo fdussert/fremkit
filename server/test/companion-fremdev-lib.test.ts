@@ -16,6 +16,8 @@ import { editorUrl, parsePlace } from '../../companion/lib/devopen.js'
 import { InFlight, MAX_IN_FLIGHT, MAX_TRACKED, SLOW_MS, STALE_MS } from '../../companion/lib/devflight.js'
 // @ts-expect-error plain JS module
 import { CLS_POOR, LCP_POOR_MS, median, PERF_KEYS, PERF_MIN_MS, PERF_RATIO, PERF_SAMPLES, PerfMemory, perfVerdict } from '../../companion/lib/devperf.js'
+// @ts-expect-error plain JS module
+import { dataUrlBlob } from '../../companion/lib/devshot.js'
 import { DEV_METHODS, DevTabSchema } from '../src/companion/protocol.js'
 
 const both = (host: string) => [`http://${host}/*`, `https://${host}/*`]
@@ -1700,5 +1702,20 @@ describe('performance and regressions', () => {
     tab = reduce(tab, perf({ lcp: 1800, load: 900 }, 'D2'), 400)
     tab = reduce(tab, regression('lcp', 1800, 1.6), 410)
     expect(buildReport(tab, fmt)).toContain('\n\n### Performance\n- T410 LCP 1.8 s, ×1.6 slower\n- T210 CLS 0.31, poor (resolved)')
+  })
+})
+
+describe('devshot', () => {
+  it('turns a png or jpeg data URL into a Blob of that type', async () => {
+    const png: Blob = dataUrlBlob('data:image/png;base64,iVBORw0KGgo=')
+    expect(png.type).toBe('image/png')
+    expect([...new Uint8Array(await png.arrayBuffer()).slice(0, 4)]).toEqual([0x89, 0x50, 0x4e, 0x47])
+    expect(dataUrlBlob('data:image/jpeg;base64,/9j/4AAQ').type).toBe('image/jpeg')
+  })
+
+  it('refuses anything else', () => {
+    for (const bad of ['data:text/html,<b>', 'data:image/svg+xml;base64,PHN2Zz4=', 'data:image/png,abc', 'https://example.com/a.png', 'data:image/png;base64,@@@', '', 42]) {
+      expect(() => dataUrlBlob(bad), String(bad)).toThrow()
+    }
   })
 })
