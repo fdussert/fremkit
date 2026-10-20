@@ -55,7 +55,7 @@ watch(now, (at) => {
   if (live.value && offer.value && at >= offer.value.expiresAt) void devices.newCode()
 })
 
-const qr = computed(() => (offer.value ? renderSVG(offer.value.url, { ecc: 'M', pixelSize: 1 }) : ''))
+const qr = computed(() => (offer.value ? renderSVG(offer.value.url, { ecc: 'M', pixelSize: 1, border: 4 }) : ''))
 const countdown = computed(() => {
   if (!offer.value) return ''
   const left = Math.max(0, Math.ceil((offer.value.expiresAt - now.value) / 1000))
@@ -250,8 +250,9 @@ async function onCreated(screenId: string): Promise<void> {
 .warn { display: flex; gap: var(--space-2); align-items: flex-start; margin: 0 0 var(--space-2); font-size: var(--fs-sm); color: var(--danger); }
 .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .pair { display: flex; gap: var(--space-3); align-items: center; margin-bottom: var(--space-3); }
-/* A white quiet zone whatever the theme: a phone camera reads dark modules on light. */
-.qr { flex: none; width: 168px; height: 168px; padding: 8px; background: #fff; border-radius: var(--radius-sm); }
+/* A white quiet zone whatever the theme: a phone camera reads dark modules on light. The standard's
+   four modules of margin, and modules large enough for a tablet's fixed-focus camera at arm's length. */
+.qr { flex: none; width: 264px; height: 264px; padding: 8px; background: #fff; border-radius: var(--radius-sm); }
 .qr :deep(svg) { display: block; width: 100%; height: 100%; }
 .code { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; }
 .fingerprint { margin: 0 0 var(--space-1); letter-spacing: .08em; color: var(--text); }
