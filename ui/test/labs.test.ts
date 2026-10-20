@@ -109,13 +109,16 @@ describe('iPad pairing and extra screens, for everyone', () => {
     }
   }
 
-  it('finds the Devices pane in the settings search on a fresh config', async () => {
+  it('finds the Devices pane in the settings search on a fresh config, by the iPad or the browser', async () => {
     seed(undefined, 1)
     const wrapper = settings()
     await flushPromises()
-    settingsQuery.value = 'iPad'
-    await flushPromises()
-    expect(wrapper.find('[data-section="screen.devices"]').exists()).toBe(true)
+    // "Chrome" and "App Store" are only in the store lines; "extension" in the extensions part.
+    for (const query of ['iPad', 'Chrome', 'App Store', 'extension']) {
+      settingsQuery.value = query
+      await flushPromises()
+      expect(wrapper.find('[data-section="screen.devices"]').exists(), query).toBe(true)
+    }
     wrapper.unmount()
     settingsQuery.value = ''
   })
