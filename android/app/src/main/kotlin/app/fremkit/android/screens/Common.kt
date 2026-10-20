@@ -3,6 +3,8 @@ package app.fremkit.android.screens
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.heightIn
@@ -26,7 +28,6 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
@@ -96,11 +97,18 @@ fun SecondaryButton(text: String, enabled: Boolean = true, onClick: () -> Unit) 
     }
 }
 
-/** A spinner that keeps its place when hidden, so the screen does not jump while retrying. */
+/**
+ * A spinner that keeps its place when hidden, so the screen does not jump while retrying. Hidden,
+ * it is an empty box of its size: an invisible indeterminate indicator would still animate, and
+ * redraw the window at every frame for nothing.
+ */
 @Composable
 fun BusySpinner(visible: Boolean) {
-    CircularProgressIndicator(Modifier.alpha(if (visible) 1f else 0f))
+    if (visible) CircularProgressIndicator() else Spacer(Modifier.size(SPINNER_SIZE))
 }
+
+/** Material's indeterminate indicator's size. */
+private val SPINNER_SIZE = 40.dp
 
 /**
  * The one discreet line about the Mac's Fremkit version next to the app's: never over the
