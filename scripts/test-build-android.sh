@@ -29,6 +29,23 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# --- Which surviving Log.d/Log.v calls the release refuses -------------------------------------
+# eval, not `source <(…)`: macOS's bash 3.2 sources nothing from a process substitution.
+eval "$(sed -n '/^release_log_classes() {/,/^}/p' scripts/build-android.sh)"
+declare -F release_log_classes >/dev/null && pass "log check: found in build-android.sh" ||
+    fail "log check: release_log_classes is not in build-android.sh"
+printf '%s\n' 'app.fremkit.android.Foo -> a:' 'androidx.camera.Bar -> b:' '    void run():1:1 -> c' >"$tmp/mapping.txt"
+dex_with() { printf "  Class descriptor  : 'L%s;'\n    0001: invoke-static {v0, v1}, Landroid/util/Log;.d:(Ljava/lang/String;Ljava/lang/String;)I\n" "$@"; }
+dex_with b >"$tmp/lib.txt"
+[[ -z "$(release_log_classes "$tmp/lib.txt" "$tmp/mapping.txt")" ]] && pass "log check: a library's Log.d is tolerated" ||
+    fail "log check: a library's Log.d was refused"
+dex_with a b >"$tmp/ours.txt"
+[[ "$(release_log_classes "$tmp/ours.txt" "$tmp/mapping.txt")" == "app.fremkit.android.Foo" ]] &&
+    pass "log check: our own Log.d is refused, by its source name" || fail "log check: our own Log.d was not named"
+dex_with zz >"$tmp/unmapped.txt"
+[[ "$(release_log_classes "$tmp/unmapped.txt" "$tmp/mapping.txt")" == "zz" ]] &&
+    pass "log check: a class missing from the mapping is refused" || fail "log check: an unmapped class went through"
+
 # --- A throwaway repository with what the Android build reads ----------------------------------
 REPO="$tmp/repo"
 mkdir -p "$REPO"

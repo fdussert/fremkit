@@ -145,6 +145,25 @@ check_keystore() {
     [[ "$(/usr/bin/stat -f '%u' "$KEYSTORE")" == "$(id -u)" ]] || die "$KEYSTORE is not yours"
 }
 
+# The classes, by their source names, whose methods still call Log.d or Log.v in the dexdump
+# output $1, R8's mapping being $2; library classes (androidx.*) are left out. One line, or empty.
+release_log_classes() {
+    LC_ALL=C awk -v mapping="$2" '
+        BEGIN {
+            while ((getline line < mapping) > 0) {
+                if (line ~ /^[^ #].* -> [^ ]+:$/) {
+                    split(line, part, " -> "); sub(/:$/, "", part[2]); orig[part[2]] = part[1]
+                }
+            }
+        }
+        /^  Class descriptor/ { d = $0; sub(/.*: \x27L/, "", d); sub(/;\x27.*/, "", d); gsub("/", ".", d); cls = d }
+        /Landroid\/util\/Log;\.[dv]:/ {
+            name = (cls in orig) ? orig[cls] : cls
+            if (name !~ /^androidx\./ && !(name in seen)) { seen[name] = 1; printf "%s%s", (n++ ? ", " : ""), name }
+        }
+    ' "$1"
+}
+
 release() {
     [[ -z "$(git status --porcelain)" ]] || die "commit or stash first: a release is built from a commit"
     check_keystore
@@ -163,12 +182,15 @@ release() {
     # Global, not local: the EXIT trap runs after this function has returned.
     work="$(mktemp -d "${TMPDIR:-/tmp}/fremkit-android-release.XXXXXX")"
     trap 'rm -rf "${work:?}"' EXIT
-    # R8 drops every Log.d and Log.v (app/proguard-rules.pro); a call left means the rule broke.
+    # R8 drops every Log.d and Log.v (app/proguard-rules.pro); a call left in our code means the
+    # rule broke. A library's own (CameraX keeps some in classes its consumer rules keep) is
+    # tolerated, told apart through R8's mapping: it logs what the library does, not our data.
     "$DEXDUMP" -d "$unsigned" >"$work/dex.txt" 2>/dev/null || die "dexdump could not read $unsigned"
     grep -q '^Processing ' "$work/dex.txt" || die "dexdump found no code in $unsigned"
-    local logs
-    logs="$(grep -Ec 'Landroid/util/Log;\.[dv]:' "$work/dex.txt" || true)"
-    [[ "$logs" == 0 ]] || die "$logs Log.d or Log.v calls survived R8 in the release APK"
+    local mapping=android/app/build/outputs/mapping/release/mapping.txt ours
+    [[ -f "$mapping" ]] || die "R8 wrote no $mapping"
+    ours="$(release_log_classes "$work/dex.txt" "$mapping")"
+    [[ -z "$ours" ]] || die "Log.d or Log.v calls survived R8 in the release APK, in: $ours"
 
     "$ZIPALIGN" -p -f 4 "$unsigned" "$work/aligned.apk"
     signed="$work/signed.apk"
