@@ -1,4 +1,4 @@
-import { clip } from './devlog.js'
+import { clip, pathOf } from './devlog.js'
 
 // A dev tab's bug report, in Markdown: what the Edge copies (`dev.report`, through the server) and
 // what the popup copies. Pure: the words, the time and the date are the caller's (chrome.i18n and
@@ -14,15 +14,6 @@ const MAX_FIELD = 300
 
 /** One line of Markdown: no line break from the page can open a heading or a list item. */
 const line = (s, max = MAX_FIELD) => clip(String(s ?? '').replace(/\s*[\r\n]+\s*/g, ' '), max)
-
-/** The tab URL's path, never its query or its fragment. */
-function pathOf(url) {
-  try {
-    return new URL(url).pathname
-  } catch {
-    return '/'
-  }
-}
 
 function entryLines(e, { stack, t, time }) {
   const count = e.n > 1 ? `×${e.n} ` : ''
