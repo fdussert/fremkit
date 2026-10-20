@@ -34,6 +34,7 @@ enum Vectors {
         let codes: CodeVectors
         let pairingLinks: [PairingLinkVector]
         let ipv4: [IPv4Vector]
+        let typedAddresses: [TypedAddressVector]
         let subframes: [FrameVector]
         let mainFrames: MainFrameVectors
     }
@@ -94,6 +95,17 @@ enum Vectors {
         let literal: String
         let ipv4: Bool
         let `private`: Bool
+    }
+
+    /// A Mac's address as typed on the manual path, and its parse (nil: refused).
+    struct TypedAddressVector: Decodable {
+        struct Parsed: Decodable {
+            let host: String
+            let port: Int
+        }
+        let input: String
+        let expect: Parsed?
+        let why: String
     }
 
     struct FrameVector: Decodable {
