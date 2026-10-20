@@ -104,6 +104,49 @@ describe('the devices section', () => {
     wrapper.unmount()
   })
 
+  describe('the address to type', () => {
+    async function shown(answer: DeviceStatus, url = 'fremkit://pair?h=mac.example.local&a=192.0.2.20&p=4243&c=ABCD2345&k=x') {
+      deviceApi.getDevices.mockResolvedValue(answer)
+      deviceApi.newPairingCode.mockResolvedValue({ code: 'ABCD2345', expiresAt: Date.now() + 300_000, url })
+      const wrapper = mount(DevicesSection, { attachTo: document.body, global: { stubs } })
+      await flushPromises()
+      return wrapper
+    }
+
+    it('shows the Bonjour name, then the QR code’s address, then the others, beside the code', async () => {
+      const w = await shown(status({ enabled: true, listening: true, addresses: ['192.0.2.10', '192.0.2.20', '198.51.100.4'] }))
+      expect(w.text()).toContain('If the tablet finds no Mac, type one of this Mac’s addresses:')
+      const items = w.findAll('[data-test="pairing-address"] li')
+      expect(items.map((li) => li.text())).toEqual(['mac.example.local', '192.0.2.20', '192.0.2.10', '198.51.100.4'])
+      expect(items.map((li) => li.classes('dim')), 'the others are dimmer: a VPN’s or a virtual machine’s').toEqual([false, false, true, true])
+      w.unmount()
+    })
+
+    it('adds the port only when it is not the usual one', async () => {
+      const w = await shown(status({ enabled: true, listening: true, port: 4300 }), 'fremkit://pair?h=mac.example.local&a=192.0.2.10&p=4300&c=ABCD2345&k=x')
+      expect(w.findAll('[data-test="pairing-address"] li').map((li) => li.text())).toEqual(['mac.example.local:4300', '192.0.2.10:4300'])
+      w.unmount()
+    })
+
+    it('without a Bonjour name nor a QR address, lists the addresses in their order, none dimmer', async () => {
+      const w = await shown(status({ enabled: true, listening: true, host: null, addresses: ['192.0.2.10', '198.51.100.4'] }), 'fremkit://pair?p=4243&c=ABCD2345&k=x')
+      const items = w.findAll('[data-test="pairing-address"] li')
+      expect(items.map((li) => li.text())).toEqual(['192.0.2.10', '198.51.100.4'])
+      expect(items.some((li) => li.classes('dim'))).toBe(false)
+      w.unmount()
+    })
+
+    it('shows nothing when there is no address, nor while pairing is off', async () => {
+      const none = await shown(status({ enabled: true, listening: true, host: null, addresses: [] }))
+      expect(none.find('[data-test="pairing-code"]').exists()).toBe(true)
+      expect(none.find('[data-test="pairing-address"]').exists()).toBe(false)
+      none.unmount()
+      const off = await shown(status())
+      expect(off.find('[data-test="pairing-address"]').exists()).toBe(false)
+      off.unmount()
+    })
+  })
+
   describe('which parts show', () => {
     const REQUEST = () => ({ requestId: 'r1', code: 'K7M2', name: 'Chrome', expiresAt: Date.now() + 60_000 })
     async function mountWith(labs: { devices: boolean; companion: boolean }, answer: DeviceStatus) {

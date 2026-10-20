@@ -644,6 +644,256 @@
       "why": "a sign"
     }
   ],
+  "typedAddresses": [
+    {
+      "input": "studio.local",
+      "expect": {
+        "host": "studio.local",
+        "port": 4243
+      },
+      "why": "the Bonjour name Settings → Devices shows; the remote listener's port by default"
+    },
+    {
+      "input": "192.0.2.10",
+      "expect": {
+        "host": "192.0.2.10",
+        "port": 4243
+      },
+      "why": "an IPv4 address"
+    },
+    {
+      "input": "  192.0.2.10\t",
+      "expect": {
+        "host": "192.0.2.10",
+        "port": 4243
+      },
+      "why": "spaces and tabs around are trimmed"
+    },
+    {
+      "input": "192.0.2.10:4300",
+      "expect": {
+        "host": "192.0.2.10",
+        "port": 4300
+      },
+      "why": "a port"
+    },
+    {
+      "input": "studio.local:4300",
+      "expect": {
+        "host": "studio.local",
+        "port": 4300
+      },
+      "why": "a name with a port"
+    },
+    {
+      "input": "Studio.LOCAL.",
+      "expect": {
+        "host": "studio.local",
+        "port": 4243
+      },
+      "why": "any case, and a fully qualified trailing dot, written as the Mac's Host set has it"
+    },
+    {
+      "input": "https://studio.local:4243",
+      "expect": {
+        "host": "studio.local",
+        "port": 4243
+      },
+      "why": "a pasted URL's scheme"
+    },
+    {
+      "input": "HTTPS://192.0.2.10/",
+      "expect": {
+        "host": "192.0.2.10",
+        "port": 4243
+      },
+      "why": "the scheme in any case, and one trailing slash"
+    },
+    {
+      "input": "010.000.002.010",
+      "expect": {
+        "host": "10.0.2.10",
+        "port": 4243
+      },
+      "why": "leading zeros read as decimal, as inet_pton does, and written without them"
+    },
+    {
+      "input": "192.0.2.10:00443",
+      "expect": {
+        "host": "192.0.2.10",
+        "port": 443
+      },
+      "why": "a port with leading zeros, five digits at most"
+    },
+    {
+      "input": "my-mac-2.local",
+      "expect": {
+        "host": "my-mac-2.local",
+        "port": 4243
+      },
+      "why": "letters, digits and hyphens"
+    },
+    {
+      "input": "",
+      "expect": null,
+      "why": "empty"
+    },
+    {
+      "input": "   ",
+      "expect": null,
+      "why": "only spaces"
+    },
+    {
+      "input": "studio",
+      "expect": null,
+      "why": "not a .local name: the Mac answers only on its .local name and its IPv4 addresses"
+    },
+    {
+      "input": "studio.example.com",
+      "expect": null,
+      "why": "another name: the Mac would answer 421"
+    },
+    {
+      "input": "https://",
+      "expect": null,
+      "why": "a scheme alone"
+    },
+    {
+      "input": "http://studio.local",
+      "expect": null,
+      "why": "plain HTTP: the remote listener speaks TLS only"
+    },
+    {
+      "input": "fremkit://pair?h=studio.local",
+      "expect": null,
+      "why": "a pairing link is scanned, not typed"
+    },
+    {
+      "input": "studio.local/admin",
+      "expect": null,
+      "why": "a path"
+    },
+    {
+      "input": "https://192.0.2.10/api/pair",
+      "expect": null,
+      "why": "a path after a pasted scheme"
+    },
+    {
+      "input": "studio.local//",
+      "expect": null,
+      "why": "more than one trailing slash"
+    },
+    {
+      "input": "user@studio.local",
+      "expect": null,
+      "why": "userinfo"
+    },
+    {
+      "input": "https://user:secret@192.0.2.10",
+      "expect": null,
+      "why": "userinfo after a pasted scheme"
+    },
+    {
+      "input": "studio.local?a=1",
+      "expect": null,
+      "why": "a query"
+    },
+    {
+      "input": "studio.local#top",
+      "expect": null,
+      "why": "a fragment"
+    },
+    {
+      "input": "studio .local",
+      "expect": null,
+      "why": "a space inside"
+    },
+    {
+      "input": "192.0.2.10:",
+      "expect": null,
+      "why": "a colon with no port"
+    },
+    {
+      "input": "192.0.2.10:0",
+      "expect": null,
+      "why": "port 0"
+    },
+    {
+      "input": "192.0.2.10:65536",
+      "expect": null,
+      "why": "a port above 65535"
+    },
+    {
+      "input": "192.0.2.10:123456",
+      "expect": null,
+      "why": "more than five digits"
+    },
+    {
+      "input": "192.0.2.10:-1",
+      "expect": null,
+      "why": "a sign"
+    },
+    {
+      "input": "192.0.2.10:42a",
+      "expect": null,
+      "why": "not digits"
+    },
+    {
+      "input": "192.0.2.10:4243:4243",
+      "expect": null,
+      "why": "two ports"
+    },
+    {
+      "input": ":4243",
+      "expect": null,
+      "why": "a port with no host"
+    },
+    {
+      "input": "192.0.2.256",
+      "expect": null,
+      "why": "an octet above 255"
+    },
+    {
+      "input": "192.0.2",
+      "expect": null,
+      "why": "three parts: not an IPv4 address, nor a .local name"
+    },
+    {
+      "input": "[2001:db8::1]:4243",
+      "expect": null,
+      "why": "IPv6: the Mac answers only on its .local name and its IPv4 addresses"
+    },
+    {
+      "input": "2001:db8::1",
+      "expect": null,
+      "why": "a bare IPv6 address"
+    },
+    {
+      "input": "fe80::1%en0",
+      "expect": null,
+      "why": "a link-local IPv6 address with a zone"
+    },
+    {
+      "input": ".local",
+      "expect": null,
+      "why": "an empty label"
+    },
+    {
+      "input": "studio..local",
+      "expect": null,
+      "why": "an empty label inside"
+    },
+    {
+      "input": "stu_dio.local",
+      "expect": null,
+      "why": "an underscore"
+    },
+    {
+      "input": "stüdio.local",
+      "expect": null,
+      "why": "not ASCII"
+    }
+  ],
   "subframes": [
     {
       "url": "https://studio.local:4243/widgets/clock/index.html",

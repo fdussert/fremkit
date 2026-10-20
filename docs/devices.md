@@ -103,8 +103,10 @@ closes the listener and the iPads show that the Mac is unreachable until it is b
 
 - **The Mac is not in the list.** The router or access point may not relay Bonjour (mDNS) between
   Ethernet and Wi-Fi, between bands, or between VLANs; or the Mac is connected to both Wi-Fi and
-  Ethernet. Use the QR code, which works without Bonjour, or put the Mac and the iPad on the same
-  Wi-Fi.
+  Ethernet. Use the QR code, which works without Bonjour, or tap **Enter the Mac's address** under
+  the list (the Android app, and the iPad app from its next version) and type one of the addresses
+  **Settings → Devices** shows beside the code: the app then shows the four words of whatever
+  answers there, to compare as for a Mac in the list. Or put the Mac and the iPad on the same Wi-Fi.
 - **The app says it cannot reach the Mac.** The Mac is asleep, pairing is switched off, or the
   Local Network permission was refused (above). The app retries by itself.
 - **The app says "This Mac's key has changed".** The certificate was reset in Fremkit (or another

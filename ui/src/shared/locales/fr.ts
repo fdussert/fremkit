@@ -571,6 +571,7 @@ export const fr: Record<string, string> = {
   'admin.devices.expires': 'Expire dans {time}',
   'admin.devices.fingerprint': 'Empreinte : {words}',
   'admin.devices.fingerprintHelp': 'Si la tablette affiche ces mots, c’est bien ce Mac.',
+  'admin.devices.address': 'Si la tablette ne trouve pas le Mac, saisissez l’une de ses adresses :',
   'admin.devices.newCode': 'Nouveau code',
   'admin.devices.guessing': 'Quelqu’un essaie des codes au hasard : le code est bloqué une minute.',
   'admin.devices.none': 'Aucune tablette appairée.',

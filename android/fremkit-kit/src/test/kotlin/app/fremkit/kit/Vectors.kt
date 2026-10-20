@@ -34,6 +34,7 @@ object Vectors {
         val codes: CodeVectors,
         val pairingLinks: List<PairingLinkVector>,
         val ipv4: List<Ipv4Vector>,
+        val typedAddresses: List<TypedAddressVector>,
         val subframes: List<FrameVector>,
         val mainFrames: MainFrameVectors,
         val pageMessages: List<PageMessageVector>,
@@ -93,6 +94,13 @@ object Vectors {
         val private: Boolean,
         val why: String? = null,
     )
+
+    /** A Mac's address as typed on the manual path, and its parse (null: refused). */
+    @Serializable
+    data class TypedAddressVector(val input: String, val expect: Parsed?, val why: String) {
+        @Serializable
+        data class Parsed(val host: String, val port: Int)
+    }
 
     @Serializable
     data class FrameVector(
