@@ -32,8 +32,9 @@ The name is the Fremen survival kit from *Dune*.
   *from the registry*, meeting controls, CleanShot X actions, Azure DevOps builds, GitHub
   notifications and Actions, a Bambu Lab printer, Homey devices and flows, a Synology NAS.
   Twenty-two ship with Fremkit; the rest are one press away in the admin.
-- **An iPad app** that shows a screen of the dashboard from your Mac over the local network,
-  paired by QR code and revocable from the admin. See [docs/devices.md](docs/devices.md).
+- **An iPad app**, [on the App Store](https://apps.apple.com/app/id6824504862), that shows a screen
+  of the dashboard from your Mac over the local network, paired by QR code and revocable from the
+  admin. See [docs/devices.md](docs/devices.md).
 - **A browser extension** — *Fremkit Companion*, [on the Chrome Web Store](https://chromewebstore.google.com/detail/fremkit-companion/lnckeodobpbbmfbdlpnegjpchgkehdlk), sends the video of a Chromium tab to the Fremplay widget on the Edge, with touch controls. See [docs/companion.md](docs/companion.md).
 - **Compact widgets** in the navigation bar, with a full-size popover on touch.
 - **Per-tile appearance** — background colour, opacity, background image, accent colour and how
