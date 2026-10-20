@@ -164,14 +164,14 @@ describe('deviceConfigView', () => {
     for (const key of others) expect(Object.hasOwn(view.labs, key), key).toBe(false)
   })
   it('carries labs.fremdev beside labs.companion', () => {
-    const cfg = ConfigSchema.parse({ ...RAW_CONFIG, labs: { devices: true, companion: true, fremdev: false } })
-    expect(deviceConfigView(cfg, 'tab-b').labs).toEqual({ companion: true, fremdev: false })
+    const cfg = ConfigSchema.parse({ ...RAW_CONFIG, labs: { devices: true, companion: true, fremdev: true } })
+    expect(deviceConfigView(cfg, 'tab-b').labs).toEqual({ companion: true, fremdev: true })
   })
   it('projects or deliberately withholds every top-level config key', () => {
     // A key main adds to the config is dropped from the device view without a word; this makes
     // the next one a decision. Withheld: hosts and accounts, the secrets backend, the privacy
     // switches, the marketplace records and the admin's experimental features are the Mac's own business.
-    // `labs` is projected in part: `companion` only (see the next test).
+    // `labs` is projected in part: `companion` and `fremdev` only (see the tests above).
     const projected = ['version', 'theme', 'themeSchedule', 'locale', 'widgets', 'screens', 'labs']
     const withheld = ['connections', 'secrets', 'privacy', 'marketplace']
     expect(Object.keys(ConfigSchema.shape).sort()).toEqual([...projected, ...withheld].sort())

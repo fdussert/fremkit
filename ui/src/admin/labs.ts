@@ -28,7 +28,7 @@ export function labsCompanion(config: Config | null | undefined): boolean {
   return config?.labs?.companion === true
 }
 
-/** True when Fremdev is on: the companion and its own switch, `labs.fremdev`. */
+/** `labs.fremdev` as stored. Fremdev runs only with `labsCompanion` too (see `fremdevOn`). */
 export function labsFremdev(config: Config | null | undefined): boolean {
   return config?.labs?.fremdev === true
 }

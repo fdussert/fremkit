@@ -48,7 +48,7 @@ const onBoardCancel = (): void => { if (testing.value) boardSwipe.cancel() }
 const onBoardWheel = (e: WheelEvent): void => { if (testing.value) boardSwipe.wheel(e) }
 const scale = ref(1)
 /**
- * The widgets of an experimental feature that is off (`labs.companion`): kept on the canvas,
+ * The widgets of an experimental feature that is off (`labs.companion`, or `labs.fremdev` for Fremdev): kept on the canvas,
  * greyed and labelled, to delete as usual. The dashboard does not draw them.
  */
 const off = computed(() => turnedOff(s.state.config))

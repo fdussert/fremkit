@@ -53,6 +53,17 @@ describe('migrateConfig', () => {
       codexHistorySources: [],
     })
   })
+  /** A v4 file holding these widgets, with `labs` as given (absent when undefined). */
+  const v4 = (widgetIds: string[], labs?: Record<string, boolean>) => {
+    const c = JSON.parse(JSON.stringify(migrateConfig(v1))) as Record<string, any>
+    delete c.labs
+    if (labs) c.labs = labs
+    c.widgets = Object.fromEntries(widgetIds.map((id, i) => [`${id}-${i}`, { widgetId: id, showTitle: false, settings: {} }]))
+    c.screens[0].pages[0].items = []
+    c.screens[0].nav = []
+    return c
+  }
+
   describe('labs.devices', () => {
     /** A v4 file as a release before the flag wrote it: no `labs` key at all. */
     const withoutLabs = (screens: Record<string, unknown>[]) => {
@@ -85,17 +96,6 @@ describe('migrateConfig', () => {
     })
   })
   describe('labs.companion', () => {
-    /** A v4 file holding these widgets, with `labs` as given (absent when undefined). */
-    const v4 = (widgetIds: string[], labs?: Record<string, boolean>) => {
-      const c = JSON.parse(JSON.stringify(migrateConfig(v1))) as Record<string, any>
-      delete c.labs
-      if (labs) c.labs = labs
-      c.widgets = Object.fromEntries(widgetIds.map((id, i) => [`${id}-${i}`, { widgetId: id, showTitle: false, settings: {} }]))
-      c.screens[0].pages[0].items = []
-      c.screens[0].nav = []
-      return c
-    }
-
     it('starts off for a v4 file with no Fremplay, the devices switch stated or not', () => {
       expect(migrateConfig(v4(['clock'])).labs.companion).toBe(false)
       expect(migrateConfig(v4(['clock'], { devices: true })).labs).toEqual({ devices: true, companion: false, fremdev: false })
@@ -110,16 +110,6 @@ describe('migrateConfig', () => {
     })
   })
   describe('labs.fremdev', () => {
-    const v4 = (widgetIds: string[], labs?: Record<string, boolean>) => {
-      const c = JSON.parse(JSON.stringify(migrateConfig(v1))) as Record<string, any>
-      delete c.labs
-      if (labs) c.labs = labs
-      c.widgets = Object.fromEntries(widgetIds.map((id, i) => [`${id}-${i}`, { widgetId: id, showTitle: false, settings: {} }]))
-      c.screens[0].pages[0].items = []
-      c.screens[0].nav = []
-      return c
-    }
-
     it('starts off for a fresh install', () => {
       expect(DEFAULT_CONFIG.labs).toEqual({ devices: false, companion: false, fremdev: false })
     })
