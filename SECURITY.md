@@ -392,7 +392,8 @@ What it holds and what it can do:
   kind, with the same guarantees. It
   sends events to a relay content script through a `CustomEvent` carrying a string. A page can forge
   events, but only into its own row; the tab id comes from Chrome. A `Proxy`'s introspection traps
-  (`ownKeys`, `getOwnPropertyDescriptor`, `getPrototypeOf`) may run, within the walk budget. Pages already loaded keep an inert hook after Fremdev is turned off until they reload.
+  (`ownKeys`, `getOwnPropertyDescriptor`, `getPrototypeOf`) may run, within the walk budget. Pages
+  already loaded keep an inert hook after Fremdev is turned off until they reload.
   The relay checks nothing the worker does not check again: the worker decides whether a URL is a
   dev URL.
 - *What leaves the tab:* the tab's row names it by the page's title (or its host:port when it has
@@ -406,12 +407,13 @@ What it holds and what it can do:
 - *Stacks.* An error's stack (at most 10 frames, 2000 characters, URLs without query or fragment)
   stays in the extension and never travels in `dev.tabs`; it leaves the browser only in a bug
   report the user asked for. The hook reads it with V8's native `stack` getter, captured at hook
-  start and called with `Reflect.apply`, only when `Error.prepareStackTrace` is absent or `undefined` (checked by
-  descriptor, so no page getter runs) and the error's `name` and `message` are plain data strings;
-  otherwise there is no stack.
+  start and called with `Reflect.apply`, only when `Error.prepareStackTrace` is absent or
+  `undefined` (checked by descriptor, so no page getter runs) and the error's `name` and `message`
+  are plain data strings; otherwise there is no stack.
 - *The bug report.* The extension builds the text (at most 48 000 characters) and answers the
   server's `dev.report.ask` with `dev.report`; the server waits 5 seconds, then writes it to the
-  clipboard through `pbcopy` (at most 8 reports pending per install) with the text on stdin, never argv (`server/src/providers/clipboard.ts`).
+  clipboard through `pbcopy` with the text on stdin, never argv (`server/src/providers/clipboard.ts`).
+  At most 8 reports wait per install; a ninth is refused.
   The `report` command is loopback-only like `focus` and `clear`, names only a tab id the install
   reported, and is gated by `labs.companion`; the module is announced as `fremdev.report` only
   while Fremdev is on. The report reaches no one but the clipboard, and what it quotes (error
