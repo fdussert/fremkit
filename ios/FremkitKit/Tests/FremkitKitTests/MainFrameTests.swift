@@ -1,46 +1,32 @@
 import FremkitKit
 import XCTest
 
+/// The shared `mainFrames` vectors (test-vectors/devices.json).
 final class MainFrameTests: XCTestCase {
-    private func allowed(_ string: String, host: String = "studio.local", port: Int = 4243) -> Bool {
-        Dashboard.allowsMainFrame(URL(string: string), host: host, port: port)
+    private func check(_ whys: String..., file: StaticString = #filePath, line: UInt = #line) {
+        let vectors = Vectors.all.mainFrames.navigations.filter { whys.contains($0.why) }
+        XCTAssertFalse(vectors.isEmpty, "no shared vector for this test", file: file, line: line)
+        for vector in vectors {
+            XCTAssertEqual(Dashboard.allowsMainFrame(vector.url.flatMap(URL.init(string:)), host: vector.host, port: vector.port),
+                           vector.allowed, "\(vector.url ?? "nil") on \(vector.host):\(vector.port)", file: file, line: line)
+        }
     }
 
     func testAllowsTheMacsOwnOrigin() {
-        XCTAssertTrue(allowed("https://studio.local:4243/"))
-        XCTAssertTrue(allowed("https://STUDIO.local:4243/?screen=tab-a#x"))
-        XCTAssertTrue(allowed("https://192.0.2.10:4243/", host: "192.0.2.10"))
-        XCTAssertTrue(allowed("https://example.local/", host: "example.local", port: 443))
+        check("the Mac's own origin")
     }
 
     func testRefusesAnyOtherOrigin() {
-        for url in [
-            "https://evil.example:4243/",
-            "https://studio.local:4242/",
-            "https://studio.local/",
-            "http://studio.local:4243/",
-            "https://user:pass@studio.local:4243/",
-            "https://studio.local.evil.example:4243/",
-            "https://192.0.2.11:4243/",
-            "about:blank",
-            "data:text/html,hi",
-            "javascript:alert(1)",
-            "fremkit://pair?x",
-        ] {
-            XCTAssertFalse(allowed(url), url)
-        }
-        XCTAssertFalse(Dashboard.allowsMainFrame(nil, host: "studio.local", port: 4243))
+        check("any other origin", "no URL")
+        XCTAssertEqual(Set(Vectors.all.mainFrames.navigations.map(\.why)), ["the Mac's own origin", "any other origin", "no URL"])
     }
 
     func testHearsThePageFromItsOwnOriginOnly() {
-        XCTAssertTrue(Dashboard.isPageOrigin(scheme: "https", host: "studio.local", port: 4243, host: "studio.local", port: 4243))
-        XCTAssertTrue(Dashboard.isPageOrigin(scheme: "HTTPS", host: "Studio.Local", port: 4243, host: "studio.local", port: 4243))
-        XCTAssertTrue(Dashboard.isPageOrigin(scheme: "https", host: "example.local", port: 0, host: "example.local", port: 443))
-        XCTAssertFalse(Dashboard.isPageOrigin(scheme: "https", host: "evil.example", port: 4243, host: "studio.local", port: 4243))
-        XCTAssertFalse(Dashboard.isPageOrigin(scheme: "https", host: "studio.local", port: 4242, host: "studio.local", port: 4243))
-        XCTAssertFalse(Dashboard.isPageOrigin(scheme: "http", host: "studio.local", port: 4243, host: "studio.local", port: 4243))
-        XCTAssertFalse(Dashboard.isPageOrigin(scheme: "https", host: "", port: 4243, host: "studio.local", port: 4243))
-        // An opaque origin (a sandboxed frame) has no host.
-        XCTAssertFalse(Dashboard.isPageOrigin(scheme: "", host: "", port: 0, host: "studio.local", port: 4243))
+        let vectors = Vectors.all.mainFrames.pageOrigins
+        XCTAssertFalse(vectors.isEmpty)
+        for v in vectors {
+            XCTAssertEqual(Dashboard.isPageOrigin(scheme: v.scheme, host: v.originHost, port: v.originPort, host: v.host, port: v.port),
+                           v.heard, "\(v.scheme)://\(v.originHost):\(v.originPort) for \(v.host):\(v.port)")
+        }
     }
 }

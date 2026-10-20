@@ -1,0 +1,1272 @@
+{
+  "version": 1,
+  "codeProof": {
+    "iterations": 600000,
+    "code": "ABCDEFGH",
+    "keyHash": "n4bQgYhMfWWaL-qgxVrQFaO_TxsrC4Is0V1sFbDwCgg",
+    "proof": "u0OmzfI4qjz-qNwuSnZEHpye4MAjcTzhT3jg2gJVid0",
+    "anotherKeyHash": "n4bQgYhMfWWaL-qgxVrQFaO_TxsrC4Is0V1sFbDwCgh"
+  },
+  "fingerprint": {
+    "listSha256": "247bec0519f05acf5f8716f8515af0532676cce180409949d265f5670797c930",
+    "listLength": 256,
+    "cases": [
+      {
+        "bytesHex": "0001feff07070707070707070707070707070707070707070707070707070707",
+        "keyHash": "AAH-_wcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc",
+        "words": [
+          "aardvark",
+          "absurd",
+          "woodlark",
+          "zulu"
+        ]
+      }
+    ],
+    "tooShort": [
+      "AQID",
+      "AAH-",
+      ""
+    ]
+  },
+  "spki": {
+    "derHex": "3059301306072a8648ce3d020106082a8648ce3d030107034200042fb1227411d23e4c17c047a472bfec3e71847e5ae51c785951bb4702e560d44aad22e120c9c885e22ea1069d316c6e42f97f2537118e4a5768af6b1c43420bde",
+    "keyHash": "Y4nRTFWKfvKwllWID7DQPMgZIF8SqUUvgWkQZsK_ArQ",
+    "rawOffset": 26,
+    "rejectedRawHex": [
+      "04040404040404040404040404040404040404040404040404040404040404040404040404040404040404040404040404040404040404040404040404040404",
+      "0201010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101"
+    ]
+  },
+  "codes": {
+    "alphabet": "ABCDEFGHJKLMNPQRSTUVWXYZ23456789",
+    "length": 8,
+    "normalise": [
+      {
+        "input": " abcd-efgh ",
+        "output": "ABCDEFGH",
+        "why": "any case, spaces and a dash"
+      },
+      {
+        "input": "AB CD EF 23",
+        "output": "ABCDEF23",
+        "why": "any case, spaces and a dash"
+      },
+      {
+        "input": "ABCDEFG0",
+        "output": null,
+        "why": "outside the alphabet"
+      },
+      {
+        "input": "ABCDEFGI",
+        "output": null,
+        "why": "outside the alphabet"
+      },
+      {
+        "input": "ABCDEFG1",
+        "output": null,
+        "why": "outside the alphabet"
+      },
+      {
+        "input": "ABCDÉFGH",
+        "output": null,
+        "why": "outside the alphabet"
+      },
+      {
+        "input": "ABCDEFG",
+        "output": null,
+        "why": "the wrong length"
+      },
+      {
+        "input": "ABCDEFGHJ",
+        "output": null,
+        "why": "the wrong length"
+      },
+      {
+        "input": "",
+        "output": null,
+        "why": "the wrong length"
+      }
+    ]
+  },
+  "pairingLinks": [
+    {
+      "why": "a valid link",
+      "url": "fremkit://pair?h=studio.local&a=192.0.2.10&p=4243&c=ABCDEFGH&k=Y4nRTFWKfvKwllWID7DQPMgZIF8SqUUvgWkQZsK_ArQ",
+      "expect": {
+        "host": "studio.local",
+        "address": "192.0.2.10",
+        "port": 4243,
+        "code": "ABCDEFGH",
+        "keyHash": "Y4nRTFWKfvKwllWID7DQPMgZIF8SqUUvgWkQZsK_ArQ",
+        "secret": null
+      }
+    },
+    {
+      "why": "a link with the secret",
+      "url": "fremkit://pair?h=studio.local&a=192.0.2.10&p=4243&c=ABCDEFGH&s=AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE&k=Y4nRTFWKfvKwllWID7DQPMgZIF8SqUUvgWkQZsK_ArQ",
+      "expect": {
+        "host": "studio.local",
+        "address": "192.0.2.10",
+        "port": 4243,
+        "code": "ABCDEFGH",
+        "keyHash": "Y4nRTFWKfvKwllWID7DQPMgZIF8SqUUvgWkQZsK_ArQ",
+        "secret": "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE"
+      }
+    },
+    {
+      "why": "a bad secret",
+      "url": "fremkit://pair?h=studio.local&a=192.0.2.10&p=4243&c=ABCDEFGH&k=Y4nRTFWKfvKwllWID7DQPMgZIF8SqUUvgWkQZsK_ArQ&s=",
+      "expect": null
+    },
+    {
+      "why": "a bad secret",
+      "url": "fremkit://pair?h=studio.local&a=192.0.2.10&p=4243&c=ABCDEFGH&k=Y4nRTFWKfvKwllWID7DQPMgZIF8SqUUvgWkQZsK_ArQ&s=AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQ",
+      "expect": null
+    },
+    {
+      "why": "a bad secret",
+      "url": "fremkit://pair?h=studio.local&a=192.0.2.10&p=4243&c=ABCDEFGH&k=Y4nRTFWKfvKwllWID7DQPMgZIF8SqUUvgWkQZsK_ArQ&s=AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEA",
+      "expect": null
+    },
+    {
+      "why": "a bad secret",
+      "url": "fremkit://pair?h=studio.local&a=192.0.2.10&p=4243&c=ABCDEFGH&k=Y4nRTFWKfvKwllWID7DQPMgZIF8SqUUvgWkQZsK_ArQ&s=AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQ=",
+      "expect": null
+    },
+    {
+      "why": "a bad secret",
+      "url": "fremkit://pair?h=studio.local&a=192.0.2.10&p=4243&c=ABCDEFGH&k=Y4nRTFWKfvKwllWID7DQPMgZIF8SqUUvgWkQZsK_ArQ&s=AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQ+",
+      "expect": null
+    },
+    {
+      "why": "a bad secret",
+      "url": "fremkit://pair?h=studio.local&a=192.0.2.10&p=4243&c=ABCDEFGH&k=Y4nRTFWKfvKwllWID7DQPMgZIF8SqUUvgWkQZsK_ArQ&s=AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQF",
+      "expect": null
+    },
+    {
+      "why": "a bad secret",
+      "url": "fremkit://pair?h=studio.local&a=192.0.2.10&p=4243&c=ABCDEFGH&k=Y4nRTFWKfvKwllWID7DQPMgZIF8SqUUvgWkQZsK_ArQ&s=ABCDEFGH",
+      "expect": null
+    },
+    {
+      "why": "a repeated secret",
+      "url": "fremkit://pair?h=studio.local&a=192.0.2.10&p=4243&c=ABCDEFGH&k=Y4nRTFWKfvKwllWID7DQPMgZIF8SqUUvgWkQZsK_ArQ&s=AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE&s=AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE",
+      "expect": null
+    },
+    {
+      "why": "an IPv6 address, which the Mac would answer 421 to",
+      "url": "fremkit://pair?h=studio.local&a=2001:db8::1&p=4243&c=ABCDEFGH&k=Y4nRTFWKfvKwllWID7DQPMgZIF8SqUUvgWkQZsK_ArQ",
+      "expect": null
+    },
+    {
+      "why": "an IPv6 address, which the Mac would answer 421 to",
+      "url": "fremkit://pair?h=studio.local&a=fe80::1%25en0&p=4243&c=ABCDEFGH&k=Y4nRTFWKfvKwllWID7DQPMgZIF8SqUUvgWkQZsK_ArQ",
+      "expect": null
+    },
+    {
+      "why": "an IPv6 address, which the Mac would answer 421 to",
+      "url": "fremkit://pair?h=studio.local&a=%5B2001:db8::1%5D&p=4243&c=ABCDEFGH&k=Y4nRTFWKfvKwllWID7DQPMgZIF8SqUUvgWkQZsK_ArQ",
+      "expect": null
+    },
+    {
+      "why": "a lowercase code with a dash",
+      "url": "fremkit://pair?h=studio.local&a=192.0.2.10&p=4243&c=abcd-efgh&k=Y4nRTFWKfvKwllWID7DQPMgZIF8SqUUvgWkQZsK_ArQ",
+      "expect": {
+        "host": "studio.local",
+        "address": "192.0.2.10",
+        "port": 4243,
+        "code": "ABCDEFGH",
+        "keyHash": "Y4nRTFWKfvKwllWID7DQPMgZIF8SqUUvgWkQZsK_ArQ",
+        "secret": null
+      }
+    },
+    {
+      "why": "no h",
+      "url": "fremkit://pair?a=192.0.2.10&p=4243&c=ABCDEFGH&k=Y4nRTFWKfvKwllWID7DQPMgZIF8SqUUvgWkQZsK_ArQ",
+      "expect": null
+    },
+    {
+      "why": "no a",
+      "url": "fremkit://pair?h=studio.local&p=4243&c=ABCDEFGH&k=Y4nRTFWKfvKwllWID7DQPMgZIF8SqUUvgWkQZsK_ArQ",
+      "expect": null
+    },
+    {
+      "why": "no p",
+      "url": "fremkit://pair?h=studio.local&a=192.0.2.10&c=ABCDEFGH&k=Y4nRTFWKfvKwllWID7DQPMgZIF8SqUUvgWkQZsK_ArQ",
+      "expect": null
+    },
+    {
+      "why": "no c",
+      "url": "fremkit://pair?h=studio.local&a=192.0.2.10&p=4243&k=Y4nRTFWKfvKwllWID7DQPMgZIF8SqUUvgWkQZsK_ArQ",
+      "expect": null
+    },
+    {
+      "why": "no k",
+      "url": "fremkit://pair?h=studio.local&a=192.0.2.10&p=4243&c=ABCDEFGH",
+      "expect": null
+    },
+    {
+      "why": "a bad port",
+      "url": "fremkit://pair?h=studio.local&a=192.0.2.10&p=0&c=ABCDEFGH&k=Y4nRTFWKfvKwllWID7DQPMgZIF8SqUUvgWkQZsK_ArQ",
+      "expect": null
+    },
+    {
+      "why": "a bad port",
+      "url": "fremkit://pair?h=studio.local&a=192.0.2.10&p=65536&c=ABCDEFGH&k=Y4nRTFWKfvKwllWID7DQPMgZIF8SqUUvgWkQZsK_ArQ",
+      "expect": null
+    },
+    {
+      "why": "a bad port",
+      "url": "fremkit://pair?h=studio.local&a=192.0.2.10&p=-1&c=ABCDEFGH&k=Y4nRTFWKfvKwllWID7DQPMgZIF8SqUUvgWkQZsK_ArQ",
+      "expect": null
+    },
+    {
+      "why": "a bad port",
+      "url": "fremkit://pair?h=studio.local&a=192.0.2.10&p=abc&c=ABCDEFGH&k=Y4nRTFWKfvKwllWID7DQPMgZIF8SqUUvgWkQZsK_ArQ",
+      "expect": null
+    },
+    {
+      "why": "a bad port",
+      "url": "fremkit://pair?h=studio.local&a=192.0.2.10&p=42%2043&c=ABCDEFGH&k=Y4nRTFWKfvKwllWID7DQPMgZIF8SqUUvgWkQZsK_ArQ",
+      "expect": null
+    },
+    {
+      "why": "a bad port",
+      "url": "fremkit://pair?h=studio.local&a=192.0.2.10&p=&c=ABCDEFGH&k=Y4nRTFWKfvKwllWID7DQPMgZIF8SqUUvgWkQZsK_ArQ",
+      "expect": null
+    },
+    {
+      "why": "the highest port",
+      "url": "fremkit://pair?h=studio.local&a=192.0.2.10&p=65535&c=ABCDEFGH&k=Y4nRTFWKfvKwllWID7DQPMgZIF8SqUUvgWkQZsK_ArQ",
+      "expect": {
+        "host": "studio.local",
+        "address": "192.0.2.10",
+        "port": 65535,
+        "code": "ABCDEFGH",
+        "keyHash": "Y4nRTFWKfvKwllWID7DQPMgZIF8SqUUvgWkQZsK_ArQ",
+        "secret": null
+      }
+    },
+    {
+      "why": "a bad key hash",
+      "url": "fremkit://pair?h=studio.local&a=192.0.2.10&p=4243&c=ABCDEFGH&k=Y4nRTFWKfvKwllWID7DQPMgZIF8SqUUvgWkQZsK_Ar",
+      "expect": null
+    },
+    {
+      "why": "a bad key hash",
+      "url": "fremkit://pair?h=studio.local&a=192.0.2.10&p=4243&c=ABCDEFGH&k=Y4nRTFWKfvKwllWID7DQPMgZIF8SqUUvgWkQZsK_ArQA",
+      "expect": null
+    },
+    {
+      "why": "a bad key hash",
+      "url": "fremkit://pair?h=studio.local&a=192.0.2.10&p=4243&c=ABCDEFGH&k=Y4nRTFWKfvKwllWID7DQPMgZIF8SqUUvgWkQZsK_Ar=",
+      "expect": null
+    },
+    {
+      "why": "a bad key hash",
+      "url": "fremkit://pair?h=studio.local&a=192.0.2.10&p=4243&c=ABCDEFGH&k=Y4nRTFWKfvKwllWID7DQPMgZIF8SqUUvgWkQZsK_Ar+",
+      "expect": null
+    },
+    {
+      "why": "a bad key hash",
+      "url": "fremkit://pair?h=studio.local&a=192.0.2.10&p=4243&c=ABCDEFGH&k=Y4nRTFWKfvKwllWID7DQPMgZIF8SqUUvgWkQZsK_ArR",
+      "expect": null
+    },
+    {
+      "why": "a host that is not a .local name",
+      "url": "fremkit://pair?h=studio.example.com&a=192.0.2.10&p=4243&c=ABCDEFGH&k=Y4nRTFWKfvKwllWID7DQPMgZIF8SqUUvgWkQZsK_ArQ",
+      "expect": null
+    },
+    {
+      "why": "a host that is not a .local name",
+      "url": "fremkit://pair?h=.local&a=192.0.2.10&p=4243&c=ABCDEFGH&k=Y4nRTFWKfvKwllWID7DQPMgZIF8SqUUvgWkQZsK_ArQ",
+      "expect": null
+    },
+    {
+      "why": "a host that is not a .local name",
+      "url": "fremkit://pair?h=studio&a=192.0.2.10&p=4243&c=ABCDEFGH&k=Y4nRTFWKfvKwllWID7DQPMgZIF8SqUUvgWkQZsK_ArQ",
+      "expect": null
+    },
+    {
+      "why": "a host that is not a .local name",
+      "url": "fremkit://pair?h=stu%20dio.local&a=192.0.2.10&p=4243&c=ABCDEFGH&k=Y4nRTFWKfvKwllWID7DQPMgZIF8SqUUvgWkQZsK_ArQ",
+      "expect": null
+    },
+    {
+      "why": "a host that is not a .local name",
+      "url": "fremkit://pair?h=studio/x.local&a=192.0.2.10&p=4243&c=ABCDEFGH&k=Y4nRTFWKfvKwllWID7DQPMgZIF8SqUUvgWkQZsK_ArQ",
+      "expect": null
+    },
+    {
+      "why": "an address that is not an IP literal",
+      "url": "fremkit://pair?h=studio.local&a=studio.local&p=4243&c=ABCDEFGH&k=Y4nRTFWKfvKwllWID7DQPMgZIF8SqUUvgWkQZsK_ArQ",
+      "expect": null
+    },
+    {
+      "why": "an address that is not an IP literal",
+      "url": "fremkit://pair?h=studio.local&a=192.0.2&p=4243&c=ABCDEFGH&k=Y4nRTFWKfvKwllWID7DQPMgZIF8SqUUvgWkQZsK_ArQ",
+      "expect": null
+    },
+    {
+      "why": "an address that is not an IP literal",
+      "url": "fremkit://pair?h=studio.local&a=192.0.2.300&p=4243&c=ABCDEFGH&k=Y4nRTFWKfvKwllWID7DQPMgZIF8SqUUvgWkQZsK_ArQ",
+      "expect": null
+    },
+    {
+      "why": "an address that is not an IP literal",
+      "url": "fremkit://pair?h=studio.local&a=example.com&p=4243&c=ABCDEFGH&k=Y4nRTFWKfvKwllWID7DQPMgZIF8SqUUvgWkQZsK_ArQ",
+      "expect": null
+    },
+    {
+      "why": "an address that is not an IP literal",
+      "url": "fremkit://pair?h=studio.local&a=&p=4243&c=ABCDEFGH&k=Y4nRTFWKfvKwllWID7DQPMgZIF8SqUUvgWkQZsK_ArQ",
+      "expect": null
+    },
+    {
+      "why": "another scheme",
+      "url": "https://pair?h=studio.local&a=192.0.2.10&p=4243&c=ABCDEFGH&k=Y4nRTFWKfvKwllWID7DQPMgZIF8SqUUvgWkQZsK_ArQ",
+      "expect": null
+    },
+    {
+      "why": "another action",
+      "url": "fremkit://unpair?h=studio.local&a=192.0.2.10&p=4243&c=ABCDEFGH&k=Y4nRTFWKfvKwllWID7DQPMgZIF8SqUUvgWkQZsK_ArQ",
+      "expect": null
+    },
+    {
+      "why": "a trailing dot on the host, dropped",
+      "url": "fremkit://pair?h=Studio.local.&a=192.0.2.10&p=4243&c=ABCDEFGH&k=Y4nRTFWKfvKwllWID7DQPMgZIF8SqUUvgWkQZsK_ArQ",
+      "expect": {
+        "host": "Studio.local",
+        "address": "192.0.2.10",
+        "port": 4243,
+        "code": "ABCDEFGH",
+        "keyHash": "Y4nRTFWKfvKwllWID7DQPMgZIF8SqUUvgWkQZsK_ArQ",
+        "secret": null
+      }
+    },
+    {
+      "why": "a code with a character outside the alphabet",
+      "url": "fremkit://pair?h=studio.local&a=192.0.2.10&p=4243&c=ABCDEFG0&k=Y4nRTFWKfvKwllWID7DQPMgZIF8SqUUvgWkQZsK_ArQ",
+      "expect": null
+    }
+  ],
+  "ipv4": [
+    {
+      "literal": "10.20.30.40",
+      "ipv4": true,
+      "private": true
+    },
+    {
+      "literal": "172.16.0.1",
+      "ipv4": true,
+      "private": true
+    },
+    {
+      "literal": "172.31.255.255",
+      "ipv4": true,
+      "private": true
+    },
+    {
+      "literal": "192.168.0.1",
+      "ipv4": true,
+      "private": true
+    },
+    {
+      "literal": "172.15.255.255",
+      "ipv4": true,
+      "private": false
+    },
+    {
+      "literal": "172.32.0.1",
+      "ipv4": true,
+      "private": false
+    },
+    {
+      "literal": "192.169.0.1",
+      "ipv4": true,
+      "private": false
+    },
+    {
+      "literal": "100.64.0.1",
+      "ipv4": true,
+      "private": false
+    },
+    {
+      "literal": "169.254.1.1",
+      "ipv4": true,
+      "private": false
+    },
+    {
+      "literal": "192.0.2.10",
+      "ipv4": true,
+      "private": false
+    },
+    {
+      "literal": "8.8.8.8",
+      "ipv4": true,
+      "private": false
+    },
+    {
+      "literal": "fd00::1",
+      "ipv4": false,
+      "private": false
+    },
+    {
+      "literal": "::ffff:10.20.30.40",
+      "ipv4": false,
+      "private": false
+    },
+    {
+      "literal": "studio.local",
+      "ipv4": false,
+      "private": false
+    },
+    {
+      "literal": "",
+      "ipv4": false,
+      "private": false
+    },
+    {
+      "literal": "9.255.255.255",
+      "ipv4": true,
+      "private": false
+    },
+    {
+      "literal": "10.0.0.0",
+      "ipv4": true,
+      "private": true
+    },
+    {
+      "literal": "10.255.255.255",
+      "ipv4": true,
+      "private": true
+    },
+    {
+      "literal": "11.0.0.0",
+      "ipv4": true,
+      "private": false
+    },
+    {
+      "literal": "172.16.0.0",
+      "ipv4": true,
+      "private": true
+    },
+    {
+      "literal": "172.15.0.1",
+      "ipv4": true,
+      "private": false
+    },
+    {
+      "literal": "172.31.255.254",
+      "ipv4": true,
+      "private": true
+    },
+    {
+      "literal": "192.167.255.255",
+      "ipv4": true,
+      "private": false
+    },
+    {
+      "literal": "192.168.0.0",
+      "ipv4": true,
+      "private": true
+    },
+    {
+      "literal": "192.168.255.255",
+      "ipv4": true,
+      "private": true
+    },
+    {
+      "literal": "192.169.0.0",
+      "ipv4": true,
+      "private": false
+    },
+    {
+      "literal": "127.0.0.1",
+      "ipv4": true,
+      "private": false
+    },
+    {
+      "literal": "0.0.0.0",
+      "ipv4": true,
+      "private": false
+    },
+    {
+      "literal": "255.255.255.255",
+      "ipv4": true,
+      "private": false
+    },
+    {
+      "literal": "198.51.100.7",
+      "ipv4": true,
+      "private": false
+    },
+    {
+      "literal": "203.0.113.5",
+      "ipv4": true,
+      "private": false
+    },
+    {
+      "literal": "100.100.1.1",
+      "ipv4": true,
+      "private": false
+    },
+    {
+      "literal": "010.1.2.3",
+      "ipv4": true,
+      "private": true,
+      "why": "a leading zero, read as decimal"
+    },
+    {
+      "literal": "10.01.2.3",
+      "ipv4": true,
+      "private": true,
+      "why": "a leading zero, read as decimal"
+    },
+    {
+      "literal": "192.168.000.001",
+      "ipv4": true,
+      "private": true,
+      "why": "a leading zero, read as decimal"
+    },
+    {
+      "literal": "00.0.0.0",
+      "ipv4": true,
+      "private": false,
+      "why": "a leading zero, read as decimal"
+    },
+    {
+      "literal": "172.016.0.1",
+      "ipv4": true,
+      "private": true,
+      "why": "a leading zero, read as decimal (octal would be 172.14)"
+    },
+    {
+      "literal": "0300.168.0.1",
+      "ipv4": false,
+      "private": false,
+      "why": "a leading zero, read as decimal (octal would be 192.168)"
+    },
+    {
+      "literal": "0010.1.2.3",
+      "ipv4": true,
+      "private": true,
+      "why": "a leading zero, read as decimal"
+    },
+    {
+      "literal": "1.2.3",
+      "ipv4": false,
+      "private": false,
+      "why": "three parts"
+    },
+    {
+      "literal": "10",
+      "ipv4": false,
+      "private": false,
+      "why": "one part"
+    },
+    {
+      "literal": "10.1.2.3.4",
+      "ipv4": false,
+      "private": false,
+      "why": "five parts"
+    },
+    {
+      "literal": "256.1.1.1",
+      "ipv4": false,
+      "private": false,
+      "why": "a part over 255"
+    },
+    {
+      "literal": "10.1.2.256",
+      "ipv4": false,
+      "private": false,
+      "why": "a part over 255"
+    },
+    {
+      "literal": "10.1.2.3.",
+      "ipv4": false,
+      "private": false,
+      "why": "a trailing dot"
+    },
+    {
+      "literal": ".10.1.2.3",
+      "ipv4": false,
+      "private": false,
+      "why": "a leading dot"
+    },
+    {
+      "literal": "10..1.2",
+      "ipv4": false,
+      "private": false,
+      "why": "an empty part"
+    },
+    {
+      "literal": "10.1.2.3 ",
+      "ipv4": false,
+      "private": false,
+      "why": "a trailing space"
+    },
+    {
+      "literal": " 10.1.2.3",
+      "ipv4": false,
+      "private": false,
+      "why": "a leading space"
+    },
+    {
+      "literal": "0x0a.1.2.3",
+      "ipv4": false,
+      "private": false,
+      "why": "hexadecimal"
+    },
+    {
+      "literal": "10.1.2.3:80",
+      "ipv4": false,
+      "private": false,
+      "why": "a port"
+    },
+    {
+      "literal": "10.1.2.3/8",
+      "ipv4": false,
+      "private": false,
+      "why": "a prefix"
+    },
+    {
+      "literal": "-1.2.3.4",
+      "ipv4": false,
+      "private": false,
+      "why": "a sign"
+    },
+    {
+      "literal": "+10.1.2.3",
+      "ipv4": false,
+      "private": false,
+      "why": "a sign"
+    }
+  ],
+  "subframes": [
+    {
+      "url": "https://studio.local:4243/widgets/clock/index.html",
+      "host": "studio.local",
+      "port": 4243,
+      "allowed": true,
+      "why": "the Mac's widgets"
+    },
+    {
+      "url": "https://STUDIO.local:4243/widgets/clock/index.html?x=1#y",
+      "host": "studio.local",
+      "port": 4243,
+      "allowed": true,
+      "why": "the Mac's widgets"
+    },
+    {
+      "url": "https://studio.local.:4243/widgets/clock/",
+      "host": "studio.local.",
+      "port": 4243,
+      "allowed": true,
+      "why": "the Mac's widgets"
+    },
+    {
+      "url": "https://192.0.2.10:4243/widgets/clock/index.html",
+      "host": "192.0.2.10",
+      "port": 4243,
+      "allowed": true,
+      "why": "the Mac's widgets"
+    },
+    {
+      "url": "https://[fe80::1%25en0]:4243/widgets/clock/index.html",
+      "host": "fe80::1%en0",
+      "port": 4243,
+      "allowed": true,
+      "why": "the Mac's widgets"
+    },
+    {
+      "url": "https://example.local/widgets/clock/index.html",
+      "host": "example.local",
+      "port": 443,
+      "allowed": true,
+      "why": "the Mac's widgets"
+    },
+    {
+      "url": "https://evil.example:4243/widgets/clock/index.html",
+      "host": "studio.local",
+      "port": 4243,
+      "allowed": false,
+      "why": "anything else"
+    },
+    {
+      "url": "https://studio.local:4242/widgets/clock/index.html",
+      "host": "studio.local",
+      "port": 4243,
+      "allowed": false,
+      "why": "anything else"
+    },
+    {
+      "url": "https://studio.local/widgets/clock/index.html",
+      "host": "studio.local",
+      "port": 4243,
+      "allowed": false,
+      "why": "anything else"
+    },
+    {
+      "url": "http://studio.local:4243/widgets/clock/index.html",
+      "host": "studio.local",
+      "port": 4243,
+      "allowed": false,
+      "why": "anything else"
+    },
+    {
+      "url": "https://studio.local:4243/",
+      "host": "studio.local",
+      "port": 4243,
+      "allowed": false,
+      "why": "anything else"
+    },
+    {
+      "url": "https://studio.local:4243/index.html",
+      "host": "studio.local",
+      "port": 4243,
+      "allowed": false,
+      "why": "anything else"
+    },
+    {
+      "url": "https://studio.local:4243/api/config",
+      "host": "studio.local",
+      "port": 4243,
+      "allowed": false,
+      "why": "anything else"
+    },
+    {
+      "url": "https://studio.local:4243/widgetsx/clock/index.html",
+      "host": "studio.local",
+      "port": 4243,
+      "allowed": false,
+      "why": "anything else"
+    },
+    {
+      "url": "https://studio.local:4243/widgets",
+      "host": "studio.local",
+      "port": 4243,
+      "allowed": false,
+      "why": "anything else"
+    },
+    {
+      "url": "https://studio.local:4243/widgets/%2e%2e/admin.html",
+      "host": "studio.local",
+      "port": 4243,
+      "allowed": false,
+      "why": "anything else"
+    },
+    {
+      "url": "https://studio.local:4243/widgets/clock/%2E%2E/%2E%2E/api/config",
+      "host": "studio.local",
+      "port": 4243,
+      "allowed": false,
+      "why": "anything else"
+    },
+    {
+      "url": "https://studio.local:4243/widgets/clock%5c..%5cadmin.html",
+      "host": "studio.local",
+      "port": 4243,
+      "allowed": false,
+      "why": "anything else"
+    },
+    {
+      "url": "https://user:pw@studio.local:4243/widgets/clock/index.html",
+      "host": "studio.local",
+      "port": 4243,
+      "allowed": false,
+      "why": "anything else"
+    },
+    {
+      "url": "about:blank",
+      "host": "studio.local",
+      "port": 4243,
+      "allowed": false,
+      "why": "anything else"
+    },
+    {
+      "url": "about:srcdoc",
+      "host": "studio.local",
+      "port": 4243,
+      "allowed": false,
+      "why": "anything else"
+    },
+    {
+      "url": "data:text/html,hi",
+      "host": "studio.local",
+      "port": 4243,
+      "allowed": false,
+      "why": "anything else"
+    },
+    {
+      "url": "javascript:alert(1)",
+      "host": "studio.local",
+      "port": 4243,
+      "allowed": false,
+      "why": "anything else"
+    },
+    {
+      "url": "blob:https://studio.local:4243/1234",
+      "host": "studio.local",
+      "port": 4243,
+      "allowed": false,
+      "why": "anything else"
+    },
+    {
+      "url": "https://studio.local.:4243/widgets/clock/",
+      "host": "studio.local",
+      "port": 4243,
+      "allowed": false,
+      "why": "where an earlier rule and the Mac's WidgetFrames disagreed"
+    },
+    {
+      "url": "https://studio.local:4243/%77idgets/clock/index.html",
+      "host": "studio.local",
+      "port": 4243,
+      "allowed": false,
+      "why": "where an earlier rule and the Mac's WidgetFrames disagreed"
+    },
+    {
+      "url": "https://studio.local:4243/widgets/clock/a%2Ejs",
+      "host": "studio.local",
+      "port": 4243,
+      "allowed": false,
+      "why": "where an earlier rule and the Mac's WidgetFrames disagreed"
+    },
+    {
+      "url": "https://studio.local:4243/widgets/clock/index.html",
+      "host": "studio.local",
+      "port": 4243,
+      "allowed": true,
+      "why": "WidgetFrames: a widget document on the same origin"
+    },
+    {
+      "url": "https://studio.local:4243/widgets/clock/",
+      "host": "studio.local",
+      "port": 4243,
+      "allowed": true,
+      "why": "WidgetFrames: a widget document on the same origin"
+    },
+    {
+      "url": "https://studio.local:4243/widgets/clock/index.html?x=1#y",
+      "host": "studio.local",
+      "port": 4243,
+      "allowed": true,
+      "why": "WidgetFrames: a widget document on the same origin"
+    },
+    {
+      "url": "https://attacker.example/?d=secret",
+      "host": "studio.local",
+      "port": 4243,
+      "allowed": false,
+      "why": "WidgetFrames: everything else"
+    },
+    {
+      "url": "https://studio.local:4242/widgets/clock/index.html",
+      "host": "studio.local",
+      "port": 4243,
+      "allowed": false,
+      "why": "WidgetFrames: everything else"
+    },
+    {
+      "url": "https://192.0.2.10:4243/widgets/clock/index.html",
+      "host": "studio.local",
+      "port": 4243,
+      "allowed": false,
+      "why": "WidgetFrames: everything else"
+    },
+    {
+      "url": "http://studio.local:4243/widgets/clock/index.html",
+      "host": "studio.local",
+      "port": 4243,
+      "allowed": false,
+      "why": "WidgetFrames: everything else"
+    },
+    {
+      "url": "https://studio.local:4243/admin",
+      "host": "studio.local",
+      "port": 4243,
+      "allowed": false,
+      "why": "WidgetFrames: everything else"
+    },
+    {
+      "url": "https://studio.local:4243/",
+      "host": "studio.local",
+      "port": 4243,
+      "allowed": false,
+      "why": "WidgetFrames: everything else"
+    },
+    {
+      "url": "https://studio.local:4243/widgets/",
+      "host": "studio.local",
+      "port": 4243,
+      "allowed": false,
+      "why": "WidgetFrames: everything else"
+    },
+    {
+      "url": "https://studio.local:4243/widgetsx/clock/index.html",
+      "host": "studio.local",
+      "port": 4243,
+      "allowed": false,
+      "why": "WidgetFrames: everything else"
+    },
+    {
+      "url": "https://studio.local:4243/widgets/../admin",
+      "host": "studio.local",
+      "port": 4243,
+      "allowed": false,
+      "why": "WidgetFrames: everything else"
+    },
+    {
+      "url": "https://studio.local:4243/widgets/%2e%2e/admin",
+      "host": "studio.local",
+      "port": 4243,
+      "allowed": false,
+      "why": "WidgetFrames: everything else"
+    },
+    {
+      "url": "https://studio.local:4243/widgets/./clock",
+      "host": "studio.local",
+      "port": 4243,
+      "allowed": false,
+      "why": "WidgetFrames: everything else"
+    },
+    {
+      "url": "about:blank",
+      "host": "studio.local",
+      "port": 4243,
+      "allowed": false,
+      "why": "WidgetFrames: everything else"
+    },
+    {
+      "url": "about:srcdoc",
+      "host": "studio.local",
+      "port": 4243,
+      "allowed": false,
+      "why": "WidgetFrames: everything else"
+    },
+    {
+      "url": "data:text/html,<script>1</script>",
+      "host": "studio.local",
+      "port": 4243,
+      "allowed": false,
+      "why": "WidgetFrames: everything else"
+    },
+    {
+      "url": "blob:https://studio.local:4243/0f2c",
+      "host": "studio.local",
+      "port": 4243,
+      "allowed": false,
+      "why": "WidgetFrames: everything else"
+    },
+    {
+      "url": "javascript:alert(1)",
+      "host": "studio.local",
+      "port": 4243,
+      "allowed": false,
+      "why": "WidgetFrames: everything else"
+    },
+    {
+      "url": "https://mac.local:4243/widgets/clock/index.html",
+      "host": "mac.local",
+      "port": 4243,
+      "allowed": true,
+      "why": "WidgetFrames: the page's own origin"
+    },
+    {
+      "url": "http://127.0.0.1:4242/widgets/clock/index.html",
+      "host": "mac.local",
+      "port": 4243,
+      "allowed": false,
+      "why": "WidgetFrames: the page's own origin"
+    },
+    {
+      "url": "https://studio.local:4243/widgets/clock/index.html",
+      "host": "mac.local",
+      "port": 4243,
+      "allowed": false,
+      "why": "WidgetFrames: the page's own origin"
+    },
+    {
+      "url": null,
+      "host": "studio.local",
+      "port": 4243,
+      "allowed": false,
+      "why": "no URL"
+    }
+  ],
+  "mainFrames": {
+    "navigations": [
+      {
+        "url": "https://studio.local:4243/",
+        "host": "studio.local",
+        "port": 4243,
+        "allowed": true,
+        "why": "the Mac's own origin"
+      },
+      {
+        "url": "https://STUDIO.local:4243/?screen=tab-a#x",
+        "host": "studio.local",
+        "port": 4243,
+        "allowed": true,
+        "why": "the Mac's own origin"
+      },
+      {
+        "url": "https://192.0.2.10:4243/",
+        "host": "192.0.2.10",
+        "port": 4243,
+        "allowed": true,
+        "why": "the Mac's own origin"
+      },
+      {
+        "url": "https://example.local/",
+        "host": "example.local",
+        "port": 443,
+        "allowed": true,
+        "why": "the Mac's own origin"
+      },
+      {
+        "url": "https://evil.example:4243/",
+        "host": "studio.local",
+        "port": 4243,
+        "allowed": false,
+        "why": "any other origin"
+      },
+      {
+        "url": "https://studio.local:4242/",
+        "host": "studio.local",
+        "port": 4243,
+        "allowed": false,
+        "why": "any other origin"
+      },
+      {
+        "url": "https://studio.local/",
+        "host": "studio.local",
+        "port": 4243,
+        "allowed": false,
+        "why": "any other origin"
+      },
+      {
+        "url": "http://studio.local:4243/",
+        "host": "studio.local",
+        "port": 4243,
+        "allowed": false,
+        "why": "any other origin"
+      },
+      {
+        "url": "https://user:pass@studio.local:4243/",
+        "host": "studio.local",
+        "port": 4243,
+        "allowed": false,
+        "why": "any other origin"
+      },
+      {
+        "url": "https://studio.local.evil.example:4243/",
+        "host": "studio.local",
+        "port": 4243,
+        "allowed": false,
+        "why": "any other origin"
+      },
+      {
+        "url": "https://192.0.2.11:4243/",
+        "host": "studio.local",
+        "port": 4243,
+        "allowed": false,
+        "why": "any other origin"
+      },
+      {
+        "url": "about:blank",
+        "host": "studio.local",
+        "port": 4243,
+        "allowed": false,
+        "why": "any other origin"
+      },
+      {
+        "url": "data:text/html,hi",
+        "host": "studio.local",
+        "port": 4243,
+        "allowed": false,
+        "why": "any other origin"
+      },
+      {
+        "url": "javascript:alert(1)",
+        "host": "studio.local",
+        "port": 4243,
+        "allowed": false,
+        "why": "any other origin"
+      },
+      {
+        "url": "fremkit://pair?x",
+        "host": "studio.local",
+        "port": 4243,
+        "allowed": false,
+        "why": "any other origin"
+      },
+      {
+        "url": null,
+        "host": "studio.local",
+        "port": 4243,
+        "allowed": false,
+        "why": "no URL"
+      }
+    ],
+    "pageOrigins": [
+      {
+        "scheme": "https",
+        "originHost": "studio.local",
+        "originPort": 4243,
+        "host": "studio.local",
+        "port": 4243,
+        "heard": true
+      },
+      {
+        "scheme": "HTTPS",
+        "originHost": "Studio.Local",
+        "originPort": 4243,
+        "host": "studio.local",
+        "port": 4243,
+        "heard": true
+      },
+      {
+        "scheme": "https",
+        "originHost": "example.local",
+        "originPort": 0,
+        "host": "example.local",
+        "port": 443,
+        "heard": true,
+        "why": "port 0 is the scheme default"
+      },
+      {
+        "scheme": "https",
+        "originHost": "evil.example",
+        "originPort": 4243,
+        "host": "studio.local",
+        "port": 4243,
+        "heard": false
+      },
+      {
+        "scheme": "https",
+        "originHost": "studio.local",
+        "originPort": 4242,
+        "host": "studio.local",
+        "port": 4243,
+        "heard": false
+      },
+      {
+        "scheme": "http",
+        "originHost": "studio.local",
+        "originPort": 4243,
+        "host": "studio.local",
+        "port": 4243,
+        "heard": false
+      },
+      {
+        "scheme": "https",
+        "originHost": "",
+        "originPort": 4243,
+        "host": "studio.local",
+        "port": 4243,
+        "heard": false
+      },
+      {
+        "scheme": "",
+        "originHost": "",
+        "originPort": 0,
+        "host": "studio.local",
+        "port": 4243,
+        "heard": false,
+        "why": "an opaque origin (a sandboxed frame) has no host"
+      }
+    ]
+  },
+  "pageMessages": [
+    {
+      "body": {
+        "type": "unauthorized"
+      },
+      "expect": {
+        "type": "unauthorized"
+      }
+    },
+    {
+      "body": {
+        "type": "screen",
+        "screenId": "s1"
+      },
+      "expect": {
+        "type": "screen",
+        "screenId": "s1"
+      }
+    },
+    {
+      "body": {
+        "type": "screen",
+        "screenId": null
+      },
+      "expect": {
+        "type": "screen",
+        "screenId": null
+      }
+    },
+    {
+      "body": {
+        "type": "brightness",
+        "target": 42.5,
+        "seq": 3
+      },
+      "expect": {
+        "type": "brightness",
+        "target": 42.5,
+        "seq": 3
+      }
+    },
+    {
+      "body": "unauthorized",
+      "expect": null
+    },
+    {
+      "body": {
+        "type": "reload"
+      },
+      "expect": null
+    },
+    {
+      "body": {
+        "type": "screen"
+      },
+      "expect": null
+    },
+    {
+      "body": {
+        "type": "screen",
+        "screenId": 1
+      },
+      "expect": null
+    },
+    {
+      "body": {
+        "type": "brightness",
+        "target": 140,
+        "seq": 1
+      },
+      "expect": null
+    },
+    {
+      "body": {
+        "type": "brightness",
+        "target": 40,
+        "seq": 1.5
+      },
+      "expect": null
+    },
+    {
+      "body": {
+        "type": "brightness",
+        "target": "40",
+        "seq": 1
+      },
+      "expect": null
+    }
+  ]
+}

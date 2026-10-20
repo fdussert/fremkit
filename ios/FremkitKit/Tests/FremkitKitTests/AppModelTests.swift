@@ -518,22 +518,32 @@ final class AppModelTests: XCTestCase {
 }
 
 final class PageMessageTests: XCTestCase {
+    /// The page's message as the shared vectors spell it, nil for one the app ignores.
+    private func expected(_ e: [String: Any]?) -> PageMessage? {
+        switch e?["type"] as? String {
+        case "unauthorized": return .unauthorized
+        case "screen": return .screen(e?["screenId"] as? String)
+        case "brightness": return .brightness(target: (e?["target"] as? NSNumber)!.doubleValue, seq: (e?["seq"] as? NSNumber)!.intValue)
+        default: return nil
+        }
+    }
+
+    // The shared `pageMessages` vectors (test-vectors/devices.json); `JSONSerialization` gives the
+    // same `NSString`/`NSNumber`/`NSNull` values a `WKScriptMessage` body holds.
     func testReadsWhatThePagePosts() {
-        XCTAssertEqual(PageMessage(body: ["type": "unauthorized"]), .unauthorized)
-        XCTAssertEqual(PageMessage(body: ["type": "screen", "screenId": "s1"]), .screen("s1"))
-        XCTAssertEqual(PageMessage(body: ["type": "screen", "screenId": NSNull()]), .screen(nil))
-        XCTAssertEqual(PageMessage(body: ["type": "brightness", "target": NSNumber(value: 42.5), "seq": NSNumber(value: 3)]),
-                       .brightness(target: 42.5, seq: 3))
+        let accepted = Vectors.pageMessages.filter { $0.expect != nil }
+        XCTAssertFalse(accepted.isEmpty)
+        for vector in accepted {
+            XCTAssertEqual(PageMessage(body: vector.body), expected(vector.expect), "\(vector.body)")
+        }
     }
 
     func testIgnoresAnythingElse() {
-        XCTAssertNil(PageMessage(body: "unauthorized"))
-        XCTAssertNil(PageMessage(body: ["type": "reload"]))
-        XCTAssertNil(PageMessage(body: ["type": "screen"]))
-        XCTAssertNil(PageMessage(body: ["type": "screen", "screenId": NSNumber(value: 1)]))
-        XCTAssertNil(PageMessage(body: ["type": "brightness", "target": NSNumber(value: 140), "seq": NSNumber(value: 1)]))
-        XCTAssertNil(PageMessage(body: ["type": "brightness", "target": NSNumber(value: 40), "seq": NSNumber(value: 1.5)]))
-        XCTAssertNil(PageMessage(body: ["type": "brightness", "target": "40", "seq": NSNumber(value: 1)]))
+        let ignored = Vectors.pageMessages.filter { $0.expect == nil }
+        XCTAssertFalse(ignored.isEmpty)
+        for vector in ignored {
+            XCTAssertNil(PageMessage(body: vector.body), "\(vector.body)")
+        }
     }
 
     func testTheDashboardURLAndTheMacName() {
