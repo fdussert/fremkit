@@ -169,6 +169,44 @@ function tally<T extends z.ZodType>(last: T) {
     .refine((t) => t.seen <= t.open, { message: 'seen above open' })
 }
 
+/** The entries a dev tab's history carries, newest first. */
+export const MAX_DEV_HISTORY = 20
+/** A request's method, from a closed list: anything else reads `OTHER`. */
+export const DEV_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS', 'OTHER'] as const
+
+/**
+ * Common to every history entry: `n` the times it came back to back, `at` the last of them, `state`
+ * `open`, `seen` (marked on the Edge) or `resolved` (the page reloaded or updated since).
+ */
+const entry = {
+  n: z.number().int().min(1).max(MAX_COUNT),
+  at: Stamp,
+  state: z.enum(['open', 'seen', 'resolved']),
+}
+
+/** A tab's last errors and failed requests, without stacks; `limited` the errors the relay only counted. */
+const DevHistorySchema = z
+  .array(
+    z.discriminatedUnion('kind', [
+      z.strictObject({
+        kind: z.literal('error'),
+        text: z.string().max(MAX_DEV_TEXT),
+        /** Where it was thrown: `path:line:col`, or `host/path:line:col` for another origin. */
+        origin: z.string().max(MAX_DEV_TEXT).nullable(),
+        ...entry,
+      }),
+      z.strictObject({
+        kind: z.literal('request'),
+        method: z.enum(DEV_METHODS),
+        path: z.string().max(MAX_DEV_TEXT).regex(/^\/[^?#]*$/),
+        status: z.number().int().min(0).max(599),
+        ...entry,
+      }),
+      z.strictObject({ kind: z.literal('limited'), ...entry }),
+    ]),
+  )
+  .max(MAX_DEV_HISTORY)
+
 export const DevTabSchema = z.strictObject({
   tabId: z.number().int().min(0).max(2_147_483_647),
   /** The tab's title, or its host:port. */
@@ -185,6 +223,8 @@ export const DevTabSchema = z.strictObject({
       at: Stamp,
     }),
   ),
+  /** An extension older than the history sends none: its rows read as an empty one. */
+  history: DevHistorySchema.default([]),
   server: z.enum(['up', 'down']),
   /** Milliseconds since the epoch of the tab's last event. */
   activity: Stamp,

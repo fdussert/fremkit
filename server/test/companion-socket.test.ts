@@ -421,6 +421,7 @@ describe('companion socket', () => {
       host: 'localhost:5173',
       errors: { total: 1, open: 1, seen: 0, last: { text: 'TypeError: x is undefined', at: 1_000 } },
       requests: { total: 0, open: 0, seen: 0, last: null },
+      history: [],
       server: 'up',
       activity: 1_000,
       ...over,

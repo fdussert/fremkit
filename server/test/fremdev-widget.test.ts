@@ -45,6 +45,7 @@ function tab(tabId: number, over: { errors?: Counts; requests?: Counts; server?:
     tabId, app: `App ${tabId}`, host: `localhost:${5170 + tabId}`,
     errors: tally(eo, et, es, et > 0 ? { text: 'TypeError: x is undefined', at: 1000 } : null),
     requests: tally(ro, rt, rs, rt > 0 ? { path: '/api/items', status: 500, at: 1000 } : null),
+    history: [],
     server: over.server ?? 'up',
     activity: over.activity ?? 1000,
   }

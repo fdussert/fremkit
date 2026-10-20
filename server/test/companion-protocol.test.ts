@@ -223,6 +223,11 @@ describe('parseExtensionMessage', () => {
       host: 'localhost:5173',
       errors: { total: 3, open: 1, seen: 0, last: { text: 'TypeError: x is undefined', at: 1_760_000_000_000 } },
       requests: { total: 10, open: 0, seen: 0, last: { path: '/api/items', status: 500, at: 1_760_000_000_000 } },
+      history: [
+        { kind: 'error', text: 'TypeError: x is undefined', origin: '/src/app.js:12:5', n: 2, at: 1_760_000_000_000, state: 'open' },
+        { kind: 'request', method: 'POST', path: '/api/items', status: 500, n: 1, at: 1_759_999_999_000, state: 'seen' },
+        { kind: 'limited', n: 40, at: 1_759_999_998_000, state: 'resolved' },
+      ],
       server: 'up',
       activity: 1_760_000_000_000,
       ...over,
@@ -248,6 +253,28 @@ describe('parseExtensionMessage', () => {
       expect(tabs([row({ requests: { total: 1, open: 0, seen: 0, last: { path: '/a', status: 600, at: 1 } } })])).toBeNull()
       expect(tabs([row({ host: 'bad host/' })])).toBeNull()
       expect(tabs([row({ server: 'sideways' })])).toBeNull()
+    })
+
+    it('refuses a bad history: 21 entries, an unknown kind or state, a method outside the list, n of 0, a stack', () => {
+      const entry = { kind: 'error', text: 'x', origin: null, n: 1, at: 1, state: 'open' }
+      const request = { kind: 'request', method: 'GET', path: '/a', status: 404, n: 1, at: 1, state: 'open' }
+      expect(tabs([row({ history: Array.from({ length: 20 }, () => entry) })])).not.toBeNull()
+      expect(tabs([row({ history: Array.from({ length: 21 }, () => entry) })])).toBeNull()
+      expect(tabs([row({ history: [{ ...entry, kind: 'warning' }] })])).toBeNull()
+      expect(tabs([row({ history: [{ ...entry, state: 'gone' }] })])).toBeNull()
+      expect(tabs([row({ history: [{ ...request, method: 'FOO' }] })])).toBeNull()
+      expect(tabs([row({ history: [{ ...request, method: 'OTHER' }] })])).not.toBeNull()
+      expect(tabs([row({ history: [{ ...request, path: '/a?token=1' }] })])).toBeNull()
+      expect(tabs([row({ history: [{ ...entry, n: 0 }] })])).toBeNull()
+      expect(tabs([row({ history: [{ ...entry, stack: ['f /a.js:1:2'] }] })])).toBeNull()
+      expect(tabs([row({ history: [{ ...entry, text: 'x'.repeat(301) }] })])).toBeNull()
+      expect(tabs([row({ history: [{ kind: 'limited', n: 1, at: 1, state: 'open', text: 'x' }] })])).toBeNull()
+    })
+
+    it('reads a row from an extension that sends no history as an empty one', () => {
+      const { history: _, ...older } = row()
+      const parsed = tabs([older])
+      expect(parsed?.type === 'dev.tabs' && parsed.tabs[0].history).toEqual([])
     })
 
     it('takes a host with an underscore, as a URL may carry one', () => {

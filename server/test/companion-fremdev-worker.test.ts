@@ -7,14 +7,6 @@ import { linkAlarm, onlyFremdev, PROBE_MISSES, PROBE_SLOW_MS, ProbeBackoff, Reco
 import { createFremdev, pageEvent } from '../../companion/fremdev.js'
 // @ts-expect-error plain JS module
 import { BUILTIN_PERMISSION_ORIGINS } from '../../companion/lib/devhosts.js'
-// @ts-expect-error plain JS module
-import { reduce } from '../../companion/lib/devtabs.js'
-
-// The reducer, watched: the events the worker hands it carry fields no row keeps yet.
-vi.mock('../../companion/lib/devtabs.js', async (importOriginal) => {
-  const actual = (await importOriginal()) as Record<string, unknown>
-  return { ...actual, reduce: vi.fn(actual.reduce as (...a: unknown[]) => unknown) }
-})
 
 // companion/fremdev.js against a fake chrome.*, and the worker's reconnection policy for it.
 
@@ -351,14 +343,12 @@ describe('companion/fremdev.js', () => {
     await f.fremdev.onPageEvent({ kind: 'hot' }, devSender())
     const [onCompleted] = f.api.webRequest.onCompleted.addListener.mock.calls.at(-1)
     const [onFailed] = f.api.webRequest.onErrorOccurred.addListener.mock.calls.at(-1)
-    vi.mocked(reduce).mockClear()
     onCompleted({ tabId: 7, url: 'http://localhost:5173/api/x', method: 'POST', statusCode: 500, type: 'xmlhttprequest' })
     onFailed({ tabId: 7, url: 'http://localhost:5173/api/y', method: 'PROPFIND', error: 'net::ERR_FAILED', type: 'fetch' })
     await f.later()
-    const requests = vi.mocked(reduce).mock.calls.map((c: unknown[]) => c[1]).filter((e: { kind: string }) => e.kind === 'request')
-    expect(requests).toEqual([
-      { kind: 'request', method: 'POST', path: '/api/x', status: 500 },
-      { kind: 'request', method: 'OTHER', path: '/api/y', status: 0 },
+    expect(f.rows()['7'].history).toEqual([
+      { kind: 'request', method: 'OTHER', path: '/api/y', status: 0, n: 1, at: expect.any(Number), state: 'open' },
+      { kind: 'request', method: 'POST', path: '/api/x', status: 500, n: 1, at: expect.any(Number), state: 'open' },
     ])
   })
 

@@ -5,7 +5,7 @@ import { BUILTIN_PERMISSION_ORIGINS, FREMKIT_EXCLUDES, inOrigins, isDevUrl, pars
 // @ts-expect-error plain JS module
 import { boundFrames, errorText, framePlace, hotReloadSignal, isNoise, MAX_FRAME, MAX_FRAMES, MAX_STACK, MAX_TEXT, methodOf, parseStack, pathOf, RateLimiter } from '../../companion/lib/devlog.js'
 // @ts-expect-error plain JS module
-import { emptyTab, fremdevSupport, reduce, Throttle, validRow, wireTabs } from '../../companion/lib/devtabs.js'
+import { emptyTab, fremdevSupport, HISTORY_MAX, reduce, Throttle, validRow, wireTabs } from '../../companion/lib/devtabs.js'
 // @ts-expect-error plain JS module
 import { hello, devTabs, modulesMsg, ping } from '../../companion/lib/protocol.js'
 import { DevTabSchema } from '../src/companion/protocol.js'
@@ -312,7 +312,7 @@ describe('devtabs', () => {
     expect(rows).toHaveLength(32)
     expect(rows[0].tabId).toBe(39)
     expect(rows[31].tabId).toBe(8)
-    expect(Object.keys(rows[0]).sort()).toEqual(['activity', 'app', 'errors', 'host', 'requests', 'server', 'tabId'])
+    expect(Object.keys(rows[0]).sort()).toEqual(['activity', 'app', 'errors', 'history', 'host', 'requests', 'server', 'tabId'])
     for (const r of rows) expect(DevTabSchema.safeParse(r).success).toBe(true)
   })
 
@@ -333,7 +333,7 @@ describe('devtabs', () => {
     expect(rows.map((r: { tabId: number }) => r.tabId)).toEqual([1])
     // validRow and DevTabSchema agree on each of them.
     for (const t of [good, badId, badStamp, badHost]) {
-      const shaped = { tabId: t.tabId, app: t.title, host: t.host, errors: t.errors, requests: t.requests, server: t.server, activity: t.activity }
+      const shaped = { tabId: t.tabId, app: t.title, host: t.host, errors: t.errors, requests: t.requests, history: [], server: t.server, activity: t.activity }
       expect(validRow(shaped), String(t.tabId)).toBe(DevTabSchema.safeParse(shaped).success)
     }
     expect(validRow(null)).toBe(false)
@@ -461,6 +461,175 @@ describe('devtabs', () => {
     t = 500
     timers.shift()!()
     expect(calls).toEqual([1, 2])
+  })
+})
+
+describe('devtabs history', () => {
+  const base = () => emptyTab(1, 'http://localhost:5173/', 'App', 100)
+  const err = (text: string, extra: Record<string, unknown> = {}) => ({ kind: 'error', text, ...extra })
+  const bytes = (rows: unknown) => new TextEncoder().encode(JSON.stringify({ type: 'dev.tabs', tabs: rows })).length
+
+  it('starts empty, and folds two identical errors into one entry', () => {
+    expect(HISTORY_MAX).toBe(20)
+    expect(base().history).toEqual([])
+    let tab = reduce(base(), err('boom', { origin: '/src/a.js:1:2', stack: ['f /src/a.js:1:2'] }), 200)
+    tab = reduce(tab, err('boom', { origin: '/src/a.js:1:2', stack: ['g /src/a.js:1:2'] }), 300)
+    expect(tab.history).toEqual([
+      { kind: 'error', text: 'boom', origin: '/src/a.js:1:2', stack: ['g /src/a.js:1:2'], n: 2, at: 300, state: 'open' },
+    ])
+    // Another origin is another entry; no origin or stack reads null.
+    tab = reduce(tab, err('boom', { origin: '/src/b.js:3:4' }), 400)
+    tab = reduce(tab, err('plain'), 500)
+    expect(tab.history.map((e: { origin: unknown; n: number }) => [e.origin, e.n])).toEqual([[null, 1], ['/src/b.js:3:4', 1], ['/src/a.js:1:2', 2]])
+    expect(tab.history[0].stack).toBeNull()
+  })
+
+  it('opens a new entry above a seen one after clear', () => {
+    let tab = reduce(base(), err('boom'), 200)
+    tab = reduce(tab, { kind: 'clear' }, 250)
+    expect(tab.history[0].state).toBe('seen')
+    tab = reduce(tab, err('boom'), 300)
+    expect(tab.history.map((e: { state: string; n: number }) => [e.state, e.n])).toEqual([['open', 1], ['seen', 1]])
+  })
+
+  it('folds the relay overflow into one limited entry, and keeps the totals', () => {
+    let tab = reduce(base(), { kind: 'count', n: 40 }, 200)
+    tab = reduce(tab, { kind: 'count', n: 40 }, 300)
+    expect(tab.history).toEqual([{ kind: 'limited', n: 80, at: 300, state: 'open' }])
+    expect(tab.errors.total).toBe(80)
+    expect(reduce(tab, { kind: 'count', n: 0 }, 400)).toBe(tab)
+  })
+
+  it('a page throwing hundreds of errors a second keeps a ring of 20 and its totals (Review Focus 2)', () => {
+    let tab = base()
+    let total = 0
+    for (let s = 0; s < 30; s++) {
+      for (let i = 0; i < 10; i++) { tab = reduce(tab, err(`e${s}-${i}`), 1000 * s + i); total++ }
+      tab = reduce(tab, { kind: 'count', n: 490 }, 1000 * s + 500)
+      total += 490
+    }
+    expect(tab.history).toHaveLength(20)
+    expect(tab.history[0]).toMatchObject({ kind: 'limited', n: 490 })
+    expect(tab.errors.total).toBe(total)
+  })
+
+  it('keeps the 20 newest of 25 distinct errors, newest first', () => {
+    let tab = base()
+    for (let i = 0; i < 25; i++) tab = reduce(tab, err(`e${i}`), 200 + i)
+    expect(tab.history).toHaveLength(20)
+    expect(tab.history.map((e: { text: string }) => e.text)).toEqual(Array.from({ length: 20 }, (_, i) => `e${24 - i}`))
+  })
+
+  it('a reload or a hot update resolves; another origin empties', () => {
+    let tab = reduce(base(), err('a'), 200)
+    tab = reduce(tab, { kind: 'clear' }, 210)
+    tab = reduce(tab, err('b'), 220)
+    const reloaded = reduce(tab, { kind: 'navigated', url: 'http://localhost:5173/x', title: 'X' }, 300)
+    expect(reloaded.history.map((e: { state: string }) => e.state)).toEqual(['resolved', 'resolved'])
+    expect(reduce(tab, { kind: 'hot' }, 300).history.map((e: { state: string }) => e.state)).toEqual(['resolved', 'resolved'])
+    // A resolved entry is never merged into: the same error after a reload is a new one.
+    expect(reduce(reloaded, err('b'), 400).history.map((e: { state: string }) => e.state)).toEqual(['open', 'resolved', 'resolved'])
+    expect(reduce(tab, { kind: 'navigated', url: 'http://localhost:3000/', title: 'Y' }, 300).history).toEqual([])
+  })
+
+  it('keeps a request with its method, and folds the same one', () => {
+    let tab = reduce(base(), { kind: 'request', method: 'POST', path: '/api', status: 500 }, 200)
+    tab = reduce(tab, { kind: 'request', method: 'POST', path: '/api', status: 500 }, 300)
+    tab = reduce(tab, { kind: 'request', method: 'GET', path: '/api', status: 500 }, 400)
+    expect(tab.history).toEqual([
+      { kind: 'request', method: 'GET', path: '/api', status: 500, n: 1, at: 400, state: 'open' },
+      { kind: 'request', method: 'POST', path: '/api', status: 500, n: 2, at: 300, state: 'open' },
+    ])
+  })
+
+  it('sends the history without stacks, clamped, in the server shape', () => {
+    let tab = reduce(base(), err('e'.repeat(900), { origin: `/${'o'.repeat(900)}`, stack: ['f /a.js:1:2'] }), 200)
+    tab = reduce(tab, { kind: 'request', method: 'PROPFIND', path: '/api?token=x#y', status: 502 }, 300)
+    tab = reduce(tab, { kind: 'count', n: 3 }, 400)
+    const [row] = wireTabs([tab])
+    expect(row.history).toHaveLength(3)
+    for (const e of row.history) expect(e).not.toHaveProperty('stack')
+    expect(row.history[0]).toEqual({ kind: 'limited', n: 3, at: 400, state: 'open' })
+    expect(row.history[1]).toEqual({ kind: 'request', method: 'OTHER', path: '/api', status: 502, n: 1, at: 300, state: 'open' })
+    expect(row.history[2].text).toHaveLength(300)
+    expect(row.history[2].origin).toHaveLength(300)
+    expect(tab.history[2].stack).toEqual(['f /a.js:1:2'])
+    expect(validRow(row)).toBe(true)
+    expect(DevTabSchema.safeParse(row).success).toBe(true)
+  })
+
+  it('validRow and DevTabSchema refuse a bad history alike', () => {
+    const tab = reduce(reduce(base(), err('x', { origin: '/a.js:1:2' }), 200), { kind: 'request', method: 'GET', path: '/a', status: 404 }, 300)
+    const [row] = wireTabs([tab])
+    const entry = { kind: 'error', text: 'x', origin: null, n: 1, at: 1, state: 'open' }
+    const cases: Array<[string, unknown, boolean]> = [
+      ['ok', row.history, true],
+      ['empty', [], true],
+      ['20 entries', Array.from({ length: 20 }, () => entry), true],
+      ['21 entries', Array.from({ length: 21 }, () => entry), false],
+      ['unknown kind', [{ ...entry, kind: 'warning' }], false],
+      ['unknown state', [{ ...entry, state: 'gone' }], false],
+      ['method FOO', [{ ...row.history[0], method: 'FOO' }], false],
+      ['n 0', [{ ...entry, n: 0 }], false],
+      ['n too big', [{ ...entry, n: 1_000_001 }], false],
+      ['a stack', [{ ...entry, stack: ['f /a.js:1:2'] }], false],
+      ['long text', [{ ...entry, text: 'x'.repeat(301) }], false],
+      ['long origin', [{ ...entry, origin: 'x'.repeat(301) }], false],
+      ['path with a query', [{ ...row.history[0], path: '/a?b' }], false],
+      ['status 600', [{ ...row.history[0], status: 600 }], false],
+      ['limited with text', [{ kind: 'limited', n: 2, at: 1, state: 'open', text: 'x' }], false],
+      ['limited', [{ kind: 'limited', n: 2, at: 1, state: 'seen' }], true],
+      ['not an array', 'all', false],
+    ]
+    expect(row.history[0].kind).toBe('request')
+    for (const [name, history, ok] of cases) {
+      const r = { ...row, history }
+      expect(validRow(r), name).toBe(ok)
+      expect(DevTabSchema.safeParse(r).success, name).toBe(ok)
+    }
+  })
+
+  it('32 tabs of 20 multibyte entries stay under the cap and keep every row, green history first (Review Focus 6)', () => {
+    const tabs = Array.from({ length: 32 }, (_, i) => {
+      let t = emptyTab(i, `http://localhost:${3000 + i}/`, `App ${i}`, 1)
+      for (let k = 0; k < 20; k++) t = reduce(t, err(`${k}${'é'.repeat(299)}`, { origin: `/${'é'.repeat(299)}` }), 10 + i * 100 + k)
+      // Even tabs reload: their entries are resolved and they go green.
+      return i % 2 === 0 ? reduce(t, { kind: 'navigated', url: `http://localhost:${3000 + i}/`, title: `App ${i}` }, 10 + i * 100 + 50) : t
+    })
+    const rows = wireTabs(tabs)
+    expect(bytes(rows)).toBeLessThanOrEqual(60_000)
+    expect(rows).toHaveLength(32)
+    const green = rows.filter((r: { tabId: number }) => r.tabId % 2 === 0)
+    const red = rows.filter((r: { tabId: number }) => r.tabId % 2 === 1)
+    expect(green.every((r: { history: unknown[] }) => r.history.length === 0)).toBe(true)
+    expect(red.some((r: { history: unknown[] }) => r.history.length > 0)).toBe(true)
+    for (const r of rows) expect(DevTabSchema.safeParse(r).success).toBe(true)
+  })
+
+  it('trims green history before touching a red one, and the oldest entries of the others next', () => {
+    const fill = (i: number, at: number) => {
+      let t = emptyTab(i, `http://localhost:${3000 + i}/`, `App ${i}`, 1)
+      for (let k = 0; k < 20; k++) t = reduce(t, err(`${k}${'é'.repeat(299)}`, { origin: `/${'é'.repeat(299)}` }), at + k)
+      return t
+    }
+    // Tab 0 is green (reloaded), with the newest activity; tabs 1-4 are red.
+    const tabs = [1, 2, 3, 4].map((i) => fill(i, i * 100))
+    const green = reduce(fill(0, 900), { kind: 'navigated', url: 'http://localhost:3000/', title: 'App 0' }, 1000)
+    const rows = wireTabs([green, ...tabs])
+    expect(bytes(rows)).toBeLessThanOrEqual(60_000)
+    const byId = Object.fromEntries(rows.map((r: { tabId: number }) => [r.tabId, r]))
+    expect(byId[0].history).toEqual([])
+    // Red tabs lose their oldest entries first: tab 1's (the oldest) go before tab 4's.
+    expect(byId[1].history.length).toBeLessThan(byId[4].history.length)
+    expect(byId[4].history).toHaveLength(20)
+    // What a row keeps is its newest entries.
+    for (const r of rows) {
+      const ats = r.history.map((e: { at: number }) => e.at)
+      expect(ats).toEqual([...ats].sort((a, b) => b - a))
+    }
+    // Small enough, nothing is trimmed.
+    const small = wireTabs([reduce(reduce(base(), err('x'), 2), { kind: 'navigated', url: 'http://localhost:5173/', title: 'A' }, 3)])
+    expect(small[0].history).toHaveLength(1)
   })
 })
 
