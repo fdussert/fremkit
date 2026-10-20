@@ -1045,6 +1045,15 @@ describe('performance and regressions', () => {
     expect(f.store.session.fremdevPerf).toEqual([])
   })
 
+  it('stores the load\'s latest values when another event of it came in while the samples were read', async () => {
+    const f = await makeFremdev()
+    const first = f.fremdev.onPageEvent({ kind: 'perf', load: 1000, lcp: 800 }, devSender({ documentId: 'D1' }))
+    const second = f.fremdev.onPageEvent({ kind: 'perf', load: 1000, lcp: 1500 }, devSender({ documentId: 'D1' }))
+    await Promise.all([first, second])
+    await f.later()
+    expect(stored(f)).toEqual([{ key: 'http://localhost:5173/', samples: [{ load: 1000, lcp: 1500, doc: 'D1' }] }])
+  })
+
   it('drops a perf event over its bounds', async () => {
     const f = await makeFremdev()
     await f.fremdev.onPageEvent({ kind: 'perf', cls: 101 }, devSender())

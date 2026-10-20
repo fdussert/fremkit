@@ -307,7 +307,11 @@ export function createFremdev({
     const storeKey = first ? perfKey(tab.url) : null
     if (storeKey !== null) {
       verdict = perfVerdict(await perfMemory.samples(storeKey), tab.perf)
-      await perfMemory.push(storeKey, tab.perf, doc)
+      // The values as they are now: another event of this load may have come in during the read,
+      // and its update found no sample yet to replace.
+      const read = tabs[key]
+      const current = read && (doc === null || read.perfDoc === doc) ? read.perf : tab.perf
+      await perfMemory.push(storeKey, current, doc)
     } else {
       verdict = perfVerdict([], tab.perf)
       if (doc !== null && (values.lcp !== undefined || values.load !== undefined)) await perfMemory.update(doc, tab.perf)

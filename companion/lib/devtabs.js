@@ -84,7 +84,7 @@ export function emptyTab(tabId, url, title, now) {
     perf: {},
     perfDoc: null,
     perfEntryId: null,
-    /** The document whose load was flagged (`perfDoc` then, '' for none told): flagged at most once. */
+    /** The document whose load was flagged (`perfDoc` then; null when none was told): flagged at most once. */
     perfFlaggedDoc: null,
     activity: now,
   }
@@ -258,8 +258,9 @@ function perfRegression(tab, event, now) {
     const next = { ...current, metric: event.metric, value: event.value, ratio }
     return { ...tab, history: ring.map((e) => (e === current ? next : e)) }
   }
-  const doc = tab.perfDoc ?? ''
-  if (tab.perfFlaggedDoc === doc) return tab
+  // Without a documentId (none told) no page can be told from the next: no once-per-document guard.
+  const doc = typeof tab.perfDoc === 'string' ? tab.perfDoc : null
+  if (doc !== null && tab.perfFlaggedDoc === doc) return tab
   const r = tab.requests
   const requests = { total: Math.min(MAX_COUNT, r.total + 1), open: Math.min(MAX_COUNT, r.open + 1), seen: r.seen ?? 0, last: r.last }
   const id = isId(tab.nextId) ? tab.nextId : 1

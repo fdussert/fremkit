@@ -1549,6 +1549,17 @@ describe('performance and regressions', () => {
     expect(up.requests).toMatchObject({ total: 1, open: 1 })
   })
 
+  it('without a documentId, keeps no once-per-document guard: a resolved load may be flagged again', () => {
+    let tab = reduce(base(), perf({ lcp: 4100 }, null as unknown as string), 200)
+    tab = reduce(tab, regression('lcp', 4100, null), 210)
+    expect(tab.perfFlaggedDoc).toBeNull()
+    tab = reduce(tab, { kind: 'navigated', url: 'http://localhost:5173/', title: 'App' }, 300)
+    tab = reduce(reduce(tab, perf({ lcp: 4300 }, null as unknown as string), 400), regression('lcp', 4300, null), 410)
+    expect(tab.history.filter((e: { kind: string }) => e.kind === 'perf').map((e: { state: string; value: number }) => [e.state, e.value]))
+      .toEqual([['open', 4300], ['resolved', 4100]])
+    expect(tab.requests).toMatchObject({ total: 2, open: 1 })
+  })
+
   it('flags a document at most once, even after its resolved entry left the ring', () => {
     let tab = reduce(base(), perf({ lcp: 4100 }), 200)
     tab = reduce(tab, regression('lcp', 4100, null), 210)
