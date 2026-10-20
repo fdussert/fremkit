@@ -9,9 +9,11 @@
 // `base` is `/` for anything but Vite. Only the kind leaves the extension (the row's `devServer`);
 // the base is kept for building the dev server's own URLs.
 //
+// Only a script from the page's own origin counts: a CDN asset under `/_next/` is not Next.
+//
 // It reads attributes and element ids only, never a page object, and runs no page code. It looks at
-// DOMContentLoaded (at once when the document is past `loading`), then watches the document for
-// added nodes until a kind is found or 30 s have passed.
+// the whole document at DOMContentLoaded (at once when the document is past `loading`), then at the
+// nodes added to it, and only those, until a kind is found or 30 s have passed.
 //
 // A classic script, registered with chrome.scripting: no import. The worker validates what it
 // sends (`pageEvent` in companion/fremdev.js) and takes the tab from Chrome's sender.
@@ -40,20 +42,26 @@
   let observer = null
   let timer = null
 
-  /** The path of a `src` attribute, resolved against the document; null when it is not a URL. */
+  const OVERLAY_ID = 'webpack-dev-server-client-overlay'
+  const SCRIPTS = 'script[src]'
+
+  /**
+   * The path of a `src` attribute, resolved against the document; null when it is not a URL or
+   * names another origin than the page's.
+   */
   const pathOf = (el) => {
     const raw = el.getAttribute('src')
     if (typeof raw !== 'string' || raw === '') return null
     try {
-      return new URL(raw, document.baseURI).pathname
+      const url = new URL(raw, document.baseURI)
+      return url.origin === location.origin ? url.pathname : null
     } catch {
       return null
     }
   }
 
-  /** `{ server, base }` for the page as it stands, or null. */
-  const detect = () => {
-    const scripts = [...document.querySelectorAll('script[src]')]
+  /** `{ server, base }` from these scripts and whether the overlay is among the nodes, 'unusable', or null. */
+  const judge = (scripts, overlay) => {
     for (const el of scripts) {
       if (el.getAttribute('type') !== 'module') continue
       const path = pathOf(el)
@@ -64,10 +72,28 @@
       }
     }
     if (scripts.some((el) => pathOf(el)?.startsWith('/_next/'))) return { server: 'next', base: '/' }
-    if (scripts.some((el) => pathOf(el)?.includes('webpack-dev-server')) || document.getElementById('webpack-dev-server-client-overlay')) {
-      return { server: 'webpack', base: '/' }
-    }
+    if (overlay || scripts.some((el) => pathOf(el)?.includes('webpack-dev-server'))) return { server: 'webpack', base: '/' }
     return null
+  }
+
+  /** The whole document, once. */
+  const detectAll = () => judge([...document.querySelectorAll(SCRIPTS)], document.getElementById(OVERLAY_ID) !== null)
+
+  /** The nodes a mutation batch added, and what they hold: the rest of the page was looked at already. */
+  const detectAdded = (records) => {
+    const scripts = []
+    let overlay = false
+    for (const record of records) {
+      for (const node of record.addedNodes) {
+        if (node.nodeType !== 1) continue
+        if (node.matches(SCRIPTS)) scripts.push(node)
+        if (node.id === OVERLAY_ID) overlay = true
+        if (node.firstElementChild === null) continue
+        scripts.push(...node.querySelectorAll(SCRIPTS))
+        if (node.querySelector(`#${OVERLAY_ID}`) !== null) overlay = true
+      }
+    }
+    return judge(scripts, overlay)
   }
 
   const stop = () => {
@@ -87,7 +113,7 @@
     }
   }
 
-  const look = () => {
+  const look = (detect) => {
     if (done) return
     let found = null
     try {
@@ -101,10 +127,10 @@
   }
 
   const start = () => {
-    look()
+    look(detectAll)
     if (done) return
     try {
-      observer = new MutationObserver(look)
+      observer = new MutationObserver((records) => look(() => detectAdded(records)))
       observer.observe(document.documentElement, { subtree: true, childList: true })
     } catch {
       observer = null

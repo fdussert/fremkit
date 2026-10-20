@@ -354,15 +354,17 @@ describe('companion/fremdev.js', () => {
     expect(FEATURE_MODULES).toEqual([])
   })
 
-  it('records the dev server a page reports, the first in a load only', async () => {
+  it('records the dev server a page reports, the latest replacing the last', async () => {
     const f = await makeFremdev()
     await f.fremdev.onPageEvent({ kind: 'devserver', server: 'vite', base: '//evil/' }, devSender())
     await f.later()
     expect(f.rows()).toEqual({})
     await f.fremdev.onPageEvent({ kind: 'devserver', server: 'vite', base: '/app/' }, devSender())
-    await f.fremdev.onPageEvent({ kind: 'devserver', server: 'next', base: '/' }, devSender())
     await f.later()
     expect(f.rows()['7']).toMatchObject({ devServer: 'vite', serverBase: '/app/' })
+    await f.fremdev.onPageEvent({ kind: 'devserver', server: 'next', base: '/' }, devSender())
+    await f.later()
+    expect(f.rows()['7']).toMatchObject({ devServer: 'next', serverBase: '/' })
   })
 
   it('announces fremdev.report only while on', async () => {

@@ -59,7 +59,7 @@ export function emptyTab(tabId, url, title, now) {
     nextId: 1,
     /**
      * The dev server's kind and, for Vite, its base path (`validBase`: no empty or dot segment): the
-     * first told for the tab's origin, kept across same-origin loads, reset by a cross-origin one.
+     * latest told, kept across same-origin navigations, reset by a cross-origin one.
      */
     devServer: null,
     serverBase: '/',
@@ -165,9 +165,9 @@ export function reduce(tab, event, now) {
     case 'title':
       return { ...tab, title: event.title ?? '' }
     case 'devserver':
-      // The first told for the origin wins; a later one (another script tag, the next reload)
-      // changes nothing until a cross-origin navigation resets it.
-      if ((tab.devServer ?? null) !== null || !DEV_SERVERS.includes(event.server) || !validBase(event.base, event.server)) return tab
+      // kind.js tells it once per document: a fresh load detects again and may replace it (Next
+      // now listening where Vite did); a pushState route change runs no kind.js and keeps it.
+      if (!DEV_SERVERS.includes(event.server) || !validBase(event.base, event.server)) return tab
       return { ...tab, devServer: event.server, serverBase: event.base }
     case 'count': {
       // Errors the relay counted over its rate limit: they add up, the last text stays.

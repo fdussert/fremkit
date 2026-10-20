@@ -15,12 +15,12 @@ function page(head: string, body = '') {
   document.head.innerHTML = head
   document.body.innerHTML = body
   const sendMessage = vi.fn((_msg: unknown) => Promise.resolve())
-  const chrome = { runtime: { id: 'ext', sendMessage } }
+  const chrome: { runtime: { id: string | undefined; sendMessage: typeof sendMessage } } = { runtime: { id: 'ext', sendMessage } }
   const win: Record<string, unknown> = {}
   const run = (timer: typeof setTimeout = setTimeout) =>
     new Function('window', 'document', 'chrome', 'setTimeout', 'MutationObserver', 'URL', source)(win, document, chrome, timer, MutationObserver, URL)
   const sent = () => sendMessage.mock.calls.map(([m]) => m)
-  return { run, sent, sendMessage }
+  return { run, sent, sendMessage, chrome }
 }
 
 const tick = () => new Promise((r) => setTimeout(r, 0))
@@ -103,14 +103,63 @@ describe('fremdev/kind.js', () => {
     expect(p.sent()).toHaveLength(1)
   })
 
-  it('sends nothing once the extension is gone, and never throws', async () => {
+  it('never throws when sending fails, and sends nothing once the extension is gone', async () => {
     const p = page('<script type="module" src="/@vite/client"></script>')
     p.sendMessage.mockImplementation(() => { throw new Error('Extension context invalidated') })
     expect(() => p.run()).not.toThrow()
     await tick()
+    expect(p.sendMessage).toHaveBeenCalledTimes(1)
+
+    const gone = page('<script type="module" src="/@vite/client"></script>')
+    gone.chrome.runtime.id = undefined
+    expect(() => gone.run()).not.toThrow()
+    await tick()
+    expect(gone.sent()).toEqual([])
+  })
+
+  it('sends nothing for a Vite client whose base the worker would refuse', async () => {
+    for (const src of ['/a//b/@vite/client', '/a b/@vite/client', `/${'a'.repeat(120)}/@vite/client`]) {
+      const p = page(`<script type="module" src="${src}"></script>`)
+      p.run()
+      await tick()
+      expect(p.sent(), src).toEqual([])
+    }
+  })
+
+  it('counts only scripts from the page\'s own origin', async () => {
+    const p = page([
+      '<script src="https://cdn.example.com/_next/static/x.js"></script>',
+      '<script type="module" src="//other.example.com/@vite/client"></script>',
+      '<script src="https://cdn.example.com/webpack-dev-server/client.js"></script>',
+    ].join(''))
+    p.run()
+    await tick()
+    expect(p.sent()).toEqual([])
+    const own = page(`<script src="${location.origin}/_next/static/x.js"></script>`)
+    own.run()
+    await tick()
+    expect(own.sent()).toEqual([{ target: 'worker', type: 'dev.event', kind: 'devserver', server: 'next', base: '/' }])
+  })
+
+  it('looks only at the added nodes once watching, a script inside an added element included', async () => {
+    const p = page('<script src="/main.js"></script>')
+    p.run()
+    await tick()
+    const scan = vi.spyOn(document, 'querySelectorAll')
+    for (let i = 0; i < 5; i++) document.body.appendChild(document.createElement('div'))
+    await tick()
+    expect(scan).not.toHaveBeenCalled()
+    const box = document.createElement('div')
+    box.innerHTML = '<script type="module" src="/app/@vite/client"></script>'
+    document.body.appendChild(box)
+    await tick()
+    scan.mockRestore()
+    expect(p.sent()).toEqual([{ target: 'worker', type: 'dev.event', kind: 'devserver', server: 'vite', base: '/app/' }])
   })
 
   it('reads attributes and the DOM only: no page object, no network', () => {
     expect(source).not.toMatch(/fetch\(|XMLHttpRequest|postMessage|eval\(|\.innerHTML|wrappedJSObject|window\.(?!__fremdevKind)/)
+    // The page's origin comes from `location`, whose `origin` is a platform getter, not page code.
+    expect(source).toContain('location.origin')
   })
 })

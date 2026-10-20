@@ -474,8 +474,9 @@ describe('Fremdev features', () => {
   beforeEach(() => { (FREMDEV_FEATURES as string[]).push(TEST_FEATURE) })
   afterEach(() => { (FREMDEV_FEATURES as string[]).splice((FREMDEV_FEATURES as string[]).indexOf(TEST_FEATURE), 1) })
 
-  it('starts with no feature of its own: each later task adds its module', () => {
-    expect(FREMDEV_FEATURES).toEqual([TEST_FEATURE])
+  it('lists the features a control depends on, the test one included', () => {
+    expect(FREMDEV_FEATURES).toContain(TEST_FEATURE)
+    expect(FREMDEV_FEATURES.every((f) => f.startsWith('fremdev.'))).toBe(true)
   })
 
   it('lists the features an install announced, sorted, and never an unknown fremdev name', () => {

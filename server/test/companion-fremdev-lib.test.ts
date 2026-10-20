@@ -692,11 +692,15 @@ describe('devtabs entry ids and the dev server kind', () => {
     expect(ids(tab)).toEqual([3])
   })
 
-  it('takes the first dev server detected for the origin: same-origin loads keep it, another origin forgets it', () => {
+  it('takes the latest dev server detected: same-origin navigations keep it, a fresh detection replaces it, another origin forgets it', () => {
     let tab = reduce(base(), { kind: 'devserver', server: 'vite', base: '/app/' }, 200)
     expect(tab).toMatchObject({ devServer: 'vite', serverBase: '/app/' })
-    tab = reduce(tab, { kind: 'devserver', server: 'next', base: '/' }, 300)
-    expect(tab).toMatchObject({ devServer: 'vite', serverBase: '/app/' })
+    // A fresh load of the page detects again: Next now listens where Vite did.
+    const replaced = reduce(tab, { kind: 'devserver', server: 'next', base: '/' }, 300)
+    expect(replaced).toMatchObject({ devServer: 'next', serverBase: '/' })
+    // Refused even then: a bad base or kind leaves the kind as it was.
+    expect(reduce(tab, { kind: 'devserver', server: 'vite', base: '//evil/' }, 300)).toBe(tab)
+    expect(reduce(tab, { kind: 'devserver', server: 'parcel', base: '/' }, 300)).toBe(tab)
     // A reload, a pushState route change, a hot update: the same origin, the same dev server.
     for (const url of ['http://localhost:5173/', 'http://localhost:5173/x']) {
       expect(reduce(tab, { kind: 'navigated', url, title: 'A' }, 400)).toMatchObject({ devServer: 'vite', serverBase: '/app/' })

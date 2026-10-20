@@ -184,15 +184,8 @@ export class CompanionDev {
       case 'ping':
         // Only proves the socket alive; nothing to answer.
         return
-      case 'dev.report': {
-        const pending = install.pending.get(msg.id)
-        // Only the install asked, for the tab asked, with the answer asked for: another browser's
-        // tab 7 is not this one.
-        if (!pending || pending.tabId !== msg.tabId || pending.answer !== msg.type) return
-        install.pending.delete(msg.id)
-        clearTimeout(pending.timer)
-        return pending.resolve(msg)
-      }
+      case 'dev.report':
+        return answered(install, msg)
       case 'modules': {
         const on = msg.modules.includes(FREMDEV_MODULE)
         const report = msg.modules.includes(FREMDEV_REPORT_MODULE)
@@ -348,6 +341,18 @@ const sameSet = (a: ReadonlySet<string>, b: ReadonlySet<string>) => a.size === b
 /** Whether the install listed `feature`; the report's own module is its `report` flag. */
 function holds(install: Install, feature: string): boolean {
   return feature === FREMDEV_REPORT_MODULE ? install.report : install.features.has(feature)
+}
+
+/**
+ * Resolves the ask `msg` answers, and forgets it. Only the install asked, for the tab asked, with
+ * the answer asked for: another browser's tab 7 is not this one, and an unknown id is nothing.
+ */
+function answered(install: Install, msg: DevAnswer): void {
+  const pending = install.pending.get(msg.id)
+  if (!pending || pending.tabId !== msg.tabId || pending.answer !== msg.type) return
+  install.pending.delete(msg.id)
+  clearTimeout(pending.timer)
+  pending.resolve(msg)
 }
 
 /** Resolves to null, and forgets, the asks `gone` picks. */
