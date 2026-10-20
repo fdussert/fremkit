@@ -303,6 +303,15 @@ describe('parseExtensionMessage', () => {
         expect(after({ type: 'ping', extra: 1 })).toEqual({ msg: null, dropped: 1 })
       })
 
+      it('passes a dev.report and drops one whose text is over 48 000 characters, keeping the socket', () => {
+        const id = '33333333-3333-4333-8333-333333333333'
+        const report = { type: 'dev.report', id, tabId: 7, text: 'x'.repeat(48_000) }
+        expect(after(report)).toEqual({ msg: report, dropped: 0 })
+        expect(after({ ...report, text: 'x'.repeat(48_001) })).toEqual({ msg: null, dropped: 1 })
+        expect(after({ ...report, id: 'not-a-uuid' })).toEqual({ msg: null, dropped: 1 })
+        expect(after({ ...report, extra: 1 })).toEqual({ msg: null, dropped: 1 })
+      })
+
       it('still refuses anything else that does not parse, and what is not JSON or too big', () => {
         expect(after({ type: 'tab.meta', sessionId, meta: { ...meta, title: 'x'.repeat(301) } })).toBeNull()
         expect(after({ type: 'tab.nonsense' })).toBeNull()

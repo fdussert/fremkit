@@ -7,6 +7,7 @@
 import type { FastifyInstance } from 'fastify'
 import type { ConfigStore } from '../config/store.js'
 import type { DeviceStore } from '../devices/store.js'
+import { pbPasteboard, type Pasteboard } from '../providers/clipboard.js'
 import type { ProviderRegistry } from '../providers/registry.js'
 import { COMPANION_DEV_CHANNEL, CompanionDev, createDevProvider } from './dev.js'
 import { CompanionPairing } from './pairing.js'
@@ -26,6 +27,8 @@ export interface CompanionOptions {
   /** `onChange` tells the session when `labs.companion` turns; without it, only new shares see it. */
   config: Pick<ConfigStore, 'get'> & Partial<Pick<ConfigStore, 'onChange'>>
   registry: Pick<ProviderRegistry, 'register' | 'refresh'>
+  /** Where Fremdev's report command copies a report: this Mac's pasteboard unless a test says. */
+  pasteboard?: Pasteboard
 }
 
 export interface Companion {
@@ -80,7 +83,7 @@ export async function createCompanion(opts: CompanionOptions): Promise<Companion
   })
   provider = createCompanionProvider({ session, pairing, config: () => config.get() })
   registry.register(provider)
-  registry.register(createDevProvider({ dev, config: () => config.get() }))
+  registry.register(createDevProvider({ dev, config: () => config.get(), pasteboard: opts.pasteboard ?? pbPasteboard }))
 
   let companionOn = config.get().labs?.companion === true
   const unsubscribeConfig = config.onChange?.((next) => {

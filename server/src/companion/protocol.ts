@@ -142,6 +142,8 @@ const Token = z.string().refine(isWellFormedToken, 'not a token')
 /** The extension's modules. */
 export const FREMPLAY_MODULE = 'fremplay'
 export const FREMDEV_MODULE = 'fremdev'
+/** Fremdev can answer `dev.report.ask`; announced only while Fremdev is on. */
+export const FREMDEV_REPORT_MODULE = 'fremdev.report'
 
 /**
  * The names of the modules an extension runs. Unknown names pass, so a newer extension with a module
@@ -169,6 +171,9 @@ function tally<T extends z.ZodType>(last: T) {
     .refine((t) => t.seen <= t.open, { message: 'seen above open' })
 }
 
+/** The longest bug report text a `dev.report` carries. */
+export const REPORT_MAX = 48_000
+
 /** The entries a dev tab's history carries, newest first. */
 export const MAX_DEV_HISTORY = 20
 /** A request's method, from a closed list: anything else reads `OTHER`. */
@@ -185,6 +190,8 @@ const entry = {
 }
 
 /** A tab's last errors and failed requests, without stacks; `limited` the errors the relay only counted. */
+const TabId = z.number().int().min(0).max(2_147_483_647)
+
 const DevHistorySchema = z
   .array(
     z.discriminatedUnion('kind', [
@@ -208,7 +215,7 @@ const DevHistorySchema = z
   .max(MAX_DEV_HISTORY)
 
 export const DevTabSchema = z.strictObject({
-  tabId: z.number().int().min(0).max(2_147_483_647),
+  tabId: TabId,
   /** The tab's title, or its host:port. */
   app: z.string().max(120),
   /** host:port, as the URL gives it: `_` included, a URL's host may carry one (`my_app.localhost`). */
@@ -257,6 +264,8 @@ export const ExtensionMessageSchema = z.discriminatedUnion('type', [
   z.strictObject({ type: z.literal('dev.tabs'), tabs: z.array(DevTabSchema).max(MAX_DEV_TABS) }),
   // Keeps the extension's service worker awake while a dev tab is open.
   z.strictObject({ type: z.literal('ping') }),
+  // The answer to a `dev.report.ask`: the tab's bug report, as plain text.
+  z.strictObject({ type: z.literal('dev.report'), id: Id, tabId: TabId, text: z.string().max(REPORT_MAX) }),
 ])
 export type ExtensionMessage = z.infer<typeof ExtensionMessageSchema>
 
@@ -295,6 +304,8 @@ export type ServerMessage =
   | { type: 'dev.focus'; tabId: number }
   /** The Edge marks the tab's open errors and requests seen. */
   | { type: 'dev.clear'; tabId: number }
+  /** The Edge asks for the tab's bug report (with stacks or not), answered by a `dev.report` with this `id`. */
+  | { type: 'dev.report.ask'; id: string; tabId: number; stack: boolean }
 
 /** The JSON of a message within the size limit; undefined when over it or not JSON. */
 function readJson(raw: string): unknown {
@@ -315,7 +326,7 @@ export function parseExtensionMessage(raw: string): ExtensionMessage | null {
 }
 
 /** Fremdev's messages: after hello, one that fails its schema costs itself, never the socket. */
-const DEV_MESSAGE_TYPES: ReadonlySet<unknown> = new Set(['dev.tabs', 'modules', 'ping'])
+const DEV_MESSAGE_TYPES: ReadonlySet<unknown> = new Set(['dev.tabs', 'modules', 'ping', 'dev.report'])
 
 /** A `dev.tabs` whose rows are judged one by one. */
 const DevTabsEnvelope = z.strictObject({ type: z.literal('dev.tabs'), tabs: z.array(z.unknown()).max(MAX_DEV_TABS) })

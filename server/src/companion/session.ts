@@ -191,6 +191,7 @@ export class CompanionSession {
       case 'modules':
       case 'dev.tabs':
       case 'ping':
+      case 'dev.report':
         // Fremdev's; an install it does not know (no modules in its hello) is ignored there.
         return this.dev?.onMessage(deviceId, msg)
       case 'tab.started':

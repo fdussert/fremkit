@@ -47,7 +47,7 @@ describe('CompanionDev', () => {
     expect(t.dev.snapshot()).toEqual({
       enabled: true,
       paired: 2,
-      installs: [{ deviceId: A, name: 'Chrome', on: true, connected: true, tabs: [row(7)] }],
+      installs: [{ deviceId: A, name: 'Chrome', on: true, connected: true, report: false, tabs: [row(7)] }],
     })
   })
 
@@ -63,13 +63,13 @@ describe('CompanionDev', () => {
     const t = setup()
     t.dev.connect(A, 'Chrome', ['fremplay'])
     t.tabs(A, [row(7)])
-    expect(t.dev.snapshot().installs).toEqual([{ deviceId: A, name: 'Chrome', on: false, connected: true, tabs: [] }])
+    expect(t.dev.snapshot().installs).toEqual([{ deviceId: A, name: 'Chrome', on: false, connected: true, report: false, tabs: [] }])
     // Turned on, it reports; turned off again, its rows go.
     t.dev.onMessage(A, { type: 'modules', modules: ['fremplay', 'fremdev'] })
     t.tabs(A, [row(7)])
     expect(t.dev.snapshot().installs[0]).toMatchObject({ on: true, tabs: [row(7)] })
     t.dev.onMessage(A, { type: 'modules', modules: ['fremplay'] })
-    expect(t.dev.snapshot().installs).toEqual([{ deviceId: A, name: 'Chrome', on: false, connected: true, tabs: [] }])
+    expect(t.dev.snapshot().installs).toEqual([{ deviceId: A, name: 'Chrome', on: false, connected: true, report: false, tabs: [] }])
   })
 
   it('keeps an install listed when it disconnects, with no rows: the extension\'s idle state', () => {
@@ -78,7 +78,7 @@ describe('CompanionDev', () => {
     t.tabs(A, [row(7)])
     t.changed.mockClear()
     t.dev.disconnect(A)
-    const idle = { deviceId: A, name: 'Chrome', on: true, connected: false, tabs: [] }
+    const idle = { deviceId: A, name: 'Chrome', on: true, connected: false, report: false, tabs: [] }
     expect(t.dev.snapshot().installs).toEqual([idle])
     expect(t.changed).toHaveBeenCalled()
     // A message from it afterwards is not heard.
@@ -122,8 +122,8 @@ describe('CompanionDev', () => {
     t.tabs(A, [row(7)])
     t.tabs(B, [row(9), row(10)])
     expect(t.dev.snapshot().installs).toEqual([
-      { deviceId: A, name: 'Chrome', on: true, connected: true, tabs: [row(7)] },
-      { deviceId: B, name: 'Brave', on: true, connected: true, tabs: [row(9), row(10)] },
+      { deviceId: A, name: 'Chrome', on: true, connected: true, report: false, tabs: [row(7)] },
+      { deviceId: B, name: 'Brave', on: true, connected: true, report: false, tabs: [row(9), row(10)] },
     ])
   })
 
@@ -273,5 +273,136 @@ describe('createDevProvider', () => {
       await expect(t.provider.commands!.focus(payload, LOCAL)).rejects.toThrow(tr(config.locale, 'provider.invalidPayload'))
     }
     expect(t.send).not.toHaveBeenCalled()
+  })
+})
+
+describe('Fremdev reports', () => {
+  const config = { ...DEFAULT_CONFIG, labs: { devices: false, companion: true } } as Config
+  const REPORT = ['fremdev', 'fremdev.report']
+
+  function asked(send: ReturnType<typeof setup>['send']) {
+    return send.mock.calls.filter(([, m]) => m.type === 'dev.report.ask') as Array<[string, Extract<ServerMessage, { type: 'dev.report.ask' }>]>
+  }
+
+  function two() {
+    const t = setup()
+    t.dev.connect(A, 'Chrome', REPORT)
+    t.dev.connect(B, 'Brave', REPORT)
+    t.tabs(A, [row(7)])
+    t.tabs(B, [row(7)])
+    return t
+  }
+
+  it('lists whether an install can report', () => {
+    const t = two()
+    t.dev.connect(B, 'Brave', ['fremdev'])
+    expect(t.dev.snapshot().installs.map((i) => [i.deviceId, i.report])).toEqual([[A, true], [B, false]])
+    t.dev.onMessage(B, { type: 'modules', modules: REPORT })
+    expect(t.dev.snapshot().installs[1].report).toBe(true)
+  })
+
+  it('asks the install named, and resolves to the text it answers', async () => {
+    const t = two()
+    const pending = t.dev.report(A, 7, true)
+    const calls = asked(t.send)
+    expect(calls).toHaveLength(1)
+    const [to, msg] = calls[0]
+    expect(to).toBe(A)
+    expect(msg).toEqual({ type: 'dev.report.ask', id: expect.stringMatching(/^[0-9a-f-]{36}$/), tabId: 7, stack: true })
+    t.dev.onMessage(A, { type: 'dev.report', id: msg.id, tabId: 7, text: 'Report' })
+    expect(await pending).toBe('Report')
+  })
+
+  it('two browsers with tab 7: only the one named is asked, and the other cannot answer for it', async () => {
+    const t = two()
+    const pending = t.dev.report(A, 7, false)
+    expect(asked(t.send).map(([to]) => to)).toEqual([A])
+    const { id } = asked(t.send)[0][1]
+    t.dev.onMessage(B, { type: 'dev.report', id, tabId: 7, text: 'from B' })
+    // Nor an unknown id, nor another tab.
+    t.dev.onMessage(A, { type: 'dev.report', id: '33333333-3333-4333-8333-333333333333', tabId: 7, text: 'stranger' })
+    t.dev.onMessage(A, { type: 'dev.report', id, tabId: 8, text: 'other tab' })
+    t.dev.onMessage(A, { type: 'dev.report', id, tabId: 7, text: 'from A' })
+    expect(await pending).toBe('from A')
+  })
+
+  it('gives null after 5 s without an answer, and at once on a disconnect', async () => {
+    const t = two()
+    const late = t.dev.report(A, 7, false)
+    let settled: string | null | undefined
+    void late.then((v) => { settled = v })
+    await vi.advanceTimersByTimeAsync(4_999)
+    expect(settled).toBeUndefined()
+    await vi.advanceTimersByTimeAsync(1)
+    expect(settled).toBeNull()
+    // The pending entry is gone: a late answer changes nothing.
+    t.dev.onMessage(A, { type: 'dev.report', id: asked(t.send)[0][1].id, tabId: 7, text: 'late' })
+
+    const cut = t.dev.report(A, 7, false)
+    t.dev.disconnect(A)
+    expect(await cut).toBeNull()
+  })
+
+  it('gives null and sends nothing for an install without fremdev.report, an unknown tab or install', async () => {
+    const t = two()
+    t.dev.connect(B, 'Brave', ['fremdev'])
+    t.tabs(B, [row(7)])
+    expect(await t.dev.report(B, 7, false)).toBeNull()
+    expect(await t.dev.report(A, 8, false)).toBeNull()
+    expect(await t.dev.report('44444444-4444-4444-8444-444444444444', 7, false)).toBeNull()
+    expect(asked(t.send)).toEqual([])
+  })
+
+  it('keeps at most 8 asks waiting per install: a 9th gives null', async () => {
+    const t = two()
+    for (let i = 0; i < 8; i++) void t.dev.report(A, 7, false)
+    expect(await t.dev.report(A, 7, false)).toBeNull()
+    expect(asked(t.send)).toHaveLength(8)
+    // Another install has its own room.
+    void t.dev.report(B, 7, false)
+    expect(asked(t.send)).toHaveLength(9)
+  })
+
+  describe('the report command', () => {
+    function provider(write = vi.fn<(text: string) => Promise<void>>(async () => undefined)) {
+      const t = two()
+      const pasteboard = { read: async () => '', write }
+      return { ...t, write, provider: createDevProvider({ dev: t.dev, config: () => config, pasteboard }) }
+    }
+    const payload = { deviceId: A, tabId: 7, instanceId: 'dev-1', stack: true }
+
+    it('refuses a caller that is not this Mac', async () => {
+      const t = provider()
+      await expect(t.provider.commands!.report(payload, PAIRED)).rejects.toThrow(tr(config.locale, 'provider.localOnly'))
+      expect(asked(t.send)).toEqual([])
+    })
+
+    it('refuses a payload without stack', async () => {
+      const t = provider()
+      await expect(t.provider.commands!.report({ deviceId: A, tabId: 7, instanceId: 'dev-1' }, LOCAL))
+        .rejects.toThrow(tr(config.locale, 'provider.invalidPayload'))
+    })
+
+    it('writes the text to the pasteboard', async () => {
+      const t = provider()
+      const result = t.provider.commands!.report(payload, LOCAL)
+      const [, msg] = asked(t.send)[0]
+      t.dev.onMessage(A, { type: 'dev.report', id: msg.id, tabId: 7, text: 'Report' })
+      expect(await result).toEqual({ ok: true })
+      expect(t.write).toHaveBeenCalledWith('Report')
+    })
+
+    it('fails when no report comes, or the pasteboard throws', async () => {
+      const t = provider(vi.fn(async () => { throw new Error('pbcopy') }))
+      const error = tr(config.locale, 'companion.devReportFailed')
+      const none = t.provider.commands!.report(payload, LOCAL)
+      await vi.advanceTimersByTimeAsync(5_000)
+      expect(await none).toEqual({ ok: false, error })
+      expect(t.write).not.toHaveBeenCalled()
+
+      const thrown = t.provider.commands!.report(payload, LOCAL)
+      t.dev.onMessage(A, { type: 'dev.report', id: asked(t.send)[1][1].id, tabId: 7, text: 'Report' })
+      expect(await thrown).toEqual({ ok: false, error })
+    })
   })
 })
