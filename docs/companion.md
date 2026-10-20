@@ -211,7 +211,8 @@ them back. Pages already loaded keep the hook they were given until they reload 
 ### What is watched, and what leaves the tab
 
 Watched: `console.error` calls, uncaught errors, unhandled promise rejections, the dev server's
-connection signals (Vite and webpack-dev-server lines such as *server connection lost*), failed
+connection and hot update signals (Vite, webpack-dev-server and Next lines such as *server
+connection lost*, *hot updated* or *[Fast Refresh] done*), failed
 requests (network errors and HTTP 4xx/5xx) and main-frame loads that fail because the server is
 down; and, timed but never counted as failures, requests that took a second or more and the
 requests in flight (see [Slow requests](#slow-requests-and-requests-in-flight)). Not counted: `favicon.ico`, hot-update traffic (`/@vite/*`, `/__webpack_hmr`,
@@ -457,6 +458,9 @@ the page's scripts, on dev hosts only. It is built not to disturb the page:
   introspection traps (`ownKeys`, `getOwnPropertyDescriptor`, `getPrototypeOf`) may run, within the
   walk budget; the text of an object is a bounded walk, so it is
   less faithful than the browser console's.
+- `console.log`, `info` and `debug` are read only for a dev server's signal: a prefix of the first
+  argument, or of the first two joined when both are primitive strings (Vite logs
+  `console.debug("[vite]", "hot updated: /src/App.vue")`). Nothing else of the call is looked at.
 - **Stacks are read without running page code.** The hook captures V8's native `stack` getter at
   start and calls it with `Reflect.apply`, only for an error whose `name` and `message` are plain
   strings and only while the page has not set `Error.prepareStackTrace` (a page that did, such as

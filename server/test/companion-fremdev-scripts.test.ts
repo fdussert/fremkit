@@ -423,6 +423,43 @@ describe('fremdev/hook.js', () => {
     expect(h.printed).toHaveLength(5)
   })
 
+  it("reads Vite's split prefix, `console.debug('[vite]', 'hot updated: …')`, its css updates and Next's Fast Refresh", () => {
+    const h = runHook()
+    h.console.debug('[vite]', 'hot updated: /src/a.ts')
+    h.console.debug('[vite] css hot updated: /src/a.css')
+    h.console.debug('[vite]', 'connected.')
+    h.console.debug('[vite]', 'connecting...')
+    h.console.log('[Fast Refresh] rebuilding')
+    h.console.log('[Fast Refresh] done in 136ms')
+    expect(h.events()).toEqual([{ kind: 'hot' }, { kind: 'hot' }, { kind: 'up' }, { kind: 'hot' }])
+  })
+
+  it('reads a second argument only when both are primitive strings, and runs none of its code', () => {
+    const h = runHook()
+    const toString = vi.fn(() => 'hot updated: /src/a.ts')
+    h.console.debug('[vite]', { toString })
+    // eslint-disable-next-line no-new-wrappers
+    h.console.debug(new String('[vite]'), 'hot updated: /src/a.ts')
+    expect(toString).not.toHaveBeenCalled()
+    expect(h.events()).toEqual([])
+  })
+
+  it('never reads a missing second argument through an accessor the page put on Array.prototype', () => {
+    const h = runHook()
+    const getter = vi.fn(() => 'hot updated: /src/a.ts')
+    // The harness records each call by pushing onto `printed`: two first, so it never writes index 1.
+    h.console.log('a')
+    h.console.log('b')
+    Object.defineProperty(Array.prototype, 1, { get: getter, configurable: true })
+    try {
+      h.console.debug('[vite]')
+    } finally {
+      delete (Array.prototype as unknown as Record<number, unknown>)[1]
+    }
+    expect(getter).not.toHaveBeenCalled()
+    expect(h.events()).toEqual([])
+  })
+
   it('reports uncaught errors and rejections without preventing them', () => {
     const h = runHook()
     const error = new FakeErrorEvent(new Error('bad'), 'ignored')

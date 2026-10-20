@@ -187,8 +187,19 @@ describe('devlog', () => {
   it('reads hot reload signals', () => {
     for (const t of ['[vite] server connection lost. Polling', '[webpack-dev-server] Disconnected!', '[WDS] Disconnected!']) expect(hotReloadSignal(t)).toBe('down')
     for (const t of ['[vite] connected.', '[webpack-dev-server] Server started', '[webpack-dev-server] Hot Module Replacement enabled', '[webpack-dev-server] Live Reloading enabled']) expect(hotReloadSignal(t)).toBe('up')
-    for (const t of ['[vite] hot updated: /src/a.ts', '[HMR] App is up to date', '[HMR] Updated modules']) expect(hotReloadSignal(t)).toBe('hot')
+    for (const t of ['[vite] hot updated: /src/a.ts', '[vite] css hot updated: /src/a.css', '[HMR] App is up to date', '[HMR] Updated modules', '[Fast Refresh] done in 136ms']) expect(hotReloadSignal(t)).toBe('hot')
+    expect(hotReloadSignal('[Fast Refresh] rebuilding')).toBeNull()
     expect(hotReloadSignal('[vite] connecting...')).toBeNull()
+  })
+
+  it("reads Vite's logger, which passes the prefix as its own argument", () => {
+    expect(hotReloadSignal('[vite]', 'hot updated: /src/App.vue')).toBe('hot')
+    expect(hotReloadSignal('[vite]', 'connected.')).toBe('up')
+    expect(hotReloadSignal('[vite]', 'connecting...')).toBeNull()
+    // Only two strings are joined: anything else leaves the first argument alone.
+    expect(hotReloadSignal('[vite]', { toString: () => 'hot updated: x' })).toBeNull()
+    expect(hotReloadSignal('[vite] hot updated: /src/a.ts', 42)).toBe('hot')
+    expect(hotReloadSignal(undefined, 'hot updated: x')).toBeNull()
   })
 
   it('keeps the path only', () => {

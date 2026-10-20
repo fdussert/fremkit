@@ -404,8 +404,9 @@ What it holds and what it can do:
   `*.localhost`, `*.test` and the user's own patterns, which refuse wildcards over a common public
   suffix (a short list; Chrome's own prompt names the hosts for any other) and over IP labels). It
   calls the original `console.error` and never runs the page's getters or `toJSON`; the
-  `console.log`/`info`/`debug` wrappers read only a prefix of the first argument and send only the
-  kind, with the same guarantees. It
+  `console.log`/`info`/`debug` wrappers read only a prefix of the first argument, joined with the
+  second when both are primitive strings (Vite's logger passes `"[vite]"` on its own), and send
+  only the kind, with the same guarantees. It
   sends events to a relay content script through a `CustomEvent` carrying a string. A page can forge
   events, but only into its own row; the tab id comes from Chrome. A `Proxy`'s introspection traps
   (`ownKeys`, `getOwnPropertyDescriptor`, `getPrototypeOf`) may run, within the walk budget. Pages

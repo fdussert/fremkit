@@ -324,11 +324,22 @@ const UP = [
   '[webpack-dev-server] Hot Module Replacement enabled',
   '[webpack-dev-server] Live Reloading enabled',
 ]
-const HOT = ['[vite] hot updated:', '[HMR] App is up to date', '[HMR] Updated modules']
+const HOT = [
+  '[vite] hot updated:',
+  '[vite] css hot updated:',
+  '[HMR] App is up to date',
+  '[HMR] Updated modules',
+  '[Fast Refresh] done',
+]
 
-/** What a dev server's console line says about it: `down`, `up`, `hot` (a reload landed) or null. */
-export function hotReloadSignal(text) {
-  if (typeof text !== 'string') return null
+/**
+ * What a dev server's console line says about it: `down`, `up`, `hot` (a reload landed) or null.
+ * `second` is the call's second argument: Vite logs `console.debug("[vite]", "hot updated: …")`,
+ * read as one line when both are strings (fremdev/hook.js does the same).
+ */
+export function hotReloadSignal(first, second) {
+  if (typeof first !== 'string') return null
+  const text = typeof second === 'string' ? `${first} ${second}` : first
   if (DOWN.some((p) => text.startsWith(p))) return 'down'
   if (UP.some((p) => text.startsWith(p))) return 'up'
   if (HOT.some((p) => text.startsWith(p))) return 'hot'

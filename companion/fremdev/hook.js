@@ -36,7 +36,13 @@ const UP = [
   '[webpack-dev-server] Hot Module Replacement enabled',
   '[webpack-dev-server] Live Reloading enabled',
 ]
-const HOT = ['[vite] hot updated:', '[HMR] App is up to date', '[HMR] Updated modules']
+const HOT = [
+  '[vite] hot updated:',
+  '[vite] css hot updated:',
+  '[HMR] App is up to date',
+  '[HMR] Updated modules',
+  '[Fast Refresh] done',
+]
 
 /**
  * `s` cut to `max` UTF-16 units, never ending on half of a surrogate pair. Through the
@@ -328,8 +334,18 @@ const startsWithAny = (text, list) => {
   for (let i = 0; i < list.length; i++) if (reflectApply(strStartsWith, text, [list[i]])) return true
   return false
 }
-const signalOf = (text) => {
-  if (typeof text !== 'string') return null
+/**
+ * The signal in a console call's arguments. Vite logs through a logger that splits the prefix off
+ * (`console.debug("[vite]", "hot updated: /src/a.ts")`), so when the first two arguments are both
+ * primitive strings they are read as one line. Nothing else is looked at: `typeof` and string
+ * concatenation run none of the page's code, and `length` guards each index read, so a missing
+ * argument never reaches an accessor the page put on `Array.prototype`.
+ */
+const signalOf = (args) => {
+  const first = args.length > 0 ? args[0] : undefined
+  if (typeof first !== 'string') return null
+  const second = args.length > 1 ? args[1] : undefined
+  const text = typeof second === 'string' ? `${first} ${second}` : first
   if (startsWithAny(text, DOWN)) return 'down'
   if (startsWithAny(text, UP)) return 'up'
   if (startsWithAny(text, HOT)) return 'hot'
@@ -505,7 +521,7 @@ try {
   wrap('error', (args) => sendError(errorText(args), firstError(args)))
   for (const name of ['log', 'info', 'debug']) {
     wrap(name, (args) => {
-      const signal = signalOf(args[0])
+      const signal = signalOf(args)
       if (signal) send(signal)
     })
   }
