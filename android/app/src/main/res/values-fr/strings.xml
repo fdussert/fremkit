@@ -11,7 +11,7 @@
     <string name="connecting_to">Connexion à %1$s…</string>
 
     <string name="unreachable_title">Le Mac n’est pas joignable</string>
-    <string name="unreachable_hint">Vérifiez qu’il est allumé, sur le même réseau, et que « Autoriser un iPad sur le réseau local » est activé dans Fremkit.</string>
+    <string name="unreachable_hint">Vérifiez qu’il est allumé, sur le même réseau, et que « Autoriser une tablette sur le réseau local » est activé dans Fremkit.</string>
     <string name="try_again">Réessayer</string>
 
     <string name="unauthorized_title">Cette tablette n’est plus autorisée</string>
@@ -53,7 +53,7 @@
 
     <string name="welcome_enter_code">Saisir le code</string>
     <string name="manual_choose">Choisissez votre Mac</string>
-    <string name="manual_none_yet">Aucun Mac trouvé pour l’instant. Dans Fremkit sur le Mac, activez « Autoriser un iPad sur le réseau local » (onglet Écran).</string>
+    <string name="manual_none_yet">Aucun Mac trouvé pour l’instant. Dans Fremkit sur le Mac, activez « Autoriser une tablette sur le réseau local » (onglet Écran).</string>
     <string name="manual_looking">Recherche de son adresse…</string>
     <string name="manual_check_words">Vérifiez que le Mac affiche les mêmes mots.</string>
     <string name="manual_code">Code</string>
