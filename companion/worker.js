@@ -470,8 +470,9 @@ async function onServerMessage(msg) {
       greeted = true
       // A proven server greeted this token: an unproven 4401 before was not its word.
       if (local.revoked) await saveLocal({ revoked: false })
-      // Whether Fremkit has Fremplay on (`labs.companion`), for the popup to say before a click.
-      // Sent again when the switch turns; a server that does not say is taken as on.
+      // Whether Fremkit has Fremplay on, for the popup to say before a click: a 0.5.0 server's
+      // `labs.companion`, sent again when that switch turns. Later servers always say on, and a
+      // server that does not say is taken as on.
       {
         const off = msg.modules?.fremplay === false
         const patch = fremplaySwitch(session, off)
