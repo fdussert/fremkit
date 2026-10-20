@@ -2,38 +2,61 @@ import XCTest
 @testable import FremkitKit
 
 final class PairingLinkTests: XCTestCase {
-    static let key = "Y4nRTFWKfvKwllWID7DQPMgZIF8SqUUvgWkQZsK_ArQ"
+    static let key = Vectors.all.spki.keyHash
+    static let secret = Vectors.all.pairingLinks.compactMap(\.expect?.secret).first!
 
     private func link(_ query: String) -> PairingLink? {
         PairingLink(url: URL(string: "fremkit://pair?\(query)")!)
     }
 
-    private let valid = "h=studio.local&a=192.0.2.10&p=4243&c=ABCDEFGH&k=\(PairingLinkTests.key)"
-
-    func testParsesAValidLink() throws {
-        let parsed = try XCTUnwrap(link(valid))
-        XCTAssertEqual(parsed, PairingLink(host: "studio.local", address: "192.0.2.10", port: 4243, code: "ABCDEFGH", keyHash: Self.key))
+    /// The query of the shared vectors' first link, a valid one without a secret.
+    private var valid: String {
+        String(Vectors.all.pairingLinks[0].url.dropFirst("fremkit://pair?".count))
     }
 
-    static let secret = "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE"
+    /// Checks the shared links whose `why` passes `filter`, and that there is at least one.
+    private func checkLinks(_ filter: (String) -> Bool, file: StaticString = #filePath, line: UInt = #line) {
+        let vectors = Vectors.all.pairingLinks.filter { filter($0.why) }
+        XCTAssertFalse(vectors.isEmpty, "no shared link for this test", file: file, line: line)
+        for vector in vectors {
+            guard let url = URL(string: vector.url) else {
+                XCTFail("not a URL: \(vector.url)", file: file, line: line)
+                continue
+            }
+            let parsed = PairingLink(url: url)
+            if let e = vector.expect {
+                XCTAssertEqual(parsed, PairingLink(host: e.host, address: e.address, port: e.port, code: e.code, keyHash: e.keyHash,
+                                                   secret: e.secret), "\(vector.why): \(vector.url)", file: file, line: line)
+            } else {
+                XCTAssertNil(parsed, "\(vector.why): \(vector.url) parsed", file: file, line: line)
+            }
+        }
+    }
+
+    private func checkLinks(_ whys: String..., file: StaticString = #filePath, line: UInt = #line) {
+        checkLinks({ whys.contains($0) }, file: file, line: line)
+    }
+
+    func testParsesEverySharedLinkAsExpected() {
+        checkLinks { _ in true }
+    }
+
+    func testParsesAValidLink() {
+        checkLinks("a valid link")
+    }
 
     func testALinkWithoutASecretHasNone() throws {
+        let first = try XCTUnwrap(Vectors.all.pairingLinks.first)
+        XCTAssertEqual(first.why, "a valid link")
         XCTAssertNil(try XCTUnwrap(link(valid)).secret, "a Mac from before the secret still pairs, with the code")
     }
 
-    func testParsesTheSecret() throws {
-        let parsed = try XCTUnwrap(link("h=studio.local&a=192.0.2.10&p=4243&c=ABCDEFGH&s=\(Self.secret)&k=\(Self.key)"))
-        XCTAssertEqual(parsed, PairingLink(host: "studio.local", address: "192.0.2.10", port: 4243, code: "ABCDEFGH",
-                                           keyHash: Self.key, secret: Self.secret))
+    func testParsesTheSecret() {
+        checkLinks("a link with the secret")
     }
 
     func testRefusesABadSecret() {
-        let s = Self.secret
-        for secret in ["", String(s.dropLast()), s + "A", String(s.dropLast()) + "=", String(s.dropLast()) + "+",
-                       String(s.dropLast()) + "F", "ABCDEFGH"] {
-            XCTAssertNil(link("\(valid)&s=\(secret)"), "secret \(secret) parsed")
-        }
-        XCTAssertNil(link("\(valid)&s=\(s)&s=\(s)"), "a repeated secret parsed")
+        checkLinks("a bad secret", "a repeated secret")
     }
 
     func testPrintingALinkNeverShowsTheSecret() throws {
@@ -46,57 +69,40 @@ final class PairingLinkTests: XCTestCase {
     }
 
     func testRefusesAnIPv6AddressTheMacWouldAnswer421To() {
-        for address in ["2001:db8::1", "fe80::1%25en0", "%5B2001:db8::1%5D"] {
-            XCTAssertNil(link("h=studio.local&a=\(address)&p=4243&c=ABCDEFGH&k=\(Self.key)"), address)
-        }
+        checkLinks("an IPv6 address, which the Mac would answer 421 to")
     }
 
-    func testNormalisesALowercaseCodeWithADash() throws {
-        let parsed = try XCTUnwrap(link("h=studio.local&a=192.0.2.10&p=4243&c=abcd-efgh&k=\(Self.key)"))
-        XCTAssertEqual(parsed.code, "ABCDEFGH")
+    func testNormalisesALowercaseCodeWithADash() {
+        checkLinks("a lowercase code with a dash")
     }
 
     func testRefusesALinkMissingAnyField() {
-        for name in ["h", "a", "p", "c", "k"] {
-            let query = valid.split(separator: "&").filter { !$0.hasPrefix("\(name)=") }.joined(separator: "&")
-            XCTAssertNil(link(query), "a link without \(name) parsed")
-        }
+        checkLinks { $0.hasPrefix("no ") }
+        XCTAssertEqual(Vectors.all.pairingLinks.filter { $0.why.hasPrefix("no ") }.count, 5, "one per required field")
     }
 
     func testRefusesABadPort() {
-        for port in ["0", "65536", "-1", "abc", "42%2043", ""] {
-            XCTAssertNil(link("h=studio.local&a=192.0.2.10&p=\(port)&c=ABCDEFGH&k=\(Self.key)"), "port \(port) parsed")
-        }
-        XCTAssertNotNil(link("h=studio.local&a=192.0.2.10&p=65535&c=ABCDEFGH&k=\(Self.key)"))
+        checkLinks("a bad port", "the highest port")
     }
 
     func testRefusesABadKey() {
-        for key in [String(Self.key.dropLast()), Self.key + "A", String(Self.key.dropLast()) + "=", String(Self.key.dropLast()) + "+",
-                    String(Self.key.dropLast()) + "R"] {
-            XCTAssertNil(link("h=studio.local&a=192.0.2.10&p=4243&c=ABCDEFGH&k=\(key)"), "key \(key) parsed")
-        }
+        checkLinks("a bad key hash")
     }
 
     func testRefusesAHostThatIsNotLocal() {
-        for host in ["studio.example.com", ".local", "studio", "stu%20dio.local", "studio/x.local"] {
-            XCTAssertNil(link("h=\(host)&a=192.0.2.10&p=4243&c=ABCDEFGH&k=\(Self.key)"), "host \(host) parsed")
-        }
+        checkLinks("a host that is not a .local name")
     }
 
     func testRefusesAnAddressThatIsNotAnIPLiteral() {
-        for address in ["studio.local", "192.0.2", "192.0.2.300", "example.com", ""] {
-            XCTAssertNil(link("h=studio.local&a=\(address)&p=4243&c=ABCDEFGH&k=\(Self.key)"), "address \(address) parsed")
-        }
+        checkLinks("an address that is not an IP literal")
     }
 
     func testRefusesAnotherSchemeOrAction() {
-        XCTAssertNil(PairingLink(url: URL(string: "https://pair?\(valid)")!))
-        XCTAssertNil(PairingLink(url: URL(string: "fremkit://unpair?\(valid)")!))
+        checkLinks("another scheme", "another action")
     }
 
-    func testDropsATrailingDotFromTheHost() throws {
-        let parsed = try XCTUnwrap(link("h=Studio.local.&a=192.0.2.10&p=4243&c=ABCDEFGH&k=\(Self.key)"))
-        XCTAssertEqual(parsed.host, "Studio.local")
+    func testDropsATrailingDotFromTheHost() {
+        checkLinks("a trailing dot on the host, dropped")
     }
 
     func testPrintingNeverShowsTheKeyOrCode() throws {
@@ -105,31 +111,41 @@ final class PairingLinkTests: XCTestCase {
         dump(parsed, to: &dumped)
         let text = "\(parsed) \(String(reflecting: parsed)) \(dumped)"
         XCTAssertFalse(text.contains(Self.key))
-        XCTAssertFalse(text.contains("ABCDEFGH"))
+        XCTAssertFalse(text.contains(parsed.code))
         XCTAssertTrue(dumped.contains("studio.local"))
     }
 
     func testRefusesABadCode() {
-        XCTAssertNil(link("h=studio.local&a=192.0.2.10&p=4243&c=ABCDEFG0&k=\(Self.key)"))
+        checkLinks("a code with a character outside the alphabet")
     }
 }
 
 final class NormaliseCodeTests: XCTestCase {
+    private func checkCodes(_ why: String, file: StaticString = #filePath, line: UInt = #line) {
+        let vectors = Vectors.all.codes.normalise.filter { $0.why == why }
+        XCTAssertFalse(vectors.isEmpty, "no shared code for this test", file: file, line: line)
+        for vector in vectors {
+            XCTAssertEqual(normaliseCode(vector.input), vector.output, "\(vector.input)", file: file, line: line)
+        }
+    }
+
+    func testTheAlphabetAndLengthAreTheServers() {
+        XCTAssertEqual(pairingCodeAlphabet, Set(Vectors.all.codes.alphabet))
+        XCTAssertEqual(pairingCodeAlphabet.count, Vectors.all.codes.alphabet.count)
+        for vector in Vectors.all.codes.normalise {
+            if let output = vector.output { XCTAssertEqual(output.count, Vectors.all.codes.length) }
+        }
+    }
+
     func testUppercasesAndDropsSpacesAndDashes() {
-        XCTAssertEqual(normaliseCode(" abcd-efgh "), "ABCDEFGH")
-        XCTAssertEqual(normaliseCode("AB CD EF 23"), "ABCDEF23")
+        checkCodes("any case, spaces and a dash")
     }
 
     func testRefusesCharactersOutsideTheAlphabet() {
-        XCTAssertNil(normaliseCode("ABCDEFG0"))
-        XCTAssertNil(normaliseCode("ABCDEFGI"))
-        XCTAssertNil(normaliseCode("ABCDEFG1"))
-        XCTAssertNil(normaliseCode("ABCDÉFGH"))
+        checkCodes("outside the alphabet")
     }
 
     func testRefusesTheWrongLength() {
-        XCTAssertNil(normaliseCode("ABCDEFG"))
-        XCTAssertNil(normaliseCode("ABCDEFGHJ"))
-        XCTAssertNil(normaliseCode(""))
+        checkCodes("the wrong length")
     }
 }
