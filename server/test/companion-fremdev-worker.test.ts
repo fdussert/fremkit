@@ -165,7 +165,7 @@ const devSender = (over: Record<string, unknown> = {}) => ({
   ...over,
 })
 
-async function makeFremdev(opts?: Parameters<typeof fakeChrome>[0]) {
+async function makeFremdev(opts?: Parameters<typeof fakeChrome>[0], extra: { fetch?: (...args: unknown[]) => Promise<unknown> } = {}) {
   const { api, store, grants, event } = fakeChrome(opts)
   const sent: Array<{ type: string; [k: string]: unknown }> = []
   const wantSocket = vi.fn()
@@ -179,6 +179,7 @@ async function makeFremdev(opts?: Parameters<typeof fakeChrome>[0]) {
     setTimer: (fn: () => void) => void timers.push(fn),
     every: () => 1,
     stopEvery: () => undefined,
+    ...(extra.fetch ? { fetch: extra.fetch } : {}),
   })
   // Let the boot finish (a command for no tab waits for it and does nothing).
   await fremdev.onServer({ type: 'none' })
@@ -310,7 +311,7 @@ describe('companion/fremdev.js', () => {
     f.fremdev.onReady({ type: 'ready', protocol: 2, modules: { fremplay: true, fremdev: true } })
     await f.later()
     expect(f.sent.map((m) => m.type)).toEqual(['modules', 'dev.tabs'])
-    expect(f.sent[0]).toEqual({ type: 'modules', modules: ['fremplay', 'fremdev', 'fremdev.report', 'fremdev.build'] })
+    expect(f.sent[0]).toEqual({ type: 'modules', modules: ['fremplay', 'fremdev', 'fremdev.report', 'fremdev.build', 'fremdev.open'] })
     expect((f.sent[1].tabs as Array<{ tabId: number }>).map((t) => t.tabId)).toEqual([7])
     await f.fremdev.stop()
     expect(f.sent.at(-1)).toEqual({ type: 'modules', modules: ['fremplay'] })
@@ -368,11 +369,11 @@ describe('companion/fremdev.js', () => {
       const f = await makeFremdev({ on: false })
       expect(f.fremdev.modules()).toEqual(['fremplay'])
       await f.fremdev.start()
-      expect(f.fremdev.modules()).toEqual(['fremplay', 'fremdev', 'fremdev.report', 'fremdev.build', 'fremdev.test'])
+      expect(f.fremdev.modules()).toEqual(['fremplay', 'fremdev', 'fremdev.report', 'fremdev.build', 'fremdev.open', 'fremdev.test'])
     } finally {
       FEATURE_MODULES.pop()
     }
-    expect(FEATURE_MODULES).toEqual(['fremdev.build'])
+    expect(FEATURE_MODULES).toEqual(['fremdev.build', 'fremdev.open'])
   })
 
   it('records the dev server a page reports, the latest replacing the last', async () => {
@@ -409,10 +410,11 @@ describe('companion/fremdev.js', () => {
     const f = await makeFremdev({ on: false })
     expect(f.fremdev.modules()).toEqual(['fremplay'])
     await f.fremdev.start()
-    expect(f.fremdev.modules()).toEqual(['fremplay', 'fremdev', 'fremdev.report', 'fremdev.build'])
+    expect(f.fremdev.modules()).toEqual(['fremplay', 'fremdev', 'fremdev.report', 'fremdev.build', 'fremdev.open'])
     await f.fremdev.stop()
     expect(f.fremdev.modules()).not.toContain('fremdev.report')
     expect(f.fremdev.modules()).not.toContain('fremdev.build')
+    expect(f.fremdev.modules()).not.toContain('fremdev.open')
   })
 
   it('answers dev.report.ask with the report of a tab it has a row for, and nothing for another', async () => {
@@ -507,6 +509,89 @@ describe('companion/fremdev.js', () => {
       await fremdev.onServer({ type: 'none' })
       expect(await fremdev.report(7, true)).toBeNull()
     }
+  })
+
+  describe('dev.open.ask', () => {
+    const id = '6f1c2a5e-8f0b-4c1d-9a3e-2b7d4e5f6a7b'
+    const WANT = 'http://localhost:5173/__open-in-editor?file=src%2Fmain.ts%3A4%3A2'
+
+    async function openable(res: { ok: boolean; body?: { cancel: () => Promise<void> } | null } | Error = { ok: true }) {
+      const cancel = vi.fn(async () => undefined)
+      const fetch = vi.fn(async () => {
+        if (res instanceof Error) throw res
+        return { body: { cancel }, ...res }
+      })
+      const f = await makeFremdev(undefined, { fetch })
+      f.fremdev.onReady({ type: 'ready', protocol: 2, modules: { fremplay: true, fremdev: true } })
+      await f.fremdev.onPageEvent({ kind: 'devserver', server: 'vite', base: '/' }, devSender())
+      await f.fremdev.onPageEvent({ kind: 'error', text: 'boom', origin: '/src/main.ts:4:2' }, devSender())
+      await f.later()
+      f.sent.length = 0
+      const entryId = f.rows()['7'].history[0].id as number
+      const answers = () => f.sent.filter((m) => m.type === 'dev.open.done')
+      return { ...f, fetch, cancel, entryId, answers }
+    }
+
+    it('fetches exactly the editor URL, without credentials, cache or redirects, and answers ok', async () => {
+      const f = await openable()
+      await f.fremdev.onServer({ type: 'dev.open.ask', id, tabId: 7, entryId: f.entryId })
+      expect(f.fetch).toHaveBeenCalledTimes(1)
+      expect(f.fetch).toHaveBeenCalledWith(WANT, { method: 'GET', credentials: 'omit', cache: 'no-store', redirect: 'error' })
+      expect(f.cancel).toHaveBeenCalled()
+      expect(f.answers()).toEqual([{ type: 'dev.open.done', id, tabId: 7, ok: true }])
+    })
+
+    it('answers ok false on a 404, or a fetch that throws', async () => {
+      const missing = await openable({ ok: false })
+      await missing.fremdev.onServer({ type: 'dev.open.ask', id, tabId: 7, entryId: missing.entryId })
+      expect(missing.answers()).toEqual([{ type: 'dev.open.done', id, tabId: 7, ok: false }])
+      const thrown = await openable(new TypeError('Failed to fetch'))
+      await thrown.fremdev.onServer({ type: 'dev.open.ask', id, tabId: 7, entryId: thrown.entryId })
+      expect(thrown.answers()).toEqual([{ type: 'dev.open.done', id, tabId: 7, ok: false }])
+    })
+
+    it('answers ok false, fetching nothing, for an entry the ring no longer holds (Review Focus 3)', async () => {
+      const f = await openable()
+      for (let i = 0; i < 20; i++) await f.fremdev.onPageEvent({ kind: 'error', text: `boom ${i}` }, devSender())
+      await f.fremdev.onServer({ type: 'dev.open.ask', id, tabId: 7, entryId: f.entryId })
+      expect(f.fetch).not.toHaveBeenCalled()
+      expect(f.answers()).toEqual([{ type: 'dev.open.done', id, tabId: 7, ok: false }])
+    })
+
+    it('answers ok false, fetching nothing, once the tab navigated to another origin (Review Focus 3)', async () => {
+      const f = await openable()
+      const [onUpdated] = f.api.tabs.onUpdated.addListener.mock.calls.at(-1)
+      await onUpdated(7, { status: 'loading', url: 'http://localhost:3000/' }, { id: 7, url: 'http://localhost:3000/', title: 'Other' })
+      await f.fremdev.onServer({ type: 'dev.open.ask', id, tabId: 7, entryId: f.entryId })
+      expect(f.fetch).not.toHaveBeenCalled()
+      expect(f.answers()).toEqual([{ type: 'dev.open.done', id, tabId: 7, ok: false }])
+    })
+
+    it('answers ok false, fetching nothing, for an entry with no editor URL', async () => {
+      const f = await openable()
+      await f.fremdev.onPageEvent({ kind: 'error', text: 'elsewhere', origin: 'cdn.example.com/lib.js:1:2' }, devSender())
+      await f.later()
+      f.sent.length = 0
+      const other = f.rows()['7'].history[0].id as number
+      expect(other).not.toBe(f.entryId)
+      await f.fremdev.onServer({ type: 'dev.open.ask', id, tabId: 7, entryId: other })
+      expect(f.fetch).not.toHaveBeenCalled()
+      expect(f.answers()).toEqual([{ type: 'dev.open.done', id, tabId: 7, ok: false }])
+    })
+
+    it('answers nothing for a bad id or a tab it has no row for', async () => {
+      const f = await openable()
+      await f.fremdev.onServer({ type: 'dev.open.ask', id: 'not-an-id', tabId: 7, entryId: f.entryId })
+      await f.fremdev.onServer({ type: 'dev.open.ask', id, tabId: 8, entryId: f.entryId })
+      expect(f.fetch).not.toHaveBeenCalled()
+      expect(f.sent).toEqual([])
+    })
+  })
+
+  it('worker.js relays dev.open.ask to Fremdev', () => {
+    const worker = source('worker.js')
+    const relay = worker.slice(worker.indexOf("case 'dev.focus':"), worker.indexOf('return fremdev.onServer(msg)'))
+    expect(relay).toContain("case 'dev.open.ask':")
   })
 
   it('worker.js relays dev.report.ask and answers the popup with the report', () => {

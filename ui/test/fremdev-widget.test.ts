@@ -28,8 +28,8 @@ function tab(tabId: number, over: Record<string, unknown> = {}) {
     ...over,
   }
 }
-function snapshot(tabs: unknown[], report = true) {
-  return { enabled: true, paired: 1, installs: [{ deviceId: DEVICE, name: 'Chrome', on: true, connected: true, report, tabs }] }
+function snapshot(tabs: unknown[], report = true, features: string[] = []) {
+  return { enabled: true, paired: 1, installs: [{ deviceId: DEVICE, name: 'Chrome', on: true, connected: true, report, features, tabs }] }
 }
 
 function load() {
@@ -172,6 +172,52 @@ describe('the Fremdev widget page', () => {
     expect(withStack.textContent).toBe('Copy failed')
     expect(withStack.classList.contains('failed')).toBe(true)
     // A copy does not fold the row.
+    expect(unfoldedApps()).toEqual(['App 7'])
+  })
+
+  it('the origin of an openable entry is a 44 px button that sends open and folds nothing; others stay text', () => {
+    const w = load()
+    w.publish(snapshot([tab(7, { devServer: 'vite' })], true, ['fremdev.open']))
+    rowOf('App 7').querySelector<HTMLElement>('.top')!.click()
+    const origin = rowOf('App 7').querySelector<HTMLButtonElement>('.history .entry button.origin')!
+    expect(origin).not.toBeNull()
+    expect(origin.textContent).toBe('/src/a.js:1:2')
+    expect(read('index.html')).toMatch(/button\.origin\{[^}]*min-height:44px/)
+    origin.click()
+    expect(w.F.sendCommand).toHaveBeenLastCalledWith('companion:dev', 'open', { deviceId: DEVICE, tabId: 7, entryId: 1 })
+    expect(unfoldedApps()).toEqual(['App 7'])
+    // Without the feature, or under Next for a runtime error, the origin is text.
+    w.publish(snapshot([tab(7, { devServer: 'vite' })], true, []))
+    expect(rowOf('App 7').querySelector('.history .entry button.origin')).toBeNull()
+    expect(rowOf('App 7').querySelector('.history .entry .origin')!.textContent).toBe('/src/a.js:1:2')
+    w.publish(snapshot([tab(7, { devServer: 'next', history: [{ kind: 'error', id: 1, text: 'x', origin: '/_next/static/chunks/a.js:1:2', n: 1, at: 1000, state: 'open' }] })], true, ['fremdev.open']))
+    expect(rowOf('App 7').querySelector('.history .entry button.origin')).toBeNull()
+  })
+
+  it('says "Sent to the editor" for 2 s after { ok: true }, and "Can\'t open here" after a refusal', async () => {
+    vi.useFakeTimers()
+    const w = load()
+    w.publish(snapshot([tab(7, { devServer: 'vite' })], true, ['fremdev.open']))
+    rowOf('App 7').querySelector<HTMLElement>('.top')!.click()
+    const origin = () => rowOf('App 7').querySelector<HTMLButtonElement>('.history .entry button.origin')!
+    origin().click()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(origin().textContent).toBe('Sent to the editor')
+    // A snapshot meanwhile keeps it.
+    w.publish(snapshot([tab(7, { devServer: 'vite' })], true, ['fremdev.open']))
+    expect(origin().textContent).toBe('Sent to the editor')
+    await vi.advanceTimersByTimeAsync(1999)
+    expect(origin().textContent).toBe('Sent to the editor')
+    await vi.advanceTimersByTimeAsync(1)
+    expect(origin().textContent).toBe('/src/a.js:1:2')
+
+    w.F.sendCommand.mockImplementationOnce(() => Promise.resolve({ ok: false, error: "Can't open here" }))
+    origin().click()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(origin().textContent).toBe("Can't open here")
+    expect(origin().classList.contains('failed')).toBe(true)
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(origin().textContent).toBe('/src/a.js:1:2')
     expect(unfoldedApps()).toEqual(['App 7'])
   })
 })

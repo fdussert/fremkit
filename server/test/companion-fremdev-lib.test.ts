@@ -10,6 +10,8 @@ import { emptyTab, fremdevSupport, HISTORY_MAX, reduce, restoredTabs, Throttle, 
 import { hello, devTabs, modulesMsg, ping } from '../../companion/lib/protocol.js'
 // @ts-expect-error plain JS module
 import { buildReport, REPORT_MAX, reportMessage } from '../../companion/lib/devreport.js'
+// @ts-expect-error plain JS module
+import { editorUrl, parsePlace } from '../../companion/lib/devopen.js'
 import { DEV_METHODS, DevTabSchema } from '../src/companion/protocol.js'
 
 const both = (host: string) => [`http://${host}/*`, `https://${host}/*`]
@@ -1080,5 +1082,102 @@ describe('build entries', () => {
     const text = buildReport(tab, fmt)
     expect(text).toContain('### Build\n- T200 Invalid end tag in ~/app/src/App.vue\n  at ~/app/src/App.vue:12:3\n\n### Errors (2 open, 2 total)\n- T150 TypeError: x\n')
     expect(text).not.toContain('/Users/')
+  })
+})
+
+describe('devopen', () => {
+  const tabAt = (url: string, devServer: string | null, serverBase = '/') => ({ ...emptyTab(7, url, 'App', 1_000), devServer, serverBase })
+  const vite = (base = '/') => tabAt('http://localhost:5173/', 'vite', base)
+  const error = (origin: string | null) => ({ kind: 'error', id: 1, text: 'TypeError', origin, stack: null, n: 1, at: 1, state: 'open' })
+  const build = (path: string | null, line: number | null, col: number | null) =>
+    ({ kind: 'build', id: 2, text: 'Unexpected token', path, line, col, n: 1, at: 1, state: 'open' })
+
+  it('reads a place as path, line and column', () => {
+    expect(parsePlace('/src/a.js:42:17')).toEqual({ path: '/src/a.js', line: 42, col: 17 })
+    expect(parsePlace('/a:b.js:1:2')).toEqual({ path: '/a:b.js', line: 1, col: 2 })
+    expect(parsePlace('/src/a.js:42')).toBeNull()
+    expect(parsePlace('/src/a.js')).toBeNull()
+  })
+
+  it('opens a Vite error through __open-in-editor, its path relative to the root', () => {
+    expect(editorUrl(vite(), error('/src/components/Cart.vue:42:17')))
+      .toBe('http://localhost:5173/__open-in-editor?file=src%2Fcomponents%2FCart.vue%3A42%3A17')
+  })
+
+  it('turns a Vite /@fs/ path back into the absolute one', () => {
+    expect(editorUrl(vite(), error('/@fs/Users/example/lib/x.js:3:1')))
+      .toBe('http://localhost:5173/__open-in-editor?file=%2FUsers%2Fexample%2Flib%2Fx.js%3A3%3A1')
+  })
+
+  it('decodes the URL path an origin carries, so a folder with a space opens', () => {
+    expect(editorUrl(vite(), error('/@fs/Users/Jane%20Example/lib/x.js:3:1')))
+      .toBe('http://localhost:5173/__open-in-editor?file=%2FUsers%2FJane%20Example%2Flib%2Fx.js%3A3%3A1')
+    expect(editorUrl(vite(), error('/src/%E0%A4%A.js:1:1'))).toBeNull()
+  })
+
+  it('strips the Vite base, and asks the endpoint under it', () => {
+    expect(editorUrl(vite('/app/'), error('/app/src/main.ts:1:1')))
+      .toBe('http://localhost:5173/app/__open-in-editor?file=src%2Fmain.ts%3A1%3A1')
+    expect(editorUrl(vite('/app/'), error('/app/@fs/Users/example/lib/x.js:3:1')))
+      .toBe('http://localhost:5173/app/__open-in-editor?file=%2FUsers%2Fexample%2Flib%2Fx.js%3A3%3A1')
+  })
+
+  it('opens nothing for an error from another origin, or none', () => {
+    expect(editorUrl(vite(), error('cdn.example.com/lib.js:1:2'))).toBeNull()
+    expect(editorUrl(vite(), error('//evil.example/x.js:1:1'))).toBeNull()
+    expect(editorUrl(vite(), error(null))).toBeNull()
+    expect(editorUrl(vite(), error('/src/a.js'))).toBeNull()
+  })
+
+  it('opens a Vite build entry by its full path, a home folder with a space included (Review Focus 4)', () => {
+    expect(editorUrl(vite(), build('/Users/Jane Example/app/src/App.vue', 12, 3)))
+      .toBe('http://localhost:5173/__open-in-editor?file=%2FUsers%2FJane%20Example%2Fapp%2Fsrc%2FApp.vue%3A12%3A3')
+    expect(editorUrl(vite(), build('/Users/example/app/src/App.vue', 12, null)))
+      .toBe('http://localhost:5173/__open-in-editor?file=%2FUsers%2Fexample%2Fapp%2Fsrc%2FApp.vue')
+    expect(editorUrl(vite('/app/'), build('/Users/example/app/src/App.vue', 1, 1)))
+      .toBe('http://localhost:5173/app/__open-in-editor?file=%2FUsers%2Fexample%2Fapp%2Fsrc%2FApp.vue%3A1%3A1')
+    expect(editorUrl(vite(), build(null, 1, 1))).toBeNull()
+  })
+
+  it('opens a Next build entry through __nextjs_launch-editor, and no runtime error', () => {
+    const next = tabAt('http://localhost:3000/', 'next')
+    // Next 15.5 reads line1 and column1 (checked against a real 15.5 server: without them it opens
+    // line 1); earlier releases read lineNumber and column. Both pairs go.
+    expect(editorUrl(next, build('./src/app/page.tsx', 3, 5)))
+      .toBe('http://localhost:3000/__nextjs_launch-editor?file=.%2Fsrc%2Fapp%2Fpage.tsx&lineNumber=3&column=5&line1=3&column1=5')
+    expect(editorUrl(next, build('./src/app/page.tsx', null, null)))
+      .toBe('http://localhost:3000/__nextjs_launch-editor?file=.%2Fsrc%2Fapp%2Fpage.tsx')
+    expect(editorUrl(next, error('/_next/static/chunks/app/page.js:1:2'))).toBeNull()
+  })
+
+  it('opens a webpack build entry through webpack-dev-server/open-editor, and no runtime error', () => {
+    const webpack = tabAt('http://localhost:8080/', 'webpack')
+    expect(editorUrl(webpack, build('./src/index.js', 10, 2)))
+      .toBe('http://localhost:8080/webpack-dev-server/open-editor?fileName=.%2Fsrc%2Findex.js%3A10%3A2')
+    expect(editorUrl(webpack, build('./src/index.js', null, null)))
+      .toBe('http://localhost:8080/webpack-dev-server/open-editor?fileName=.%2Fsrc%2Findex.js')
+    expect(editorUrl(webpack, error('/main.js:1:2'))).toBeNull()
+  })
+
+  it('opens nothing for an unknown dev server, a request, or a tab URL that does not parse', () => {
+    expect(editorUrl(tabAt('http://localhost:5173/', null), build('./src/index.js', 1, 1))).toBeNull()
+    expect(editorUrl(vite(), { kind: 'request', id: 3, method: 'GET', path: '/api', status: 500, n: 1, at: 1, state: 'open' })).toBeNull()
+    expect(editorUrl(vite(), { kind: 'limited', id: 4, n: 1, at: 1, state: 'open' })).toBeNull()
+    expect(editorUrl({ ...vite(), url: 'not a url' }, error('/src/a.js:1:1'))).toBeNull()
+  })
+
+  it('always asks the tab\'s own origin, whatever the entry says', () => {
+    const cases: Array<[ReturnType<typeof tabAt>, unknown]> = [
+      [vite(), error('/src/a.js:1:1')],
+      [vite('/app/'), error('/app/@fs/Users/example/x.js:1:1')],
+      [vite(), build('http://evil.example/x.js', 1, 1)],
+      [tabAt('http://app.localhost:3000/x', 'next'), build('//evil.example/x', 1, 1)],
+      [tabAt('https://localhost:8443/a/b', 'webpack'), build('@evil.example/x', 1, 1)],
+    ]
+    for (const [tab, entry] of cases) {
+      const url = editorUrl(tab, entry)
+      expect(url, JSON.stringify(entry)).not.toBeNull()
+      expect(new URL(url!).origin).toBe(new URL(tab.url).origin)
+    }
   })
 })

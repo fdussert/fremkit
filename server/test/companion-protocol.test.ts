@@ -362,6 +362,15 @@ describe('parseExtensionMessage', () => {
         expect(after({ ...report, extra: 1 })).toEqual({ msg: null, dropped: 1 })
       })
 
+      it('passes a dev.open.done and drops one with an extra key or a non-boolean ok, keeping the socket', () => {
+        const id = '33333333-3333-4333-8333-333333333333'
+        const done = { type: 'dev.open.done', id, tabId: 7, ok: true }
+        expect(after(done)).toEqual({ msg: done, dropped: 0 })
+        expect(after({ ...done, extra: 1 })).toEqual({ msg: null, dropped: 1 })
+        expect(after({ ...done, ok: 'yes' })).toEqual({ msg: null, dropped: 1 })
+        expect(after({ ...done, id: 'not-a-uuid' })).toEqual({ msg: null, dropped: 1 })
+      })
+
       it('still refuses anything else that does not parse, and what is not JSON or too big', () => {
         expect(after({ type: 'tab.meta', sessionId, meta: { ...meta, title: 'x'.repeat(301) } })).toBeNull()
         expect(after({ type: 'tab.nonsense' })).toBeNull()

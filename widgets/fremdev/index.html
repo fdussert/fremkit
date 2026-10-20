@@ -86,6 +86,12 @@
   .entry .origin{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-left:calc(8ch + 8px);
     font-family:var(--font-mono, ui-monospace, Menlo, monospace);font-size:calc(12px * var(--text-scale, 1));color:var(--text-dim, #6b737c)}
   .entry .origin:empty{display:none}
+  /* An openable file: a button the width of the line, tall enough to hit, still reading as the origin. */
+  .entry button.origin{display:flex;align-items:center;box-sizing:border-box;min-height:44px;width:100%;margin:0;border:0;border-radius:10px;
+    padding:0 8px 0 calc(8ch + 8px);background:transparent;text-align:left;cursor:pointer;color:var(--accent, #d9b36a);text-decoration:underline dotted}
+  .entry button.origin:active{background:var(--accent, #d9b36a);color:var(--on-accent, #0b0d10)}
+  .entry button.origin.ok{color:var(--ok, #46c46e);text-decoration:none}
+  .entry button.origin.failed{color:var(--danger, #ff6b5e);text-decoration:none}
   /* Seen: dimmed. Resolved: greyed and struck through. */
   .entry.seen{opacity:.55}
   .entry.resolved .what,.entry.resolved .time,.entry.resolved .times,.entry.resolved .kind{color:var(--text-dim, #6b737c)}
@@ -116,6 +122,8 @@
   html.on-light .fact.seen,html.on-light .fact.seen .n,html.on-light .fact.seen .t{color:var(--on-surface, #0b0d10);opacity:.5}
   /* An accent body: the accent of the clear button would vanish, so it takes the text colour. */
   html.accent-fill button.clear:active,html.accent-fill button.show:active,html.accent-fill button.copy:active{background:var(--on-surface, #0b0d10);color:var(--accent, #d9b36a)}
+  html.on-light .entry button.origin{color:var(--on-surface, #0b0d10)}
+  html.accent-fill .entry button.origin:active{background:var(--on-surface, #0b0d10);color:var(--accent, #d9b36a)}
   html.accent-fill button.show,html.accent-fill button.copy{color:var(--on-surface, #0b0d10)}
   html.accent-fill button.copy{border-color:var(--on-surface, #0b0d10)}
 
@@ -160,6 +168,9 @@
     copyFailed: { fr: 'Échec de la copie', en: 'Copy failed' },
     limited: { fr: '+{n} erreurs (débit limité)', en: '+{n} errors (rate limited)' },
     build: { fr: 'Compilation', en: 'Build' },
+    openSent: { fr: 'Envoyé à l’éditeur', en: 'Sent to the editor' },
+    openFailed: { fr: 'Impossible d’ouvrir ici', en: 'Can\'t open here' },
+    openFile: { fr: 'Ouvrir dans l’éditeur', en: 'Open in the editor' },
     elsewhere: { fr: 'Fremdev ne s\'affiche que sur l\'Edge du Mac.', en: 'Fremdev only shows on the Mac\'s Edge.' }
   }
 
@@ -191,7 +202,7 @@
     var drawn = {}
     /** The one unfolded row, as `deviceId:tabId`, or null. Cleared when its tab goes away. */
     var unfolded = null
-    /** How long "Copied ✓" or "Copy failed" stays on a copy button. */
+    /** How long "Copied ✓" or "Copy failed" stays on a copy button, and the open answer on a file. */
     var COPIED_MS = 2000
 
     function el(tag, cls) {
@@ -292,11 +303,46 @@
       return c
     }
 
+    /**
+     * Asks the server to open the history entry's file in the editor; its answer shows on the file
+     * for two seconds. One ask at a time per entry; the row stays as it is.
+     */
+    function openFile(entry, id) {
+      var st = entry.opens[id]
+      if (st && st.status === 'busy') return
+      if (st) clearTimeout(st.timer)
+      st = entry.opens[id] = { status: 'busy', timer: 0 }
+      function done(ok) {
+        if (entry.opens[id] !== st) return
+        st.status = ok ? 'ok' : 'failed'
+        updateHistory(entry)
+        st.timer = setTimeout(function () {
+          if (entry.opens[id] === st) delete entry.opens[id]
+          updateHistory(entry)
+        }, COPIED_MS)
+      }
+      var row = entry.row, asked
+      try {
+        asked = Fremkit.sendCommand(CHANNEL, 'open', { deviceId: row.deviceId, tabId: row.tabId, entryId: id })
+      } catch (e) { done(false); return }
+      Promise.resolve(asked).then(function (res) { done(!!res && res.ok === true) }, function () { done(false) })
+    }
+
     /** The history list, rebuilt only when what it shows changed, so its scroll stays put. */
     function updateHistory(entry) {
       var hist = Array.isArray(entry.row.history) ? entry.row.history : []
-      var views = hist.map(FD.entryView).filter(Boolean)
-      var sig = JSON.stringify(views) + '|' + Fremkit.t(L.noAnswer) + '|' + Fremkit.t(L.limited, { n: 0 }) + '|' + Fremkit.t(L.build)
+      var views = []
+      hist.forEach(function (h) {
+        var v = FD.entryView(h)
+        if (!v) return
+        v.id = typeof h.id === 'number' ? h.id : null
+        v.open = v.id !== null && !!v.origin && FD.openable(entry.row, h)
+        var st = v.open ? entry.opens[v.id] : null
+        v.answer = st && st.status !== 'busy' ? st.status : null
+        views.push(v)
+      })
+      var sig = JSON.stringify(views) + '|' + Fremkit.t(L.noAnswer) + '|' + Fremkit.t(L.limited, { n: 0 }) + '|' + Fremkit.t(L.build) +
+        '|' + Fremkit.t(L.openSent) + '|' + Fremkit.t(L.openFailed)
       if (sig === entry.historySig) return
       entry.historySig = sig
       var ul = entry.history
@@ -322,8 +368,18 @@
           : v.noAnswer ? v.text + ' ' + Fremkit.t(L.noAnswer) : v.text
         line.appendChild(what)
         li.appendChild(line)
-        var origin = el('div', 'origin')
-        origin.textContent = v.origin || ''
+        var origin
+        if (v.open) {
+          origin = el('button', 'origin' + (v.answer ? ' ' + v.answer : ''))
+          origin.type = 'button'
+          origin.setAttribute('aria-label', Fremkit.t(L.openFile) + ' ' + v.origin)
+          origin.textContent = v.answer === 'ok' ? Fremkit.t(L.openSent) : v.answer === 'failed' ? Fremkit.t(L.openFailed) : v.origin
+          var id = v.id
+          origin.addEventListener('click', function (ev) { ev.stopPropagation(); openFile(entry, id) })
+        } else {
+          origin = el('div', 'origin')
+          origin.textContent = v.origin || ''
+        }
         li.appendChild(origin)
         ul.appendChild(li)
       })
@@ -344,7 +400,7 @@
 
     /** A row's elements, built once; `entry.row` is the latest data its handlers act on. */
     function create(key) {
-      var entry = { key: key, row: null, total: null, flashAt: -Infinity, historySig: null }
+      var entry = { key: key, row: null, total: null, flashAt: -Infinity, historySig: null, opens: {} }
       var r = entry.el = el('div', 'row')
       var top = entry.top = el('div', 'top')
       entry.light = el('i', 'light')

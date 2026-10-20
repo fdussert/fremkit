@@ -148,11 +148,14 @@ export const FREMDEV_REPORT_MODULE = 'fremdev.report'
 /** Fremdev reports a dev server's compile error overlay as a `build` entry. */
 export const FREMDEV_BUILD_MODULE = 'fremdev.build'
 
+/** Fremdev opens an entry's file in the editor through the dev server's own endpoint (`dev.open.ask`). */
+export const FREMDEV_OPEN_MODULE = 'fremdev.open'
+
 /**
  * The Fremdev modules a control on the Edge depends on (`features` in the snapshot): an install
  * that lists one is shown that control. Each feature's task appends its module name here.
  */
-export const FREMDEV_FEATURES: readonly string[] = [FREMDEV_BUILD_MODULE]
+export const FREMDEV_FEATURES: readonly string[] = [FREMDEV_BUILD_MODULE, FREMDEV_OPEN_MODULE]
 
 /**
  * The names of the modules an extension runs. Unknown names pass, so a newer extension with a module
@@ -306,6 +309,8 @@ export const ExtensionMessageSchema = z.discriminatedUnion('type', [
   z.strictObject({ type: z.literal('ping') }),
   // The answer to a `dev.report.ask`: the tab's bug report, as plain text.
   z.strictObject({ type: z.literal('dev.report'), id: Id, tabId: TabId, text: z.string().max(REPORT_MAX) }),
+  // The answer to a `dev.open.ask`: whether the dev server answered the open-in-editor request.
+  z.strictObject({ type: z.literal('dev.open.done'), id: Id, tabId: TabId, ok: z.boolean() }),
 ])
 export type ExtensionMessage = z.infer<typeof ExtensionMessageSchema>
 
@@ -346,6 +351,11 @@ export type ServerMessage =
   | { type: 'dev.clear'; tabId: number }
   /** The Edge asks for the tab's bug report (with stacks or not), answered by a `dev.report` with this `id`. */
   | { type: 'dev.report.ask'; id: string; tabId: number; stack: boolean }
+  /**
+   * The Edge asks to open the entry's file in the editor; the extension builds the URL from the tab's
+   * own origin and its own copy of the entry, and answers a `dev.open.done` with this `id`.
+   */
+  | { type: 'dev.open.ask'; id: string; tabId: number; entryId: number }
 
 /** The JSON of a message within the size limit; undefined when over it or not JSON. */
 function readJson(raw: string): unknown {
@@ -366,7 +376,7 @@ export function parseExtensionMessage(raw: string): ExtensionMessage | null {
 }
 
 /** Fremdev's messages: after hello, one that fails its schema costs itself, never the socket. */
-const DEV_MESSAGE_TYPES: ReadonlySet<unknown> = new Set(['dev.tabs', 'modules', 'ping', 'dev.report'])
+const DEV_MESSAGE_TYPES: ReadonlySet<unknown> = new Set(['dev.tabs', 'modules', 'ping', 'dev.report', 'dev.open.done'])
 
 /** A `dev.tabs` whose rows are judged one by one. */
 const DevTabsEnvelope = z.strictObject({ type: z.literal('dev.tabs'), tabs: z.array(z.unknown()).max(MAX_DEV_TABS) })

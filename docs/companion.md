@@ -300,6 +300,32 @@ else: only to the clipboard, when you press a button. It is available while Frem
 `labs.companion` and `labs.fremdev` are ticked, for a tab the extension reported, and only from the Mac itself, never
 from a paired device.
 
+### Open in editor
+
+In an unfolded row, a build entry's file, and under Vite an error thrown by a script on the page's
+own origin, is a button: tap it and the dev server opens that file at that line in your editor
+(*Envoyé à l’éditeur* / *Sent to the editor* for 2 seconds; *Impossible d’ouvrir ici* / *Can't open
+here* when it could not). It shows only for an install that lists `fremdev.open`. The widget sends
+an `open` command naming the tab and the entry's id; the server asks the extension (`dev.open.ask`)
+only when the tab's last `dev.tabs` still lists that id, and waits at most 5 seconds for its
+`dev.open.done`. The extension looks the entry up in its own copy of the tab, builds the URL from the
+tab's origin and that entry, and asks the dev server's own endpoint, one per kind:
+
+- **Vite**: `<base>__open-in-editor?file=<file>:<line>:<col>`. A build entry's file is the overlay's
+  full path; an error's is its origin's path, decoded, the base stripped, `/@fs/` made absolute again
+  and otherwise relative to Vite's root. An error from another origin opens nothing.
+- **Next**: `/__nextjs_launch-editor?file=<file>&lineNumber=<n>&column=<n>&line1=<n>&column1=<n>`,
+  for build entries only (Next 15.5 reads `line1` and `column1`, earlier releases the other two).
+- **webpack**: `/webpack-dev-server/open-editor?fileName=<file>:<line>:<col>`, for build entries only.
+
+The request is a `GET` without credentials, cache or redirects, and its body is never read. The
+endpoint answers whether or not an editor opened (Next says 404 for a file it does not find), so
+*Sent to the editor* means the dev server answered. Which editor opens is the dev server's choice:
+`LAUNCH_EDITOR` for Vite and webpack, `REACT_EDITOR` (or `VISUAL`, `EDITOR`) for Next. This URL is
+the only thing that carries a home folder in full, and it goes only to the tab's own dev server. An
+entry that left the 20-entry history, or a tab that went to another origin since (its history starts
+over), opens nothing.
+
 ### The hook in the page
 
 To see a page's errors, Fremdev registers a small script that runs in the page's own world, before

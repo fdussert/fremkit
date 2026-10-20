@@ -421,13 +421,27 @@ What it holds and what it can do:
   reported, and is gated by `fremdevEnabled` (`labs.companion` and `labs.fremdev`); the module is announced as `fremdev.report` only
   while Fremdev is on. The report reaches no one but the clipboard, and what it quotes (error
   messages, titles) is as sensitive as on the Edge.
-- *Server side.* Every `dev.tabs`, `modules` and `ping` message is validated by a strict schema with
+- *Open in editor.* The `open` command (loopback-only, gated by `fremdevEnabled`, for an install
+  that lists `fremdev.open`) names a tab and an entry id; the server asks only when the install's last
+  `dev.tabs` listed that id for that tab, and nothing else reaches the extension: no path, no URL.
+  The extension looks the entry up in its own copy and builds the URL itself from the tab's own
+  origin and one endpoint per dev server kind: Vite's `<base>__open-in-editor?file=`, Next's
+  `/__nextjs_launch-editor?file=…&lineNumber=…&column=…&line1=…&column1=…` and webpack-dev-server's
+  `/webpack-dev-server/open-editor?fileName=` (`companion/lib/devopen.js`; the base is one the page
+  told, with no empty or dot segment). The file comes from the extension's own entry: a build
+  entry's overlay path, or a Vite error's same-origin script path (another origin's opens nothing).
+  The fetch is a `GET` with `credentials: 'omit'`, `cache: 'no-store'` and `redirect: 'error'`, its
+  body cancelled unread. It is the only place a home folder leaves in full, and only to the tab's own
+  dev server. Its `{ ok }` says the server answered 2xx, not that an editor opened: these endpoints
+  answer whatever happens (Next 404s a missing file). The editor that opens is the dev server's own
+  launch-editor, configured by the developer, as from its error overlay.
+- *Server side.* Every `dev.tabs`, `modules`, `ping`, `dev.report` and `dev.open.done` message is validated by a strict schema with
   bounded sizes, and publishing is capped at four per second per install. After hello, one that
   fails is dropped (a `dev.tabs` row by row, keeping the rows that parse) rather than closing the
   socket, which also carries Fremplay's share; every other message, and the handshake, is still
   refused with 1008. Nothing of a dropped message is logged but a count. `companion:dev` is in
   `LOCAL_ONLY_CHANNELS` and `BUILTIN_ONLY_CHANNELS`: paired devices and registry widgets never get
-  it, and the widget's focus, clear and report commands are loopback-only and name only a tab id the install
+  it, and the widget's focus, clear, report and open commands are loopback-only and name only a tab id the install
   reported. Fremdev is negotiated by capability with the protocol still at 2, so it widens nothing
   for a 0.5.0 server. A page's own text can be sensitive (an error message can quote data): it stays
   on this Mac, but it is displayed on the Edge.

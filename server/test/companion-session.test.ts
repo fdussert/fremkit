@@ -607,6 +607,24 @@ describe('CompanionSession with Fremdev', () => {
     expect(await pending).toBe('the report')
   })
 
+  it('hands a dev.open.done to Fremdev, which resolves the open it asked for', async () => {
+    const t = withDev()
+    t.hello('a', { modules: ['fremdev', 'fremdev.open'] })
+    t.session.onMessage('a', { type: 'dev.tabs', tabs: [{
+      tabId: 7, app: 'App', host: 'localhost:5173',
+      errors: { total: 1, open: 1, seen: 0, last: { text: 'TypeError', at: 1 } }, requests: { total: 0, open: 0, seen: 0, last: null },
+      history: [{ kind: 'error', id: 3, text: 'TypeError', origin: '/src/main.ts:1:1', n: 1, at: 1, state: 'open' }],
+      devServer: 'vite', server: 'up', activity: 1,
+    }] })
+    t.sent.length = 0
+    const pending = t.dev.open('a', 7, 3)
+    const ask = t.sent.find((s) => s.msg.type === 'dev.open.ask')
+    expect(ask).toMatchObject({ to: 'a', msg: { type: 'dev.open.ask', tabId: 7, entryId: 3 } })
+    const id = (ask!.msg as { id: string }).id
+    t.session.onMessage('a', { type: 'dev.open.done', id, tabId: 7, ok: true })
+    expect(await pending).toBe(true)
+  })
+
   it('forgets a Fremdev install when its device is unpaired, connected or not', () => {
     const t = withDev()
     t.hello('a', { modules: ['fremdev'] })

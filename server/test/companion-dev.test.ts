@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DEFAULT_CONFIG, type Config } from '../src/config/schema.js'
-import { CompanionDev, COMPANION_DEV_CHANNEL, createDevProvider, DEV_PUBLISH_MS, fremdevEnabled, MAX_PENDING_ASKS } from '../src/companion/dev.js'
+import { CompanionDev, COMPANION_DEV_CHANNEL, createDevProvider, DEV_PUBLISH_MS, fremdevEnabled, MAX_PENDING_ASKS, OPEN_TIMEOUT_MS } from '../src/companion/dev.js'
 import { FREMDEV_FEATURES, type DevTab, type ServerMessage } from '../src/companion/protocol.js'
 import { tr } from '../src/i18n.js'
 import type { CommandContext } from '../src/providers/types.js'
@@ -553,5 +553,140 @@ describe('Fremdev features', () => {
     t.dev.onMessage(A, { type: 'modules', modules: ['fremdev', 'fremdev.report'] })
     t.dev.onMessage(A, { type: 'dev.report', id, tabId: 7, text: 'still here' })
     expect(await report).toBe('still here')
+  })
+})
+
+describe('Fremdev open in editor', () => {
+  const config = { ...DEFAULT_CONFIG, labs: { devices: false, companion: true, fremdev: true } } as Config
+  const OPEN = ['fremdev', 'fremdev.open']
+
+  /** Tab 7 with entries 3 and 4 in its last history. */
+  function withHistory(tabId: number): DevTab {
+    return {
+      ...row(tabId),
+      history: [
+        { kind: 'error', id: 4, text: 'TypeError', origin: '/src/main.ts:1:1', n: 1, at: 1_000, state: 'open' },
+        { kind: 'build', id: 3, text: 'Unexpected token', file: '~/app/src/App.vue', line: 12, col: 3, n: 1, at: 900, state: 'open' },
+      ],
+    }
+  }
+
+  function asked(send: ReturnType<typeof setup>['send']) {
+    return send.mock.calls.filter(([, m]) => m.type === 'dev.open.ask') as Array<[string, Extract<ServerMessage, { type: 'dev.open.ask' }>]>
+  }
+
+  function two(opts: { enabled?: () => boolean } = {}) {
+    const t = setup(opts)
+    t.dev.connect(A, 'Chrome', OPEN)
+    t.dev.connect(B, 'Brave', OPEN)
+    t.tabs(A, [withHistory(7)])
+    t.tabs(B, [withHistory(7)])
+    return t
+  }
+
+  it('is one of the features a control depends on', () => {
+    expect(FREMDEV_FEATURES).toContain('fremdev.open')
+  })
+
+  it('asks the device named only, and a matching dev.open.done resolves true', async () => {
+    const t = two()
+    const pending = t.dev.open(A, 7, 3)
+    const calls = asked(t.send)
+    expect(calls.map(([to]) => to)).toEqual([A])
+    const [, msg] = calls[0]
+    expect(msg).toEqual({ type: 'dev.open.ask', id: expect.stringMatching(/^[0-9a-f-]{36}$/), tabId: 7, entryId: 3 })
+    // Another browser, or a report with that id, is not its answer.
+    t.dev.onMessage(B, { type: 'dev.open.done', id: msg.id, tabId: 7, ok: true })
+    t.dev.onMessage(A, { type: 'dev.report', id: msg.id, tabId: 7, text: 'not this' })
+    t.dev.onMessage(A, { type: 'dev.open.done', id: msg.id, tabId: 7, ok: true })
+    expect(await pending).toBe(true)
+  })
+
+  it('resolves to the answer\'s ok', async () => {
+    const t = two()
+    const pending = t.dev.open(A, 7, 4)
+    t.dev.onMessage(A, { type: 'dev.open.done', id: asked(t.send)[0][1].id, tabId: 7, ok: false })
+    expect(await pending).toBe(false)
+  })
+
+  it('resolves false, sending nothing, without fremdev.open, for an entry not in the tab\'s last history, or with Fremdev off', async () => {
+    let on = true
+    const t = two({ enabled: () => on })
+    t.dev.connect(B, 'Brave', ['fremdev', 'fremdev.report'])
+    t.tabs(B, [withHistory(7)])
+    expect(await t.dev.open(B, 7, 3)).toBe(false)
+    // Entry 2 has left the ring (Review Focus 3), and tab 8 was never reported.
+    expect(await t.dev.open(A, 7, 2)).toBe(false)
+    expect(await t.dev.open(A, 8, 3)).toBe(false)
+    // A history that moved on since: entry 3 is no longer there.
+    t.tabs(A, [{ ...withHistory(7), history: withHistory(7).history.slice(0, 1) }])
+    expect(await t.dev.open(A, 7, 3)).toBe(false)
+    on = false
+    expect(await t.dev.open(A, 7, 4)).toBe(false)
+    expect(asked(t.send)).toEqual([])
+  })
+
+  it('resolves false after 5 000 ms without an answer', async () => {
+    expect(OPEN_TIMEOUT_MS).toBe(5_000)
+    const t = two()
+    let settled: boolean | undefined
+    void t.dev.open(A, 7, 3).then((v) => { settled = v })
+    await vi.advanceTimersByTimeAsync(4_999)
+    expect(settled).toBeUndefined()
+    await vi.advanceTimersByTimeAsync(1)
+    expect(settled).toBe(false)
+  })
+
+  describe('the open command', () => {
+    function provider() {
+      const t = two()
+      return { ...t, provider: createDevProvider({ dev: t.dev, config: () => config }) }
+    }
+    const payload = { deviceId: A, tabId: 7, instanceId: 'dev-1', entryId: 3 }
+
+    it('refuses a caller that is not this Mac', async () => {
+      const t = provider()
+      await expect(t.provider.commands!.open(payload, PAIRED)).rejects.toThrow(tr(config.locale, 'provider.localOnly'))
+      await expect(t.provider.commands!.open(payload, undefined)).rejects.toThrow(tr(config.locale, 'provider.localOnly'))
+      expect(asked(t.send)).toEqual([])
+    })
+
+    it('refuses an entry id out of bounds, missing or with an extra key', async () => {
+      const t = provider()
+      const bad = [
+        { ...payload, entryId: 0 },
+        { ...payload, entryId: 2_147_483_648 },
+        { ...payload, entryId: 1.5 },
+        { deviceId: A, tabId: 7, instanceId: 'dev-1' },
+        { ...payload, url: 'http://localhost:5173/__open-in-editor' },
+      ]
+      for (const p of bad) {
+        await expect(t.provider.commands!.open(p, LOCAL)).rejects.toThrow(tr(config.locale, 'provider.invalidPayload'))
+      }
+      expect(asked(t.send)).toEqual([])
+    })
+
+    it('answers { ok: true } when the extension says so, and { ok: false, error } otherwise', async () => {
+      const t = provider()
+      const done = t.provider.commands!.open(payload, LOCAL)
+      t.dev.onMessage(A, { type: 'dev.open.done', id: asked(t.send)[0][1].id, tabId: 7, ok: true })
+      expect(await done).toEqual({ ok: true })
+
+      const refused = t.provider.commands!.open(payload, LOCAL)
+      t.dev.onMessage(A, { type: 'dev.open.done', id: asked(t.send)[1][1].id, tabId: 7, ok: false })
+      expect(await refused).toEqual({ ok: false, error: tr(config.locale, 'companion.devOpenFailed') })
+      expect(await t.provider.commands!.open({ ...payload, entryId: 9 }, LOCAL))
+        .toEqual({ ok: false, error: tr(config.locale, 'companion.devOpenFailed') })
+    })
+
+    it('says to turn Fremdev on while it is off', async () => {
+      const off = { ...config, labs: { ...config.labs, fremdev: false } } as Config
+      const t = setup({ enabled: () => fremdevEnabled(off) })
+      t.dev.connect(A, 'Chrome', OPEN)
+      t.tabs(A, [withHistory(7)])
+      const p = createDevProvider({ dev: t.dev, config: () => off })
+      expect(await p.commands!.open(payload, LOCAL)).toEqual({ ok: false, error: tr(off.locale, 'companion.devDisabled') })
+      expect(asked(t.send)).toEqual([])
+    })
   })
 })

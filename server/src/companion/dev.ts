@@ -17,7 +17,7 @@ import { INSTANCE_ID_MAX, type Config } from '../config/schema.js'
 import { tr, type MessageKey } from '../i18n.js'
 import { pbPasteboard, type Pasteboard } from '../providers/clipboard.js'
 import type { CommandContext, Provider } from '../providers/types.js'
-import { FREMDEV_FEATURES, FREMDEV_MODULE, FREMDEV_REPORT_MODULE, type DevTab, type ExtensionMessage, type ServerMessage } from './protocol.js'
+import { FREMDEV_FEATURES, FREMDEV_MODULE, FREMDEV_OPEN_MODULE, FREMDEV_REPORT_MODULE, type DevTab, type ExtensionMessage, type ServerMessage } from './protocol.js'
 
 export const COMPANION_DEV_CHANNEL = 'companion:dev'
 
@@ -30,6 +30,9 @@ export const DEV_PUBLISH_MS = 250
 
 /** How long a report is waited for before the command gives up. */
 export const REPORT_TIMEOUT_MS = 5_000
+
+/** How long the extension's word on an open-in-editor request is waited for. */
+export const OPEN_TIMEOUT_MS = 5_000
 
 /** At most this many asks (reports and the like) waited for per install: one more is refused rather than queued. */
 export const MAX_PENDING_ASKS = 8
@@ -67,10 +70,10 @@ export interface CompanionDevOptions {
   pairedCount: () => number
 }
 
-export type DevMessage = Extract<ExtensionMessage, { type: 'modules' | 'dev.tabs' | 'ping' | 'dev.report' }>
+export type DevMessage = Extract<ExtensionMessage, { type: 'modules' | 'dev.tabs' | 'ping' | 'dev.report' | 'dev.open.done' }>
 
 /** The messages that answer an ask, matched to it by their `id` and `tabId`. */
-export type DevAnswerType = 'dev.report'
+export type DevAnswerType = 'dev.report' | 'dev.open.done'
 export type DevAnswer = Extract<DevMessage, { type: DevAnswerType }>
 
 interface PendingAsk {
@@ -185,6 +188,7 @@ export class CompanionDev {
         // Only proves the socket alive; nothing to answer.
         return
       case 'dev.report':
+      case 'dev.open.done':
         return answered(install, msg)
       case 'modules': {
         const on = msg.modules.includes(FREMDEV_MODULE)
@@ -229,6 +233,19 @@ export class CompanionDev {
   report(deviceId: string, tabId: number, stack: boolean): Promise<string | null> {
     return this.ask(deviceId, tabId, FREMDEV_REPORT_MODULE, 'dev.report', (id) => ({ type: 'dev.report.ask', id, tabId, stack }), REPORT_TIMEOUT_MS)
       .then((msg) => (msg?.type === 'dev.report' ? msg.text : null))
+  }
+
+  /**
+   * Asks the install to open the entry's file in the editor, through the tab's dev server. False,
+   * sending nothing, unless the install is reachable with `fremdev.open` and the tab's last reported
+   * history holds an entry with that id (one that left the ring is not asked for); false too on no
+   * answer within `OPEN_TIMEOUT_MS`. True means the dev server answered, not that an editor opened.
+   */
+  open(deviceId: string, tabId: number, entryId: number): Promise<boolean> {
+    const tab = this.reachableWith(deviceId, tabId, FREMDEV_OPEN_MODULE)?.tabs.find((t) => t.tabId === tabId)
+    if (!tab?.history.some((e) => e.id === entryId)) return Promise.resolve(false)
+    return this.ask(deviceId, tabId, FREMDEV_OPEN_MODULE, 'dev.open.done', (id) => ({ type: 'dev.open.ask', id, tabId, entryId }), OPEN_TIMEOUT_MS)
+      .then((msg) => msg?.type === 'dev.open.done' && msg.ok)
   }
 
   /** `labs.companion` or `labs.fremdev` may have changed: the snapshot says so. */
@@ -383,6 +400,8 @@ const DevCommandSchema = z.strictObject({
 
 const ReportCommandSchema = DevCommandSchema.extend({ stack: z.boolean() })
 
+const OpenCommandSchema = DevCommandSchema.extend({ entryId: z.number().int().min(1).max(2_147_483_647) })
+
 type Result = { ok: true } | { ok: false; error: string }
 
 export interface DevProviderOptions {
@@ -446,6 +465,13 @@ export function createDevProvider(opts: DevProviderOptions): Provider<DevSnapsho
           return failed('companion.devReportFailed')
         }
         return { ok: true }
+      },
+      /** Asks the browser to open the entry's file in the editor, through the tab's dev server. */
+      async open(payload: unknown, ctx?: CommandContext): Promise<Result> {
+        guard(ctx)
+        const { deviceId, tabId, entryId } = parse(payload, OpenCommandSchema)
+        if (!dev.snapshot().enabled) return failed('companion.devDisabled')
+        return (await dev.open(deviceId, tabId, entryId)) ? { ok: true } : failed('companion.devOpenFailed')
       },
     },
   }

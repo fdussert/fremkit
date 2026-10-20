@@ -24,6 +24,7 @@ interface Logic {
   hasUnseen(tab: unknown): boolean
   rowsOf(snapshot: unknown): Row[]
   hasFeature(row: unknown, name: string): boolean
+  openable(row: unknown, entry: unknown): boolean
   summaryOf(snapshot: unknown): { light: Light; seen: boolean; errors: number }
   onMac(loc: unknown): boolean
   entryView(entry: unknown): EntryView | null
@@ -238,6 +239,29 @@ describe('fremdev/logic.js', () => {
     expect(hasFeature(rows[1], 'fremdev.open')).toBe(false)
     expect(hasFeature(null, 'fremdev.open')).toBe(false)
     expect(hasFeature({ features: 'fremdev.open' }, 'fremdev.open')).toBe(false)
+  })
+
+  it('openable: a build entry with a file, or a Vite error thrown on the page\'s origin, for an install with fremdev.open', async () => {
+    const { openable } = await loadLogic()
+    const row = (devServer: string | null, features = ['fremdev.open']) => ({ devServer, features })
+    const build = { kind: 'build', id: 1, text: 'x', file: '~/app/src/App.vue', line: 1, col: 1, n: 1, at: 1, state: 'open' }
+    const error = (origin: string | null) => ({ kind: 'error', id: 2, text: 'x', origin, n: 1, at: 1, state: 'open' })
+    expect(openable(row('next'), build)).toBe(true)
+    expect(openable(row(null), build)).toBe(true)
+    expect(openable(row('vite'), error('/src/main.ts:1:1'))).toBe(true)
+    // Not without the feature, nor for a build entry with no file.
+    expect(openable(row('vite', []), build)).toBe(false)
+    expect(openable(row('vite', []), error('/src/main.ts:1:1'))).toBe(false)
+    expect(openable(row('vite'), { ...build, file: null })).toBe(false)
+    // An error only under Vite, and only on the page's own origin.
+    expect(openable(row('next'), error('/_next/static/chunks/app/page.js:1:2'))).toBe(false)
+    expect(openable(row('webpack'), error('/main.js:1:2'))).toBe(false)
+    expect(openable(row('vite'), error('cdn.example.com/lib.js:1:2'))).toBe(false)
+    expect(openable(row('vite'), error('//evil.example/x.js:1:1'))).toBe(false)
+    expect(openable(row('vite'), error(null))).toBe(false)
+    expect(openable(row('vite'), { kind: 'request', id: 3, method: 'GET', path: '/api', status: 500, n: 1, at: 1, state: 'open' })).toBe(false)
+    expect(openable(null, build)).toBe(false)
+    expect(openable(row('vite'), null)).toBe(false)
   })
 
   it('rowsOf carries the install\'s report flag onto each of its rows, false when absent', async () => {

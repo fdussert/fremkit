@@ -24,6 +24,7 @@
 
 import { BUILTIN_PERMISSION_ORIGINS, FREMKIT_EXCLUDES, inOrigins, isDevUrl, parsePattern } from './lib/devhosts.js'
 import { boundFrames, clip, isNoise, MAX_FRAME, MAX_TEXT, methodOf, pathOf } from './lib/devlog.js'
+import { editorUrl } from './lib/devopen.js'
 import { buildReport, reportMessage } from './lib/devreport.js'
 import { DEV_SERVERS, emptyTab, fremdevSupport, reduce, restoredTabs, sessionTabs, Throttle, validBase, wireTabs } from './lib/devtabs.js'
 import * as protocol from './lib/protocol.js'
@@ -50,15 +51,17 @@ const SERVER_GONE = ['net::ERR_CONNECTION_REFUSED', 'net::ERR_CONNECTION_RESET',
 const REQUEST_FILTER = { urls: ['http://*/*', 'https://*/*'] }
 
 const validId = (id) => Number.isInteger(id) && id >= 0
-/** A `dev.report.ask`'s id, which the answer carries back: the server's UUID. */
+/** A `dev.report.ask`'s or `dev.open.ask`'s id, which the answer carries back: the server's UUID. */
 const REPORT_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 /** The module that says this install answers `dev.report.ask` (FREMDEV_REPORT_MODULE on the server). */
 const REPORT_MODULE = 'fremdev.report'
+/** The open-in-editor request: no cookie, nothing cached, no redirect followed, its body never read. */
+const OPEN_INIT = { method: 'GET', credentials: 'omit', cache: 'no-store', redirect: 'error' }
 /**
  * The modules of the features a control on the Edge depends on (FREMDEV_FEATURES on the server),
  * announced after the report's while Fremdev is on. Each feature appends its own.
  */
-export const FEATURE_MODULES = ['fremdev.build']
+export const FEATURE_MODULES = ['fremdev.build', 'fremdev.open']
 const cleanPatterns = (list) =>
   Array.isArray(list) ? [...new Set(list.map((p) => parsePattern(p)?.pattern).filter(Boolean))] : []
 
@@ -148,6 +151,8 @@ export function createFremdev({
   t = (key, ...subs) => api.i18n?.getMessage(key, subs.map(String)) || key,
   time = (ms) => new Date(ms).toLocaleTimeString(),
   date = (ms) => new Date(ms).toLocaleString(),
+  // The open-in-editor request to the tab's own dev server (lib/devopen.js).
+  fetch = globalThis.fetch.bind(globalThis),
 }) {
   let on = false
   let patterns = []
@@ -307,6 +312,26 @@ export function createFremdev({
     queue = run.catch(() => undefined)
     return run
   }
+  /**
+   * Asks the tab's dev server to open the entry's file: the entry looked up by id in this install's
+   * own copy of the tab, the URL built from that tab's origin and that entry (lib/devopen.js). An
+   * entry the ring no longer holds, or a tab that went to another origin since (its history is
+   * reset), names no URL and fetches nothing. `ok` is that the server answered 2xx.
+   */
+  async function openInEditor(tabId, entryId) {
+    const tab = tabs[String(tabId)]
+    const entry = Number.isInteger(entryId) ? tab?.history?.find((e) => e.id === entryId) : undefined
+    const url = entry ? editorUrl(tab, entry) : null
+    if (url === null) return false
+    try {
+      const res = await fetch(url, OPEN_INIT)
+      res.body?.cancel().catch(() => undefined)
+      return res.ok === true
+    } catch {
+      return false
+    }
+  }
+
   // Turning off unregisters the scripts for the next loads; a page already open keeps its hook
   // until it reloads, and the worker drops whatever it still sends.
   const sync = ({ inject }) =>
@@ -543,8 +568,8 @@ export function createFremdev({
     },
 
     /**
-     * `dev.focus`, `dev.clear` and `dev.report.ask`: only for a tab this install has a row for. A
-     * report asked for another tab gets no answer, and the server's wait times out.
+     * `dev.focus`, `dev.clear`, `dev.report.ask` and `dev.open.ask`: only for a tab this install has
+     * a row for. An ask for another tab gets no answer, and the server's wait times out.
      */
     async onServer(msg) {
       await loaded
@@ -554,6 +579,13 @@ export function createFremdev({
         if (support !== 'yes' || typeof msg.id !== 'string' || !REPORT_ID_RE.test(msg.id)) return
         const fmt = { stack: msg.stack === true, now: now(), t, time, date }
         return void send(reportMessage(msg.id, msg.tabId, tabs[String(msg.tabId)], fmt))
+      }
+      if (msg.type === 'dev.open.ask') {
+        if (support !== 'yes' || typeof msg.id !== 'string' || !REPORT_ID_RE.test(msg.id)) return
+        const ok = await openInEditor(msg.tabId, msg.entryId)
+        // The socket may have closed while the dev server answered: the ask is abandoned there.
+        if (support === 'yes') send({ type: 'dev.open.done', id: msg.id, tabId: msg.tabId, ok })
+        return
       }
       if (msg.type !== 'dev.focus') return
       const tab = await api.tabs.get(msg.tabId).catch(() => null)
