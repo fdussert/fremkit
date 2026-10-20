@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The launcher icon's foreground: the dunes and the F. Drawn from site/assets/icon.svg (1024 units, its rounded square at 100..924) scaled
+     so that square fills the 72 dp an adaptive icon's mask shows; the F stays inside the 66 dp
+     safe zone. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group
+        android:scaleX="0.087379"
+        android:scaleY="0.087379"
+        android:translateX="9.2621"
+        android:translateY="9.2621">
+        <path
+            android:fillColor="#9A7540"
+            android:pathData="M -100,878 L 100,878 C 190,872 250,840 320,826 C 380,814 440,822 510,842 C 600,868 700,886 780,892 C 840,896 890,898 924,898 L 1124,898 L 1124,1240 L -100,1240 Z" />
+        <path
+            android:fillColor="#D9B36A"
+            android:pathData="M -100,906 L 100,906 C 268,902 410,882 500,848 C 566,823 600,782 660,770 C 690,776 730,800 760,830 C 812,878 872,890 924,888 L 1124,888 L 1124,1240 L -100,1240 Z" />
+        <path
+            android:fillColor="#D9B36A"
+            android:pathData="M252,262 H658 A12,12 0 0 1 670,274 V342 A12,12 0 0 1 658,354 H252 A12,12 0 0 1 240,342 V274 A12,12 0 0 1 252,262 Z" />
+        <path
+            android:fillColor="#9A7540"
+            android:pathData="M670,262 H772 A12,12 0 0 1 784,274 V342 A12,12 0 0 1 772,354 H670 A12,12 0 0 1 658,342 V274 A12,12 0 0 1 670,262 Z" />
+        <path
+            android:fillColor="#EEF2F8"
+            android:pathData="M252,410 H600 A12,12 0 0 1 612,422 V490 A12,12 0 0 1 600,502 H252 A12,12 0 0 1 240,490 V422 A12,12 0 0 1 252,410 Z" />
+        <path
+            android:fillColor="#EEF2F8"
+            android:pathData="M252,262 H320 A12,12 0 0 1 332,274 V626 A12,12 0 0 1 320,638 H252 A12,12 0 0 1 240,626 V274 A12,12 0 0 1 252,262 Z" />
+    </group>
+</vector>
