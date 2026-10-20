@@ -564,6 +564,7 @@ export const fr: Record<string, string> = {
 
   'admin.devices.enable': 'Autoriser une tablette sur le réseau local',
   'admin.devices.firewall': 'macOS peut demander d’autoriser les connexions entrantes pour Fremkit : acceptez.',
+  'admin.devices.androidApk': 'Télécharger l’app Fremkit pour tablette Android (APK, sur GitHub)',
   'admin.devices.portInUse': 'Le port {port} est déjà utilisé par une autre application : l’accès reste désactivé.',
   'admin.devices.qr': 'QR code d’appairage',
   'admin.devices.scan': 'Scannez ce QR code avec la tablette, ou saisissez ce code :',

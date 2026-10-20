@@ -35,7 +35,7 @@
     <string name="pairing_refused">Le Mac a refusé le code.</string>
     <string name="pairing_wrong_mac">Ce n’est pas le Mac du code</string>
     <string name="pairing_invalid_request">Le Mac n’a pas accepté la demande. Mettez Fremkit à jour sur le Mac.</string>
-    <string name="pairing_no_code">Le Mac n’affiche plus de code d’appairage. Créez-en un nouveau dans Fremkit et scannez-le.</string>
+    <string name="pairing_no_code">Le Mac n’affiche plus de code d’appairage. Créez-en un nouveau dans Fremkit.</string>
     <string name="pairing_not_saved">L’appairage n’a pas pu être enregistré sur cette tablette.</string>
     <string name="pairing_replace_title">Remplacer l’appairage avec %1$s ?</string>
     <string name="pairing_replace_body">Cette tablette affichera à la place le tableau de bord de %1$s.</string>

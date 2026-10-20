@@ -43,6 +43,10 @@ The name is the Fremen survival kit from *Dune*.
 - **A native helper** — a menu bar app that drives the Edge's touch panel with its own HID
   driver, fences the mouse out of the display, shows the dashboard in a kiosk window and
   supervises the server.
+- **An Android app** for a spare tablet, the iPad app's counterpart: the same pairing by QR code
+  or typed code, the same pinned key, a screen of its own. An APK attached to each release (no
+  Play Store, nothing from Google Play inside), its signing fingerprint published. See
+  [docs/devices.md](docs/devices.md#android).
 - **A widget marketplace** — *Sietch* in the admin installs widgets from a curated registry,
   showing what each one will be allowed to do and asking again when an update wants more.
 - **Backup and restore** of the whole dashboard, as a zip that never carries a secret, and a
@@ -511,7 +515,7 @@ itself (Sparkle's system profile is off).
 | A shortcut button to a NAS or a router has no icon | Expected: favicons of private and local addresses are not fetched. The button still works |
 | The admin shows an old version of itself | Reopen it, or Cmd+R in its window; it keeps one web view for the helper's lifetime |
 | Widgets break after pulling a new version | Restart the server: the widget bridge is read once, at start |
-| The iPad app does not list the Mac | The network may not relay Bonjour: scan the QR code the admin shows, or put both on the same Wi-Fi — [details](docs/devices.md#troubleshooting) |
+| The iPad or Android app does not list the Mac | The network may not relay Bonjour: scan the QR code the admin shows, or put both on the same Wi-Fi — [details](docs/devices.md#troubleshooting) |
 | The disk map shows locked folders | Give "Fremkit" (or "Fremkit Helper" for a source install) Full Disk Access, or leave them unmeasured |
 | The disk map says "du (no helper)" | Expected under `pnpm dev`: the bundled `fremkit-scan` is only there under the helper |
 

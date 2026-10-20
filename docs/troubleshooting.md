@@ -51,6 +51,8 @@ the issue is public.
 | "Server: external" | Something already answers port 4242, so the helper steps aside | Expected under `pnpm dev`; otherwise stop the stray server, or turn *Manage the server* off |
 | Brightness: "not adjustable on this display (DDC)" | The display does not answer DDC/CI on this cable or this Mac | See [Brightness says not adjustable](#brightness-says-not-adjustable) |
 | The iPad app does not list the Mac | The router or access point does not relay Bonjour (mDNS) between Ethernet and Wi-Fi, or between bands or VLANs; or the Mac is on both Wi-Fi and Ethernet | Scan the QR code instead (it carries the address), or put both on the same Wi-Fi — [details](#the-ipad-app-does-not-find-the-mac) |
+| The Android app does not list the Mac, or loses it after the Mac's address changed | Multicast dropped by the Wi-Fi driver or the access point, or a `.local` name this Android does not resolve | Scan the QR code, which needs neither — [details](#the-android-app-does-not-find-the-mac) |
+| The Android app shows "Update Android System WebView" | The tablet's WebView is older than 82 | Update **Android System WebView** from the tablet's app store, then **Check again** — [details](#the-android-app-does-not-find-the-mac) |
 | The disk map says folders could not be read | macOS privacy protection (TCC) refuses the scan some folders | Give Fremkit (or Fremkit Helper, from a source install) **Full Disk Access**, then scan again — [details](#the-disk-map-says-folders-could-not-be-read) |
 | The disk map is slow and shows no files, "du (no helper)" | The server runs without the helper, or the helper predates the disk map | Rebuild and reinstall the helper — [details](#the-disk-map-uses-du) |
 
@@ -415,6 +417,24 @@ one it pinned, which is what **Reset the certificate** does: **Pair again** as w
 not reset it, check the network, another machine may hold the Mac's old address). One that cannot
 reach its Mac finds it again by itself when the Mac wakes or changes address.
 
+## The Android app does not find the Mac
+
+Everything [above](#the-ipad-app-does-not-find-the-mac) holds for Android too, the macOS firewall
+prompt included; Android has no Local Network permission to refuse. What differs
+([devices.md](devices.md#troubleshooting-on-android)):
+
+- The list of Macs relies on multicast, which some Android Wi-Fi drivers and access points drop,
+  more often while the tablet saves power. The app holds Android's multicast lock while it looks;
+  if the list stays empty, scan the **QR code**.
+- Not every Android version resolves a Mac's `.local` name. A paired tablet then reaches the Mac
+  by its last address, its other addresses or what it hears on the network; if all of those fail,
+  scan a new code.
+- **"Update Android System WebView"**: the dashboard needs WebView 82 or later. Update **Android
+  System WebView** from the tablet's app store (the screen's button opens its page in the system
+  settings), then **Check again**.
+- Developing over `adb reverse`, the Mac answers **421**: a request that reaches port 4243 over the
+  loopback is refused by design. Use the local network.
+
 ## Brightness says not adjustable
 
 Fremkit sets the brightness of the display the kiosk is on with DDC/CI, the monitor control
@@ -435,7 +455,7 @@ menu, the `brightness` widget and *Settings → your screen → Brightness* all 
 - **"Fremkit Helper is not running"** (widget, admin) — brightness needs the helper; a browser
   alone cannot reach the display.
 - **"the tablet is not showing this screen right now"** — a device screen's brightness is set by
-  the Fremkit app on the iPad bound to it, which reports its level every few seconds. Open the app
+  the Fremkit app on the tablet bound to it, which reports its level every few seconds. Open the app
   and show that screen; the settings are kept meanwhile and apply as soon as it reports.
 
 *Follow the Mac* needs a built-in display to follow: a Mac mini or Mac Studio has none, and a

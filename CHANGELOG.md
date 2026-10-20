@@ -17,6 +17,16 @@ tagged `vX.Y.Z`.
 - **Tile icons.** A tile's title can show an icon: a pictogram from the built-in set, or your own
   SVG, PNG or WebP, tinted to the theme or in its own colours. Under **/admin**, select a tile,
   then **Icon**. Fremkit ships no brand logos; the marks you import stay in your installation.
+- **The Fremkit app for Android tablets.** It shows a screen of your dashboard on an Android tablet
+  (Android 9 or later) as the iPad app does: pair it by scanning the QR code in **Settings →
+  Devices**, or by typing the code after checking the four words; it finds the Mac again when its
+  address changes, follows the brightness set for its screen (move the tablet's own slider and
+  yours wins, and the admin follows), runs full screen and keeps the screen on. Its settings,
+  opened over the dashboard with the gesture that opens the admin on the Edge, can pin the app to
+  the screen with Android's screen pinning, or forget the Mac. The APK comes with each release
+  rather than from the Play Store, and needs nothing from Google Play: **Settings → Devices** and the
+  site link to it, and the site shows its signing certificate's fingerprint to check it against.
+  Obtainium can keep it up to date.
 
 ### Changed
 
