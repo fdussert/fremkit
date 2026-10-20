@@ -221,8 +221,8 @@ describe('parseExtensionMessage', () => {
       tabId: 1,
       app: 'My app',
       host: 'localhost:5173',
-      errors: { total: 3, open: 1, last: { text: 'TypeError: x is undefined', at: 1_760_000_000_000 } },
-      requests: { total: 10, open: 0, last: { path: '/api/items', status: 500, at: 1_760_000_000_000 } },
+      errors: { total: 3, open: 1, seen: 0, last: { text: 'TypeError: x is undefined', at: 1_760_000_000_000 } },
+      requests: { total: 10, open: 0, seen: 0, last: { path: '/api/items', status: 500, at: 1_760_000_000_000 } },
       server: 'up',
       activity: 1_760_000_000_000,
       ...over,
@@ -231,18 +231,21 @@ describe('parseExtensionMessage', () => {
 
     it('parses a dev.tabs message with two rows', () => {
       expect(tabs([row(), row({ tabId: 2 })])?.type).toBe('dev.tabs')
-      expect(tabs([row({ errors: { total: 0, open: 0, last: null }, requests: { total: 0, open: 0, last: null } })])).not.toBeNull()
+      expect(tabs([row({ errors: { total: 0, open: 0, seen: 0, last: null }, requests: { total: 0, open: 0, seen: 0, last: null } })])).not.toBeNull()
+      expect(tabs([row({ errors: { total: 3, open: 2, seen: 2, last: null } })])).not.toBeNull()
     })
 
-    it('refuses 33 tabs, a long error text, an unknown key, open above total and a path with a query', () => {
+    it('refuses 33 tabs, a long error text, an unknown key, open above total, seen above open or missing, and a path with a query', () => {
       expect(tabs(Array.from({ length: 33 }, (_, i) => row({ tabId: i })))).toBeNull()
-      expect(tabs([row({ errors: { total: 1, open: 1, last: { text: 'x'.repeat(301), at: 1 } } })])).toBeNull()
+      expect(tabs([row({ errors: { total: 1, open: 1, seen: 0, last: { text: 'x'.repeat(301), at: 1 } } })])).toBeNull()
       expect(tabs([row({ extra: 1 })])).toBeNull()
-      expect(tabs([row({ errors: { total: 1, open: 2, last: null } })])).toBeNull()
-      expect(tabs([row({ requests: { total: 1, open: 0, last: { path: '/a?b=1', status: 200, at: 1 } } })])).toBeNull()
-      expect(tabs([row({ requests: { total: 1, open: 0, last: { path: '/a#b', status: 200, at: 1 } } })])).toBeNull()
-      expect(tabs([row({ requests: { total: 1, open: 0, last: { path: 'a', status: 200, at: 1 } } })])).toBeNull()
-      expect(tabs([row({ requests: { total: 1, open: 0, last: { path: '/a', status: 600, at: 1 } } })])).toBeNull()
+      expect(tabs([row({ errors: { total: 1, open: 2, seen: 0, last: null } })])).toBeNull()
+      expect(tabs([row({ errors: { total: 2, open: 1, seen: 2, last: null } })])).toBeNull()
+      expect(tabs([row({ requests: { total: 1, open: 1, last: null } })])).toBeNull()
+      expect(tabs([row({ requests: { total: 1, open: 0, seen: 0, last: { path: '/a?b=1', status: 200, at: 1 } } })])).toBeNull()
+      expect(tabs([row({ requests: { total: 1, open: 0, seen: 0, last: { path: '/a#b', status: 200, at: 1 } } })])).toBeNull()
+      expect(tabs([row({ requests: { total: 1, open: 0, seen: 0, last: { path: 'a', status: 200, at: 1 } } })])).toBeNull()
+      expect(tabs([row({ requests: { total: 1, open: 0, seen: 0, last: { path: '/a', status: 600, at: 1 } } })])).toBeNull()
       expect(tabs([row({ host: 'bad host/' })])).toBeNull()
       expect(tabs([row({ server: 'sideways' })])).toBeNull()
     })

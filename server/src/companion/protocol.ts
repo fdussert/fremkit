@@ -158,11 +158,15 @@ const MAX_COUNT = 1_000_000
 const Count = z.number().int().min(0).max(MAX_COUNT)
 const Stamp = z.number().finite().min(0)
 
-/** A tab's errors or requests: counts, `open` being the ones not yet dismissed or answered. */
+/**
+ * A tab's errors or requests: counts, `open` being the ones not resolved since the last load or
+ * hot update, `seen` the open ones the user marked seen on the Edge.
+ */
 function tally<T extends z.ZodType>(last: T) {
   return z
-    .strictObject({ total: Count, open: Count, last: last.nullable() })
+    .strictObject({ total: Count, open: Count, seen: Count, last: last.nullable() })
     .refine((t) => t.open <= t.total, { message: 'open above total' })
+    .refine((t) => t.seen <= t.open, { message: 'seen above open' })
 }
 
 export const DevTabSchema = z.strictObject({
@@ -249,7 +253,7 @@ export type ServerMessage =
   | { type: 'revoked' }
   /** The Edge asks the tab to come to the front. */
   | { type: 'dev.focus'; tabId: number }
-  /** The Edge dismisses the tab's open errors. */
+  /** The Edge marks the tab's open errors and requests seen. */
   | { type: 'dev.clear'; tabId: number }
 
 /** The JSON of a message within the size limit; undefined when over it or not JSON. */

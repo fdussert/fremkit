@@ -16,6 +16,11 @@
   function open(tally) {
     return tally && typeof tally.open === 'number' ? tally.open : 0
   }
+  /** The open ones the user has not marked seen (×). */
+  function unseen(tally) {
+    var seen = tally && typeof tally.seen === 'number' ? tally.seen : 0
+    return Math.max(0, open(tally) - seen)
+  }
 
   /**
    * One of 'loading' (no snapshot yet), 'off' (`labs.companion` off), 'unpaired' (no extension
@@ -33,17 +38,41 @@
     return rowsOf(snap).length === 0 ? 'empty' : 'rows'
   }
 
-  /** 'red': an open error or a dev server that does not answer; 'orange': an open failed request. */
+  /**
+   * A tab's light as `{ light, seen }`. 'red': an unseen open error or a dev server that does not
+   * answer (a server down is never "seen"); 'orange': an unseen open failed request. With nothing
+   * unseen, open issues the user marked seen still colour the light, `seen` true (drawn hollow);
+   * 'green' only for a page with nothing open since its last load or hot update.
+   */
+  function stateOfTab(tab) {
+    if (!tab) return { light: 'green', seen: false }
+    if (unseen(tab.errors) > 0 || tab.server === 'down') return { light: 'red', seen: false }
+    if (unseen(tab.requests) > 0) return { light: 'orange', seen: false }
+    if (open(tab.errors) > 0) return { light: 'red', seen: true }
+    if (open(tab.requests) > 0) return { light: 'orange', seen: true }
+    return { light: 'green', seen: false }
+  }
+
+  /** The colour alone: 'red', 'orange' or 'green' (see `stateOfTab` for whether it is seen). */
   function lightOf(tab) {
-    if (!tab) return 'green'
-    if (open(tab.errors) > 0 || tab.server === 'down') return 'red'
-    if (open(tab.requests) > 0) return 'orange'
-    return 'green'
+    return stateOfTab(tab).light
+  }
+
+  /** Unseen red, unseen orange, seen red, seen orange, green. */
+  function groupOf(row) {
+    if (row.light === 'green') return 4
+    return (row.seen ? 2 : 0) + RANK[row.light]
+  }
+
+  /** Whether anything in the tab is open and not yet marked seen: what the × is for. */
+  function hasUnseen(tab) {
+    return !!tab && (unseen(tab.errors) > 0 || unseen(tab.requests) > 0)
   }
 
   /**
-   * Every dev tab of every install that has Fremdev on, as `{ ...tab, deviceId, browser, light }`:
-   * red first, then orange, then green, the latest activity first within a colour, then by tab id.
+   * Every dev tab of every install that has Fremdev on, as `{ ...tab, deviceId, browser, light,
+   * seen }`: unseen red first, then unseen orange, then the seen rows (red before orange), then
+   * green; the latest activity first within a group, then by tab id.
    */
   function rowsOf(snap) {
     if (!snap || typeof snap !== 'object' || snap.enabled === false) return []
@@ -55,25 +84,34 @@
         for (var k in tab) if (Object.prototype.hasOwnProperty.call(tab, k)) row[k] = tab[k]
         row.deviceId = install.deviceId
         row.browser = install.name
-        row.light = lightOf(tab)
+        var st = stateOfTab(tab)
+        row.light = st.light
+        row.seen = st.seen
         rows.push(row)
       })
     })
     rows.sort(function (a, b) {
-      return RANK[a.light] - RANK[b.light] || (b.activity || 0) - (a.activity || 0) || a.tabId - b.tabId
+      return groupOf(a) - groupOf(b) || (b.activity || 0) - (a.activity || 0) || a.tabId - b.tabId
     })
     return rows
   }
 
-  /** The compact form: the worst colour of all rows ('green' with none) and the open errors. */
+  /**
+   * The compact form as `{ light, seen, errors }`: the worst unseen colour; with nothing unseen, the
+   * worst seen colour, `seen` true; 'green' with neither. `errors`: the unseen open errors.
+   */
   function summaryOf(snap) {
     var rows = rowsOf(snap)
-    var light = 'green', errors = 0
+    var hot = 'green', dim = 'green', errors = 0
     rows.forEach(function (r) {
-      if (RANK[r.light] < RANK[light]) light = r.light
-      errors += open(r.errors)
+      if (r.seen) {
+        if (RANK[r.light] < RANK[dim]) dim = r.light
+      } else if (RANK[r.light] < RANK[hot]) hot = r.light
+      errors += unseen(r.errors)
     })
-    return { light: light, errors: errors }
+    if (hot !== 'green') return { light: hot, seen: false, errors: errors }
+    if (dim !== 'green') return { light: dim, seen: true, errors: errors }
+    return { light: 'green', seen: false, errors: errors }
   }
 
   /**
@@ -87,5 +125,13 @@
     return !!loc && loc.protocol !== 'https:'
   }
 
-  root.FremkitFremdev = { stateOf: stateOf, rowsOf: rowsOf, lightOf: lightOf, summaryOf: summaryOf, onMac: onMac }
+  root.FremkitFremdev = {
+    stateOf: stateOf,
+    rowsOf: rowsOf,
+    lightOf: lightOf,
+    stateOfTab: stateOfTab,
+    hasUnseen: hasUnseen,
+    summaryOf: summaryOf,
+    onMac: onMac
+  }
 })(globalThis)

@@ -152,7 +152,7 @@ export class CompanionDev {
     return this.relay(deviceId, { type: 'dev.focus', tabId })
   }
 
-  /** Dismisses the tab's open errors and requests. Same rule as `focus`. */
+  /** Marks the tab's open errors and requests seen (they stay open). Same rule as `focus`. */
   clear(deviceId: string, tabId: number): boolean {
     return this.relay(deviceId, { type: 'dev.clear', tabId })
   }

@@ -12,12 +12,14 @@ import { WidgetCatalog } from '../src/widgets/catalog.js'
 const SHIPPED = fileURLToPath(new URL('../../widgets', import.meta.url))
 
 type Light = 'red' | 'orange' | 'green'
-interface Row { tabId: number; deviceId: string; browser: string; light: Light; app: string; activity: number }
+interface Row { tabId: number; deviceId: string; browser: string; light: Light; seen: boolean; app: string; activity: number }
 interface Logic {
   stateOf(snapshot: unknown): string
   lightOf(tab: unknown): Light
+  stateOfTab(tab: unknown): { light: Light; seen: boolean }
+  hasUnseen(tab: unknown): boolean
   rowsOf(snapshot: unknown): Row[]
-  summaryOf(snapshot: unknown): { light: Light; errors: number }
+  summaryOf(snapshot: unknown): { light: Light; seen: boolean; errors: number }
   onMac(loc: unknown): boolean
 }
 
@@ -33,14 +35,16 @@ const DEV_A = '5b1f7c1e-8d4e-4b8a-9c39-0a6f2c1d7e01'
 const DEV_B = '9a0d3e44-3c1b-4f7e-8a2b-1f5e6d7c8b90'
 const DEV_C = '0c2e4a6b-8d1f-4c3e-9a5b-7d9f1b3c5e70'
 
-const tally = (open: number, total: number, last: unknown = null) => ({ open, total, last })
-function tab(tabId: number, over: { errors?: [number, number]; requests?: [number, number]; server?: 'up' | 'down'; activity?: number } = {}) {
-  const [eo, et] = over.errors ?? [0, 0]
-  const [ro, rt] = over.requests ?? [0, 0]
+const tally = (open: number, total: number, seen: number, last: unknown = null) => ({ open, total, seen, last })
+/** `[open, total]` or `[open, total, seen]` for each tally. */
+type Counts = [number, number] | [number, number, number]
+function tab(tabId: number, over: { errors?: Counts; requests?: Counts; server?: 'up' | 'down'; activity?: number } = {}) {
+  const [eo, et, es = 0] = over.errors ?? [0, 0]
+  const [ro, rt, rs = 0] = over.requests ?? [0, 0]
   return {
     tabId, app: `App ${tabId}`, host: `localhost:${5170 + tabId}`,
-    errors: tally(eo, et, et > 0 ? { text: 'TypeError: x is undefined', at: 1000 } : null),
-    requests: tally(ro, rt, rt > 0 ? { path: '/api/items', status: 500, at: 1000 } : null),
+    errors: tally(eo, et, es, et > 0 ? { text: 'TypeError: x is undefined', at: 1000 } : null),
+    requests: tally(ro, rt, rs, rt > 0 ? { path: '/api/items', status: 500, at: 1000 } : null),
     server: over.server ?? 'up',
     activity: over.activity ?? 1000,
   }
@@ -131,6 +135,41 @@ describe('fremdev/logic.js', () => {
     expect(lightOf(tab(1))).toBe('green')
   })
 
+  it('stateOfTab: issues all marked seen keep their colour, seen; anything unseen or a down server is not', async () => {
+    const { stateOfTab, hasUnseen } = await loadLogic()
+    expect(stateOfTab(tab(1, { errors: [2, 2, 2] }))).toEqual({ light: 'red', seen: true })
+    expect(stateOfTab(tab(1, { requests: [1, 1, 1] }))).toEqual({ light: 'orange', seen: true })
+    // A new error after the ×: unseen again.
+    expect(stateOfTab(tab(1, { errors: [3, 3, 2] }))).toEqual({ light: 'red', seen: false })
+    // An unseen request outranks seen errors.
+    expect(stateOfTab(tab(1, { errors: [2, 2, 2], requests: [1, 1] }))).toEqual({ light: 'orange', seen: false })
+    expect(stateOfTab(tab(1, { errors: [2, 2, 2], requests: [1, 1, 1] }))).toEqual({ light: 'red', seen: true })
+    // A server down is never seen.
+    expect(stateOfTab(tab(1, { errors: [2, 2, 2], server: 'down' }))).toEqual({ light: 'red', seen: false })
+    expect(stateOfTab(tab(1, { errors: [0, 5] }))).toEqual({ light: 'green', seen: false })
+    expect(stateOfTab(null)).toEqual({ light: 'green', seen: false })
+    expect(hasUnseen(tab(1, { errors: [2, 2, 2] }))).toBe(false)
+    expect(hasUnseen(tab(1, { errors: [2, 2, 2], requests: [1, 1] }))).toBe(true)
+    expect(hasUnseen(tab(1, { errors: [3, 3, 2] }))).toBe(true)
+    expect(hasUnseen(tab(1, { errors: [0, 3] }))).toBe(false)
+    expect(hasUnseen(null)).toBe(false)
+  })
+
+  it('rowsOf puts unseen red, unseen orange, seen red, seen orange, then green', async () => {
+    const { rowsOf } = await loadLogic()
+    const rows = rowsOf(snap([install(DEV_A, [
+      tab(1, { activity: 50 }),
+      tab(2, { requests: [1, 1, 1], activity: 40 }),
+      tab(3, { errors: [1, 1, 1], activity: 10 }),
+      tab(4, { errors: [1, 1, 1], activity: 30 }),
+      tab(5, { requests: [1, 1], activity: 1 }),
+      tab(6, { errors: [2, 2, 1], activity: 2 }),
+    ])]))
+    expect(rows.map((r) => [r.tabId, r.light, r.seen])).toEqual([
+      [6, 'red', false], [5, 'orange', false], [4, 'red', true], [3, 'red', true], [2, 'orange', true], [1, 'green', false],
+    ])
+  })
+
   it('rowsOf sorts red, orange, green, then the latest activity first, and skips installs with fremdev off', async () => {
     const { rowsOf } = await loadLogic()
     const rows = rowsOf(snap([
@@ -154,13 +193,27 @@ describe('fremdev/logic.js', () => {
 
   it('summaryOf takes the worst light and sums the open errors', async () => {
     const { summaryOf } = await loadLogic()
-    expect(summaryOf(null)).toEqual({ light: 'green', errors: 0 })
-    expect(summaryOf(snap([install(DEV_A, [])]))).toEqual({ light: 'green', errors: 0 })
-    expect(summaryOf(snap([install(DEV_A, [tab(1, { requests: [1, 1] }), tab(2, { errors: [0, 4] })])]))).toEqual({ light: 'orange', errors: 0 })
+    expect(summaryOf(null)).toEqual({ light: 'green', seen: false, errors: 0 })
+    expect(summaryOf(snap([install(DEV_A, [])]))).toEqual({ light: 'green', seen: false, errors: 0 })
+    expect(summaryOf(snap([install(DEV_A, [tab(1, { requests: [1, 1] }), tab(2, { errors: [0, 4] })])]))).toEqual({ light: 'orange', seen: false, errors: 0 })
     expect(summaryOf(snap([
       install(DEV_A, [tab(1, { errors: [2, 3] }), tab(2, { requests: [1, 1] })]),
       install(DEV_B, [tab(3, { errors: [4, 4] })]),
       install(DEV_C, [tab(4, { errors: [7, 7] })], false),
-    ]))).toEqual({ light: 'red', errors: 6 })
+    ]))).toEqual({ light: 'red', seen: false, errors: 6 })
+  })
+
+  it('summaryOf: the worst unseen colour, else the worst seen one hollow; the count is unseen errors only', async () => {
+    const { summaryOf } = await loadLogic()
+    // An unseen orange outranks a seen red.
+    expect(summaryOf(snap([install(DEV_A, [tab(1, { errors: [3, 3, 3] }), tab(2, { requests: [1, 1] })])])))
+      .toEqual({ light: 'orange', seen: false, errors: 0 })
+    expect(summaryOf(snap([install(DEV_A, [tab(1, { errors: [3, 3, 3] }), tab(2, { requests: [1, 1, 1] })])])))
+      .toEqual({ light: 'red', seen: true, errors: 0 })
+    expect(summaryOf(snap([install(DEV_A, [tab(1, { requests: [2, 2, 2] }), tab(2)])])))
+      .toEqual({ light: 'orange', seen: true, errors: 0 })
+    // Two new errors on top of three seen: red, and the count says two.
+    expect(summaryOf(snap([install(DEV_A, [tab(1, { errors: [5, 5, 3] }), tab(2, { errors: [1, 1, 1] })])])))
+      .toEqual({ light: 'red', seen: false, errors: 2 })
   })
 })

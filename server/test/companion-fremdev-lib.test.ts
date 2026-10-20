@@ -236,8 +236,9 @@ describe('devtabs', () => {
     expect(down.server).toBe('down')
     expect(reduce(down, { kind: 'server', state: 'up' }, 700).server).toBe('up')
     const cleared = reduce(tab, { kind: 'clear' }, 800)
-    expect(cleared.errors).toMatchObject({ total: 0, open: 0 })
-    expect(cleared.requests).toMatchObject({ total: 0, open: 0 })
+    expect(cleared.errors).toMatchObject({ total: 3, open: 3, seen: 3 })
+    expect(cleared.requests).toMatchObject({ total: 1, open: 1, seen: 1 })
+    expect(cleared.activity).toBe(800)
     const titled = reduce(tab, { kind: 'title', title: 'New' }, 900)
     expect(titled.title).toBe('New')
     expect(titled.activity).toBe(tab.activity)
@@ -283,8 +284,11 @@ describe('devtabs', () => {
       expect(validRow(shaped), String(t.tabId)).toBe(DevTabSchema.safeParse(shaped).success)
     }
     expect(validRow(null)).toBe(false)
-    expect(validRow({ ...rows[0], requests: { total: 1, open: 0, last: { path: '/a?b', status: 500, at: 1 } } })).toBe(false)
-    expect(validRow({ ...rows[0], errors: { total: 1, open: 2, last: null } })).toBe(false)
+    expect(validRow({ ...rows[0], requests: { total: 1, open: 0, seen: 0, last: { path: '/a?b', status: 500, at: 1 } } })).toBe(false)
+    expect(validRow({ ...rows[0], errors: { total: 1, open: 2, seen: 0, last: null } })).toBe(false)
+    expect(validRow({ ...rows[0], errors: { total: 2, open: 1, seen: 2, last: null } })).toBe(false)
+    expect(validRow({ ...rows[0], errors: { total: 1, open: 1, last: null } })).toBe(false)
+    expect(validRow({ ...rows[0], errors: { total: 2, open: 2, seen: 1, last: null } })).toBe(true)
     expect(validRow({ ...rows[0], server: 'sideways' })).toBe(false)
   })
 
@@ -325,12 +329,45 @@ describe('devtabs', () => {
     expect(row.errors.last.text).toHaveLength(299)
   })
 
-  it('clear drops the last error and request too', () => {
+  it('clear marks the open errors and requests seen, keeping counts and the last of each', () => {
     let tab = reduce(emptyTab(1, 'http://localhost:5173/', 'A', 1), { kind: 'error', text: 'x' }, 2)
     tab = reduce(tab, { kind: 'request', path: '/a', status: 500 }, 3)
     const cleared = reduce(tab, { kind: 'clear' }, 4)
-    expect(cleared.errors).toEqual({ total: 0, open: 0, last: null })
-    expect(cleared.requests).toEqual({ total: 0, open: 0, last: null })
+    expect(cleared.errors).toEqual({ total: 1, open: 1, seen: 1, last: { text: 'x', at: 2 } })
+    expect(cleared.requests).toEqual({ total: 1, open: 1, seen: 1, last: { path: '/a', status: 500, at: 3 } })
+    const [row] = wireTabs([cleared])
+    expect(row.errors.seen).toBe(1)
+    expect(DevTabSchema.safeParse(row).success).toBe(true)
+  })
+
+  it('a new error or request after clear is unseen again, and the relay count too', () => {
+    let tab = reduce(emptyTab(1, 'http://localhost:5173/', 'A', 1), { kind: 'error', text: 'x' }, 2)
+    tab = reduce(tab, { kind: 'request', path: '/a', status: 500 }, 3)
+    tab = reduce(tab, { kind: 'clear' }, 4)
+    const again = reduce(tab, { kind: 'error', text: 'y' }, 5)
+    expect(again.errors).toEqual({ total: 2, open: 2, seen: 1, last: { text: 'y', at: 5 } })
+    expect(reduce(tab, { kind: 'request', path: '/b', status: 404 }, 5).requests).toMatchObject({ total: 2, open: 2, seen: 1 })
+    expect(reduce(tab, { kind: 'count', n: 4 }, 5).errors).toMatchObject({ total: 5, open: 5, seen: 1 })
+  })
+
+  it('a reload or a hot update resets seen with open; another origin starts afresh', () => {
+    let tab = reduce(emptyTab(1, 'http://localhost:5173/', 'A', 1), { kind: 'error', text: 'x' }, 2)
+    tab = reduce(tab, { kind: 'request', path: '/a', status: 500 }, 3)
+    tab = reduce(tab, { kind: 'clear' }, 4)
+    const reloaded = reduce(tab, { kind: 'navigated', url: 'http://localhost:5173/', title: 'A' }, 5)
+    expect(reloaded.errors).toMatchObject({ total: 1, open: 0, seen: 0 })
+    expect(reloaded.requests).toMatchObject({ total: 1, open: 0, seen: 0 })
+    expect(reduce(tab, { kind: 'hot' }, 5).errors).toMatchObject({ total: 1, open: 0, seen: 0 })
+    const other = reduce(tab, { kind: 'navigated', url: 'http://localhost:3000/', title: 'B' }, 5)
+    expect(other.errors).toEqual({ total: 0, open: 0, seen: 0, last: null })
+  })
+
+  it('clamps seen to open on the wire', () => {
+    const tab = { ...emptyTab(1, 'http://localhost:5173/', 'A', 1), errors: { total: 3, open: 2, seen: 9, last: null } }
+    const [row] = wireTabs([tab])
+    expect(row.errors).toEqual({ total: 3, open: 2, seen: 2, last: null })
+    const legacy = { ...emptyTab(2, 'http://localhost:5173/', 'A', 1), errors: { total: 1, open: 1, last: null } }
+    expect(wireTabs([legacy])[0].errors.seen).toBe(0)
   })
 
   it('tells what the server supports', () => {

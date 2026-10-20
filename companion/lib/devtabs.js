@@ -10,7 +10,8 @@ const MAX_COUNT = 1_000_000
 /** The server refuses a message over 65_536 bytes; stay clear of it (multibyte text is wider). */
 const MAX_BYTES = 60_000
 
-const tally = () => ({ total: 0, open: 0, last: null })
+/** `seen`: the open ones the user marked seen on the Edge (×); 0 <= seen <= open <= total. */
+const tally = () => ({ total: 0, open: 0, seen: 0, last: null })
 
 const hostOf = (url) => {
   try {
@@ -40,8 +41,15 @@ export function emptyTab(tabId, url, title, now) {
   }
 }
 
-const bump = (t, last) => ({ total: Math.min(MAX_COUNT, t.total + 1), open: Math.min(MAX_COUNT, t.open + 1), last })
-const resolved = (t) => ({ ...t, open: 0 })
+const bump = (t, last) => ({
+  total: Math.min(MAX_COUNT, t.total + 1),
+  open: Math.min(MAX_COUNT, t.open + 1),
+  seen: t.seen ?? 0,
+  last,
+})
+const resolved = (t) => ({ ...t, open: 0, seen: 0 })
+/** Marked seen: still open, no longer new. */
+const seenAll = (t) => ({ ...t, seen: t.open })
 
 /** The next state of a tab after an event. Every event but `title` stamps `activity`. */
 export function reduce(tab, event, now) {
@@ -73,10 +81,11 @@ export function reduce(tab, event, now) {
       if (n === 0) return tab
       const e = tab.errors
       const add = (v) => Math.min(MAX_COUNT, v + n)
-      return { ...tab, errors: { total: add(e.total), open: add(e.open), last: e.last }, activity: now }
+      return { ...tab, errors: { total: add(e.total), open: add(e.open), seen: e.seen ?? 0, last: e.last }, activity: now }
     }
     case 'clear':
-      return { ...tab, errors: tally(), requests: tally(), activity: now }
+      // The user has seen them: they stay open, and the light dims until a new one or a reload.
+      return { ...tab, errors: seenAll(tab.errors), requests: seenAll(tab.requests), activity: now }
     default:
       return tab
   }
@@ -90,7 +99,8 @@ const pathOnly = (p) => {
 
 function wireTally(t, shape) {
   const total = count(t.total)
-  return { total, open: Math.min(total, count(t.open)), last: t.last ? shape(t.last) : null }
+  const open = Math.min(total, count(t.open))
+  return { total, open, seen: Math.min(open, count(t.seen)), last: t.last ? shape(t.last) : null }
 }
 
 function wireRow(t) {
@@ -116,7 +126,9 @@ const PATH_RE = /^\/[^?#]*$/
 const isStamp = (v) => typeof v === 'number' && Number.isFinite(v) && v >= 0
 const isCount = (v) => Number.isInteger(v) && v >= 0 && v <= MAX_COUNT
 const isText = (v, max) => typeof v === 'string' && v.length <= max
-const okTally = (t, last) => isCount(t?.total) && isCount(t?.open) && t.open <= t.total && (t.last === null || last(t.last))
+const okTally = (t, last) =>
+  isCount(t?.total) && isCount(t?.open) && isCount(t?.seen) && t.seen <= t.open && t.open <= t.total &&
+  (t.last === null || last(t.last))
 
 /**
  * Whether a row stays inside DevTabSchema's bounds. The server drops a row it cannot read and keeps

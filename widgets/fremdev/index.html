@@ -26,6 +26,10 @@
   .light{flex:none;width:14px;height:14px;border-radius:50%;background:var(--ok, #46c46e)}
   .light.orange{background:var(--warn, #f0a020)}
   .light.red{background:var(--danger, #ff6b5e)}
+  /* Seen: only issues the user marked seen (×) colour it. Hollow, a ring in its colour, same box. */
+  .light.seen{box-sizing:border-box;background:transparent;border:2px solid var(--ok, #46c46e)}
+  .light.seen.orange{border-color:var(--warn, #f0a020)}
+  .light.seen.red{border-color:var(--danger, #ff6b5e)}
 
   .body{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
   .head,.facts{display:flex;align-items:baseline;gap:10px;min-width:0;white-space:nowrap}
@@ -42,6 +46,9 @@
   /* A counter whose events were all dismissed: greyed, with the resolved label in place of the last. */
   .fact.resolved,.fact.resolved .n{color:var(--text-dim, #6b737c);font-weight:500}
   .fact.resolved .t{font-family:inherit;color:inherit}
+  /* A counter whose open events were all marked seen: its count and last event, dimmed. */
+  .fact.seen,.fact.seen .n,.fact.seen .t{color:var(--text-dim, #6b737c)}
+  .fact.seen .n{font-weight:500}
 
   button.clear{flex:none;box-sizing:border-box;width:44px;height:44px;border:0;border-radius:12px;padding:0;
     background:transparent;color:var(--text-muted, #8b93a0);cursor:pointer;display:inline-flex;align-items:center;justify-content:center}
@@ -57,6 +64,7 @@
   html.on-light .row:active{background:rgba(0,0,0,.12)}
   html.on-light .browser,html.on-light .t,html.on-light button.clear{color:var(--on-surface, #0b0d10);opacity:.7}
   html.on-light .fact.resolved,html.on-light .fact.resolved .n{color:var(--on-surface, #0b0d10);opacity:.5}
+  html.on-light .fact.seen,html.on-light .fact.seen .n,html.on-light .fact.seen .t{color:var(--on-surface, #0b0d10);opacity:.5}
   /* An accent body: the accent of the clear button would vanish, so it takes the text colour. */
   html.accent-fill button.clear:active{background:var(--on-surface, #0b0d10);color:var(--accent, #d9b36a)}
 
@@ -157,13 +165,17 @@
       return f
     }
 
-    /** A counter: the open count and the last event, or greyed with the resolved label; hidden at zero. */
+    /**
+     * A counter: the open count and the last event, dimmed when every open one was marked seen, or
+     * greyed with the resolved label; hidden at zero.
+     */
     function updateFact(f, tally, lastText, resolvedLabel) {
       var total = tally && tally.total > 0 ? tally.total : 0
       f.hidden = total === 0
       if (total === 0) return
       var resolved = tally.open === 0
       f.classList.toggle('resolved', resolved)
+      f.classList.toggle('seen', !resolved && (tally.seen || 0) >= tally.open)
       f.n.hidden = resolved
       setText(f.n, resolved ? '' : String(tally.open))
       setText(f.t, resolved ? Fremkit.t(resolvedLabel, { n: total }) : lastText)
@@ -213,7 +225,7 @@
     function update(entry, row, several) {
       entry.row = row
       var r = entry.el, e = row.errors, q = row.requests
-      entry.light.className = 'light ' + row.light
+      entry.light.className = 'light ' + row.light + (row.seen ? ' seen' : '')
       r.setAttribute('aria-label', Fremkit.t(L.show) + ' — ' + (row.app || row.host))
       setText(entry.app, row.app || row.host)
       setText(entry.browser, several && row.browser ? row.browser : '')
@@ -225,7 +237,7 @@
       updateFact(entry.requests, q, last ? (last.status === 0 ? Fremkit.t(L.noAnswer) : String(last.status)) + ' ' + last.path : '', L.resolvedRequests)
       entry.facts.hidden = entry.errors.hidden && entry.requests.hidden
       entry.clear.setAttribute('aria-label', Fremkit.t(L.clear))
-      entry.clear.hidden = !((e && e.open > 0) || (q && q.open > 0))
+      entry.clear.hidden = !FD.hasUnseen(row)
 
       // A new error flashes the row, at most once per flash: a page erroring at every snapshot
       // does not keep it blinking.
@@ -264,7 +276,7 @@
       drawn = next
 
       var s = FD.summaryOf(snap)
-      $('sumLight').className = 'light ' + s.light
+      $('sumLight').className = 'light ' + s.light + (s.seen ? ' seen' : '')
       setText($('sumCount'), s.errors > 0 ? String(s.errors) : '')
       // Nothing watched (no rows, whatever the reason): a neutral light, not an "all good" green.
       $('sum').classList.toggle('idle', state !== 'rows')

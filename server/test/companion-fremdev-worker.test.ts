@@ -306,7 +306,8 @@ describe('companion/fremdev.js', () => {
     expect(f.api.windows.update).toHaveBeenCalledWith(1, { focused: true })
     await f.fremdev.onServer({ type: 'dev.clear', tabId: 7 })
     await f.later()
-    expect(f.rows()['7'].errors.total).toBe(0)
+    // Marked seen, not zeroed: the error is still open.
+    expect(f.rows()['7'].errors).toMatchObject({ total: 1, open: 1, seen: 1 })
   })
 
   it('counts a failed request of a watched tab by its path, and leaves the noise and other tabs out', async () => {
@@ -361,7 +362,7 @@ describe('companion/fremdev.js', () => {
     await f.fremdev.onPageEvent({ kind: 'error', text: 'x' }, devSender())
     await onUpdated(7, { status: 'loading' }, { id: 7, url: 'http://localhost:5173/', title: 'My app' })
     await f.later()
-    expect(f.rows()['7']).toMatchObject({ title: 'My app', errors: { total: 1, open: 0 } })
+    expect(f.rows()['7']).toMatchObject({ title: 'My app', errors: { total: 1, open: 0, seen: 0 } })
     await onUpdated(7, { status: 'loading', url: 'https://www.example.com/' }, { id: 7, url: 'https://www.example.com/' })
     await f.later()
     expect(f.rows()).toEqual({})

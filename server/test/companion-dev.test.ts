@@ -15,8 +15,8 @@ function row(tabId: number, total = 1): DevTab {
     tabId,
     app: 'My app',
     host: 'localhost:5173',
-    errors: { total, open: total, last: { text: `TypeError #${total}`, at: 1_000 } },
-    requests: { total: 0, open: 0, last: null },
+    errors: { total, open: total, seen: 0, last: { text: `TypeError #${total}`, at: 1_000 } },
+    requests: { total: 0, open: 0, seen: 0, last: null },
     server: 'up',
     activity: 1_000,
   }
