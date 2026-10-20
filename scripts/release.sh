@@ -14,6 +14,11 @@
 # Environment:
 #   FREMKIT_SPARKLE_KEY_FILE   sign the update with this private key file instead of the
 #                              keychain (`sign_update --ed-key-file`). For local update tests.
+#   FREMKIT_ANDROID_RELEASE=1  also build the signed Android APK (scripts/build-android.sh release)
+#                              and attach it, its .sha256 and a stable-named copy to the same
+#                              GitHub release. The APK only ever rides on a Mac release: a release
+#                              without the Mac's assets would become "latest" and take the appcast,
+#                              every Mac's update feed, with it.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -45,7 +50,8 @@ if [ -n "$ignored" ]; then
     printf '%s\n' "$ignored" >&2
     exit 1
 fi
-for override in FREMKIT_APP_VERSION FREMKIT_SPARKLE_PUBLIC_KEY FREMKIT_SPARKLE_FEED_URL FREMKIT_SIGN_IDENTITY; do
+for override in FREMKIT_APP_VERSION FREMKIT_SPARKLE_PUBLIC_KEY FREMKIT_SPARKLE_FEED_URL FREMKIT_SIGN_IDENTITY \
+    FREMKIT_ANDROID_KEYCHAIN FREMKIT_ANDROID_KEYCHAIN_SERVICE; do
     if [ -n "${!override:-}" ]; then
         echo "error: $override is set; a release is built from the repository alone" >&2
         exit 1
@@ -74,6 +80,12 @@ done
 grep -q 'data-fremkit-version>' site/index.html || check_version site/index.html ""
 [ "$mismatch" -eq 0 ] || exit 1
 
+ANDROID="${FREMKIT_ANDROID_RELEASE:-}"
+if [ -n "$ANDROID" ] && [ "$ANDROID" != 1 ]; then
+    echo "error: FREMKIT_ANDROID_RELEASE is 1 or unset, not $ANDROID" >&2
+    exit 1
+fi
+
 mkdir -p "$DIST"
 NOTES="$DIST/release-notes-$VERSION.md"
 node scripts/lib/appcast.mjs notes "$VERSION" CHANGELOG.md > "$NOTES"
@@ -81,6 +93,16 @@ node scripts/lib/appcast.mjs notes "$VERSION" CHANGELOG.md > "$NOTES"
 if [ -z "$({ grep -v '^#' packaging/sparkle/public-key.txt || true; } | tr -d '[:space:]')" ]; then
     echo "error: packaging/sparkle/public-key.txt holds no key; an app without one can never be updated" >&2
     exit 1
+fi
+
+# --- Android -----------------------------------------------------------------------------------
+# First, while the tree is still clean (build-android.sh refuses a dirty one, and the Homebrew step
+# below edits the cask), and so a refused key fails the release before the Mac's long build. The
+# APK is signed outside Gradle and checked against android/signing-cert.sha256 there.
+if [ "$ANDROID" = 1 ]; then
+    bash scripts/build-android.sh release
+    ANDROID_BUILT="dist/Fremkit-Android-$VERSION.apk"
+    [ -f "$ANDROID_BUILT" ] || { echo "error: no $ANDROID_BUILT" >&2; exit 1; }
 fi
 
 # --- Build, sign, notarize ----------------------------------------------------------------------
@@ -144,6 +166,24 @@ DMG_SHA="$(shasum -a 256 "$DMG" | awk '{print $1}')"
 CASK="packaging/homebrew/fremkit.rb"
 sed -i '' -e "s/^  version \".*\"/  version \"$VERSION\"/" -e "s/^  sha256 \".*\"/  sha256 \"$DMG_SHA\"/" "$CASK"
 
+# --- Android assets -----------------------------------------------------------------------------
+# Beside the Mac's, under the names the release carries: the versioned APK (what Obtainium's
+# ^Fremkit-Android-.*\.apk$ filter matches), its checksum, and the same APK under a name that never
+# changes, for $REPO_URL/releases/latest/download/Fremkit-Android.apk.
+ANDROID_ASSETS=""
+ANDROID_LIST=""
+if [ "$ANDROID" = 1 ]; then
+    ANDROID_APK="$DIST/Fremkit-Android-$VERSION.apk"
+    cp "$ANDROID_BUILT" "$ANDROID_APK"
+    cp "$ANDROID_BUILT.sha256" "$ANDROID_APK.sha256"
+    (cd "$DIST" && shasum -a 256 -c "Fremkit-Android-$VERSION.apk.sha256" >/dev/null)
+    LATEST_APK="$DIST/Fremkit-Android.apk"
+    cp "$ANDROID_APK" "$LATEST_APK"
+    ANDROID_ASSETS=" \"$ANDROID_APK\" \"$ANDROID_APK.sha256\" \"$LATEST_APK\""
+    ANDROID_LIST="
+  $ANDROID_APK  (and its .sha256, and $LATEST_APK)"
+fi
+
 cat <<EOF
 
 Release $VERSION is built. Nothing has been published.
@@ -152,7 +192,7 @@ Release $VERSION is built. Nothing has been published.
   $ZIP
   $DIST/appcast.xml
   $NOTES
-  $CASK  (version and sha256 updated)
+  $CASK  (version and sha256 updated)$ANDROID_LIST
 
 To publish, in this order:
 
@@ -167,7 +207,7 @@ To publish, in this order:
   #    $REPO_URL/releases/latest/download/appcast.xml, so publishing the release is what
   #    offers the update to every installed app, and nothing else has to be committed. The
   #    release also opens a thread in the Announcements discussions, where people can comment.
-  gh release create $TAG "$DMG" "$LATEST_DMG" "$ZIP" "$DIST/appcast.xml" \\
+  gh release create $TAG "$DMG" "$LATEST_DMG" "$ZIP" "$DIST/appcast.xml"$ANDROID_ASSETS \\
       --title "Fremkit $VERSION" --notes-file "$NOTES" --discussion-category Announcements
 
   # 4. The tap (a clone of fdussert/homebrew-fremkit next to this checkout).
