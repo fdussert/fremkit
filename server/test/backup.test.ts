@@ -58,6 +58,14 @@ describe('GET /api/backup', () => {
     expect(names).toContain(`backgrounds/${DEFAULT_BACKGROUND}`)
   })
 
+  it('leaves the runtime files of the data folder home', async () => {
+    await writeFile(join(dir, 'recent-projects.json'), JSON.stringify({ version: 1, sources: { herdr: [{ path: '/Users/demo/Dev/api', seenAt: 1 }] } }))
+    const res = await app.inject({ url: '/api/backup' })
+    const entries = zipOf(res)
+    expect(entries.map((e) => e.name)).not.toContain('recent-projects.json')
+    expect(Buffer.concat(entries.map((e) => e.data)).toString('utf8')).not.toContain('/Users/demo/Dev/api')
+  })
+
   it('carries the live config, migrated, and no secret whatsoever', async () => {
     const res = await app.inject({ url: '/api/backup' })
     const entries = zipOf(res)

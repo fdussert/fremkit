@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { mkdir, mkdtemp, realpath, rm, symlink, utimes, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, readdir, realpath, rm, stat, symlink, utimes, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
@@ -15,6 +15,7 @@ import { parseRecentProjects } from '../src/providers/recent-projects/sources/je
 import { createCliSources, parseHerdrPanes, parseTmux, parseZoxide } from '../src/providers/recent-projects/sources/cli.js'
 import { openWith } from '../src/providers/recent-projects/apps.js'
 import { detectHerdrTerminal } from '../src/providers/recent-projects/herdr.js'
+import { LIVE_MEMORY, loadMemory } from '../src/providers/recent-projects/memory.js'
 import type { Source } from '../src/providers/recent-projects/types.js'
 import { BUILTIN_ONLY_CHANNELS } from '../src/widgets/manifest.js'
 import { LOCAL_ONLY_CHANNELS } from '../src/ws/hub.js'
@@ -488,6 +489,67 @@ describe('recent projects: Herdr', () => {
     expect(await ps(PS_ITERM + '\n  400     1 /Applications/Ghostty.app/Contents/MacOS/ghostty\n  410   400 herdr')).toBeNull()
     expect(await ps('  340     1 herdr')).toBeNull()
     expect(await ps('  300     1 /Applications/iTerm.app/Contents/MacOS/iTerm2')).toBeNull()
+  })
+})
+
+describe('recent projects: live sources remembered on disk', () => {
+  function provider(file: string, list: Source['list']) {
+    return createRecentProjectsProvider({
+      instances: () => [{ widgetId: 'recent-projects', settings: { source_git: false, source_herdr: true } }],
+      home, sources: [fakeSource('herdr', list, true)], exec: vi.fn(async () => ''),
+      resolveBinary: async () => null, appExists: async () => false, memoryFile: file,
+    })
+  }
+  const names = (snap: unknown) => (snap as RecentProjectsSnapshot).projects.map((p) => p.name).sort()
+
+  it('keeps what Herdr showed across a restart, in an owner-only file of paths and dates', async () => {
+    await mkdir(join(home, 'a'))
+    await mkdir(join(home, 'b'))
+    const file = join(home, 'recent-projects.json')
+    await provider(file, async () => [{ path: join(home, 'a'), seenAt: 1000 }]).poll!()
+    expect((await stat(file)).mode & 0o777).toBe(0o600)
+    expect(JSON.parse(await readFile(file, 'utf8'))).toEqual({ version: 1, sources: { herdr: [{ path: join(home, 'a'), seenAt: 1000 }] } })
+    expect((await readdir(home)).filter((n) => n.endsWith('.tmp'))).toEqual([])
+
+    // A new server: the pane in `a` is closed, one is open in `b`.
+    const again = provider(file, async () => [{ path: join(home, 'b'), seenAt: 2000 }])
+    expect(names(await again.poll!())).toEqual(['a', 'b'])
+  })
+
+  it('shows the remembered folders while the live source fails right after a restart', async () => {
+    await mkdir(join(home, 'a'))
+    const file = join(home, 'recent-projects.json')
+    await provider(file, async () => [{ path: join(home, 'a'), seenAt: 1000 }]).poll!()
+    const broken = provider(file, async () => { throw new Error('socket') })
+    expect(names(await broken.poll!())).toEqual(['a'])
+  })
+
+  it('starts empty on a corrupt file, never crashes, and writes a good one over it', async () => {
+    await mkdir(join(home, 'a'))
+    const file = join(home, 'recent-projects.json')
+    for (const junk of ['{not json', '[]', JSON.stringify({ version: 2, sources: {} }), JSON.stringify({ version: 1, sources: 'x' })]) {
+      await writeFile(file, junk)
+      expect((await loadMemory(file)).size).toBe(0)
+    }
+    await writeFile(file, '{not json')
+    expect(names(await provider(file, async () => [{ path: join(home, 'a'), seenAt: 5 }]).poll!())).toEqual(['a'])
+    expect((await loadMemory(file)).get('herdr')?.get(join(home, 'a'))).toBe(5)
+  })
+
+  it('drops bad entries and sources that are not live, and keeps the newest 50 per source', async () => {
+    const file = join(home, 'recent-projects.json')
+    const many = Array.from({ length: LIVE_MEMORY + 10 }, (_, i) => ({ path: `/Users/demo/p${i}`, seenAt: i }))
+    await writeFile(file, JSON.stringify({ version: 1, sources: {
+      herdr: [...many, { path: 'relative', seenAt: 1 }, { path: '/Users/demo/x', seenAt: 'yesterday' }, 42],
+      tmux: [{ path: '/Users/demo/t', seenAt: null }],
+      claude: [{ path: '/Users/demo/c', seenAt: 1 }],
+    } }))
+    const memory = await loadMemory(file)
+    expect([...memory.keys()].sort()).toEqual(['herdr', 'tmux'])
+    const herdr = [...memory.get('herdr')!.keys()]
+    expect(herdr).toHaveLength(LIVE_MEMORY)
+    expect(herdr[0]).toBe('/Users/demo/p10')
+    expect(herdr.at(-1)).toBe(`/Users/demo/p${LIVE_MEMORY + 9}`)
   })
 })
 

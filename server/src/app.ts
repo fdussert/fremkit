@@ -64,7 +64,7 @@ import { createShortcutsProvider } from './providers/shortcuts.js'
 import { createServiceStatusProvider } from './providers/service-status.js'
 import { createSystemProvider } from './providers/system.js'
 import { createDiskMapProvider } from './providers/disk-map.js'
-import { createRecentProjectsProvider, RECENT_PROJECTS_CHANNEL, RECENT_PROJECTS_WIDGET } from './providers/recent-projects/index.js'
+import { createRecentProjectsProvider, MEMORY_FILE as RECENT_PROJECTS_FILE, RECENT_PROJECTS_CHANNEL, RECENT_PROJECTS_WIDGET } from './providers/recent-projects/index.js'
 import { BrightnessService } from './brightness/service.js'
 import { createBrightnessProvider, BRIGHTNESS_INTERVAL_MS } from './brightness/provider.js'
 import { brightnessRoutes } from './brightness/routes.js'
@@ -313,7 +313,10 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     registry.register(createShortcutsProvider(undefined, instances))
     registry.register(createServiceStatusProvider({}, instances))
     // Reads what every shown tile ticked, so a source no tile asked for is never read.
-    recentProjects = createRecentProjectsProvider({ instances: () => findInstances(store.get(), RECENT_PROJECTS_WIDGET) })
+    recentProjects = createRecentProjectsProvider({
+      instances: () => findInstances(store.get(), RECENT_PROJECTS_WIDGET),
+      memoryFile: join(opts.dataDir, RECENT_PROJECTS_FILE),
+    })
     registry.register(recentProjects)
     // A paired device may set only its own screen's brightness: see mayCommandBrightness. Read
     // at command time, so a device moved to another screen (or unpaired) is judged as it is now.

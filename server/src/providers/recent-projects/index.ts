@@ -5,6 +5,7 @@ import { execCommand, type Exec } from '../exec.js'
 import type { CommandContext, Provider } from '../types.js'
 import { APP_IDS, installedApps, openWith, type AppId } from './apps.js'
 import { HERDR_TERMINALS } from './herdr.js'
+import { LIVE_MEMORY, MEMORY_FILE, loadMemory, saveMemory, serializeMemory, type LiveMemory } from './memory.js'
 import { canonicalProject, projectName, shortParent } from './paths.js'
 import { createClaudeSource } from './sources/claude.js'
 import { createCliSources, resolveBinary as defaultResolveBinary, type ResolveBinary } from './sources/cli.js'
@@ -15,7 +16,7 @@ import { createVscodeSource } from './sources/vscode.js'
 import { SOURCE_IDS, type RecentProject, type Source, type SourceEntry, type SourceId, type SourceStatus } from './types.js'
 import { withTimeout } from './util.js'
 
-export { SOURCE_IDS, APP_IDS }
+export { SOURCE_IDS, APP_IDS, MEMORY_FILE }
 export type { RecentProject, SourceId, AppId }
 
 export const RECENT_PROJECTS_CHANNEL = 'recent-projects'
@@ -26,8 +27,6 @@ export const MAX_PROJECTS = 50
 const SOURCE_TIMEOUT_MS = 10_000
 /** How often the list of installed applications is looked at again. */
 const APPS_TTL_MS = 10 * 60_000
-/** Folders a live source (a terminal pane) is remembered for, per source. */
-const LIVE_MEMORY = 50
 
 /** The sources a tile reads when its settings never said: git alone, every other one opt-in. */
 export const DEFAULT_SOURCES: readonly SourceId[] = ['git']
@@ -121,6 +120,11 @@ export interface RecentProjectsOptions {
   resolveBinary?: ResolveBinary
   appExists?: (path: string) => Promise<boolean>
   now?: () => number
+  /**
+   * Where what the live sources (tmux, Herdr) showed is kept across restarts, in the data
+   * folder; without one it lives in memory only. Paths and dates, nothing else.
+   */
+  memoryFile?: string
 }
 
 export const OpenSchema = z.object({
@@ -160,7 +164,10 @@ export function createRecentProjectsProvider(opts: RecentProjectsOptions): Provi
   const sources = opts.sources ?? defaultSources(exec, resolve, now)
   const appDeps = { exec, resolveBinary: resolve, exists: opts.appExists }
   const lastGood = new Map<SourceId, SourceEntry[]>()
-  const memory = new Map<SourceId, Map<string, number | null>>()
+  let memory: LiveMemory = new Map()
+  let loaded: Promise<void> | null = null
+  let saved = ''
+  let saving: Promise<void> = Promise.resolve()
   let apps: { list: AppId[]; at: number } | null = null
   let last: RecentProjectsSnapshot | null = null
 
@@ -173,10 +180,33 @@ export function createRecentProjectsProvider(opts: RecentProjectsOptions): Provi
       seen.set(e.path, before != null && e.seenAt != null ? Math.max(before, e.seenAt) : e.seenAt ?? before ?? null)
     }
     while (seen.size > LIVE_MEMORY) seen.delete(seen.keys().next().value!)
-    return [...seen].map(([path, seenAt]) => ({ path, seenAt }))
+    return remembered(id)
+  }
+
+  function remembered(id: SourceId): SourceEntry[] {
+    return [...(memory.get(id) ?? [])].map(([path, seenAt]) => ({ path, seenAt }))
+  }
+
+  /** Loads the saved memory once, before the first poll uses it. */
+  function load(): Promise<void> {
+    loaded ??= opts.memoryFile
+      ? loadMemory(opts.memoryFile).then((m) => { memory = m; saved = serializeMemory(m) })
+      : Promise.resolve()
+    return loaded
+  }
+
+  /** Writes the memory when it changed, one write at a time; a failed write is tried at the next poll. */
+  function persist(): Promise<void> {
+    const file = opts.memoryFile
+    if (!file) return saving
+    const text = serializeMemory(memory)
+    if (text === saved) return saving
+    saving = saving.then(() => saveMemory(file, text)).then(() => { saved = text }, () => undefined)
+    return saving
   }
 
   async function poll(): Promise<RecentProjectsSnapshot> {
+    await load()
     const wants = mergedWants(opts.instances())
     const ctx = { home, gitRoots: wants.gitRoots }
     const statuses: SourceStatus[] = []
@@ -198,10 +228,11 @@ export function createRecentProjectsProvider(opts: RecentProjectsOptions): Provi
         lastGood.set(source.id, entries)
       } catch (err) {
         status.error = (err as Error).message === 'timeout' ? 'timeout' : 'unreadable'
-        entries = lastGood.get(source.id) ?? []
+        entries = lastGood.get(source.id) ?? (source.live ? remembered(source.id) : [])
       }
       for (const e of entries) tagged.push({ ...e, source: source.id })
     }))
+    await persist()
     statuses.sort((a, b) => SOURCE_IDS.indexOf(a.id) - SOURCE_IDS.indexOf(b.id))
     const projects = await mergeEntries(tagged, home)
     for (const s of statuses) s.count = projects.filter((p) => p.sources.includes(s.id)).length
