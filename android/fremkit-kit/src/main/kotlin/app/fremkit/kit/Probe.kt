@@ -234,23 +234,21 @@ object PinnedTransport {
 }
 
 object Endpoint {
-    const val COOKIE = "fremkit_device"
     const val TIMEOUT_MILLIS = 5000
 
-    /** `https://<host>:<port><path>`, with an IPv6 literal in brackets and its zone escaped. */
-    fun url(host: String, port: Int, path: String): URI? {
-        var h = host
-        if (h.contains(":") && !h.startsWith("[")) h = "[" + h.replace("%", "%25") + "]"
-        return try {
-            URI("https://$h:$port$path").takeIf { it.host != null }
-        } catch (_: URISyntaxException) {
-            null
-        }
+    /**
+     * `https://<host>:<port><path>` as the dashboard spells it ([Dashboard.resource]: an IPv6
+     * literal in brackets, its zone escaped), or null when that is not a URL with a host.
+     */
+    fun url(host: String, port: Int, path: String): URI? = try {
+        URI(Dashboard.resource(host, port, path)).takeIf { it.host != null }
+    } catch (_: URISyntaxException) {
+        null
     }
 
     fun request(host: String, port: Int, path: String, token: String?): Request? {
         val uri = url(host, port, path) ?: return null
-        val headers = if (token != null) mapOf("Cookie" to "$COOKIE=$token") else emptyMap()
+        val headers = if (token != null) mapOf("Cookie" to "${Dashboard.COOKIE_NAME}=$token") else emptyMap()
         return Request(uri, headers = headers)
     }
 }
@@ -263,7 +261,7 @@ object Endpoint {
 class HttpProber(private val transport: Transport = PinnedTransport.default) : Prober {
     override suspend fun probe(host: String, port: Int, mac: PairedMac): ProbeOutcome {
         val request = Endpoint.request(host, port, "/api/devices/me?addresses=1", mac.token) ?: return ProbeOutcome.Unreachable
-        val policy = PinPolicy(mac.keyHash, pinnedHosts(mac, host))
+        val policy = PinPolicy(mac.keyHash, Dashboard.pinnedHosts(mac, host))
         return when (val exchange = transport(request, policy)) {
             is Exchange.Response -> when (exchange.status) {
                 200 -> DeviceInfo.fromJson(exchange.body.decodeToString())?.let(ProbeOutcome::Ok) ?: ProbeOutcome.Unreachable
@@ -273,14 +271,5 @@ class HttpProber(private val transport: Transport = PinnedTransport.default) : P
             Exchange.PinRejected -> ProbeOutcome.PinMismatch
             Exchange.Failed -> ProbeOutcome.Unreachable
         }
-    }
-
-    private companion object {
-        /**
-         * The probed host and the Mac's own name and last address, normalised: the same set as
-         * the dashboard's `pinnedHosts` (D.6), kept here so the probe does not depend on it.
-         */
-        fun pinnedHosts(mac: PairedMac, host: String): Set<String> =
-            listOf(host, mac.host, mac.address).filter { it.isNotEmpty() }.map(Pin::normaliseHost).toSet()
     }
 }
