@@ -161,6 +161,15 @@ export const FREMDEV_SLOW_MODULE = 'fremdev.slow'
 export const FREMDEV_PERF_MODULE = 'fremdev.perf'
 
 /**
+ * Fremdev copies a dev tab's screenshot to the Mac's clipboard on ⌃⇧S (`POST /companion/dev/shot`,
+ * shot.ts): the route answers only an install that listed it.
+ */
+export const FREMDEV_SHOT_MODULE = 'fremdev.shot'
+
+/** The largest JPEG the shot route takes: 2 MiB, which the extension fits the capture into. */
+export const SHOT_MAX_BYTES = 2_097_152
+
+/**
  * The Fremdev modules a control on the Edge depends on (`features` in the snapshot): an install
  * that lists one is shown that control. Each feature's task appends its module name here.
  */
@@ -170,6 +179,7 @@ export const FREMDEV_FEATURES: readonly string[] = [
   FREMDEV_RELOAD_MODULE,
   FREMDEV_SLOW_MODULE,
   FREMDEV_PERF_MODULE,
+  FREMDEV_SHOT_MODULE,
 ]
 
 /**

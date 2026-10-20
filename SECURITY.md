@@ -331,6 +331,19 @@ files:
   `sha256`, which the extension checks before it sends its token in `hello`. The token must
   belong to that same record, whose origin *and* install id match what the socket presents, and
   the whole exchange must finish within five seconds; anything else is closed.
+- `POST /companion/dev/shot`, Fremdev's ⌃⇧S screenshot for the Mac's clipboard. It checks, in
+  order, before it reads past the headers or writes anything: a request from this Mac
+  (`isLocalRequest`, 404 otherwise), Companion's `Origin` (403), a bearer that is that extension's
+  own token, for a record of that same origin (401), and an install that can shoot right now —
+  `labs.companion` and `labs.fremdev` on (`fremdevEnabled`), its socket open, Fremdev on in it and
+  `fremdev.shot` among its modules (409). Then the body: at most 2 MiB (`SHOT_MAX_BYTES`, 413),
+  starting `FF D8 FF` like a JPEG (415), one at a time per device (429). The extension sends its token
+  there only while its socket is open and was greeted with Fremdev's yes: the socket's challenge has
+  then proved that the listener on 4242 is Fremkit, so the token is never shown to a port that has
+  not. The server writes the image to `shot-<uuid>.jpg` in the data folder (`mode: 0600`,
+  `flag: 'wx'`), runs `/usr/bin/osascript` with an argument list, a constant script and the file's
+  path as `argv` (never interpolated into the script), and removes the file in a `finally`, whether
+  osascript succeeded or not. The log names the device id, never the token or the path.
 
 Refusing a request stays behind the secret and is local-only. None of these routes
 exists on the remote listener (4243). The `companion` channel the dashboard watches is built-in
@@ -442,7 +455,10 @@ What it holds and what it can do:
   refused with 1008. Nothing of a dropped message is logged but a count. `companion:dev` is in
   `LOCAL_ONLY_CHANNELS` and `BUILTIN_ONLY_CHANNELS`: paired devices and registry widgets never get
   it, and the widget's focus, clear, report and open commands are loopback-only and name only a tab id the install
-  reported. Fremdev is negotiated by capability with the protocol still at 2, so it widens nothing
+  reported. The ⌃⇧S screenshot is the one Fremdev feature that reaches the server outside the
+  socket, through `POST /companion/dev/shot` (above, under the routes that skip the secret): the
+  extension captures only a tab it has a row for, and the image reaches nothing but the clipboard.
+  Fremdev is negotiated by capability with the protocol still at 2, so it widens nothing
   for a 0.5.0 server. A page's own text can be sensitive (an error message can quote data): it stays
   on this Mac, but it is displayed on the Edge.
 

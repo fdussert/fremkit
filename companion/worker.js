@@ -9,6 +9,7 @@
 
 import { browserName } from './lib/browser.js'
 import { createFremdev } from './fremdev.js'
+import { dataUrlBlob, fitShot } from './lib/devshot.js'
 import { handshake } from './lib/handshake.js'
 import { grantToReturn } from './lib/grant.js'
 import { closeOutcome, refusalOf } from './lib/link.js'
@@ -840,6 +841,7 @@ async function onControl(c) {
 const FLASHES = { noVideo: '∅' }
 
 chrome.commands.onCommand.addListener(async (command, tab) => {
+  if (command === 'fremdev-shot') return shoot(tab)
   if (command !== 'fremplay-toggle') return
   await ready
   if (!tab || !validId(tab.id)) return
@@ -849,6 +851,39 @@ chrome.commands.onCommand.addListener(async (command, tab) => {
   if (res.error !== 'noVideo') await saveSession({ lastError: res.error })
   flash(FLASHES[res.error] ?? '!')
 })
+
+// --- Fremdev's shot ---------------------------------------------------------------------------
+
+/**
+ * ⌃⇧S: the focused window's active tab, captured and posted to Fremkit for the Mac's clipboard.
+ * Only for a dev tab this install has a row for, and only while the socket open now was greeted
+ * with Fremdev's yes: its challenge proved the port is Fremkit, so the token goes to nobody else.
+ * The key press is the activeTab grant captureVisibleTab needs. ✓ when it landed, ! otherwise.
+ */
+async function shoot(given) {
+  await ready
+  const tab = given ?? (await chrome.tabs.query({ active: true, lastFocusedWindow: true }).catch(() => []))[0]
+  if (!tab || !validId(tab.id) || !(await fremdev.isDevTab(tab.id)) || !fremdev.canSend() || !local.token) return flash('!')
+  try {
+    const shot = await fitShot(dataUrlBlob(await chrome.tabs.captureVisibleTab(tab.windowId, { format: 'jpeg', quality: 85 })))
+    // Checked again: the socket may have closed while the tab was captured.
+    flash(shot && fremdev.canSend() && local.token && (await postShot(shot)) ? '✓' : '!')
+  } catch {
+    flash('!')
+  }
+}
+
+/** The JPEG to Fremkit's shot route, with this install's token: true on a 200. */
+async function postShot(blob) {
+  const res = await fetch(`${HTTP}/companion/dev/shot`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${local.token}`, 'Content-Type': 'image/jpeg' },
+    body: blob,
+    credentials: 'omit',
+    cache: 'no-store',
+  })
+  return res.status === 200
+}
 
 // The shared tab navigates: stop cropping the old rectangle out of the new page (lib/navigation.js).
 chrome.tabs.onUpdated.addListener(async (tabId, changeInfo) => {

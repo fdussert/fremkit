@@ -17,7 +17,7 @@ import { INSTANCE_ID_MAX, type Config } from '../config/schema.js'
 import { tr, type MessageKey } from '../i18n.js'
 import { pbPasteboard, type Pasteboard } from '../providers/clipboard.js'
 import type { CommandContext, Provider } from '../providers/types.js'
-import { FREMDEV_FEATURES, FREMDEV_MODULE, FREMDEV_OPEN_MODULE, FREMDEV_RELOAD_MODULE, FREMDEV_REPORT_MODULE, type DevTab, type ExtensionMessage, type ServerMessage } from './protocol.js'
+import { FREMDEV_FEATURES, FREMDEV_MODULE, FREMDEV_OPEN_MODULE, FREMDEV_RELOAD_MODULE, FREMDEV_REPORT_MODULE, FREMDEV_SHOT_MODULE, type DevTab, type ExtensionMessage, type ServerMessage } from './protocol.js'
 
 export const COMPANION_DEV_CHANNEL = 'companion:dev'
 
@@ -256,6 +256,17 @@ export class CompanionDev {
     if (!tab?.history.some((e) => e.id === entryId)) return Promise.resolve(false)
     return this.ask(deviceId, tabId, FREMDEV_OPEN_MODULE, 'dev.open.done', (id) => ({ type: 'dev.open.ask', id, tabId, entryId }), OPEN_TIMEOUT_MS)
       .then((msg) => msg?.type === 'dev.open.done' && msg.ok)
+  }
+
+  /**
+   * Whether the install may put a screenshot on the clipboard (`POST /companion/dev/shot`): Fremdev
+   * enabled, and the install connected, on, and listing `fremdev.shot`. No tab is named: the
+   * extension captures the tab it has a row for, and the socket being open is what it checked.
+   */
+  canShot(deviceId: string): boolean {
+    if (!this.enabled()) return false
+    const install = this.installs.get(deviceId)
+    return install !== undefined && install.on && install.connected && holds(install, FREMDEV_SHOT_MODULE)
   }
 
   /** `labs.companion` or `labs.fremdev` may have changed: the snapshot says so. */

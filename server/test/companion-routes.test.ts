@@ -95,6 +95,9 @@ describe('isCompanionRoute', () => {
     expect(isCompanionRoute('POST', '/api/companion/pair/:requestId/confirm')).toBe(true)
     expect(isCompanionRoute('GET', '/api/companion/pair/:requestId/confirm')).toBe(false)
     expect(isCompanionRoute('GET', '/companion/ws')).toBe(true)
+    // Fremdev's shot: the extension's own bearer, checked by the route (companion/shot.ts).
+    expect(isCompanionRoute('POST', '/companion/dev/shot')).toBe(true)
+    expect(isCompanionRoute('GET', '/companion/dev/shot')).toBe(false)
     expect(isCompanionRoute('GET', '/api/companion/pair')).toBe(false)
     // A GET would arrive without the extension's Origin: Chrome leaves it off.
     expect(isCompanionRoute('GET', '/api/companion/pair/:requestId')).toBe(false)

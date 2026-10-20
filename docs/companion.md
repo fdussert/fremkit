@@ -309,6 +309,28 @@ the clipboard itself, so it needs no permission of its own. There is no such but
 capture needs a grant that only a click on the extension (the popup or its shortcut) gives, and the
 Edge's tap is not one.
 
+**⌃⇧S** (Control-Shift-S; *Fremdev : copier une capture de l’onglet de développement* / *Fremdev: copy
+a screenshot of the development tab*) does the same from the keyboard, without opening the popup, and
+the Mac puts the image on its clipboard. The key press is the `activeTab` grant. The extension takes
+the focused window's active tab, and only a dev tab it has a row for, while Fremdev is on and its
+socket to Fremkit is open and greeted; otherwise the badge flashes **!** and nothing is sent. It
+captures the tab as a JPEG (quality 85); a capture over 2 MiB is drawn again with its long side at
+most 1920 pixels, at JPEG quality 0.85, then 0.7, then 0.5, and one that still does not fit is not
+sent. It posts the JPEG to `POST /companion/dev/shot` with its pairing token, without cookies or
+cache, and the badge flashes **✓** in gold when the server answered 200, **!** on anything else. The
+module is announced as `fremdev.shot`.
+
+The server takes the shot only from this Mac (the route is not on the remote listener), from
+Companion's origin with that extension's own token, while `labs.companion` and `labs.fremdev` are on
+and the install is connected, on and lists `fremdev.shot` (409 otherwise); a body over 2 MiB is 413,
+one that does not start like a JPEG (`FF D8 FF`) is 415, and a second shot while the first is being
+written is 429. The token is sent only on a socket that was greeted, so only once the socket's
+challenge proved that port 4242 is Fremkit. The server writes the image to a temporary file in the
+data folder (0600, never over an existing file), runs `/usr/bin/osascript` with a constant script and
+the file's path as an argument, and removes the file whether that worked or not. The shortcut can be
+changed at `chrome://extensions/shortcuts`; the options page shows both the Fremplay and the Fremdev
+shortcut.
+
 ### Open in editor
 
 In an unfolded row, a build entry's file, and under Vite an error thrown by a script on the page's

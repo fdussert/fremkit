@@ -75,7 +75,7 @@ const OPEN_INIT = { method: 'GET', credentials: 'omit', cache: 'no-store', redir
  * The modules of the features a control on the Edge depends on (FREMDEV_FEATURES on the server),
  * announced after the report's while Fremdev is on. Each feature appends its own.
  */
-export const FEATURE_MODULES = ['fremdev.build', 'fremdev.open', 'fremdev.reload', 'fremdev.slow', 'fremdev.perf']
+export const FEATURE_MODULES = ['fremdev.build', 'fremdev.open', 'fremdev.reload', 'fremdev.slow', 'fremdev.perf', 'fremdev.shot']
 const cleanPatterns = (list) =>
   Array.isArray(list) ? [...new Set(list.map((p) => parsePattern(p)?.pattern).filter(Boolean))] : []
 
@@ -775,6 +775,18 @@ export function createFremdev({
       const tab = on && validId(tabId) ? tabs[String(tabId)] : undefined
       return tab ? buildReport(tab, { stack: stack === true, now: now(), t, time, date }) : null
     },
+
+    /** ⌃⇧S: whether the tab is one this install has a row for, while Fremdev is on. */
+    async isDevTab(tabId) {
+      await loaded
+      return on && validId(tabId) && tabs[String(tabId)] !== undefined
+    },
+
+    /**
+     * Whether the socket open now was greeted with Fremdev's yes: its challenge proved the port is
+     * Fremkit, so the shot route may be shown the token.
+     */
+    canSend: () => support === 'yes',
 
     active,
     modules,

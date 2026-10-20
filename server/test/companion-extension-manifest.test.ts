@@ -51,6 +51,10 @@ describe('the companion extension', () => {
     expect(manifest.commands['fremplay-toggle'].suggested_key.default).toBe('Ctrl+Shift+F')
     // Not ⌥: on a Mac, Option+Shift+letter types a character, and the browser let the page have it.
     expect(manifest.commands['fremplay-toggle'].suggested_key.mac).toBe('MacCtrl+Shift+F')
+    // Fremdev's shot: ⌃⇧S, the same family; the key press is the activeTab grant captureVisibleTab needs.
+    expect(manifest.commands['fremdev-shot'].suggested_key).toEqual({ default: 'Ctrl+Shift+S', mac: 'MacCtrl+Shift+S' })
+    expect(manifest.commands['fremdev-shot'].description).toBe('__MSG_commandShot__')
+    expect(Object.keys(manifest.commands).sort()).toEqual(['fremdev-shot', 'fremplay-toggle'])
   })
 
   it('is version 0.2.0, the first with Fremdev', () => {
@@ -78,6 +82,20 @@ describe('the companion extension', () => {
   it("the manifest's key is present and gives the store's extension id", () => {
     expect(typeof manifest.key).toBe('string')
     expect(extensionId(manifest.key)).toBe('lnckeodobpbbmfbdlpnegjpchgkehdlk')
+  })
+
+  it('names the shot command in both languages, and the options page shows both shortcuts', () => {
+    expect(messages('fr').commandShot.message).toBe('Fremdev : copier une capture de l’onglet de développement')
+    expect(messages('en').commandShot.message).toBe('Fremdev: copy a screenshot of the development tab')
+    expect(messages('fr').optShotShortcut.message).toBe('Capture Fremdev')
+    expect(messages('en').optShotShortcut.message).toBe('Fremdev screenshot')
+    const page = read('options.html')
+    expect(page).toContain('__MSG_optShortcut__')
+    expect(page).toContain('__MSG_optShotShortcut__')
+    const script = read('options.js')
+    expect(script).toContain("'fremplay-toggle'")
+    expect(script).toContain("'fremdev-shot'")
+    expect(script).toContain("chrome.tabs.create({ url: 'chrome://extensions/shortcuts' })")
   })
 
   it('fr and en messages have the same keys', () => {

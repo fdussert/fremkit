@@ -11,6 +11,9 @@
   "commandToggle": {
     "message": "Fremplay : envoyer la vidéo de cet onglet sur l'Edge, ou arrêter"
   },
+  "commandShot": {
+    "message": "Fremdev : copier une capture de l’onglet de développement"
+  },
   "linkOk": {
     "message": "Relié"
   },
@@ -359,6 +362,9 @@
   },
   "optShortcut": {
     "message": "Raccourci Fremplay"
+  },
+  "optShotShortcut": {
+    "message": "Capture Fremdev"
   },
   "optShortcutChange": {
     "message": "Changer le raccourci"

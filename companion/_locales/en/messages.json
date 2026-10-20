@@ -11,6 +11,9 @@
   "commandToggle": {
     "message": "Fremplay: send this tab's video to the Edge, or stop"
   },
+  "commandShot": {
+    "message": "Fremdev: copy a screenshot of the development tab"
+  },
   "linkOk": {
     "message": "Linked"
   },
@@ -359,6 +362,9 @@
   },
   "optShortcut": {
     "message": "Fremplay shortcut"
+  },
+  "optShotShortcut": {
+    "message": "Fremdev screenshot"
   },
   "optShortcutChange": {
     "message": "Change the shortcut"

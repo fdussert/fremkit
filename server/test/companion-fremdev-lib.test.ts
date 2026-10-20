@@ -17,7 +17,7 @@ import { InFlight, MAX_IN_FLIGHT, MAX_TRACKED, SLOW_MS, STALE_MS } from '../../c
 // @ts-expect-error plain JS module
 import { CLS_POOR, LCP_POOR_MS, median, PERF_KEYS, PERF_MIN_MS, PERF_RATIO, PERF_SAMPLES, PerfMemory, perfVerdict } from '../../companion/lib/devperf.js'
 // @ts-expect-error plain JS module
-import { dataUrlBlob } from '../../companion/lib/devshot.js'
+import { dataUrlBlob, fitShot } from '../../companion/lib/devshot.js'
 import { DEV_METHODS, DevTabSchema } from '../src/companion/protocol.js'
 
 const both = (host: string) => [`http://${host}/*`, `https://${host}/*`]
@@ -1717,5 +1717,51 @@ describe('devshot', () => {
     for (const bad of ['data:text/html,<b>', 'data:image/svg+xml;base64,PHN2Zz4=', 'data:image/png,abc', 'https://example.com/a.png', 'data:image/png;base64,@@@', '', 42]) {
       expect(() => dataUrlBlob(bad), String(bad)).toThrow()
     }
+  })
+})
+
+describe('fitShot', () => {
+  /** A fake decoded image, and a canvas whose JPEG weighs what `sizes(quality, w, h)` says. */
+  function fakes(width: number, height: number, sizes: (quality: number, w: number, h: number) => number) {
+    const drawn: Array<{ w: number; h: number; dw: number; dh: number }> = []
+    const encoded: Array<{ type: string; quality: number }> = []
+    const image = { width, height, close: vi.fn() }
+    const decode = vi.fn(async () => image)
+    const canvas = vi.fn((w: number, h: number) => ({
+      getContext: () => ({ drawImage: (_img: unknown, _x: number, _y: number, dw: number, dh: number) => void drawn.push({ w, h, dw, dh }) }),
+      convertToBlob: async ({ type, quality }: { type: string; quality: number }) => {
+        encoded.push({ type, quality })
+        return new Blob([new Uint8Array(sizes(quality, w, h))], { type })
+      },
+    }))
+    return { decode, canvas, drawn, encoded }
+  }
+  const MB = 1024 * 1024
+
+  it('hands back a blob that already fits, untouched', async () => {
+    const f = fakes(3840, 2160, () => 0)
+    const blob = new Blob([new Uint8Array(MB)], { type: 'image/jpeg' })
+    expect(await fitShot(blob, { decode: f.decode, canvas: f.canvas })).toBe(blob)
+    expect(f.decode).not.toHaveBeenCalled()
+  })
+
+  it('draws a 3 MB 3840×2160 shot at 1920×1080, JPEG 0.85', async () => {
+    const f = fakes(3840, 2160, () => MB)
+    const out = await fitShot(new Blob([new Uint8Array(3 * MB)], { type: 'image/jpeg' }), { decode: f.decode, canvas: f.canvas })
+    expect(out?.size).toBe(MB)
+    expect(out?.type).toBe('image/jpeg')
+    expect(f.drawn).toEqual([{ w: 1920, h: 1080, dw: 1920, dh: 1080 }])
+    expect(f.encoded).toEqual([{ type: 'image/jpeg', quality: 0.85 }])
+  })
+
+  it('steps the quality down to 0.7 then 0.5, and gives null when none fits', async () => {
+    const f = fakes(1000, 4000, (q) => (q === 0.5 ? 2 * MB : 3 * MB))
+    const out = await fitShot(new Blob([new Uint8Array(3 * MB)], { type: 'image/jpeg' }), { decode: f.decode, canvas: f.canvas })
+    expect(f.drawn).toEqual([{ w: 480, h: 1920, dw: 480, dh: 1920 }])
+    expect(f.encoded.map((e) => e.quality)).toEqual([0.85, 0.7, 0.5])
+    expect(out?.size).toBe(2 * MB)
+    const never = fakes(1920, 1080, () => 3 * MB)
+    expect(await fitShot(new Blob([new Uint8Array(3 * MB)], { type: 'image/jpeg' }), { decode: never.decode, canvas: never.canvas })).toBeNull()
+    expect(never.encoded.map((e) => e.quality)).toEqual([0.85, 0.7, 0.5])
   })
 })

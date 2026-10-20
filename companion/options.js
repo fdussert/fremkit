@@ -1,5 +1,5 @@
 // The options page: whether this browser is linked and under which name, unlinking, Fremdev's own
-// development hosts, and the Fremplay shortcut (changed on the browser's own shortcut page).
+// development hosts, and the Fremplay and Fremdev shortcuts (changed on the browser's own shortcut page).
 
 import { localize, t } from './i18n.js'
 import { parsePattern, releasableOrigins } from './lib/devhosts.js'
@@ -70,8 +70,12 @@ async function render() {
   renderHosts((await readFremdev()).patterns)
 
   const commands = await chrome.commands.getAll()
-  const shortcut = commands.find((c) => c.name === 'fremplay-toggle')?.shortcut
-  const hint = $('hint')
+  showShortcut($('hint'), commands.find((c) => c.name === 'fremplay-toggle')?.shortcut)
+  showShortcut($('shothint'), commands.find((c) => c.name === 'fremdev-shot')?.shortcut)
+}
+
+/** A command's keys as `kbd`s, or the note that it has none. */
+function showShortcut(hint, shortcut) {
   hint.replaceChildren()
   if (!shortcut) hint.textContent = t('shortcutNone')
   else {

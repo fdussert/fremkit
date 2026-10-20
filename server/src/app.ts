@@ -591,7 +591,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   // The browser extension: pairing by approval on the Edge, its socket, the share it carries and
   // the `companion` channel the dashboard watches. Closed with the app.
   // The pairing lock lives next to devices.json: a restart must not clear it.
-  companion = await createCompanion({ app, store: devices, config: store, registry, lockPath: join(opts.dataDir, 'companion-lock.json') })
+  companion = await createCompanion({ app, store: devices, config: store, registry, lockPath: join(opts.dataDir, 'companion-lock.json'), dataDir: opts.dataDir })
 
   if (opts.uiDist && (await access(opts.uiDist).then(() => true, () => false))) {
     await app.register(fastifyStatic, { root: opts.uiDist, prefix: '/', serve: true, decorateReply: false })

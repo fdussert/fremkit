@@ -16,6 +16,7 @@ import { companionOrigins, EXTENSION_IDS_ENV } from './protocol.js'
 import { placeFremplay } from './placement.js'
 import { COMPANION_CHANNEL, createCompanionProvider, type CompanionProvider } from './provider.js'
 import { companionRoutes } from './routes.js'
+import { companionShotRoute, osascriptImageClipboard, type ImageClipboard } from './shot.js'
 import { CompanionSession } from './session.js'
 import { CompanionSockets, companionSocket } from './socket.js'
 
@@ -29,6 +30,10 @@ export interface CompanionOptions {
   registry: Pick<ProviderRegistry, 'register' | 'refresh'>
   /** Where Fremdev's report command copies a report: this Mac's pasteboard unless a test says. */
   pasteboard?: Pasteboard
+  /** Where Fremdev's shot puts its image: this Mac's clipboard, through a file in `dataDir`, unless a test says. */
+  imageClipboard?: ImageClipboard
+  /** The data folder, where the shot's temporary file is written (0600, removed at once). */
+  dataDir?: string
 }
 
 export interface Companion {
@@ -39,6 +44,9 @@ export interface Companion {
   sockets: CompanionSockets
   close(): void
 }
+
+/** Without a data folder there is nowhere to write the shot's file: every shot answers 500. */
+const noClipboard: ImageClipboard = { writeJpeg: async () => { throw new Error('no data folder') } }
 
 export async function createCompanion(opts: CompanionOptions): Promise<Companion> {
   const { app, store, config, registry } = opts
@@ -108,6 +116,8 @@ export async function createCompanion(opts: CompanionOptions): Promise<Companion
 
   await app.register(companionRoutes, { pairing, config, origins, pairedExtensions })
   await app.register(companionSocket, { store, session, sockets, origins })
+  const clipboard = opts.imageClipboard ?? (opts.dataDir !== undefined ? osascriptImageClipboard(opts.dataDir) : noClipboard)
+  await app.register(companionShotRoute, { store, dev, origins, clipboard })
 
   const close = (): void => {
     if (closed) return

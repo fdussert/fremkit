@@ -313,7 +313,7 @@ describe('companion/fremdev.js', () => {
     f.fremdev.onReady({ type: 'ready', protocol: 2, modules: { fremplay: true, fremdev: true } })
     await f.later()
     expect(f.sent.map((m) => m.type)).toEqual(['modules', 'dev.tabs'])
-    expect(f.sent[0]).toEqual({ type: 'modules', modules: ['fremplay', 'fremdev', 'fremdev.report', 'fremdev.build', 'fremdev.open', 'fremdev.reload', 'fremdev.slow', 'fremdev.perf'] })
+    expect(f.sent[0]).toEqual({ type: 'modules', modules: ['fremplay', 'fremdev', 'fremdev.report', 'fremdev.build', 'fremdev.open', 'fremdev.reload', 'fremdev.slow', 'fremdev.perf', 'fremdev.shot'] })
     expect((f.sent[1].tabs as Array<{ tabId: number }>).map((t) => t.tabId)).toEqual([7])
     await f.fremdev.stop()
     expect(f.sent.at(-1)).toEqual({ type: 'modules', modules: ['fremplay'] })
@@ -385,11 +385,11 @@ describe('companion/fremdev.js', () => {
       const f = await makeFremdev({ on: false })
       expect(f.fremdev.modules()).toEqual(['fremplay'])
       await f.fremdev.start()
-      expect(f.fremdev.modules()).toEqual(['fremplay', 'fremdev', 'fremdev.report', 'fremdev.build', 'fremdev.open', 'fremdev.reload', 'fremdev.slow', 'fremdev.perf', 'fremdev.test'])
+      expect(f.fremdev.modules()).toEqual(['fremplay', 'fremdev', 'fremdev.report', 'fremdev.build', 'fremdev.open', 'fremdev.reload', 'fremdev.slow', 'fremdev.perf', 'fremdev.shot', 'fremdev.test'])
     } finally {
       FEATURE_MODULES.pop()
     }
-    expect(FEATURE_MODULES).toEqual(['fremdev.build', 'fremdev.open', 'fremdev.reload', 'fremdev.slow', 'fremdev.perf'])
+    expect(FEATURE_MODULES).toEqual(['fremdev.build', 'fremdev.open', 'fremdev.reload', 'fremdev.slow', 'fremdev.perf', 'fremdev.shot'])
   })
 
   it('records the dev server a page reports, the latest replacing the last', async () => {
@@ -426,7 +426,7 @@ describe('companion/fremdev.js', () => {
     const f = await makeFremdev({ on: false })
     expect(f.fremdev.modules()).toEqual(['fremplay'])
     await f.fremdev.start()
-    expect(f.fremdev.modules()).toEqual(['fremplay', 'fremdev', 'fremdev.report', 'fremdev.build', 'fremdev.open', 'fremdev.reload', 'fremdev.slow', 'fremdev.perf'])
+    expect(f.fremdev.modules()).toEqual(['fremplay', 'fremdev', 'fremdev.report', 'fremdev.build', 'fremdev.open', 'fremdev.reload', 'fremdev.slow', 'fremdev.perf', 'fremdev.shot'])
     await f.fremdev.stop()
     expect(f.fremdev.modules()).not.toContain('fremdev.report')
     expect(f.fremdev.modules()).not.toContain('fremdev.build')
@@ -1071,5 +1071,40 @@ describe('performance and regressions', () => {
     expect(f.fremdev.modules()).toContain('fremdev.perf')
     await f.fremdev.stop()
     expect(f.fremdev.modules()).not.toContain('fremdev.perf')
+  })
+})
+
+describe('the shot', () => {
+  it('announces fremdev.shot only while on', async () => {
+    expect(FEATURE_MODULES).toContain('fremdev.shot')
+    const f = await makeFremdev({ on: false })
+    expect(f.fremdev.modules()).not.toContain('fremdev.shot')
+    await f.fremdev.start()
+    expect(f.fremdev.modules()).toContain('fremdev.shot')
+    await f.fremdev.stop()
+    expect(f.fremdev.modules()).not.toContain('fremdev.shot')
+  })
+
+  it('isDevTab: a tab with a row, while on', async () => {
+    const f = await makeFremdev()
+    expect(await f.fremdev.isDevTab(7)).toBe(false)
+    await f.fremdev.onPageEvent({ kind: 'error', text: 'x' }, devSender())
+    expect(await f.fremdev.isDevTab(7)).toBe(true)
+    expect(await f.fremdev.isDevTab(8)).toBe(false)
+    expect(await f.fremdev.isDevTab(-1)).toBe(false)
+    expect(await f.fremdev.isDevTab(undefined)).toBe(false)
+    await f.fremdev.stop()
+    expect(await f.fremdev.isDevTab(7)).toBe(false)
+  })
+
+  it('canSend: only once a greeted socket said yes, and not after it closed', async () => {
+    const f = await makeFremdev()
+    expect(f.fremdev.canSend()).toBe(false)
+    f.fremdev.onReady({ type: 'ready', protocol: 2, modules: { fremplay: true, fremdev: false } })
+    expect(f.fremdev.canSend()).toBe(false)
+    f.fremdev.onReady({ type: 'ready', protocol: 2, modules: { fremplay: true, fremdev: true } })
+    expect(f.fremdev.canSend()).toBe(true)
+    f.fremdev.socketClosed()
+    expect(f.fremdev.canSend()).toBe(false)
   })
 })

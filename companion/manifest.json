@@ -22,6 +22,10 @@
     "fremplay-toggle": {
       "suggested_key": { "default": "Ctrl+Shift+F", "mac": "MacCtrl+Shift+F" },
       "description": "__MSG_commandToggle__"
+    },
+    "fremdev-shot": {
+      "suggested_key": { "default": "Ctrl+Shift+S", "mac": "MacCtrl+Shift+S" },
+      "description": "__MSG_commandShot__"
     }
   },
   "icons": { "16": "icons/icon-16.png", "32": "icons/icon-32.png", "48": "icons/icon-48.png", "128": "icons/icon-128.png" }
