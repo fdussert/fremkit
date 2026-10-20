@@ -56,6 +56,26 @@ watch(now, (at) => {
   if (live.value && offer.value && at >= offer.value.expiresAt) void devices.newCode()
 })
 
+/** The remote listener's usual port: an address on it is typed without one. */
+const DEFAULT_PORT = 4243
+/**
+ * What to type on a tablet that finds no Mac on its own (multicast does not cross every network):
+ * the Bonjour name, then the LAN addresses, the QR code's first (the default route's), each with
+ * the port only when it is not the usual one. `main` marks the name and the QR code's address, the
+ * ones most likely to answer; the others (a VPN's, a virtual machine's) are shown dimmer.
+ */
+const typedAddresses = computed<{ text: string; main: boolean }[]>(() => {
+  const st = status.value
+  if (!st) return []
+  let qrAddress: string | null = null
+  try { qrAddress = offer.value ? new URL(offer.value.url).searchParams.get('a') : null } catch { qrAddress = null }
+  const first = qrAddress !== null && st.addresses.includes(qrAddress) ? [qrAddress] : []
+  const port = st.port === DEFAULT_PORT ? '' : `:${st.port}`
+  const main = [...(st.host ? [st.host] : []), ...first]
+  const rest = st.addresses.filter((a) => !first.includes(a))
+  return [...main.map((h) => ({ text: `${h}${port}`, main: true })), ...rest.map((h) => ({ text: `${h}${port}`, main: first.length === 0 }))]
+})
+
 const qr = computed(() => (offer.value ? renderSVG(offer.value.url, { ecc: 'M', pixelSize: 1, border: 4 }) : ''))
 const countdown = computed(() => {
   if (!offer.value) return ''
@@ -151,6 +171,12 @@ async function onCreated(screenId: string): Promise<void> {
           <template v-if="status?.fingerprint">
             <p class="fingerprint" data-test="fingerprint">{{ t('admin.devices.fingerprint', { words: status.fingerprint.join(' ') }) }}</p>
             <p class="ro">{{ t('admin.devices.fingerprintHelp') }}</p>
+          </template>
+          <template v-if="typedAddresses.length">
+            <p class="ro">{{ t('admin.devices.address') }}</p>
+            <ul class="addresses mono" data-test="pairing-address">
+              <li v-for="a in typedAddresses" :key="a.text" :class="{ dim: !a.main }">{{ a.text }}</li>
+            </ul>
           </template>
           <BaseButton @click="devices.newCode()"><BaseIcon name="refresh-cw" :size="16" />{{ t('admin.devices.newCode') }}</BaseButton>
         </div>
@@ -261,6 +287,8 @@ async function onCreated(screenId: string): Promise<void> {
 .qr { flex: none; width: 264px; height: 264px; padding: 8px; background: #fff; border-radius: var(--radius-sm); }
 .qr :deep(svg) { display: block; width: 100%; height: 100%; }
 .code { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; }
+.addresses { list-style: none; margin: 0 0 var(--space-2); padding: 0; overflow-wrap: anywhere; color: var(--text); }
+.addresses .dim { font-size: var(--fs-sm); color: var(--text-dim); }
 .fingerprint { margin: 0 0 var(--space-1); letter-spacing: .08em; color: var(--text); }
 .value { margin: 0 0 var(--space-1); font-size: 1.6em; letter-spacing: .12em; color: var(--text); }
 .code :deep(button), .row :deep(button), .device :deep(button), .request :deep(button) { min-height: 44px; }
