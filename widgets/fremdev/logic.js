@@ -154,7 +154,8 @@
     } else if (kind === 'request') {
       var parts = [String(entry.method || 'OTHER'), String(entry.path || '')]
       if (entry.status === 0) view.noAnswer = true
-      else parts.push(String(entry.status))
+      // A status only when it is one: nothing else is written after the path.
+      else if (typeof entry.status === 'number' && isFinite(entry.status)) parts.push(String(entry.status))
       view.text = parts.join(' ')
     }
     return view

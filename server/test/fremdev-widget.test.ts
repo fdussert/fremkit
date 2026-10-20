@@ -258,6 +258,13 @@ describe('fremdev/logic.js', () => {
       .toEqual({ kind: 'request', time: 9, text: 'GET /api/health', origin: null, n: 4, state: 'open', noAnswer: true })
   })
 
+  it('entryView: a request whose status is not a number shows no status', async () => {
+    const { entryView } = await loadLogic()
+    for (const status of [undefined, null, '500', { toString: () => '500' }, Number.NaN])
+      expect(entryView({ kind: 'request', method: 'GET', path: '/api/items', status, n: 1, at: 1, state: 'open' }))
+        .toMatchObject({ text: 'GET /api/items', noAnswer: false })
+  })
+
   it('entryView: a limited entry has no text of its own, only its count, in each state', async () => {
     const { entryView } = await loadLogic()
     for (const state of ['open', 'seen', 'resolved'] as const) {
