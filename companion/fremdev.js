@@ -400,8 +400,19 @@ export function createFremdev({
         if (!t || !isDev(typeof t.url === 'string' ? t.url : tabs[key].url)) delete tabs[key]
       }
     } catch { /* keep them: the next event corrects */ }
+    // An ordinary restart of the worker: the pages' scripts are still alive, nothing to inject.
     await sync({ inject: false })
   })().catch(() => undefined).then(() => refresh({ changed: on }))
+
+  // Installed, updated or reloaded (chrome://extensions ↻): Chrome orphaned every content script it
+  // had injected, so the dev tabs already open get the scripts again and their rows, as at turn-on.
+  // The page keeps the previous run's hook, which still dispatches to the new relay; the new hook
+  // finds it and stands aside (fremdev/hook.js), so each error is told once. Registered here, while
+  // the worker's first task runs: Chrome delivers the event only to a listener added then.
+  api.runtime.onInstalled?.addListener(async () => {
+    await loaded
+    if (on) await sync({ inject: true })
+  })
 
   async function doStart() {
     await loaded

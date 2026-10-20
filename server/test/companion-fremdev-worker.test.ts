@@ -130,7 +130,7 @@ function fakeChrome({ on = true, granted = ['http://localhost/*'], webRequest = 
   const registered: unknown[] = []
   const grants = { origins: [...granted], permissions: webRequest ? ['webRequest'] : ([] as string[]) }
   const api: Record<string, any> = {
-    runtime: { id: 'ext' },
+    runtime: { id: 'ext', onInstalled: event() },
     storage: { local: area(store.local), session: area(store.session) },
     permissions: {
       contains: async ({ origins = [], permissions = [] }: { origins?: string[]; permissions?: string[] }) =>
@@ -545,6 +545,40 @@ describe('companion/fremdev.js', () => {
     await Promise.all([f.fremdev.start(), f.fremdev.start()])
     expect(f.api.scripting.registerContentScripts).toHaveBeenCalledTimes(1)
     expect(f.api.scripting.executeScript).toHaveBeenCalledTimes(2)
+  })
+
+  it('injects the open dev tabs and gives them rows when the extension is installed, updated or reloaded', async () => {
+    // Added while the worker's first task runs, before any await, or Chrome would not deliver it.
+    const { api } = fakeChrome()
+    createFremdev({ send: () => true, wantSocket: () => undefined, api, every: () => 1, stopEvery: () => undefined })
+    expect(api.runtime.onInstalled.addListener).toHaveBeenCalledTimes(1)
+
+    // The session copy is gone after a reload: the boot finds no row and injects nothing itself.
+    const f = await makeFremdev()
+    expect(f.api.scripting.executeScript).not.toHaveBeenCalled()
+    const [onInstalled] = f.api.runtime.onInstalled.addListener.mock.calls[0]
+    await onInstalled({ reason: 'update', previousVersion: '0.0.1' })
+    const calls = f.api.scripting.executeScript.mock.calls as Array<[{ target: { tabId: number }; files: string[]; world?: string }]>
+    expect(calls.map(([c]) => [c.target.tabId, c.files, c.world])).toEqual([
+      [7, ['fremdev/relay.js'], undefined],
+      [7, ['fremdev/hook.js'], 'MAIN'],
+    ])
+    await f.later()
+    expect(Object.keys(f.rows())).toEqual(['7'])
+    expect(f.rows()['7']).toMatchObject({ url: 'http://localhost:5173/', title: 'App', server: 'up' })
+  })
+
+  it('injects nothing on a plain restart of the worker, nor on an install while off', async () => {
+    const f = await makeFremdev()
+    await f.later()
+    expect(f.api.scripting.registerContentScripts).toHaveBeenCalledTimes(1)
+    expect(f.api.scripting.executeScript).not.toHaveBeenCalled()
+    expect(f.rows()).toEqual({})
+    const off = await makeFremdev({ on: false })
+    const [onInstalled] = off.api.runtime.onInstalled.addListener.mock.calls[0]
+    await onInstalled({ reason: 'install' })
+    expect(off.api.scripting.executeScript).not.toHaveBeenCalled()
+    expect(off.api.scripting.registerContentScripts).not.toHaveBeenCalled()
   })
 
   it('off, it registers nothing and keeps no row', async () => {
