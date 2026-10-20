@@ -25,6 +25,7 @@ import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.webkit.WebViewCompat
+import androidx.webkit.WebViewFeature
 import app.fremkit.kit.Dashboard
 import app.fremkit.kit.PageMessage
 import app.fremkit.kit.PairedMac
@@ -77,6 +78,9 @@ class DashboardWebView(
     val view: WebView = WebView(context)
 
     init {
+        // Root never makes one on an outdated WebView (WebViewSupport); a dashboard that could not
+        // hear the page would lose the revocation message, so there is no half-working fallback.
+        check(WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)) { "WebView too old for the dashboard" }
         configure(view)
         WebViewCompat.addWebMessageListener(view, LISTENER, setOf(origin())) { _, message, sourceOrigin, isMainFrame, _ ->
             if (destroyed || !isMainFrame) return@addWebMessageListener
@@ -121,7 +125,9 @@ class DashboardWebView(
         if (destroyed) return
         destroyed = true
         try {
-            WebViewCompat.removeWebMessageListener(view, LISTENER)
+            if (WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)) {
+                WebViewCompat.removeWebMessageListener(view, LISTENER)
+            }
         } catch (_: RuntimeException) {
             // The renderer is gone already.
         }
