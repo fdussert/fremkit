@@ -113,6 +113,34 @@ export async function openInHerdr(exec: Exec, bin: string, path: string): Promis
   }
 }
 
+/** The coding agents a project can be opened with: a closed list, and Herdr's own kind names. */
+export const AGENTS = ['claude', 'codex'] as const
+export type Agent = (typeof AGENTS)[number]
+
+/** How long `agent start` may wait for the agent to be ready, and the CLI call around it. */
+const AGENT_START_MS = 30_000
+
+/**
+ * Splits a new pane on the folder, focused, and starts a coding agent in it with Herdr's own
+ * `agent start`, which launches the agent of that kind and waits until it takes input. Never an
+ * existing pane: one already in the folder may be busy. The folder goes only as `--cwd`; the
+ * agent's name is generated, never derived from the folder. Herdr's `agent_not_ready` (the agent
+ * is up but waiting at a startup question, such as trusting the folder) is still a started agent.
+ */
+export async function startAgentInHerdr(exec: Exec, bin: string, path: string, agent: Agent, now: number = Date.now()): Promise<'started' | 'waiting'> {
+  const split = resultOf(await exec(bin, ['pane', 'split', '--cwd', path, '--direction', 'right', '--focus']))
+  const paneId = (split?.pane as { pane_id?: unknown } | undefined)?.pane_id
+  if (typeof paneId !== 'string' || !/^[\w:-]{1,64}$/.test(paneId)) throw new Error('no-pane')
+  const name = `fremkit-${agent}-${now.toString(36)}`
+  try {
+    await exec(bin, ['agent', 'start', name, '--kind', agent, '--pane', paneId, '--timeout', String(AGENT_START_MS)], { timeoutMs: AGENT_START_MS + 5000 })
+    return 'started'
+  } catch (err) {
+    if (/agent_not_ready/.test((err as Error).message)) return 'waiting'
+    throw err
+  }
+}
+
 /** The terminal application a process path belongs to, from its bundle in the path. */
 function terminalOf(command: string): TerminalApp | null {
   if (command.includes('/iTerm.app/') || command.includes('/iTerm2/iTermServer')) return 'iterm'

@@ -81,7 +81,9 @@
   }
   var APPS = {
     finder: 'Finder', terminal: 'Terminal', iterm: 'iTerm', ghostty: 'Ghostty', vscode: 'VS Code',
-    cursor: 'Cursor', zed: 'Zed', xcode: 'Xcode', herdr: 'Herdr', tmux: 'tmux'
+    cursor: 'Cursor', zed: 'Zed', xcode: 'Xcode', herdr: 'Herdr', tmux: 'tmux',
+    'herdr-claude': 'Herdr + Claude', 'herdr-codex': 'Herdr + Codex',
+    'tmux-claude': 'tmux + Claude', 'tmux-codex': 'tmux + Codex'
   }
   /** What the `herdrTerminal` setting may hold: the server refuses anything else. */
   var TERMINALS = ['auto', 'terminal', 'iterm', 'ghostty']
@@ -169,7 +171,7 @@
   function open(path, app) {
     mark(path, 'pressed')
     var payload = { path: path, app: app }
-    if (app === 'herdr') payload.terminal = TERMINALS.indexOf(settings.herdrTerminal) >= 0 ? settings.herdrTerminal : 'auto'
+    if (app === 'herdr' || app.indexOf('herdr-') === 0) payload.terminal = TERMINALS.indexOf(settings.herdrTerminal) >= 0 ? settings.herdrTerminal : 'auto'
     Fremkit.sendCommand('recent-projects', 'open', payload)
       .then(function (r) { mark(path, r && r.ok ? 'ok' : 'failed') })
       .catch(function () { mark(path, 'failed') })

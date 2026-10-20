@@ -12,8 +12,8 @@ import { createClaudeSource, decodeClaudeName, encodeClaudeName } from '../src/p
 import { createCodexSource, sessionCwd } from '../src/providers/recent-projects/sources/codex.js'
 import { createVscodeSource, parseRecentlyOpened } from '../src/providers/recent-projects/sources/vscode.js'
 import { parseRecentProjects } from '../src/providers/recent-projects/sources/jetbrains.js'
-import { createCliSources, parseHerdrPanes, parseTmux, parseZoxide } from '../src/providers/recent-projects/sources/cli.js'
-import { openWith } from '../src/providers/recent-projects/apps.js'
+import { binaryCandidates, createCliSources, parseHerdrPanes, parseTmux, parseZoxide } from '../src/providers/recent-projects/sources/cli.js'
+import { installedApps, openWith } from '../src/providers/recent-projects/apps.js'
 import { detectHerdrTerminal } from '../src/providers/recent-projects/herdr.js'
 import { LIVE_MEMORY, loadMemory } from '../src/providers/recent-projects/memory.js'
 import type { Source } from '../src/providers/recent-projects/types.js'
@@ -385,7 +385,7 @@ describe('recent projects: provider', () => {
  * (p1 | p3 | p2), focused on p1. It answers `pane list`, `pane layout`, `pane neighbor` and
  * moves its focus on `pane focus`, as Herdr 0.9.5 does; `stuck` makes focus moves do nothing.
  */
-function fakeHerdr(opts: { zoomed?: boolean; stuck?: boolean; ps?: string } = {}) {
+function fakeHerdr(opts: { zoomed?: boolean; stuck?: boolean; ps?: string; agentError?: string; agents?: string[] } = {}) {
   const BIN = '/Users/demo/.local/bin/herdr'
   const panes = [
     { pane_id: 'w1:p1', tab_id: 'w1:t1', workspace_id: 'w1', cwd: '/Users/demo', foreground_cwd: '/Users/demo' },
@@ -402,7 +402,7 @@ function fakeHerdr(opts: { zoomed?: boolean; stuck?: boolean; ps?: string } = {}
     return undefined
   }
   const layout = () => ({ focused_pane_id: focused, zoomed: !!opts.zoomed, panes: row.map((pane_id) => ({ pane_id })), tab_id: 'w2:t1' })
-  const exec = vi.fn(async (file: string, args: string[]) => {
+  const exec = vi.fn(async (file: string, args: string[], _opts?: { timeoutMs?: number }) => {
     if (file === '/bin/ps') return opts.ps ?? ''
     if (file !== BIN) return ''
     const [group, verb] = args
@@ -413,6 +413,8 @@ function fakeHerdr(opts: { zoomed?: boolean; stuck?: boolean; ps?: string } = {}
       const id = neighbor(flag('--pane'), flag('--direction'))
       return JSON.stringify({ result: { neighbor: { layout: layout(), pane_id: flag('--pane'), ...(id ? { neighbor_pane_id: id } : {}) } } })
     }
+    if (group === 'pane' && verb === 'split') return JSON.stringify({ id: 'cli:pane:split', result: { pane: { pane_id: 'w2:p9', tab_id: 'w2:t1' } } })
+    if (group === 'agent' && verb === 'start' && opts.agentError) throw new Error(opts.agentError)
     if (group === 'pane' && verb === 'focus') {
       if (!opts.stuck) focused = neighbor(flag('--pane'), flag('--direction')) ?? focused
       return '{}'
@@ -421,7 +423,8 @@ function fakeHerdr(opts: { zoomed?: boolean; stuck?: boolean; ps?: string } = {}
   })
   const deps = {
     exec,
-    resolveBinary: async (name: string) => (name === 'herdr' ? BIN : null),
+    resolveBinary: async (name: string) =>
+      name === 'herdr' ? BIN : (opts.agents ?? ['claude']).includes(name) ? `/Users/demo/.local/bin/${name}` : null,
     exists: async (p: string) => p === '/Applications/iTerm.app' || p === '/Applications/Ghostty.app',
   }
   const calls = () => exec.mock.calls.map(([f, a]) => (f === BIN ? 'herdr ' : f + ' ') + a.join(' '))
@@ -489,6 +492,77 @@ describe('recent projects: Herdr', () => {
     expect(await ps(PS_ITERM + '\n  400     1 /Applications/Ghostty.app/Contents/MacOS/ghostty\n  410   400 herdr')).toBeNull()
     expect(await ps('  340     1 herdr')).toBeNull()
     expect(await ps('  300     1 /Applications/iTerm.app/Contents/MacOS/iTerm2')).toBeNull()
+  })
+})
+
+describe('recent projects: an agent in a new pane', () => {
+  it('splits a new focused pane on the folder, then starts the agent there with Herdr’s agent start', async () => {
+    const h = fakeHerdr()
+    expect(await openWith('herdr-claude', '/Users/demo/Dev/api', h.deps, { terminal: 'iterm' }))
+      .toEqual({ ok: true, herdr: 'new-pane', agent: 'started', front: 'iterm' })
+    const calls = h.calls()
+    expect(calls[0]).toBe('herdr pane split --cwd /Users/demo/Dev/api --direction right --focus')
+    expect(calls[1]).toMatch(/^herdr agent start fremkit-claude-[a-z0-9]+ --kind claude --pane w2:p9 --timeout 30000$/)
+    expect(calls.at(-1)).toBe('/usr/bin/open -a /Applications/iTerm.app')
+    // Never the pane already in the folder, and the folder on no command line but as --cwd.
+    expect(calls.some((c) => c.includes('pane list') || c.includes('focus w2'))).toBe(false)
+    expect(calls.filter((c) => c.includes('/Users/demo/Dev/api'))).toHaveLength(1)
+    // The agent's start may take Herdr's 30 s: the call around it waits longer than the default.
+    expect(h.exec.mock.calls[1][2]).toEqual({ timeoutMs: 35_000 })
+    expect(calls[1].split(' ')[3]).toMatch(/^[a-z][a-z0-9_-]{0,31}$/)
+  })
+
+  it('counts an agent waiting at a startup question as started, and anything else as a failure', async () => {
+    const waiting = fakeHerdr({ agentError: 'agent_not_ready: blocked at startup' })
+    expect(await openWith('herdr-claude', '/Users/demo/Dev/api', waiting.deps)).toMatchObject({ ok: true, agent: 'waiting' })
+    await expect(openWith('herdr-claude', '/Users/demo/Dev/api', fakeHerdr({ agentError: 'unknown kind' }).deps)).rejects.toThrow()
+  })
+
+  it('offers no agent whose binary is missing, and refuses it', async () => {
+    const h = fakeHerdr({ agents: ['claude'] })
+    const apps = await installedApps(h.deps)
+    expect(apps).toContain('herdr-claude')
+    expect(apps).not.toContain('herdr-codex')
+    expect(apps).not.toContain('tmux-claude')
+    expect(await openWith('herdr-codex', '/Users/demo/Dev/api', h.deps)).toEqual({ ok: false, error: 'not-installed' })
+    expect(h.exec).not.toHaveBeenCalled()
+  })
+
+  it('starts the agent by its absolute path in a new tmux window, and only a path a shell reads as is', async () => {
+    const exec = vi.fn(async () => '')
+    const bins: Record<string, string> = { tmux: '/opt/homebrew/bin/tmux', codex: '/opt/homebrew/bin/codex', claude: '/Users/my demo/.local/bin/claude' }
+    const deps = { exec, resolveBinary: async (n: string) => bins[n] ?? null }
+    expect(await openWith('tmux-codex', '/Users/demo/Dev/api', deps)).toEqual({ ok: true })
+    expect(exec.mock.calls).toEqual([['/opt/homebrew/bin/tmux', ['new-window', '-c', '/Users/demo/Dev/api', '/opt/homebrew/bin/codex']]])
+    expect(await installedApps(deps)).toEqual(expect.arrayContaining(['tmux-codex']))
+    expect(await installedApps(deps)).not.toContain('tmux-claude')
+    expect(await openWith('tmux-claude', '/Users/demo/Dev/api', deps)).toEqual({ ok: false, error: 'not-installed' })
+  })
+
+  it('looks for Claude Code in its own installer’s folder too', () => {
+    expect(binaryCandidates('claude', '/Users/demo')).toContain('/Users/demo/.claude/local/claude')
+    expect(binaryCandidates('codex', '/Users/demo')).not.toContain('/Users/demo/.claude/local/codex')
+  })
+
+  it('refuses an agent launch on a folder the snapshot does not list, and remembers one it opens', async () => {
+    await mkdir(join(home, 'Dev', 'api'), { recursive: true })
+    const file = join(home, 'recent-projects.json')
+    const h = fakeHerdr()
+    const provider = createRecentProjectsProvider({
+      instances: () => [{ widgetId: 'recent-projects', settings: {} }],
+      home, sources: [fakeSource('git', async () => [{ path: join(home, 'Dev', 'api'), seenAt: 1 }])],
+      exec: h.exec, resolveBinary: h.deps.resolveBinary as never, appExists: async () => false, memoryFile: file,
+    })
+    await provider.poll!()
+    const open = provider.commands!.open
+    expect(await open({ path: join(home, 'Dev'), app: 'herdr-claude' }, LOCAL)).toMatchObject({ ok: false, error: 'unknown-project' })
+    expect(await open({ path: '/Users/demo/elsewhere', app: 'herdr-claude' }, LOCAL)).toMatchObject({ ok: false, error: 'unknown-project' })
+    expect(await open({ path: join(home, 'Dev', 'api'), app: 'herdr-claude' }, { loopback: false, paired: true, deviceId: 'd' })).toMatchObject({ ok: false, error: 'local-only' })
+    expect(h.exec).not.toHaveBeenCalledWith(expect.anything(), expect.arrayContaining(['split']), expect.anything())
+    expect(h.calls().filter((c) => c.startsWith('herdr'))).toEqual([])
+
+    expect(await open({ path: join(home, 'Dev', 'api'), app: 'herdr-claude' }, LOCAL)).toMatchObject({ ok: true, agent: 'started' })
+    expect([...(await loadMemory(file)).get('herdr')!.keys()]).toEqual([join(home, 'Dev', 'api')])
   })
 })
 

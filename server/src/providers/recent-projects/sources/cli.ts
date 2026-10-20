@@ -6,13 +6,17 @@ import { isExecutableFile } from '../util.js'
 
 /**
  * Where a command-line tool is looked for, by absolute path and never through `PATH`: Homebrew on
- * Apple silicon and Intel, cargo, and `~/.local/bin` (where installers like Herdr's put it).
+ * Apple silicon and Intel, cargo, and `~/.local/bin` (where installers like Herdr's put it), plus
+ * `~/.claude/local` for Claude Code.
  */
 export function binaryCandidates(name: string, home: string): string[] {
-  return ['/opt/homebrew/bin', '/usr/local/bin', join(home, '.cargo', 'bin'), join(home, '.local', 'bin')].map((d) => join(d, name))
+  const dirs = ['/opt/homebrew/bin', '/usr/local/bin', join(home, '.cargo', 'bin'), join(home, '.local', 'bin')].map((d) => join(d, name))
+  // Claude Code's own installer puts it here.
+  if (name === 'claude') dirs.push(join(home, '.claude', 'local', 'claude'))
+  return dirs
 }
 
-export type ResolveBinary = (name: 'zoxide' | 'tmux' | 'herdr') => Promise<string | null>
+export type ResolveBinary = (name: 'zoxide' | 'tmux' | 'herdr' | 'claude' | 'codex') => Promise<string | null>
 
 export const resolveBinary: ResolveBinary = async (name) => {
   for (const candidate of binaryCandidates(name, homedir())) {

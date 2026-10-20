@@ -250,7 +250,8 @@ export function createRecentProjectsProvider(opts: RecentProjectsOptions): Provi
       /**
        * Opens one listed folder with one application. Local only: it starts a program on this
        * Mac, and the paths are this Mac's — a paired device is refused like any remote caller.
-       * The path must be one the last snapshot listed, and still be that folder.
+       * The path must be one the last snapshot listed, and still be that folder. One opened in
+       * Herdr or tmux is remembered as that source's, agent launches included.
        */
       async open(payload: unknown, ctx?: CommandContext) {
         if (ctx?.loopback !== true || ctx.paired) return { ok: false, error: 'local-only' }
@@ -259,11 +260,20 @@ export function createRecentProjectsProvider(opts: RecentProjectsOptions): Provi
         const { path, app, terminal } = parsed.data
         if (!last?.projects.some((p) => p.path === path)) return { ok: false, error: 'unknown-project' }
         if ((await canonicalProject(path, home)) !== path) return { ok: false, error: 'unknown-project' }
+        let result
         try {
-          return await openWith(app, path, appDeps, { terminal })
+          result = await openWith(app, path, appDeps, { terminal })
         } catch {
           return { ok: false, error: 'failed' }
         }
+        // A folder opened in a pane is one that pane's source would have shown: remember it there,
+        // so it stays listed once the pane (or the agent in it) is closed.
+        const mux = app === 'herdr' || app.startsWith('herdr-') ? 'herdr' : app === 'tmux' || app.startsWith('tmux-') ? 'tmux' : null
+        if (result.ok && mux) {
+          remember(mux, [{ path, seenAt: now() }])
+          await persist()
+        }
+        return result
       },
     },
   }

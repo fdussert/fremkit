@@ -8,11 +8,11 @@ import { execFile } from 'node:child_process'
  * arguments are passed as an array and never re-parsed, so nothing a caller supplies can be read
  * as shell syntax.
  */
-export type Exec = (file: string, args: string[]) => Promise<string>
+export type Exec = (file: string, args: string[], opts?: { timeoutMs?: number }) => Promise<string>
 
-export const execCommand: Exec = (file, args) =>
+export const execCommand: Exec = (file, args, opts) =>
   new Promise((resolve, reject) => {
-    execFile(file, args, { timeout: 5000, maxBuffer: 4 * 1024 * 1024 }, (err, stdout, stderr) => {
+    execFile(file, args, { timeout: opts?.timeoutMs ?? 5000, maxBuffer: 4 * 1024 * 1024 }, (err, stdout, stderr) => {
       if (err) reject(new Error(stderr.trim() || err.message))
       else resolve(stdout)
     })

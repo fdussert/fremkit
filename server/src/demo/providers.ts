@@ -97,7 +97,7 @@ function recentProjectsProvider(now: () => number): Provider {
       return {
         projects,
         sources: ids.map((id) => ({ id, enabled: on.has(id), available: on.has(id), count: projects.filter((p) => p.sources.includes(id)).length })),
-        apps: ['finder', 'terminal', 'vscode', 'zed', 'herdr'],
+        apps: ['finder', 'terminal', 'vscode', 'zed', 'herdr', 'herdr-claude', 'herdr-codex'],
         updatedAt: t,
       }
     },

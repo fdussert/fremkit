@@ -17,8 +17,9 @@ tagged `vX.Y.Z`.
 - **Recent projects widget.** Lists the folders you worked in lately — git repositories under the
   folders you choose, plus, if you tick them, Claude Code, Codex, VS Code, Cursor, JetBrains IDEs,
   zoxide, tmux and Herdr — and opens one with a tap in Finder, a terminal, your editor or Herdr
-  (the pane already in that folder, else a new one, with Herdr's terminal brought to the front);
-  a long press offers the other installed applications. Only folder paths and dates are read,
+  (the pane already in that folder, else a new one, with Herdr's terminal brought to the front),
+  or starts Claude Code or Codex in a new Herdr pane or tmux window on it; a long press offers the
+  other installed applications. Only folder paths and dates are read,
   never a conversation or a file's contents.
 
 ### Fixed
