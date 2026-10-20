@@ -16,14 +16,20 @@ export function companionOn(config: Pick<Config, 'labs'> | null | undefined): bo
   return config?.labs?.companion === true
 }
 
+/** Fremdev runs only with the companion on and its own switch (`labs.fremdev`) on too. */
+export function fremdevOn(config: Pick<Config, 'labs'> | null | undefined): boolean {
+  return companionOn(config) && config?.labs?.fremdev === true
+}
+
 /**
- * The instance ids whose widget is off while the switch is: every placed Fremplay and Fremdev. Empty with the
- * switch on.
+ * The instance ids whose widget is off: every placed Fremplay while the companion is off, every
+ * placed Fremdev while it, or Fremdev's own switch, is. Empty with both on.
  */
 export function turnedOff(config: Pick<Config, 'labs' | 'widgets'> | null | undefined): Set<string> {
-  if (!config || companionOn(config)) return new Set()
+  if (!config) return new Set()
   const off = new Set<string>()
-  for (const [id, widget] of Object.entries(config.widgets)) if (COMPANION_WIDGETS.includes(widget.widgetId)) off.add(id)
+  const gone = (widgetId: string): boolean => (widgetId === 'fremdev' ? !fremdevOn(config) : widgetId === 'fremplay' && !companionOn(config))
+  for (const [id, widget] of Object.entries(config.widgets)) if (gone(widget.widgetId)) off.add(id)
   return off
 }
 

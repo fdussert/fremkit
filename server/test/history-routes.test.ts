@@ -107,7 +107,7 @@ describe('restoring an old version keeps this Mac\'s security settings', () => {
     expect((await app.inject({ method: 'PUT', url: '/api/config', payload: { ...current, labs: { devices: true, companion: true } } })).statusCode).toBe(200)
     const res = await app.inject({ method: 'POST', url: `/api/history/${entry.id}/restore` })
     expect(res.statusCode).toBe(200)
-    expect((await config()).labs).toEqual({ devices: true, companion: true })
+    expect((await config()).labs).toEqual({ devices: true, companion: true, fremdev: false })
   })
 
   it('leaves the secrets backend, privacy and consent records as they are now', async () => {

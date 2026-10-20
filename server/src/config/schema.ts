@@ -430,10 +430,14 @@ export type MarketplaceState = z.infer<typeof MarketplaceSchema>
  * pairing prompt on the Edge. UI only, like `devices`: the server never reads it, and must not rely
  * on it for security. The companion routes, the socket's challenge and the `companion` channel's
  * refusal to paired devices guard the same way whether it is on or off.
+ *
+ * `fremdev` is Fremdev's own switch, on top of `companion`: Fremdev runs only while both are on
+ * (`fremdevEnabled` in `companion/dev.ts`).
  */
 export const LabsSchema = z.object({
   devices: z.boolean().default(false),
   companion: z.boolean().default(false),
+  fremdev: z.boolean().default(false),
 }).prefault({})
 export type Labs = z.infer<typeof LabsSchema>
 
@@ -482,7 +486,7 @@ export const DEFAULT_CONFIG: Config = {
   secrets: { backend: defaultSecretsBackend() },
   locale: defaultLocale(),
   privacy: { claudeAccountUsage: false, showAccountEmail: false, codexAccount: false, codexHistorySources: [], macmonTemperature: false },
-  labs: { devices: false, companion: false },
+  labs: { devices: false, companion: false, fremdev: false },
   marketplace: { installed: {} },
   widgets: {
     'clock-1': { widgetId: 'clock', showTitle: true, settings: {} },

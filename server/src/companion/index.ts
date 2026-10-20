@@ -9,7 +9,7 @@ import type { ConfigStore } from '../config/store.js'
 import type { DeviceStore } from '../devices/store.js'
 import type { Pasteboard } from '../providers/clipboard.js'
 import type { ProviderRegistry } from '../providers/registry.js'
-import { COMPANION_DEV_CHANNEL, CompanionDev, createDevProvider } from './dev.js'
+import { COMPANION_DEV_CHANNEL, CompanionDev, createDevProvider, fremdevEnabled } from './dev.js'
 import { CompanionPairing } from './pairing.js'
 import { PairingLock } from './lock.js'
 import { companionOrigins, EXTENSION_IDS_ENV } from './protocol.js'
@@ -24,7 +24,7 @@ export interface CompanionOptions {
   store: DeviceStore
   /** Where the pairing lock is kept (lock.ts); in memory only without one. */
   lockPath?: string
-  /** `onChange` tells the session when `labs.companion` turns; without it, only new shares see it. */
+  /** `onChange` tells the session when `labs.companion` or `labs.fremdev` turns; without it, only new shares see it. */
   config: Pick<ConfigStore, 'get'> & Partial<Pick<ConfigStore, 'onChange'>>
   registry: Pick<ProviderRegistry, 'register' | 'refresh'>
   /** Where Fremdev's report command copies a report: this Mac's pasteboard unless a test says. */
@@ -58,13 +58,14 @@ export async function createCompanion(opts: CompanionOptions): Promise<Companion
   const pairing = new CompanionPairing(store, undefined, lock)
   const sockets = new CompanionSockets()
   const pairedExtensions = (): number => store.list().filter((d) => d.kind === 'extension').length
-  // `labs.companion` off is Fremplay and Fremdev off (docs/companion.md). A product switch: what
+  // `labs.companion` off is Fremplay and Fremdev off, and Fremdev has its own `labs.fremdev` on top (docs/companion.md). A product switch: what
   // keeps a share or a dev tab to this Mac is the socket's handshake and the channels' guards.
   const enabled = (): boolean => config.get().labs?.companion === true
+  const fremdevOn = (): boolean => fremdevEnabled(config.get())
   const dev = new CompanionDev({
     send: (deviceId, msg) => sockets.send(deviceId, msg),
     changed: refreshDev,
-    enabled,
+    enabled: fremdevOn,
     pairedCount: pairedExtensions,
   })
   // Assigned right below: the session only calls `changed` once something happens to it.
@@ -79,6 +80,7 @@ export async function createCompanion(opts: CompanionOptions): Promise<Companion
     canShare: () => placeFremplay(config.get()) !== null,
     pairedCount: pairedExtensions,
     enabled,
+    fremdevEnabled: fremdevOn,
     dev,
   })
   provider = createCompanionProvider({ session, pairing, config: () => config.get() })
@@ -86,10 +88,13 @@ export async function createCompanion(opts: CompanionOptions): Promise<Companion
   registry.register(createDevProvider({ dev, config: () => config.get(), pasteboard: opts.pasteboard }))
 
   let companionOn = config.get().labs?.companion === true
+  let fremdevOnBefore = fremdevOn()
   const unsubscribeConfig = config.onChange?.((next) => {
     const on = next.labs?.companion === true
-    if (on === companionOn) return
+    const fremdev = fremdevEnabled(next)
+    if (on === companionOn && fremdev === fremdevOnBefore) return
     companionOn = on
+    fremdevOnBefore = fremdev
     session.switched()
   }) ?? (() => undefined)
 

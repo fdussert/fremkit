@@ -376,6 +376,9 @@ Chrome 116 and later), where code it injects into a page cannot read it, and lis
 pages.
 
 **Fremdev, the extension's second module.** It watches dev tabs and reports them on `companion:dev`.
+It has its own switch, `labs.fremdev`, and runs only while `labs.companion` is on too (`fremdevEnabled`);
+like `labs.companion` it is a product switch, not a security boundary, and the guards below hold either way.
+A paired device's view of the config carries the two booleans and nothing else of `labs`.
 What it holds and what it can do:
 
 - *Permissions.* `webRequest` is optional and is requested, with the dev origins, in one prompt when
@@ -415,7 +418,7 @@ What it holds and what it can do:
   clipboard through `pbcopy` with the text on stdin, never argv (`server/src/providers/clipboard.ts`).
   At most 8 reports wait per install; a ninth is refused.
   The `report` command is loopback-only like `focus` and `clear`, names only a tab id the install
-  reported, and is gated by `labs.companion`; the module is announced as `fremdev.report` only
+  reported, and is gated by `fremdevEnabled` (`labs.companion` and `labs.fremdev`); the module is announced as `fremdev.report` only
   while Fremdev is on. The report reaches no one but the clipboard, and what it quotes (error
   messages, titles) is as sensitive as on the Edge.
 - *Server side.* Every `dev.tabs`, `modules` and `ping` message is validated by a strict schema with

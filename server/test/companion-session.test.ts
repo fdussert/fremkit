@@ -11,7 +11,7 @@ const R = (n: number) => `00000000-0000-4000-8000-00000000000${n}`
 const TOKEN = 'a'.repeat(43)
 const INSTALL = '0b7d1c2e-4f5a-4b6c-8d7e-9f0a1b2c3d4e'
 
-function setup(opts: { canShare?: boolean; paired?: number; enabled?: () => boolean } = {}) {
+function setup(opts: { canShare?: boolean; paired?: number; enabled?: () => boolean; fremdevEnabled?: () => boolean } = {}) {
   let time = 1_000_000
   const sent: Array<{ to: string; msg: ServerMessage }> = []
   let changes = 0
@@ -22,6 +22,7 @@ function setup(opts: { canShare?: boolean; paired?: number; enabled?: () => bool
     canShare: () => opts.canShare ?? true,
     pairedCount: () => opts.paired ?? 2,
     ...(opts.enabled ? { enabled: opts.enabled } : {}),
+    ...(opts.fremdevEnabled ? { fremdevEnabled: opts.fremdevEnabled } : {}),
   })
   const hello = (device: string, extra: object = {}) => {
     session.connect(device, `Browser ${device}`)
@@ -483,6 +484,21 @@ describe('CompanionSession tab.meta throttle', () => {
     t.meta(1, S2)
     vi.advanceTimersByTime(META_PUBLISH_MS)
     expect(t.changes()).toBe(base)
+  })
+
+  describe('with Fremdev off on its own (labs.fremdev)', () => {
+    it('says so in ready, and a fresh ready goes to every install when it turns on', () => {
+      let fremdev = false
+      const t = setup({ enabled: () => true, fremdevEnabled: () => fremdev })
+      t.hello('a')
+      t.hello('b')
+      expect(t.to('a')).toEqual([{ type: 'ready', protocol: 2, modules: { fremplay: true, fremdev: false } }])
+      t.clear()
+      fremdev = true
+      t.session.switched()
+      expect(t.to('a')).toEqual([{ type: 'ready', protocol: 2, modules: { fremplay: true, fremdev: true } }])
+      expect(t.to('b')).toEqual([{ type: 'ready', protocol: 2, modules: { fremplay: true, fremdev: true } }])
+    })
   })
 
   describe('with Fremplay off (labs.companion)', () => {

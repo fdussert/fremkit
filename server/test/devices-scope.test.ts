@@ -150,18 +150,22 @@ describe('deviceConfigView', () => {
     // No night theme on the Mac: none on the device either.
     expect(Object.hasOwn(deviceConfigView(config(), 'tab-b'), 'themeSchedule')).toBe(false)
   })
-  it('carries labs.companion and nothing else of labs', () => {
+  it('carries labs.companion and labs.fremdev and nothing else of labs', () => {
     for (const companion of [true, false]) {
       const cfg = ConfigSchema.parse({ ...RAW_CONFIG, labs: { devices: true, companion } })
       const view = deviceConfigView(cfg, 'tab-b')
-      expect(view.labs).toEqual({ companion })
-      expect(Object.keys(view.labs)).toEqual(['companion'])
+      expect(view.labs).toEqual({ companion, fremdev: false })
+      expect(Object.keys(view.labs)).toEqual(['companion', 'fremdev'])
     }
     // Every key the schema gives `labs`, other than `companion`, stays on the Mac.
-    const others = Object.keys(ConfigSchema.parse(RAW_CONFIG).labs).filter((k) => k !== 'companion')
+    const others = Object.keys(ConfigSchema.parse(RAW_CONFIG).labs).filter((k) => k !== 'companion' && k !== 'fremdev')
     expect(others.length).toBeGreaterThan(0)
     const view = deviceConfigView(ConfigSchema.parse({ ...RAW_CONFIG, labs: { devices: true, companion: true } }), 'tab-b')
     for (const key of others) expect(Object.hasOwn(view.labs, key), key).toBe(false)
+  })
+  it('carries labs.fremdev beside labs.companion', () => {
+    const cfg = ConfigSchema.parse({ ...RAW_CONFIG, labs: { devices: true, companion: true, fremdev: false } })
+    expect(deviceConfigView(cfg, 'tab-b').labs).toEqual({ companion: true, fremdev: false })
   })
   it('projects or deliberately withholds every top-level config key', () => {
     // A key main adds to the config is dropped from the device view without a word; this makes

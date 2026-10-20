@@ -232,6 +232,23 @@ describe('labs.companion', () => {
     expect(hasDevices(wrapper)).toBe(false)
     wrapper.unmount()
   })
+
+  it('has a third switch for Fremdev, which writes its key and leaves the others', async () => {
+    seed(false, 1)
+    const s = useAdminStore()
+    const wrapper = settings('about')
+    await flushPromises()
+    const version = wrapper.find('[data-test="version"]')
+    for (let i = 0; i < labs.REVEAL_TAPS; i++) await version.trigger('click')
+    await flushPromises()
+    const box = wrapper.find('[data-test="labs-fremdev"] input')
+    expect(box.exists()).toBe(true)
+    await wrapper.find('[data-test="labs-companion"] input').setValue(true)
+    await box.setValue(true)
+    expect(s.state.config!.labs).toEqual({ devices: false, companion: true, fremdev: true })
+    expect(labs.labsFremdev(s.state.config)).toBe(true)
+    wrapper.unmount()
+  })
 })
 
 describe('the seven clicks on the version', () => {

@@ -12,6 +12,10 @@ tagged `vX.Y.Z`.
 
 ## Unreleased
 
+### Added
+
+- **Fremdev has its own switch.** Settings → About → Experimental features now turns Fremdev on and off on its own; it still needs the browser companion.
+
 ### Fixed
 
 - **The clipboard widget keeps accents and symbols intact.** Under the Fremkit Helper, text with

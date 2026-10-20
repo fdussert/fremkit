@@ -128,7 +128,7 @@ export function demoConfig(locale: 'fr' | 'en' = 'en'): Config {
     privacy: { claudeAccountUsage: true, showAccountEmail: false, codexAccount: true, codexHistorySources: ['cli', 'vscode', 'appServer'], macmonTemperature: false },
     marketplace: { installed: {} },
     // As on a fresh install: the iPad screens stay an experimental feature until it is ticked.
-    labs: { devices: false, companion: false },
+    labs: { devices: false, companion: false, fremdev: false },
     widgets,
     screens: [{
       id: 'edge',

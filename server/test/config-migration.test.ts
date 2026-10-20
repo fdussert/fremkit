@@ -65,8 +65,8 @@ describe('migrateConfig', () => {
     const device = () => ({ ...edge(), id: 'kitchen', name: 'Kitchen', kind: 'device' })
 
     it('starts off for a fresh install and for an older file', () => {
-      expect(DEFAULT_CONFIG.labs).toEqual({ devices: false, companion: false })
-      expect(migrateConfig(v1).labs).toEqual({ devices: false, companion: false })
+      expect(DEFAULT_CONFIG.labs).toEqual({ devices: false, companion: false, fremdev: false })
+      expect(migrateConfig(v1).labs).toEqual({ devices: false, companion: false, fremdev: false })
     })
     it('starts off for a v4 file with only the Edge', () => {
       expect(migrateConfig(withoutLabs([edge()])).labs.devices).toBe(false)
@@ -98,15 +98,38 @@ describe('migrateConfig', () => {
 
     it('starts off for a v4 file with no Fremplay, the devices switch stated or not', () => {
       expect(migrateConfig(v4(['clock'])).labs.companion).toBe(false)
-      expect(migrateConfig(v4(['clock'], { devices: true })).labs).toEqual({ devices: true, companion: false })
+      expect(migrateConfig(v4(['clock'], { devices: true })).labs).toEqual({ devices: true, companion: false, fremdev: false })
     })
     it('starts on for a v4 file that already holds a Fremplay widget', () => {
       expect(migrateConfig(v4(['clock', 'fremplay'])).labs.companion).toBe(true)
-      expect(migrateConfig(v4(['fremplay'], { devices: false })).labs).toEqual({ devices: false, companion: true })
+      expect(migrateConfig(v4(['fremplay'], { devices: false })).labs).toEqual({ devices: false, companion: true, fremdev: false })
     })
     it('keeps a stated value either way, whatever the widgets', () => {
-      expect(migrateConfig(v4(['fremplay'], { devices: false, companion: false })).labs.companion).toBe(false)
-      expect(migrateConfig(v4(['clock'], { devices: false, companion: true })).labs.companion).toBe(true)
+      expect(migrateConfig(v4(['fremplay'], { devices: false, companion: false, fremdev: false })).labs.companion).toBe(false)
+      expect(migrateConfig(v4(['clock'], { devices: false, companion: true, fremdev: false })).labs.companion).toBe(true)
+    })
+  })
+  describe('labs.fremdev', () => {
+    const v4 = (widgetIds: string[], labs?: Record<string, boolean>) => {
+      const c = JSON.parse(JSON.stringify(migrateConfig(v1))) as Record<string, any>
+      delete c.labs
+      if (labs) c.labs = labs
+      c.widgets = Object.fromEntries(widgetIds.map((id, i) => [`${id}-${i}`, { widgetId: id, showTitle: false, settings: {} }]))
+      c.screens[0].pages[0].items = []
+      c.screens[0].nav = []
+      return c
+    }
+
+    it('starts off for a fresh install', () => {
+      expect(DEFAULT_CONFIG.labs).toEqual({ devices: false, companion: false, fremdev: false })
+    })
+    it('starts on for a v4 file that already places a Fremdev widget, off otherwise', () => {
+      expect(migrateConfig(v4(['clock', 'fremdev'])).labs.fremdev).toBe(true)
+      expect(migrateConfig(v4(['clock'])).labs.fremdev).toBe(false)
+    })
+    it('keeps a stated value exactly as written', () => {
+      const stated = { devices: false, companion: true, fremdev: false }
+      expect(migrateConfig(v4(['fremdev'], stated)).labs).toEqual(stated)
     })
   })
   it('rejects an unknown version with a clear message', () => {

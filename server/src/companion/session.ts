@@ -63,6 +63,8 @@ export interface CompanionSessionOptions {
    * whatever it says. On when left out.
    */
   enabled?: () => boolean
+  /** Whether Fremdev is on (`fremdevEnabled`); announced in `ready`. Follows `enabled` when left out. */
+  fremdevEnabled?: () => boolean
   /** Fremdev, handed the hellos, the dev messages and the departures of this session's sockets. */
   dev?: CompanionDev
 }
@@ -90,6 +92,7 @@ export class CompanionSession {
   private readonly canShare: () => boolean
   private readonly pairedCount: () => number
   private readonly enabled: () => boolean
+  private readonly fremdevEnabled: () => boolean
   private readonly dev: CompanionDev | null
   /** Connected extensions: device id → name. */
   private readonly connected = new Map<string, string>()
@@ -112,11 +115,12 @@ export class CompanionSession {
     this.canShare = opts.canShare ?? (() => false)
     this.pairedCount = opts.pairedCount ?? (() => 0)
     this.enabled = opts.enabled ?? (() => true)
+    this.fremdevEnabled = opts.fremdevEnabled ?? this.enabled
     this.dev = opts.dev ?? null
   }
 
   /**
-   * `labs.companion` may have changed. Every connected extension hears the new state in a fresh
+   * `labs.companion` or `labs.fremdev` may have changed. Every connected extension hears the new state in a fresh
    * `ready` (its popup says Fremplay is off before anyone clicks Send), and a share running when
    * it went off ends, its extension told why.
    */
@@ -125,7 +129,7 @@ export class CompanionSession {
     for (const deviceId of this.connected.keys()) {
       if (!this.foreign.has(deviceId)) this.send(deviceId, this.ready())
     }
-    // The same switch gates Fremdev: its channel says so.
+    // Fremdev's channel says so too.
     this.dev?.switched()
     if (on || !this.share) return
     const { deviceId, sessionId } = this.share
@@ -135,12 +139,11 @@ export class CompanionSession {
 
   /**
    * The greeting, with the state of the modules this server can switch off. One switch for both
-   * (`labs.companion`); `fremdev` being there at all is what tells the extension this server
-   * understands its dev messages.
+   * (`labs.companion`) and Fremdev's own (`fremdevEnabled`); `fremdev` being there at all is what
+   * tells the extension this server understands its dev messages.
    */
   private ready(): ServerMessage {
-    const on = this.enabled()
-    return { type: 'ready', protocol: PROTOCOL, modules: { fremplay: on, fremdev: on } }
+    return { type: 'ready', protocol: PROTOCOL, modules: { fremplay: this.enabled(), fremdev: this.fremdevEnabled() } }
   }
 
   connect(deviceId: string, name: string): void {

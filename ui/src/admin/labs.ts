@@ -28,15 +28,21 @@ export function labsCompanion(config: Config | null | undefined): boolean {
   return config?.labs?.companion === true
 }
 
+/** True when Fremdev is on: the companion and its own switch, `labs.fremdev`. */
+export function labsFremdev(config: Config | null | undefined): boolean {
+  return config?.labs?.fremdev === true
+}
+
 /** The built-in widgets that belong to the companion, kept out of the widget lists while it is off. */
 export { COMPANION_WIDGETS } from '../shared/companionGate'
 
 /**
  * Whether a widget is offered to place (the library, the bar's list, the palette). Fremplay is
- * left out while `labs.companion` is off; one already placed stays where it is, greyed on the
+ * left out while `labs.companion` is off (Fremdev: while it or `labs.fremdev` is); one already placed stays where it is, greyed on the
  * canvas and not drawn on the dashboard (`shared/companionGate.ts`).
  */
 export function widgetOffered(config: Config | null | undefined, widgetId: string): boolean {
+  if (widgetId === 'fremdev') return labsCompanion(config) && labsFremdev(config)
   return labsCompanion(config) || !COMPANION_WIDGETS.includes(widgetId)
 }
 
@@ -124,7 +130,7 @@ export function tapVersion(now: number = Date.now()): boolean {
 
 /** The switch is shown once revealed, and always while the flag is on, so it can be turned off. */
 export function labsShown(config: Config | null | undefined): boolean {
-  return revealed.value || labsDevices(config) || labsCompanion(config)
+  return revealed.value || labsDevices(config) || labsCompanion(config) || labsFremdev(config)
 }
 
 /** Back to a fresh session: for tests. */

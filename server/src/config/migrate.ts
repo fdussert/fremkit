@@ -157,6 +157,8 @@ export function migrateConfig(raw: unknown): Config {
  * `companion`: on when a Fremplay widget is already placed, since that config was written by
  * someone using the browser extension; off otherwise.
  *
+ * `fremdev`: on when a Fremdev widget is already placed, off otherwise.
+ *
  * A switch the file already carries is left exactly as written.
  */
 export function adoptLabs(config: Config, raw: unknown): Config {
@@ -165,6 +167,7 @@ export function adoptLabs(config: Config, raw: unknown): Config {
   const labs = { ...config.labs }
   if (!has('devices')) labs.devices = config.screens.length > 1 || config.screens.some((x) => x.kind === 'device')
   if (!has('companion')) labs.companion = Object.values(config.widgets).some((w) => w.widgetId === 'fremplay')
+  if (!has('fremdev')) labs.fremdev = Object.values(config.widgets).some((w) => w.widgetId === 'fremdev')
   return { ...config, labs }
 }
 

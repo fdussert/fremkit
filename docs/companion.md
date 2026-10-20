@@ -11,7 +11,7 @@ extension is linked.
 
 It is **experimental** for now, and hidden until you turn it on: in the admin, open
 **Settings → About**, click the version number seven times (or focus it and press Enter seven
-times), and tick **Browser companion (Fremplay)** (it gates Fremdev too) under **Experimental features**. Until then the
+times), and tick **Browser companion (Fremplay)** under **Experimental features** (Fremdev has its own box there, **Fremdev (development tabs)**, and needs the companion ticked as well). Until then the
 admin leaves Fremplay out of the widget library and the bar's list and hides the pairing request in
 **Settings → Devices**, and the Edge shows no pairing prompt, so no code can be typed. A
 browser already linked stays listed in **Settings → Devices** whatever the switch says, so it can
@@ -146,8 +146,8 @@ Edge*), or press **⌃⇧F** (Control-Shift-F). Press it again to stop. The shor
   s'affiche que sur l'Edge du Mac.* / *Fremplay only shows on the Mac's Edge.* and nothing else:
   the picture goes peer to peer between addresses of this Mac, and the iPad's copy of the widget
   gets no WebRTC and no `companion` channel. With the switch off, the iPad leaves its Fremplay
-  widgets out as the Edge does: its view of the config carries `labs.companion`, and nothing
-  else of the experimental switches.
+  widgets out as the Edge does: its view of the config carries `labs.companion` and `labs.fremdev` (so Fremdev's tiles are
+  gated the same way), and nothing else of the experimental switches.
 - The browser can be in the background, on another tab or another desktop. Quitting it, or
   closing the tab, ends the share.
 - The video travels directly between the browser and the Edge over WebRTC, between addresses of
@@ -175,9 +175,12 @@ green light. Tap a row to unfold it to that tab's history and its **Copy report*
 history and the bug report](#the-history-and-the-bug-report)); **Show tab** brings that tab forward.
 The **×** on a row marks its errors and failed requests as seen: the counters stay, dimmed, and the
 light turns hollow until a new one comes in or the tab reloads (green means a page with nothing open
-since its last load or hot update). It is experimental and behind the same switch as Fremplay
-(`labs.companion`): with the switch off the server reports Fremdev as disabled, the widget is left
-out like Fremplay's, and the popup says so.
+since its last load or hot update). It is experimental and behind its own switch, `labs.fremdev`, on top of `labs.companion`
+(Fremdev runs only while both are on, `fremdevEnabled`): with either off the server reports Fremdev
+as disabled (*Activez Fremdev dans les fonctions expérimentales* / *Turn Fremdev on under
+Experimental features*), the widget is left out like Fremplay's, and `ready` announces
+`modules.fremdev: false`. Turning a switch sends every connected install a fresh `ready`. A config
+that already places a Fremdev widget starts with `labs.fremdev` on.
 
 ### Turn it on
 
@@ -246,7 +249,7 @@ clipboard with `pbcopy`, the text going through its standard input. The extensio
 same button for each tab, with a *stack* checkbox, and writes the clipboard from the popup itself.
 At most 8 reports can be pending per install. The report is built in the extension and goes nowhere
 else: only to the clipboard, when you press a button. It is available while Fremdev is on and
-`labs.companion` is ticked, for a tab the extension reported, and only from the Mac itself, never
+`labs.companion` and `labs.fremdev` are ticked, for a tab the extension reported, and only from the Mac itself, never
 from a paired device.
 
 ### The hook in the page

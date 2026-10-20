@@ -37,8 +37,13 @@ export const MAX_PENDING_REPORTS = 8
 /** A safety net only: every change is pushed through a refresh. */
 export const COMPANION_DEV_INTERVAL_MS = 30_000
 
+/** Fremdev runs only while the companion and its own switch are both on. */
+export function fremdevEnabled(config: Pick<Config, 'labs'>): boolean {
+  return config.labs?.companion === true && config.labs?.fremdev === true
+}
+
 export type DevSnapshot = {
-  /** `labs.companion`: off, nothing is listed. */
+  /** `fremdevEnabled`: `labs.companion` and `labs.fremdev` both on; otherwise nothing is listed. */
   enabled: boolean
   /** Extension records, connected or not. */
   paired: number
@@ -226,7 +231,7 @@ export class CompanionDev {
     })
   }
 
-  /** `labs.companion` may have changed: the snapshot says so. */
+  /** `labs.companion` or `labs.fremdev` may have changed: the snapshot says so. */
   switched(): void {
     this.changed()
   }
@@ -248,7 +253,7 @@ export class CompanionDev {
     return true
   }
 
-  /** The install, when it is connected, has Fremdev on and reported that tab; `labs.companion` on. */
+  /** The install, when it is connected, has Fremdev on and reported that tab; `fremdevEnabled` true. */
   private reachable(deviceId: string, tabId: number): Install | null {
     if (!this.enabled()) return null
     const install = this.installs.get(deviceId)
@@ -344,7 +349,7 @@ export function createDevProvider(opts: DevProviderOptions): Provider<DevSnapsho
     return async (payload: unknown, ctx?: CommandContext): Promise<Result> => {
       guard(ctx)
       const { deviceId, tabId } = parse(payload, DevCommandSchema)
-      if (!dev.snapshot().enabled) return failed('companion.disabled')
+      if (!dev.snapshot().enabled) return failed('companion.devDisabled')
       return act(deviceId, tabId) ? { ok: true } : failed('companion.devUnknownTab')
     }
   }
@@ -364,7 +369,7 @@ export function createDevProvider(opts: DevProviderOptions): Provider<DevSnapsho
       async report(payload: unknown, ctx?: CommandContext): Promise<Result> {
         guard(ctx)
         const { deviceId, tabId, stack } = parse(payload, ReportCommandSchema)
-        if (!dev.snapshot().enabled) return failed('companion.disabled')
+        if (!dev.snapshot().enabled) return failed('companion.devDisabled')
         const text = await dev.report(deviceId, tabId, stack)
         if (text === null) return failed('companion.devReportFailed')
         try {

@@ -30,7 +30,7 @@ function configWith(where: 'page' | 'bar' | 'nowhere'): Config {
   const edge = DEFAULT_CONFIG.screens[0]
   return {
     ...DEFAULT_CONFIG,
-    labs: { devices: false, companion: true },
+    labs: { devices: false, companion: true, fremdev: true },
     widgets: {
       'clock-1': { widgetId: 'clock', showTitle: true, settings: {} },
       'play-1': { widgetId: 'fremplay', showTitle: false, settings: {} },

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DEFAULT_CONFIG, type Config } from '../src/config/schema.js'
-import { CompanionDev, COMPANION_DEV_CHANNEL, createDevProvider, DEV_PUBLISH_MS } from '../src/companion/dev.js'
+import { CompanionDev, COMPANION_DEV_CHANNEL, createDevProvider, DEV_PUBLISH_MS, fremdevEnabled } from '../src/companion/dev.js'
 import type { DevTab, ServerMessage } from '../src/companion/protocol.js'
 import { tr } from '../src/i18n.js'
 import type { CommandContext } from '../src/providers/types.js'
@@ -216,8 +216,34 @@ describe('CompanionDev', () => {
   })
 })
 
+describe('fremdevEnabled', () => {
+  const labs = (companion: boolean, fremdev: boolean) => ({ labs: { devices: false, companion, fremdev } })
+  it('needs the companion and Fremdev\'s own switch', () => {
+    expect(fremdevEnabled(labs(true, false))).toBe(false)
+    expect(fremdevEnabled(labs(false, true))).toBe(false)
+    expect(fremdevEnabled(labs(true, true))).toBe(true)
+  })
+})
+
+describe('with the companion on and Fremdev off', () => {
+  const config = { ...DEFAULT_CONFIG, labs: { devices: false, companion: true, fremdev: false } } as Config
+
+  it('lists nothing, and focus says to turn Fremdev on', async () => {
+    const t = setup({ enabled: () => fremdevEnabled(config) })
+    t.dev.connect(A, 'Chrome', ['fremdev'])
+    t.tabs(A, [row(7)])
+    const snap = t.dev.snapshot()
+    expect(snap.enabled).toBe(false)
+    expect(snap.installs).toEqual([])
+    const provider = createDevProvider({ dev: t.dev, config: () => config })
+    expect(await provider.commands!.focus({ deviceId: A, tabId: 7, instanceId: 'dev-1' }, LOCAL))
+      .toEqual({ ok: false, error: tr(config.locale, 'companion.devDisabled') })
+    expect(t.send).not.toHaveBeenCalled()
+  })
+})
+
 describe('createDevProvider', () => {
-  const config = { ...DEFAULT_CONFIG, labs: { devices: false, companion: true } } as Config
+  const config = { ...DEFAULT_CONFIG, labs: { devices: false, companion: true, fremdev: true } } as Config
 
   function provider() {
     const t = setup()
@@ -277,7 +303,7 @@ describe('createDevProvider', () => {
 })
 
 describe('Fremdev reports', () => {
-  const config = { ...DEFAULT_CONFIG, labs: { devices: false, companion: true } } as Config
+  const config = { ...DEFAULT_CONFIG, labs: { devices: false, companion: true, fremdev: true } } as Config
   const REPORT = ['fremdev', 'fremdev.report']
 
   function asked(send: ReturnType<typeof setup>['send']) {

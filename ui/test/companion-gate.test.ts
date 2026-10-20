@@ -51,9 +51,22 @@ describe('visibleScreen', () => {
 describe('turnedOff', () => {
   it('turnedOff lists fremdev tiles while labs.companion is off', () => {
     const all = { ...widgets, fd: { widgetId: 'fremdev', showTitle: false, settings: {} } }
-    const off = (companion: boolean) => turnedOff({ labs: { devices: false, companion }, widgets: all } as unknown as Config)
+    const off = (companion: boolean) => turnedOff({ labs: { devices: false, companion, fremdev: true }, widgets: all } as unknown as Config)
     expect([...off(false)].sort()).toEqual(['fd', 'fp'])
     expect(off(true).size).toBe(0)
+  })
+})
+
+describe('turnedOff with Fremdev\'s own switch', () => {
+  const all = { ...widgets, fd: { widgetId: 'fremdev', showTitle: false, settings: {} } }
+  const off = (companion: boolean, fremdev: boolean) =>
+    turnedOff({ labs: { devices: false, companion, fremdev }, widgets: all } as unknown as Config)
+  it('lists a fremdev tile alone when only Fremdev is off', () => {
+    expect([...off(true, false)]).toEqual(['fd'])
+    expect(off(true, true).size).toBe(0)
+  })
+  it('lists both when the companion is off, whatever Fremdev says', () => {
+    expect([...off(false, true)].sort()).toEqual(['fd', 'fp'])
   })
 })
 
