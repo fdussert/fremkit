@@ -19,7 +19,8 @@
   .row{flex:none;box-sizing:border-box;display:flex;flex-direction:column;border-radius:12px;background:rgba(255,255,255,.04)}
   /* The top line: a tap on it unfolds the row (the light, the name and the facts). */
   .top{box-sizing:border-box;min-height:56px;display:flex;align-items:center;gap:12px;padding:4px 6px 4px 12px;border-radius:12px;cursor:pointer}
-  .top:active{background:rgba(255,255,255,.06)}
+  /* Lit by a press on the row itself, not by one on Show tab or × inside it. */
+  .top:active:not(:has(button:active)){background:rgba(255,255,255,.06)}
   .row.flash{animation:flash 1.2s ease-out 1}
   @keyframes flash{0%{background:color-mix(in srgb, var(--danger, #ff6b5e) 45%, transparent)}100%{background:rgba(255,255,255,.04)}}
   @media (prefers-reduced-motion:reduce){.row.flash{animation:none}}
@@ -101,7 +102,7 @@
   /* The host says which way round the tile is: on-light means dark text on a light body. */
   html.on-light body{color:var(--on-surface, #0b0d10)}
   html.on-light .row{background:rgba(0,0,0,.05)}
-  html.on-light .top:active{background:rgba(0,0,0,.07)}
+  html.on-light .top:active:not(:has(button:active)){background:rgba(0,0,0,.07)}
   html.on-light .browser,html.on-light .t,html.on-light button.clear{color:var(--on-surface, #0b0d10);opacity:.7}
   html.on-light button.show,html.on-light button.copy{color:var(--on-surface, #0b0d10)}
   html.on-light button.copy{border-color:color-mix(in srgb, var(--on-surface, #0b0d10) 35%, transparent)}
