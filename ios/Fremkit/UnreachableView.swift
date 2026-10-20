@@ -16,7 +16,7 @@ struct UnreachableView: View {
                 .font(.title.bold())
             Text("Can’t reach the Mac")
                 .font(.title3)
-            Text("Check that it is on, on the same network, and that “Allow an iPad on the local network” is turned on.")
+            Text("Check that it is on, on the same network, and that “Allow a tablet on the local network” is turned on.")
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
             Button(action: retry) {

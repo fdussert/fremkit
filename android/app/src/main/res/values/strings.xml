@@ -11,7 +11,7 @@
     <string name="connecting_to">Connecting to %1$s…</string>
 
     <string name="unreachable_title">Can’t reach the Mac</string>
-    <string name="unreachable_hint">Check that it is on, on the same network, and that “Allow an iPad on the local network” is turned on in Fremkit.</string>
+    <string name="unreachable_hint">Check that it is on, on the same network, and that “Allow a tablet on the local network” is turned on in Fremkit.</string>
     <string name="try_again">Try again</string>
 
     <string name="unauthorized_title">This tablet is no longer allowed</string>
@@ -53,7 +53,7 @@
 
     <string name="welcome_enter_code">Enter the code</string>
     <string name="manual_choose">Choose your Mac</string>
-    <string name="manual_none_yet">No Mac found yet. In Fremkit on the Mac, turn on “Allow an iPad on the local network” (Screen tab).</string>
+    <string name="manual_none_yet">No Mac found yet. In Fremkit on the Mac, turn on “Allow a tablet on the local network” (Screen tab).</string>
     <string name="manual_looking">Looking for its address…</string>
     <string name="manual_check_words">Check that the Mac shows the same words.</string>
     <string name="manual_code">Code</string>

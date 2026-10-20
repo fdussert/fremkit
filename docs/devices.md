@@ -11,12 +11,12 @@ yourself see [Building the app](#building-the-app).
 
 Until the app is available to everyone, pairing is an experimental feature, hidden on a fresh
 install. To show it, open **Settings → About** in the admin, click the version number seven times
-within a few seconds (or focus it and press Enter seven times), and tick **iPad and extra
+within a few seconds (or focus it and press Enter seven times), and tick **Tablets and extra
 screens** under **Experimental features**. That shows **Settings → Devices**, and the screen selector
 with **+ Add a screen** above the canvas. **Settings → Devices** also stays visible, option or not,
 while pairing is on or an iPad is paired, so it can always be switched off or the iPad unpaired.
 
-Then open **Settings → Devices** and switch on **Allow an iPad on the local network**.
+Then open **Settings → Devices** and switch on **Allow a tablet on the local network**.
 Fremkit generates a key the first time and starts a second listener on port **4243**, over TLS,
 with a self-signed certificate. It answers only private and link-local addresses, IPv4 or
 IPv6, and the Mac itself: a public address and Tailscale get no answer. A VPN that uses the same
@@ -48,7 +48,7 @@ shows** before you confirm: they come from your Mac's key, so a Mac that shows o
 yours. The code you type only works for the Mac whose key the iPad sees, so another machine that
 took your Mac's name cannot pass it on to your Mac. The list shows each Mac by its computer name
 (System Settings → General → Sharing), which the Mac announces on the local network while
-**Allow an iPad on the local network** is on: anyone on the same network can see it, as with AirDrop or file sharing.
+**Allow a tablet on the local network** is on: anyone on the same network can see it, as with AirDrop or file sharing.
 Rename the Mac there if you would rather it did not carry yours. There is no field for typing an address: a Mac that is not in the list is reached with the
 QR code.
 
@@ -75,14 +75,14 @@ hidden and the screen stays awake while the app is in front.
 **Brightness.** When a device screen is attached, the iPad sets that screen's brightness: the
 admin's *Settings → *a screen* → Brightness*, the brightness widget and the day/night schedule are applied on
 the iPad, and a change made in its Control Center is reported back. If the app is closed or in the
-background for about 30 seconds, the admin and the widget say "The iPad is not showing this
+background for about 30 seconds, the admin and the widget say "The tablet is not showing this
 screen right now" and keep the setting until the app is back.
 
 ## Revoke and reset
 
 **Remove** in the Devices section revokes one iPad: its connection is closed at once, and the app
 notices within 30 seconds (it checks that the Mac still knows it) and shows "This iPad is no
-longer allowed"; **Pair again** leads to the welcome screen. **Remove every iPad** does it for
+longer allowed"; **Pair again** leads to the welcome screen. **Remove every tablet** does it for
 all of them. **Reset the certificate** makes a new key, which removes every iPad too: each one
 shows "This Mac's key has changed" and must be paired again with **Pair again**. The app never
 forgets a pairing by itself, and keeps retrying meanwhile, so an iPad that only met another
@@ -112,7 +112,7 @@ closes the listener and the iPads show that the Mac is unreachable until it is b
   **Pair again**.
 - **The four words differ.** Do not pair. Check that you picked your own Mac in the list; if the
   words still differ, use the QR code.
-- **Brightness says "The iPad is not showing this screen right now".** Open the app and show that
+- **Brightness says "The tablet is not showing this screen right now".** Open the app and show that
   screen.
 
 ## What the Mac exposes

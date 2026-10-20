@@ -116,7 +116,7 @@ describe('the dashboard on a paired device', () => {
     await nextTick()
     expect(wrapper.find('.page-stub').exists()).toBe(false)
     expect(wrapper.text()).toContain('Kitchen iPad')
-    expect(wrapper.text()).toContain('Choose a screen for this iPad in the Mac’s admin')
+    expect(wrapper.text()).toContain('Choose a screen for this tablet in the Mac’s admin')
     wrapper.unmount()
   })
 
@@ -126,7 +126,7 @@ describe('the dashboard on a paired device', () => {
     push('device', { id: 'd1', name: 'Kitchen iPad', screenId: 'deleted', brightness: null })
     await nextTick()
     expect(wrapper.find('.page-stub').exists()).toBe(false)
-    expect(wrapper.text()).toContain('Choose a screen for this iPad')
+    expect(wrapper.text()).toContain('Choose a screen for this tablet')
     wrapper.unmount()
   })
 
@@ -140,11 +140,33 @@ describe('the dashboard on a paired device', () => {
     wrapper.unmount()
   })
 
-  it('says the iPad is no longer allowed on a 401', async () => {
+  it('says the tablet is no longer allowed on a 401', async () => {
     stubFetch({ status: 401 })
     const wrapper = await mountApp('https://example.local:4243/')
-    expect(wrapper.text()).toContain('This iPad is no longer allowed')
+    expect(wrapper.text()).toContain('This tablet is no longer allowed')
     expect(wrapper.find('.page-stub').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('says iPad inside the iPad app, for both messages', async () => {
+    vi.stubGlobal('webkit', { messageHandlers: { fremkit: { postMessage: vi.fn() } } })
+    stubFetch({ status: 200, body: { id: 'd1', name: 'Kitchen iPad', screenId: null, brightness: null } })
+    const wrapper = await mountApp('https://example.local:4243/')
+    expect(wrapper.text()).toContain('Choose a screen for this iPad in the Mac’s admin')
+    wrapper.unmount()
+
+    stubFetch({ status: 401 })
+    const revoked = await mountApp('https://example.local:4243/')
+    expect(revoked.text()).toContain('This iPad is no longer allowed')
+    revoked.unmount()
+  })
+
+  it('says tablet inside the Android app', async () => {
+    vi.stubGlobal('fremkit', { postMessage: vi.fn() })
+    stubFetch({ status: 401 })
+    const wrapper = await mountApp('https://example.local:4243/')
+    expect(wrapper.text()).toContain('This tablet is no longer allowed')
+    expect(wrapper.text()).not.toContain('iPad')
     wrapper.unmount()
   })
 

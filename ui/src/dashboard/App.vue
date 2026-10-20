@@ -17,7 +17,7 @@ import CompanionPrompt from './CompanionPrompt.vue'
 import { createRevealTracker, LANDING_WINDOW_MS, landingPage, type CompanionReveal } from './companionReveal'
 import { useNavPopover } from './useNavPopover'
 import { isRemotePage, useDeviceScreen, type DeviceInfo } from './remote'
-import { useNativeBridge } from './native'
+import { nativePlatform, useNativeBridge } from './native'
 import { SCREEN_ID } from '../shared/useWidgetBridge'
 import { onWidgetReload } from '../shared/widgetDev'
 import { onScreenReload } from '../shared/screenReload'
@@ -36,8 +36,12 @@ const remote = isRemotePage()
 const { device, unauthorized } = remote
   ? useDeviceScreen()
   : { device: ref<DeviceInfo | null>(null), unauthorized: ref(false) }
-// Inside the iPad app, tell it about revocation, the screen and the brightness target.
+// Inside the device app, tell it about revocation, the screen and the brightness target.
 if (remote) useNativeBridge(device, unauthorized)
+// The iPad app's page says "iPad"; the Android app's, or a browser's, says "tablet".
+const onIpad = remote && nativePlatform() === 'ios'
+const unauthorizedKey = onIpad ? 'dashboard.remote.unauthorized.ipad' : 'dashboard.remote.unauthorized'
+const noScreenKey = onIpad ? 'dashboard.remote.noScreen.ipad' : 'dashboard.remote.noScreen'
 /**
  * The screen this dashboard shows, named by `?screen=<id>`. The kiosk opens `/` with no id and
  * gets the first Edge screen; an id that no longer exists gets it too, never a blank page.
@@ -225,11 +229,11 @@ watch(() => config.value?.locale, (l) => setLocale(l))
 
 <template>
   <div v-if="remote && unauthorized" class="remote-message" role="status">
-    <p class="remote-title">{{ t('dashboard.remote.unauthorized') }}</p>
+    <p class="remote-title">{{ t(unauthorizedKey) }}</p>
   </div>
   <div v-else-if="remote && config && !screen && device" class="remote-message" role="status">
     <p class="remote-name">{{ device.name }}</p>
-    <p class="remote-title">{{ t('dashboard.remote.noScreen') }}</p>
+    <p class="remote-title">{{ t(noScreenKey) }}</p>
   </div>
   <div class="root" :class="{ kiosk }" :style="rootStyle" v-else-if="config && screen && shown && display && page">
     <Transition name="bg-fade">

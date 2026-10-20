@@ -99,7 +99,7 @@ describe('the devices section', () => {
     expect(wrapper.find('[data-test="pairing-code"]').text()).toBe('ABCD2345')
     expect(wrapper.find('.qr svg').exists()).toBe(true)
     expect(wrapper.find('[data-test="fingerprint"]').text()).toBe('Fingerprint: aardvark absurd woodlark zulu')
-    expect(wrapper.text()).toContain('If the iPad shows these words, it is this Mac.')
+    expect(wrapper.text()).toContain('If the tablet shows these words, it is this Mac.')
     expect(wrapper.text()).not.toContain('Someone is trying')
     wrapper.unmount()
   })
@@ -135,14 +135,14 @@ describe('the devices section', () => {
       expect(w.find('[data-test="extensions-none"]').text()).toBe('No browser extension linked.')
       expect(ipadPart(w)).toBe(false)
       expect(w.find('[data-test="pairing-code"]').exists()).toBe(false)
-      expect(w.text()).not.toContain('No paired iPad')
+      expect(w.text()).not.toContain('No paired tablet')
       w.unmount()
     })
 
     it('only labs.devices on: the iPad part, as on main, and no extension part', async () => {
       const w = await mountWith({ devices: true, companion: false }, status({ companionRequest: REQUEST() }))
       expect(ipadPart(w)).toBe(true)
-      expect(w.find('[data-test="ipads-none"]').text()).toBe('No paired iPad.')
+      expect(w.find('[data-test="ipads-none"]').text()).toBe('No paired tablet.')
       expect(extPart(w)).toBe(false)
       expect(w.find('[data-test="companion-request"]').exists()).toBe(false)
       w.unmount()
@@ -186,15 +186,15 @@ describe('the devices section', () => {
       w.unmount()
     })
 
-    it('Remove every iPad and the certificate reset are the iPad part\'s: an extension alone leaves Remove every iPad off', async () => {
+    it('Remove every iPad and the certificate reset are the iPad part\'s: an extension alone leaves Remove every tablet off', async () => {
       const w = await mountWith({ devices: true, companion: true }, status({ devices: [extension()] }))
-      const removeAll = w.findAll('button').find((b) => b.text() === 'Remove every iPad')
+      const removeAll = w.findAll('button').find((b) => b.text() === 'Remove every tablet')
       expect(removeAll).toBeDefined()
       expect(removeAll?.attributes('disabled')).toBeDefined()
       expect(w.text()).toContain('Browser extensions stay linked.')
       w.unmount()
       const x = await mountWith({ devices: true, companion: true }, status({ devices: [extension(), device()] }))
-      expect(x.findAll('button').find((b) => b.text() === 'Remove every iPad')?.attributes('disabled')).toBeUndefined()
+      expect(x.findAll('button').find((b) => b.text() === 'Remove every tablet')?.attributes('disabled')).toBeUndefined()
       x.unmount()
     })
 
@@ -387,7 +387,7 @@ describe('the devices section', () => {
     deviceApi.getDevices.mockResolvedValue(status({ devices: [device()] }))
     const wrapper = mount(DevicesSection, { attachTo: document.body, global: { stubs } })
     await flushPromises()
-    expect(wrapper.text()).toContain('This iPad has no screen')
+    expect(wrapper.text()).toContain('This tablet has no screen')
     await wrapper.find('[data-test="create-screen"]').trigger('click')
     expect((document.querySelector('form input') as HTMLInputElement).value).toBe('Kitchen iPad')
     expect(document.querySelector('[data-test="device-size"]')!.textContent).toBe('1376 × 1032 px')

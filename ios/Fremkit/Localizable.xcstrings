@@ -31,12 +31,12 @@
         }
       }
     },
-    "Check that it is on, on the same network, and that “Allow an iPad on the local network” is turned on." : {
+    "Check that it is on, on the same network, and that “Allow a tablet on the local network” is turned on." : {
       "localizations" : {
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Vérifiez qu’il est allumé, sur le même réseau, et que « Autoriser un iPad sur le réseau local » est activé."
+            "value" : "Vérifiez qu’il est allumé, sur le même réseau, et que « Autoriser une tablette sur le réseau local » est activé."
           }
         }
       }
@@ -131,12 +131,12 @@
         }
       }
     },
-    "No Mac found yet. In Fremkit on the Mac, turn on “Allow an iPad on the local network” (Screen tab)." : {
+    "No Mac found yet. In Fremkit on the Mac, turn on “Allow a tablet on the local network” (Screen tab)." : {
       "localizations" : {
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Aucun Mac trouvé pour l’instant. Dans Fremkit sur le Mac, activez « Autoriser un iPad sur le réseau local » (onglet Écran)."
+            "value" : "Aucun Mac trouvé pour l’instant. Dans Fremkit sur le Mac, activez « Autoriser une tablette sur le réseau local » (onglet Écran)."
           }
         }
       }
