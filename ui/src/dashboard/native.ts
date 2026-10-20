@@ -31,6 +31,20 @@ function androidHandler(win: Window): { postMessage(msg: string): void } | null 
   }
 }
 
+/**
+ * Which device app hosts the page: the iPad's (WebKit's `fremkit` handler), the Android one
+ * (`window.fremkit`, under `androidHandler`'s rules), or none in a plain browser. WebKit's first,
+ * as in `nativeBridge`.
+ */
+export function nativePlatform(win: Window = window): 'ios' | 'android' | null {
+  try {
+    if ((win as unknown as NativeWindow).webkit?.messageHandlers?.fremkit) return 'ios'
+  } catch {
+    return null
+  }
+  return androidHandler(win) ? 'android' : null
+}
+
 /** The app's message handler, or null when the page runs in a plain browser. WebKit's first. */
 export function nativeBridge(win: Window = window): { post(msg: NativeMessage): void } | null {
   const webkit = (win as unknown as NativeWindow).webkit?.messageHandlers?.fremkit

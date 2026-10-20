@@ -24,6 +24,9 @@ tagged `vX.Y.Z`.
   notes which platform it runs, ready for tablets other than the iPad. Nothing changes for an
   iPad already paired. Going back to an older version of Fremkit afterwards sets the list of
   paired devices aside: every iPad and browser extension then has to pair again.
+- **The Devices settings speak of tablets.** Pairing, the empty list, **Remove every tablet** and
+  the experimental option (now **Tablets and extra screens**) say "tablet" rather than "iPad", since
+  an Android tablet pairs too. A paired screen's own messages still say "iPad" in the iPad app.
 
 ### Fixed
 

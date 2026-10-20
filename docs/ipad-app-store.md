@@ -125,7 +125,7 @@ The reviewer has no Mac running Fremkit, and the app does nothing without one. G
 - a link to a short screen recording: the Mac's **Settings → Devices**, the QR code, the iPad
   pairing and showing its screen, a widget touched;
 - how to try it themselves: install Fremkit from https://fremkit.app on a Mac on the same network,
-  click the version seven times in **Settings → About**, tick **iPad and extra screens**, open
+  click the version seven times in **Settings → About**, tick **Tablets and extra screens**, open
   **Settings → Devices**, switch it on and scan the QR code. Drop this step once the option is
   visible by default;
 - why it asks for the camera (scanning the pairing code) and the local network (finding the Mac

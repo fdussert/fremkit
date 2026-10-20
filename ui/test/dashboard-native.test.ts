@@ -7,7 +7,7 @@
  */
 import { describe, expect, it, vi } from 'vitest'
 import { nextTick, ref } from 'vue'
-import { nativeBridge, useNativeBridge } from '../src/dashboard/native'
+import { nativeBridge, nativePlatform, useNativeBridge } from '../src/dashboard/native'
 import type { DeviceInfo } from '../src/dashboard/remote'
 
 function appWindow() {
@@ -208,5 +208,30 @@ describe('nativeBridge on Android', () => {
     expect(() => { unauthorized.value = true }).not.toThrow()
     await nextTick()
     expect(postMessage).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe('nativePlatform', () => {
+  it('names the iPad app by WebKit\'s handler and the Android app by window.fremkit', () => {
+    expect(nativePlatform(appWindow().win)).toBe('ios')
+    expect(nativePlatform(androidWindow().win)).toBe('android')
+  })
+
+  it('is null in a plain browser', () => {
+    expect(nativePlatform({} as Window)).toBeNull()
+    expect(nativePlatform({ webkit: {} } as unknown as Window)).toBeNull()
+  })
+
+  it('prefers WebKit\'s handler when both exist', () => {
+    const win = { webkit: { messageHandlers: { fremkit: { postMessage: vi.fn() } } }, fremkit: { postMessage: vi.fn() } } as unknown as Window
+    expect(nativePlatform(win)).toBe('ios')
+  })
+
+  it('takes no window.fremkit that is not the app\'s listener for the Android app', () => {
+    const frame: Record<string, unknown> = { postMessage: vi.fn() }
+    frame.window = frame
+    for (const fremkit of ['fremkit', 42, null, document.createElement('div'), { postMessage: 'no' }, frame]) {
+      expect(nativePlatform({ fremkit } as unknown as Window), String(fremkit)).toBeNull()
+    }
   })
 })
