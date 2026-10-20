@@ -313,6 +313,12 @@ describe.skipIf(!hasOpenssl)('the remote gate, through a real TLS listener', () 
     // from an iPad would be the iPad itself.
     expect(csp).toContain(`connect-src 'self' wss://example.local:${port}`)
     expect(csp).toContain(`frame-src https://example.local:${port}/widgets/`)
+    // And no other frame source: no wildcard, data:, blob: or about:. The Android web view leans on
+    // this for the srcdoc and about:blank frames its navigation hook never sees.
+    const directives = csp.split('; ')
+    expect(directives.filter((d) => d.startsWith('frame-src') || d.startsWith('child-src'))).toEqual([
+      `frame-src https://example.local:${port}/widgets/`,
+    ])
     expect(csp).toContain("frame-ancestors 'none'")
     expect(csp).not.toContain('127.0.0.1')
   })

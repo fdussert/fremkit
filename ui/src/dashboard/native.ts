@@ -1,7 +1,7 @@
 import { watch, type Ref } from 'vue'
 import type { DeviceInfo } from './remote'
 
-/** What the page tells the iPad app that hosts it. */
+/** What the page tells the device app that hosts it (the iPad's or the Android one). */
 export type NativeMessage =
   | { type: 'unauthorized' }
   | { type: 'screen'; screenId: string | null }
@@ -9,15 +9,43 @@ export type NativeMessage =
 
 interface NativeWindow {
   webkit?: { messageHandlers?: { fremkit?: { postMessage(msg: unknown): void } } }
+  fremkit?: unknown
 }
 
-/** The app's message handler, or null when the page runs in a plain browser. */
+/**
+ * The Android app's listener, `window.fremkit` (a `WebMessageListener`), which takes strings only.
+ * Anything else under that name is not it: a string, an element named so (`id="fremkit"`), and
+ * above all a frame named `fremkit`, whose window is reachable as `window.fremkit` and has a
+ * `postMessage` too. Nothing but the bridge's hello is ever posted to a frame's window.
+ */
+function androidHandler(win: Window): { postMessage(msg: string): void } | null {
+  try {
+    const candidate = (win as unknown as NativeWindow).fremkit
+    if (typeof candidate !== 'object' || candidate === null) return null
+    if ((candidate as { window?: unknown }).window === candidate) return null
+    if (typeof Node === 'function' && candidate instanceof Node) return null
+    const handler = candidate as { postMessage?: unknown }
+    return typeof handler.postMessage === 'function' ? (handler as { postMessage(msg: string): void }) : null
+  } catch {
+    return null
+  }
+}
+
+/** The app's message handler, or null when the page runs in a plain browser. WebKit's first. */
 export function nativeBridge(win: Window = window): { post(msg: NativeMessage): void } | null {
-  const handler = (win as unknown as NativeWindow).webkit?.messageHandlers?.fremkit
-  if (!handler) return null
+  const webkit = (win as unknown as NativeWindow).webkit?.messageHandlers?.fremkit
+  if (webkit) {
+    return {
+      post(msg) {
+        try { webkit.postMessage(msg) } catch { /* the app is gone: nothing to tell */ }
+      },
+    }
+  }
+  const android = androidHandler(win)
+  if (!android) return null
   return {
     post(msg) {
-      try { handler.postMessage(msg) } catch { /* the app is gone: nothing to tell */ }
+      try { android.postMessage(JSON.stringify(msg)) } catch { /* the app is gone: nothing to tell */ }
     },
   }
 }

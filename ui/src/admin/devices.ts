@@ -8,7 +8,7 @@
  * reader calls `refresh()` once and reads what is there.
  */
 import { ref, type Ref } from 'vue'
-import { api, type DeviceStatus, type PairingOffer, type PublicDevice, type PublicIpadDevice } from '../shared/api'
+import { api, type DeviceStatus, type PairingOffer, type PublicDevice, type PublicTabletDevice } from '../shared/api'
 
 export const DEVICES_POLL_MS = 3000
 
@@ -43,7 +43,7 @@ export interface Devices {
   removeAll(): Promise<void>
   resetCertificate(): Promise<void>
   /** The devices showing `screenId`. */
-  showing(screenId: string): PublicIpadDevice[]
+  showing(screenId: string): PublicTabletDevice[]
   /** Polls while held; the returned function lets go. Polling stops when nobody holds it. */
   watch(): () => void
 }
@@ -131,7 +131,7 @@ export function createDevices(deviceApi: DevicesApi, pollMs = DEVICES_POLL_MS): 
         offer.value = null
       })
     },
-    showing: (screenId) => status.value?.devices.filter((d): d is PublicIpadDevice => d.kind === 'ipad' && d.screenId === screenId) ?? [],
+    showing: (screenId) => status.value?.devices.filter((d): d is PublicTabletDevice => d.kind === 'tablet' && d.screenId === screenId) ?? [],
     watch() {
       holders += 1
       if (holders === 1) {

@@ -1,8 +1,9 @@
 /**
  * @vitest-environment jsdom
  *
- * The page tells the iPad app about revocation, its screen and its brightness target, through
- * `webkit.messageHandlers.fremkit`. Outside the app there is no handler and nothing happens.
+ * The page tells the device app about revocation, its screen and its brightness target, through
+ * `webkit.messageHandlers.fremkit` on the iPad and `window.fremkit` on Android. Outside the app
+ * there is no handler and nothing happens.
  */
 import { describe, expect, it, vi } from 'vitest'
 import { nextTick, ref } from 'vue'
@@ -122,5 +123,90 @@ describe('useNativeBridge', () => {
     device.value = info({ brightness: { target: null, seq: 5 } })
     await nextTick()
     expect(brightness()).toHaveLength(2)
+  })
+})
+
+/** The Android app's `WebMessageListener` object: `window.fremkit`, which takes strings. */
+function androidWindow() {
+  const postMessage = vi.fn()
+  const win = { fremkit: { postMessage } } as unknown as Window
+  const sent = () => postMessage.mock.calls.map(([m]) => {
+    expect(typeof m).toBe('string')
+    return JSON.parse(m as string)
+  })
+  return { win, postMessage, sent }
+}
+
+describe('nativeBridge on Android', () => {
+  it('posts the message as a JSON string to window.fremkit', () => {
+    const { win, sent } = androidWindow()
+    nativeBridge(win)!.post({ type: 'brightness', target: 40, seq: 2 })
+    expect(sent()).toEqual([{ type: 'brightness', target: 40, seq: 2 }])
+  })
+
+  it('prefers WebKit\'s handler when both exist', () => {
+    const webkit = vi.fn()
+    const android = vi.fn()
+    const win = { webkit: { messageHandlers: { fremkit: { postMessage: webkit } } }, fremkit: { postMessage: android } } as unknown as Window
+    nativeBridge(win)!.post({ type: 'unauthorized' })
+    expect(webkit).toHaveBeenCalledWith({ type: 'unauthorized' })
+    expect(android).not.toHaveBeenCalled()
+  })
+
+  it('ignores a window.fremkit that is not the app\'s listener', () => {
+    const element = document.createElement('div')
+    // A frame named "fremkit" is reachable as window.fremkit and has a postMessage of its own.
+    const frame: Record<string, unknown> = { postMessage: vi.fn() }
+    frame.window = frame
+    const withPost = Object.assign(document.createElement('div'), { postMessage: vi.fn() })
+    for (const fremkit of ['fremkit', 42, null, element, withPost, { postMessage: 'no' }, frame]) {
+      expect(nativeBridge({ fremkit } as unknown as Window), String(fremkit)).toBeNull()
+    }
+    expect(frame.postMessage).not.toHaveBeenCalled()
+  })
+
+  it('ignores a real frame named fremkit', () => {
+    const iframe = document.createElement('iframe')
+    iframe.name = 'fremkit'
+    document.body.append(iframe)
+    try {
+      const named = (window as unknown as { fremkit?: unknown }).fremkit
+      // Whether or not this DOM exposes the frame by name, the bridge must not take it.
+      if (named !== undefined) expect(named).toBe(iframe.contentWindow)
+      expect(nativeBridge(window)).toBeNull()
+    } finally {
+      iframe.remove()
+    }
+  })
+
+  it('posts unauthorized once and a brightness target once per seq', async () => {
+    const { win, sent } = androidWindow()
+    const unauthorized = ref(false)
+    const device = ref<DeviceInfo | null>(info({ brightness: { target: 40, seq: 3 } }))
+    useNativeBridge(device, unauthorized, win)
+    device.value = info({ brightness: { target: 40, seq: 3 } })
+    await nextTick()
+    device.value = info({ brightness: { target: 55, seq: 4 } })
+    await nextTick()
+    for (const v of [true, false, true]) {
+      unauthorized.value = v
+      await nextTick()
+    }
+    expect(sent()).toEqual([
+      { type: 'screen', screenId: 'pad' },
+      { type: 'brightness', target: 40, seq: 3 },
+      { type: 'brightness', target: 55, seq: 4 },
+      { type: 'unauthorized' },
+    ])
+  })
+
+  it('lets no exception escape a throwing listener', async () => {
+    const { win, postMessage } = androidWindow()
+    postMessage.mockImplementation(() => { throw new Error('gone') })
+    const unauthorized = ref(false)
+    useNativeBridge(ref(info()), unauthorized, win)
+    expect(() => { unauthorized.value = true }).not.toThrow()
+    await nextTick()
+    expect(postMessage).toHaveBeenCalledTimes(2)
   })
 })

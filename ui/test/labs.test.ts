@@ -21,7 +21,7 @@ const status = (over: Partial<DeviceStatus> = {}): DeviceStatus => ({
   addresses: ['192.0.2.10'], port: 4243, keyHash: null, fingerprint: null, devices: [], companionRequest: null, ...over,
 })
 const paired: PublicDevice = {
-  id: 'dev-1', kind: 'ipad', name: 'Kitchen iPad', pairedAt: '2026-10-01T08:00:00.000Z', lastSeen: null,
+  id: 'dev-1', kind: 'tablet', platform: 'ios', name: 'Kitchen iPad', pairedAt: '2026-10-01T08:00:00.000Z', lastSeen: null,
   viewport: { width: 1376, height: 1032 }, screenId: null,
 }
 

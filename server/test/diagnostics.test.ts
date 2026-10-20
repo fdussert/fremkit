@@ -72,7 +72,11 @@ function deps(over: Partial<DiagnosticsDeps> = {}): DiagnosticsDeps {
       { channel: 'system', watched: true, lastError: null },
       { channel: 'dock', watched: false },
     ],
-    devices: () => [{ name: 'Example iPad' }],
+    devices: () => [
+      { name: 'Example iPad', kind: 'tablet', platform: 'ios' },
+      { name: 'Kitchen tablet', kind: 'tablet', platform: 'android' },
+      { name: 'Work Chrome', kind: 'extension' },
+    ],
     remoteAccess: () => true,
     accessToken: ACCESS,
     log: async () => ({
@@ -98,7 +102,7 @@ describe('buildDiagnostics', () => {
     expect(text).toContain('Screens: 2 (edge 1, device 1)')
     expect(text).toContain('Pages: 3')
     expect(text).toContain('Widget instances: 3')
-    expect(text).toContain('Paired devices: 1 (remote access on)')
+    expect(text).toContain('Paired devices: 3 (tablets: 1 iOS, 1 Android; extensions: 1; remote access on)')
     expect(text).toContain('| clock | 1.2.0 | built-in | 2 |')
     expect(text).toContain('| gone | – | missing | 1 |')
     expect(text).toContain('| fake | coded | error: unauthorized |')
@@ -107,7 +111,7 @@ describe('buildDiagnostics', () => {
     expect(text).not.toContain('| dock |')
     expect(text).toContain('1 other channels idle, never polled.')
     expect(text).toContain('| system | yes | ok |')
-    for (const leak of [SECRET, ACCESS, 'Basement NAS', 'my-nas', 'nas.example.com', 'Example iPad', 'Example-Mac',
+    for (const leak of [SECRET, ACCESS, 'Basement NAS', 'my-nas', 'nas.example.com', 'Example iPad', 'Kitchen tablet', 'Work Chrome', 'Example-Mac',
       '/Users/example', '192.0.2.7', 'someone@example.com', 'do-not-show', 'secretNote']) {
       expect(text, leak).not.toContain(leak)
     }
@@ -123,7 +127,7 @@ describe('buildDiagnostics', () => {
     const text = renderReport({
       generatedAt: 'x', version: '0', install: 'app', dev: false, node: 'v', macos: null, darwin: 'd', arch: 'a',
       configVersion: 4, theme: 't', locale: 'en', secretsBackend: 'file', screens: { edge: 1, device: 0 },
-      pages: 1, instances: 0, widgets: [], connections: [], providers: [], idleProviders: 0, devices: { paired: 0, remoteAccess: false },
+      pages: 1, instances: 0, widgets: [], connections: [], providers: [], idleProviders: 0, devices: { paired: 0, tablets: { ios: 0, android: 0 }, extensions: 0, remoteAccess: false },
       log: { kind: 'file', lines: ['before ``` after'] },
     })
     expect(text.match(/```/g)).toHaveLength(2)
