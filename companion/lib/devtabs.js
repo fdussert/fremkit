@@ -167,6 +167,8 @@ export function reduce(tab, event, now) {
     case 'devserver':
       // kind.js tells it once per document: a fresh load detects again and may replace it (Next
       // now listening where Vite did); a pushState route change runs no kind.js and keeps it.
+      // `server` null: this load's kind is unknown, and the last one's would be stale.
+      if (event.server === null) return { ...tab, devServer: null, serverBase: '/' }
       if (!DEV_SERVERS.includes(event.server) || !validBase(event.base, event.server)) return tab
       return { ...tab, devServer: event.server, serverBase: event.base }
     case 'count': {

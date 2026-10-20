@@ -7,13 +7,15 @@
 // - webpack-dev-server: a `<script>` whose path contains `webpack-dev-server`, or its overlay
 //   element `#webpack-dev-server-client-overlay`.
 // `base` is `/` for anything but Vite. Only the kind leaves the extension (the row's `devServer`);
-// the base is kept for building the dev server's own URLs.
+// the base is kept for building the dev server's own URLs. A Vite client whose base cannot be used
+// says `{ kind: 'devserver', server: null }`: this load's kind is unknown, and an earlier load's goes.
 //
 // Only a script from the page's own origin counts: a CDN asset under `/_next/` is not Next.
 //
 // It reads attributes and element ids only, never a page object, and runs no page code. It looks at
 // the whole document at DOMContentLoaded (at once when the document is past `loading`), then at the
-// nodes added to it, and only those, until a kind is found or 30 s have passed.
+// nodes added to it and the scripts whose `src` changes, and only those, until a kind is found or
+// 30 s have passed.
 //
 // A classic script, registered with chrome.scripting: no import. The worker validates what it
 // sends (`pageEvent` in companion/fremdev.js) and takes the tab from Chrome's sender.
@@ -79,11 +81,18 @@
   /** The whole document, once. */
   const detectAll = () => judge([...document.querySelectorAll(SCRIPTS)], document.getElementById(OVERLAY_ID) !== null)
 
-  /** The nodes a mutation batch added, and what they hold: the rest of the page was looked at already. */
+  /**
+   * The nodes a mutation batch added, and what they hold, and the scripts whose `src` was set: the
+   * rest of the page was looked at already.
+   */
   const detectAdded = (records) => {
     const scripts = []
     let overlay = false
     for (const record of records) {
+      if (record.type === 'attributes') {
+        if (record.target.nodeType === 1 && record.target.matches(SCRIPTS)) scripts.push(record.target)
+        continue
+      }
       for (const node of record.addedNodes) {
         if (node.nodeType !== 1) continue
         if (node.matches(SCRIPTS)) scripts.push(node)
@@ -107,7 +116,9 @@
   const send = (found) => {
     if (!alive()) return
     try {
-      chrome.runtime.sendMessage({ target: 'worker', type: 'dev.event', kind: 'devserver', server: found.server, base: found.base }).catch(() => undefined)
+      const msg = { target: 'worker', type: 'dev.event', kind: 'devserver', server: found.server }
+      if (found.server !== null) msg.base = found.base
+      chrome.runtime.sendMessage(msg).catch(() => undefined)
     } catch {
       // the extension was reloaded or removed: this page's script is orphaned
     }
@@ -123,7 +134,7 @@
     }
     if (found === null) return
     stop()
-    if (found !== 'unusable') send(found)
+    send(found === 'unusable' ? { server: null } : found)
   }
 
   const start = () => {
@@ -131,7 +142,7 @@
     if (done) return
     try {
       observer = new MutationObserver((records) => look(() => detectAdded(records)))
-      observer.observe(document.documentElement, { subtree: true, childList: true })
+      observer.observe(document.documentElement, { subtree: true, childList: true, attributes: true, attributeFilter: ['src'] })
     } catch {
       observer = null
     }

@@ -240,7 +240,8 @@ during the next 30 seconds): a module script ending in `/@vite/client` is Vite, 
 element, is webpack-dev-server. It reads attributes only and runs none of the page's code. The
 Only scripts from the page's own origin count. The kind is kept for the tab's origin: a
 client-side route change keeps it, each fresh load of the page looks again (and may find another
-dev server on the same port), and a navigation to another origin forgets it. **Only the kind leaves the
+dev server on the same port, or a Vite client whose base cannot be used, which reads as none
+known), and a navigation to another origin forgets it. **Only the kind leaves the
 extension**: for Vite, the base path the client script is served under (`/app/`) is kept in the
 extension to build that dev server's own URLs, and is never sent; a base with an empty or a dot
 segment (`//x/`, `/../`) is refused, so those URLs can only name the tab's own origin.

@@ -701,6 +701,8 @@ describe('devtabs entry ids and the dev server kind', () => {
     // Refused even then: a bad base or kind leaves the kind as it was.
     expect(reduce(tab, { kind: 'devserver', server: 'vite', base: '//evil/' }, 300)).toBe(tab)
     expect(reduce(tab, { kind: 'devserver', server: 'parcel', base: '/' }, 300)).toBe(tab)
+    // A fresh load whose kind is unknown (an unusable Vite base): the stale kind goes.
+    expect(reduce(tab, { kind: 'devserver', server: null }, 300)).toMatchObject({ devServer: null, serverBase: '/' })
     // A reload, a pushState route change, a hot update: the same origin, the same dev server.
     for (const url of ['http://localhost:5173/', 'http://localhost:5173/x']) {
       expect(reduce(tab, { kind: 'navigated', url, title: 'A' }, 400)).toMatchObject({ devServer: 'vite', serverBase: '/app/' })

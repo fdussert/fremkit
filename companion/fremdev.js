@@ -87,6 +87,8 @@ export function pageEvent(msg) {
     case 'hot':
       return { kind: 'hot' }
     case 'devserver':
+      // null: the page's kind is unknown (kind.js found a Vite base it cannot use). It carries no base.
+      if (msg.server === null) return { kind: 'devserver', server: null }
       // A kind from the list, and a base that can only name a path on the tab's own origin.
       if (!DEV_SERVERS.includes(msg.server) || !validBase(msg.base, msg.server)) return null
       return { kind: 'devserver', server: msg.server, base: msg.base }

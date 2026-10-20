@@ -117,13 +117,27 @@ describe('fremdev/kind.js', () => {
     expect(gone.sent()).toEqual([])
   })
 
-  it('sends nothing for a Vite client whose base the worker would refuse', async () => {
+  it('says the kind is unknown for a Vite client whose base the worker would refuse', async () => {
     for (const src of ['/a//b/@vite/client', '/a b/@vite/client', `/${'a'.repeat(120)}/@vite/client`]) {
       const p = page(`<script type="module" src="${src}"></script>`)
       p.run()
       await tick()
-      expect(p.sent(), src).toEqual([])
+      expect(p.sent(), src).toEqual([{ target: 'worker', type: 'dev.event', kind: 'devserver', server: null }])
     }
+  })
+
+  it('sees a src set on a script after it was added', async () => {
+    const p = page('<script src="/main.js"></script>')
+    p.run()
+    await tick()
+    const script = document.createElement('script')
+    script.type = 'module'
+    document.head.appendChild(script)
+    await tick()
+    expect(p.sent()).toEqual([])
+    script.setAttribute('src', '/app/@vite/client')
+    await tick()
+    expect(p.sent()).toEqual([{ target: 'worker', type: 'dev.event', kind: 'devserver', server: 'vite', base: '/app/' }])
   })
 
   it('counts only scripts from the page\'s own origin', async () => {

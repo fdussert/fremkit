@@ -208,6 +208,9 @@ describe('companion/fremdev.js', () => {
     expect(pageEvent({ kind: 'devserver', server: 'vite', base: '/app/', tabId: 3 })).toEqual({ kind: 'devserver', server: 'vite', base: '/app/' })
     expect(pageEvent({ kind: 'devserver', server: 'next', base: '/' })).toEqual({ kind: 'devserver', server: 'next', base: '/' })
     expect(pageEvent({ kind: 'devserver', server: 'webpack', base: '/' })).toEqual({ kind: 'devserver', server: 'webpack', base: '/' })
+    // The page's kind is unknown (an unusable Vite base): rebuilt without a base, whatever came with it.
+    expect(pageEvent({ kind: 'devserver', server: null })).toEqual({ kind: 'devserver', server: null })
+    expect(pageEvent({ kind: 'devserver', server: null, base: '//evil/' })).toEqual({ kind: 'devserver', server: null })
     for (const bad of [
       { server: 'vite', base: '//evil' },
       { server: 'vite', base: '//evil/' },
@@ -365,6 +368,10 @@ describe('companion/fremdev.js', () => {
     await f.fremdev.onPageEvent({ kind: 'devserver', server: 'next', base: '/' }, devSender())
     await f.later()
     expect(f.rows()['7']).toMatchObject({ devServer: 'next', serverBase: '/' })
+    await f.fremdev.onPageEvent({ kind: 'devserver', server: 'vite', base: '/app/' }, devSender())
+    await f.fremdev.onPageEvent({ kind: 'devserver', server: null }, devSender())
+    await f.later()
+    expect(f.rows()['7']).toMatchObject({ devServer: null, serverBase: '/' })
   })
 
   it('announces fremdev.report only while on', async () => {
