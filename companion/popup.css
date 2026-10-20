@@ -48,13 +48,15 @@ button.switch:disabled { opacity: .4; }
 button.switch:focus-visible { outline: 2px solid var(--accent-hi); outline-offset: 2px; }
 /* Fremdev's dev tabs: the widget's light, the title, and a Copy report per tab. */
 .devtabs { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
-.devtabs li { display: flex; align-items: center; gap: 8px; background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 6px 6px 6px 10px; min-width: 0; }
+.devtabs li { display: flex; align-items: center; gap: 8px; background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 6px 6px 6px 10px; min-width: 0; flex-wrap: wrap; }
 .devtabs .light { flex: none; width: 9px; height: 9px; border-radius: 50%; background: var(--ok); }
 .devtabs .light.red { background: var(--danger); } .devtabs .light.orange { background: var(--warn); }
 .devtabs .light.seen { background: transparent; box-shadow: inset 0 0 0 2px var(--danger); }
 .devtabs .light.orange.seen { box-shadow: inset 0 0 0 2px var(--warn); }
-.devtabs .dtitle { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.devtabs .dtitle { flex: 1 1 110px; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .devtabs button[hidden] { display: none; }
+/* With two buttons the row can wrap them under the title, right-aligned. */
+.devtabs button { margin-left: auto; }
 .devtabs button { flex: none; height: 30px; padding: 0 10px; font-size: 12px; }
 .devtabs button.done { color: var(--ok); border-color: var(--ok); }
 .devtabs button.failed { color: var(--danger); border-color: var(--danger); }

@@ -201,6 +201,18 @@ function lightOf(row) {
   return 'green'
 }
 
+/** Shows `outcome` on a tab's button for COPY_SHOWN_MS. One timer per tab and map: a second click restarts it. */
+function flash(map, timers, tabId, outcome) {
+  map.set(tabId, outcome)
+  render()
+  clearTimeout(timers.get(tabId))
+  timers.set(tabId, setTimeout(() => {
+    timers.delete(tabId)
+    map.delete(tabId)
+    render()
+  }, COPY_SHOWN_MS))
+}
+
 /** The report comes from the worker; the clipboard is written here, still within the click. */
 async function copyReport(tabId) {
   const res = await ask('fremdevReport', { tabId, stack: $('fremdevstack').checked })
@@ -211,15 +223,7 @@ async function copyReport(tabId) {
       outcome = 'done'
     } catch { /* the popup lost focus */ }
   }
-  copied.set(tabId, outcome)
-  render()
-  // One timer per tab: a second click restarts it, so its own outcome stays its full time.
-  clearTimeout(copyTimers.get(tabId))
-  copyTimers.set(tabId, setTimeout(() => {
-    copyTimers.delete(tabId)
-    copied.delete(tabId)
-    render()
-  }, COPY_SHOWN_MS))
+  flash(copied, copyTimers, tabId, outcome)
 }
 
 /** The popup's own tab, captured as PNG: the activeTab grant of this popup covers it. */
@@ -230,15 +234,11 @@ async function copyScreenshot(tabId) {
     const shot = chrome.tabs.captureVisibleTab(tab.windowId, { format: 'png' }).then(dataUrlBlob)
     await navigator.clipboard.write([new ClipboardItem({ 'image/png': shot })])
     outcome = 'done'
-  } catch { /* no capture right, or the popup lost focus */ }
-  shotCopied.set(tabId, outcome)
-  render()
-  clearTimeout(shotTimers.get(tabId))
-  shotTimers.set(tabId, setTimeout(() => {
-    shotTimers.delete(tabId)
-    shotCopied.delete(tabId)
-    render()
-  }, COPY_SHOWN_MS))
+  } catch (err) {
+    // No capture right, or the popup lost focus. Only the reason is logged, never the image.
+    console.warn('Fremdev: copy screenshot failed:', err?.message ?? err)
+  }
+  flash(shotCopied, shotTimers, tabId, outcome)
 }
 
 /** tabId → its list item, kept across renders: the rows change every 500 ms under an error storm, and a button rebuilt mid-press loses the click. */
