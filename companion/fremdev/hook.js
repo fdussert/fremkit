@@ -35,11 +35,13 @@ const UP = [
 ]
 const HOT = ['[vite] hot updated:', '[HMR] App is up to date', '[HMR] Updated modules']
 
-/** `s` cut to `max` UTF-16 units, never ending on half of a surrogate pair. */
+/**
+ * `s` cut to `max` UTF-16 units, never ending on half of a surrogate pair. Through the
+ * String.prototype methods taken at start (cutText, in <frames>): a page that replaces them later
+ * runs no code here.
+ */
 function clip(s, max) {
-  const cut = s.slice(0, max)
-  const last = cut.charCodeAt(cut.length - 1)
-  return cut.length === max && last >= 0xd800 && last <= 0xdbff ? cut.slice(0, -1) : cut
+  return cutText(s, max)
 }
 
 const gopd = Object.getOwnPropertyDescriptor
@@ -110,7 +112,7 @@ function inChain(o, proto) {
 function nativeText(o, getter) {
   if (typeof getter !== 'function') return undefined
   try {
-    const v = getter.call(o)
+    const v = reflectApply(getter, o, [])
     return typeof v === 'string' ? v : undefined
   } catch {
     return undefined
@@ -143,7 +145,7 @@ function walk(v, depth, budget) {
       s = `${String(v)}n`
       break
     case 'symbol': {
-      const d = symbolDescription.call(v)
+      const d = reflectApply(symbolDescription, v, [])
       s = `Symbol(${typeof d === 'string' ? d : ''})`
       break
     }
@@ -317,11 +319,16 @@ function parseStack(stack, pageOrigin) {
 }
 // </frames>
 
+const strStartsWith = String.prototype.startsWith
+const startsWithAny = (text, list) => {
+  for (let i = 0; i < list.length; i++) if (reflectApply(strStartsWith, text, [list[i]])) return true
+  return false
+}
 const signalOf = (text) => {
   if (typeof text !== 'string') return null
-  if (DOWN.some((p) => text.startsWith(p))) return 'down'
-  if (UP.some((p) => text.startsWith(p))) return 'up'
-  if (HOT.some((p) => text.startsWith(p))) return 'hot'
+  if (startsWithAny(text, DOWN)) return 'down'
+  if (startsWithAny(text, UP)) return 'up'
+  if (startsWithAny(text, HOT)) return 'hot'
   return null
 }
 
@@ -350,7 +357,7 @@ const eventLineno = getterOf(typeof ErrorEvent === 'function' ? ErrorEvent.proto
 const eventColno = getterOf(typeof ErrorEvent === 'function' ? ErrorEvent.prototype : null, 'colno')
 const read = (getter, e) => {
   try {
-    return getter ? getter.call(e) : undefined
+    return getter ? reflectApply(getter, e, []) : undefined
   } catch {
     return undefined
   }
@@ -416,7 +423,7 @@ const placeOf = (e) => {
   const col = read(eventColno, e)
   if (typeof file !== 'string' || typeof line !== 'number' || typeof col !== 'number') return undefined
   const where = framePlace(file, pageOrigin())
-  return where ? clip(`${where}:${line}:${col}`, MAX_FRAME) : undefined
+  return where ? cutText(`${where}:${line}:${col}`, MAX_FRAME) : undefined
 }
 /** The first Error among a console call's arguments. */
 const firstError = (args) => {
@@ -438,7 +445,7 @@ const send = (kind, text, origin, stack) => {
       for (let i = 0; i < stack.length; i++) list += `${i > 0 ? ',' : ''}${quote(itemOf(stack, i))}`
       detail += `,"stack":[${list}]`
     }
-    dispatch.call(doc, new Custom(EVENT, { __proto__: null, detail: `${detail}}` }))
+    reflectApply(dispatch, doc, [new Custom(EVENT, { __proto__: null, detail: `${detail}}` })])
   } catch {
     // nothing the page should notice
   }
@@ -469,7 +476,7 @@ const wrap = (name, after) => {
   // A method: no `prototype`, `length` 0, like the console's own.
   const wrapper = {
     [name](...args) {
-      const result = original.apply(this, args)
+      const result = reflectApply(original, this, args)
       guarded(() => after(args))
       return result
     },
@@ -478,7 +485,7 @@ const wrap = (name, after) => {
     defineProperty(wrapper, 'name', { value: fnName(original) || name, configurable: true })
     defineProperty(wrapper, 'toString', {
       value: function toString() {
-        return fnToString.call(original)
+        return reflectApply(fnToString, original, [])
       },
       configurable: true,
       writable: true,

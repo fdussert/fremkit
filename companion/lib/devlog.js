@@ -80,7 +80,7 @@ function inChain(o, proto) {
 function nativeText(o, getter) {
   if (typeof getter !== 'function') return undefined
   try {
-    const v = getter.call(o)
+    const v = reflectApply(getter, o, [])
     return typeof v === 'string' ? v : undefined
   } catch {
     return undefined
@@ -113,7 +113,7 @@ function walk(v, depth, budget) {
       s = `${String(v)}n`
       break
     case 'symbol': {
-      const d = symbolDescription.call(v)
+      const d = reflectApply(symbolDescription, v, [])
       s = `Symbol(${typeof d === 'string' ? d : ''})`
       break
     }

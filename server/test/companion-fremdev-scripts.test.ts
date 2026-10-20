@@ -288,6 +288,49 @@ describe('fremdev/hook.js', () => {
     expect(e.stack.join('\n')).not.toContain('/page:')
   })
 
+  it("reads an uncaught error's event and sends it without the page's later call, apply, slice or startsWith", () => {
+    const h = runHook()
+    let ran = 0
+    const saved = {
+      call: Function.prototype.call,
+      apply: Function.prototype.apply,
+      slice: String.prototype.slice,
+      charCodeAt: String.prototype.charCodeAt,
+      startsWith: String.prototype.startsWith,
+    }
+    const restore = () => {
+      Function.prototype.call = saved.call
+      Function.prototype.apply = saved.apply
+      String.prototype.slice = saved.slice
+      String.prototype.charCodeAt = saved.charCodeAt
+      String.prototype.startsWith = saved.startsWith
+    }
+    withPrepare(() => {
+      const err = pageError("new TypeError('x')")
+      const event = new FakeErrorEvent(err, 'x', [`https://cdn.example.com/lib.js?v=abc#x`, 1, 2])
+      // Plain functions that count and give up: a hook that reaches one loses its own result too.
+      Function.prototype.call = function () { ran++; return undefined } as typeof saved.call
+      Function.prototype.apply = function () { ran++; return undefined } as typeof saved.apply
+      String.prototype.slice = function () { ran++; return '' }
+      String.prototype.charCodeAt = function () { ran++; return 0 }
+      String.prototype.startsWith = function () { ran++; return false }
+      try {
+        h.listeners.error(event)
+        h.console.log('[vite] connected.')
+        h.listeners.error(new FakeErrorEvent(null, 'Script error.', [`${PAGE}/src/main.js`, 4, 5]))
+      } finally {
+        restore()
+      }
+    })
+    expect(ran).toBe(0)
+    const events = h.events()
+    expect(events).toHaveLength(3)
+    expect(events[0].text).toBe('Uncaught TypeError: x')
+    expect(events[0].origin).toBe(events[0].stack[0])
+    expect(events[1]).toEqual({ kind: 'up' })
+    expect(events[2]).toEqual({ kind: 'error', text: 'Uncaught Script error.', origin: '/src/main.js:4:5' })
+  })
+
   it('bounds the origin it takes from the event', () => {
     const h = runHook()
     h.listeners.error(new FakeErrorEvent(null, 'm', [`${PAGE}/${'p'.repeat(400)}.js`, 1, 1]))
