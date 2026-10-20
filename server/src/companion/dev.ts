@@ -68,6 +68,8 @@ export interface CompanionDevOptions {
   changed: () => void
   enabled: () => boolean
   pairedCount: () => number
+  /** The modules a control on the Edge depends on: `FREMDEV_FEATURES`, which a test may widen. */
+  features?: readonly string[]
 }
 
 export type DevMessage = Extract<ExtensionMessage, { type: 'modules' | 'dev.tabs' | 'ping' | 'dev.report' | 'dev.open.done' }>
@@ -109,6 +111,7 @@ export class CompanionDev {
   private readonly changed: () => void
   private readonly enabled: () => boolean
   private readonly pairedCount: () => number
+  private readonly knownFeatures: readonly string[]
   /**
    * The Fremdev-capable installs heard since this server started, connected or not, in the order
    * they first said hello. Forgotten only when their device is removed (`forget`, `prune`).
@@ -121,6 +124,7 @@ export class CompanionDev {
     this.changed = opts.changed
     this.enabled = opts.enabled
     this.pairedCount = opts.pairedCount
+    this.knownFeatures = opts.features ?? FREMDEV_FEATURES
   }
 
   /**
@@ -143,7 +147,7 @@ export class CompanionDev {
       name,
       on: modules.includes(FREMDEV_MODULE),
       report: modules.includes(FREMDEV_REPORT_MODULE),
-      features: featuresOf(modules),
+      features: featuresOf(modules, this.knownFeatures),
       connected: true,
       tabs: [],
       pending: new Map(),
@@ -193,7 +197,7 @@ export class CompanionDev {
       case 'modules': {
         const on = msg.modules.includes(FREMDEV_MODULE)
         const report = msg.modules.includes(FREMDEV_REPORT_MODULE)
-        const features = featuresOf(msg.modules)
+        const features = featuresOf(msg.modules, this.knownFeatures)
         if (on === install.on && report === install.report && sameSet(features, install.features)) return
         install.report = report
         install.features = features
@@ -369,9 +373,9 @@ export class CompanionDev {
   }
 }
 
-/** The modules of `FREMDEV_FEATURES` in a list: an unknown `fremdev.*` name is not one. */
-function featuresOf(modules: readonly string[]): Set<string> {
-  return new Set(modules.filter((m) => FREMDEV_FEATURES.includes(m)))
+/** The modules of `known` (`FREMDEV_FEATURES`) in a list: an unknown `fremdev.*` name is not one. */
+function featuresOf(modules: readonly string[], known: readonly string[]): Set<string> {
+  return new Set(modules.filter((m) => known.includes(m)))
 }
 
 const sameSet = (a: ReadonlySet<string>, b: ReadonlySet<string>) => a.size === b.size && [...a].every((x) => b.has(x))

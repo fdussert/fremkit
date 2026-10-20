@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DEFAULT_CONFIG, type Config } from '../src/config/schema.js'
 import { CompanionDev, COMPANION_DEV_CHANNEL, createDevProvider, DEV_PUBLISH_MS, fremdevEnabled, MAX_PENDING_ASKS, OPEN_TIMEOUT_MS } from '../src/companion/dev.js'
 import { FREMDEV_FEATURES, type DevTab, type ServerMessage } from '../src/companion/protocol.js'
+// @ts-expect-error the extension's plain JavaScript has no declarations
+import { FEATURE_MODULES } from '../../companion/fremdev.js'
 import { tr } from '../src/i18n.js'
 import type { CommandContext } from '../src/providers/types.js'
 
@@ -26,7 +28,7 @@ function row(tabId: number, total = 1): DevTab {
   }
 }
 
-function setup(opts: { enabled?: () => boolean; paired?: number } = {}) {
+function setup(opts: { enabled?: () => boolean; paired?: number; features?: readonly string[] } = {}) {
   const send = vi.fn<(deviceId: string, msg: ServerMessage) => void>()
   const changed = vi.fn<() => void>()
   const dev = new CompanionDev({
@@ -34,6 +36,7 @@ function setup(opts: { enabled?: () => boolean; paired?: number } = {}) {
     changed,
     enabled: opts.enabled ?? (() => true),
     pairedCount: () => opts.paired ?? 2,
+    ...(opts.features ? { features: opts.features } : {}),
   })
   const tabs = (deviceId: string, rows: DevTab[]) => dev.onMessage(deviceId, { type: 'dev.tabs', tabs: rows })
   return { dev, send, changed, tabs }
@@ -472,24 +475,28 @@ describe('Fremdev reports', () => {
 })
 
 describe('Fremdev features', () => {
+  // A feature of the test's own, handed to the hub: FREMDEV_FEATURES itself is never changed.
   const TEST_FEATURE = 'fremdev.test'
-  beforeEach(() => { (FREMDEV_FEATURES as string[]).push(TEST_FEATURE) })
-  afterEach(() => { (FREMDEV_FEATURES as string[]).splice((FREMDEV_FEATURES as string[]).indexOf(TEST_FEATURE), 1) })
+  const FEATURES = [...FREMDEV_FEATURES, TEST_FEATURE]
 
-  it('lists the features a control depends on, the test one included', () => {
-    expect(FREMDEV_FEATURES).toContain(TEST_FEATURE)
+  it('lists the features a control depends on', () => {
+    expect(FREMDEV_FEATURES).not.toContain(TEST_FEATURE)
     expect(FREMDEV_FEATURES.every((f) => f.startsWith('fremdev.'))).toBe(true)
   })
 
+  it("lists the same features as the extension's FEATURE_MODULES", () => {
+    expect([...FEATURE_MODULES].sort()).toEqual([...FREMDEV_FEATURES].sort())
+  })
+
   it('lists the features an install announced, sorted, and never an unknown fremdev name', () => {
-    const t = setup()
+    const t = setup({ features: FEATURES })
     t.dev.connect(A, 'Chrome', ['fremdev', 'fremdev.unknown', TEST_FEATURE, 'fremdev.report'])
     t.dev.connect(B, 'Brave', ['fremdev'])
     expect(t.dev.snapshot().installs.map((i) => [i.deviceId, i.features, i.report])).toEqual([[A, [TEST_FEATURE], true], [B, [], false]])
   })
 
   it('republishes when a modules message only adds or removes a feature', () => {
-    const t = setup()
+    const t = setup({ features: FEATURES })
     t.dev.connect(A, 'Chrome', ['fremdev'])
     t.changed.mockClear()
     t.dev.onMessage(A, { type: 'modules', modules: ['fremdev', TEST_FEATURE] })
@@ -509,7 +516,7 @@ describe('Fremdev features', () => {
 
   it('shows no features in the snapshot while Fremdev is off in Fremkit', () => {
     let on = true
-    const t = setup({ enabled: () => on })
+    const t = setup({ enabled: () => on, features: FEATURES })
     t.dev.connect(A, 'Chrome', ['fremdev', TEST_FEATURE])
     on = false
     expect(t.dev.snapshot().installs).toEqual([])
@@ -522,7 +529,7 @@ describe('Fremdev features', () => {
   const lastId = (send: ReturnType<typeof setup>['send']) => (send.mock.calls.at(-1)![1] as { id: string }).id
 
   it('a generic ask needs its feature, resolves to the matching answer, and to null once the feature is withdrawn', async () => {
-    const t = setup()
+    const t = setup({ features: FEATURES })
     t.dev.connect(A, 'Chrome', ['fremdev'])
     t.tabs(A, [row(7)])
     const ask = askOf(t.dev)
@@ -547,7 +554,7 @@ describe('Fremdev features', () => {
   })
 
   it('withdrawing one feature leaves the asks of another waiting', async () => {
-    const t = setup()
+    const t = setup({ features: FEATURES })
     t.dev.connect(A, 'Chrome', ['fremdev', 'fremdev.report', TEST_FEATURE])
     t.tabs(A, [row(7)])
     const report = t.dev.report(A, 7, false)
