@@ -16,9 +16,10 @@
     display:none;flex-direction:column;gap:6px;scrollbar-width:none}
   .list::-webkit-scrollbar{display:none}
   .stage.rows .list{display:flex}
-  .row{flex:none;box-sizing:border-box;min-height:56px;display:flex;align-items:center;gap:12px;padding:4px 6px 4px 12px;border-radius:12px;
-    background:rgba(255,255,255,.04);cursor:pointer}
-  .row:active{background:rgba(255,255,255,.1)}
+  .row{flex:none;box-sizing:border-box;display:flex;flex-direction:column;border-radius:12px;background:rgba(255,255,255,.04)}
+  /* The top line: a tap on it unfolds the row (the light, the name and the facts). */
+  .top{box-sizing:border-box;min-height:56px;display:flex;align-items:center;gap:12px;padding:4px 6px 4px 12px;border-radius:12px;cursor:pointer}
+  .top:active{background:rgba(255,255,255,.06)}
   .row.flash{animation:flash 1.2s ease-out 1}
   @keyframes flash{0%{background:color-mix(in srgb, var(--danger, #ff6b5e) 45%, transparent)}100%{background:rgba(255,255,255,.04)}}
   @media (prefers-reduced-motion:reduce){.row.flash{animation:none}}
@@ -50,23 +51,68 @@
   .fact.seen,.fact.seen .n,.fact.seen .t{color:var(--text-dim, #6b737c)}
   .fact.seen .n{font-weight:500}
 
+  button.show{flex:none;box-sizing:border-box;min-width:44px;height:44px;border:0;border-radius:12px;padding:0 12px;
+    background:transparent;color:var(--accent, #d9b36a);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:6px;
+    font:inherit;font-size:calc(14px * var(--text-scale, 1));font-weight:600;white-space:nowrap}
+  button.show svg{flex:none;width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  button.show:active{background:var(--accent, #d9b36a);color:var(--on-accent, #0b0d10)}
+  /* A narrow tile keeps the icon and drops the word. */
+  @media (max-width:520px){button.show{padding:0}button.show .label{display:none}}
   button.clear{flex:none;box-sizing:border-box;width:44px;height:44px;border:0;border-radius:12px;padding:0;
     background:transparent;color:var(--text-muted, #8b93a0);cursor:pointer;display:inline-flex;align-items:center;justify-content:center}
   button.clear svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
   button.clear:active{background:var(--accent, #d9b36a);color:var(--on-accent, #0b0d10)}
   button.clear[hidden]{display:inline-flex;visibility:hidden}
   .facts[hidden],.fact[hidden],.n[hidden],.browser[hidden],.down[hidden]{display:none}
-  .row:focus-visible{outline:2px solid var(--accent, #d9b36a);outline-offset:-2px}
+  .top:focus-visible{outline:2px solid var(--accent, #d9b36a);outline-offset:-2px}
+  button:focus-visible{outline:2px solid var(--accent, #d9b36a);outline-offset:-2px}
+
+  /* Unfolded: the tab's history, newest first, scrolling inside the row, and the copy buttons. */
+  .detail{display:none;flex-direction:column;gap:8px;padding:0 10px 10px 38px}
+  .row.unfolded .detail{display:flex}
+  .history{margin:0;padding:0;list-style:none;max-height:clamp(96px,42vh,320px);overflow-y:auto;overscroll-behavior:contain;
+    display:flex;flex-direction:column;gap:6px;scrollbar-width:thin}
+  .entry{display:flex;flex-direction:column;gap:1px;min-width:0;font-size:calc(14px * var(--text-scale, 1))}
+  .entry .line{display:flex;align-items:baseline;gap:8px;min-width:0}
+  .entry .time,.entry .times{flex:none;font-variant-numeric:tabular-nums;color:var(--text-muted, #8b93a0)}
+  .entry .times{font-weight:700}
+  .entry .what{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--font-mono, ui-monospace, Menlo, monospace)}
+  .entry.error .what{color:var(--danger, #ff6b5e)}
+  .entry.request .what{color:var(--warn, #f0a020)}
+  .entry.limited .what{font-family:inherit;color:var(--text-muted, #8b93a0);font-style:italic}
+  .entry .origin{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-left:calc(8ch + 8px);
+    font-family:var(--font-mono, ui-monospace, Menlo, monospace);font-size:calc(12px * var(--text-scale, 1));color:var(--text-dim, #6b737c)}
+  .entry .origin:empty{display:none}
+  /* Seen: dimmed. Resolved: greyed and struck through. */
+  .entry.seen{opacity:.55}
+  .entry.resolved .what,.entry.resolved .time,.entry.resolved .times{color:var(--text-dim, #6b737c)}
+  .entry.resolved .what{text-decoration:line-through}
+  .entry.resolved{opacity:.7}
+  .actions{display:flex;flex-wrap:wrap;gap:8px}
+  .actions[hidden]{display:none}
+  button.copy{box-sizing:border-box;min-height:56px;min-width:56px;padding:0 18px;border:1px solid color-mix(in srgb, var(--accent, #d9b36a) 55%, transparent);
+    border-radius:14px;background:transparent;color:var(--accent, #d9b36a);cursor:pointer;
+    font:inherit;font-size:calc(15px * var(--text-scale, 1));font-weight:600;white-space:nowrap}
+  button.copy:active{background:var(--accent, #d9b36a);color:var(--on-accent, #0b0d10)}
+  button.copy:disabled{cursor:default;opacity:.6}
+  button.copy.ok{border-color:var(--ok, #46c46e);color:var(--ok, #46c46e)}
+  button.copy.failed{border-color:var(--danger, #ff6b5e);color:var(--danger, #ff6b5e)}
 
   /* The host says which way round the tile is: on-light means dark text on a light body. */
   html.on-light body{color:var(--on-surface, #0b0d10)}
   html.on-light .row{background:rgba(0,0,0,.05)}
-  html.on-light .row:active{background:rgba(0,0,0,.12)}
+  html.on-light .top:active{background:rgba(0,0,0,.07)}
   html.on-light .browser,html.on-light .t,html.on-light button.clear{color:var(--on-surface, #0b0d10);opacity:.7}
+  html.on-light button.show,html.on-light button.copy{color:var(--on-surface, #0b0d10)}
+  html.on-light button.copy{border-color:color-mix(in srgb, var(--on-surface, #0b0d10) 35%, transparent)}
+  html.on-light .entry .time,html.on-light .entry .times,html.on-light .entry.limited .what,html.on-light .entry .origin{color:var(--on-surface, #0b0d10);opacity:.7}
+  html.on-light .entry.resolved .what,html.on-light .entry.resolved .time,html.on-light .entry.resolved .times{color:var(--on-surface, #0b0d10)}
   html.on-light .fact.resolved,html.on-light .fact.resolved .n{color:var(--on-surface, #0b0d10);opacity:.5}
   html.on-light .fact.seen,html.on-light .fact.seen .n,html.on-light .fact.seen .t{color:var(--on-surface, #0b0d10);opacity:.5}
   /* An accent body: the accent of the clear button would vanish, so it takes the text colour. */
-  html.accent-fill button.clear:active{background:var(--on-surface, #0b0d10);color:var(--accent, #d9b36a)}
+  html.accent-fill button.clear:active,html.accent-fill button.show:active,html.accent-fill button.copy:active{background:var(--on-surface, #0b0d10);color:var(--accent, #d9b36a)}
+  html.accent-fill button.show,html.accent-fill button.copy{color:var(--on-surface, #0b0d10)}
+  html.accent-fill button.copy{border-color:var(--on-surface, #0b0d10)}
 
   /*
    * Compact: the worst light and the open errors, nothing to touch — a tap on a bar tile belongs to
@@ -102,7 +148,12 @@
     down: { fr: 'serveur arrêté', en: 'server down' },
     noAnswer: { fr: 'sans réponse', en: 'no answer' },
     clear: { fr: 'Effacer', en: 'Clear' },
-    show: { fr: 'Afficher l’onglet', en: 'Show the tab' },
+    showTab: { fr: 'Afficher l’onglet', en: 'Show tab' },
+    copy: { fr: 'Copier le rapport', en: 'Copy report' },
+    copyStack: { fr: 'Copier avec la pile', en: 'Copy with stack' },
+    copied: { fr: 'Copié ✓', en: 'Copied ✓' },
+    copyFailed: { fr: 'Échec de la copie', en: 'Copy failed' },
+    limited: { fr: '+{n} erreurs (débit limité)', en: '+{n} errors (rate limited)' },
     elsewhere: { fr: 'Fremdev ne s\'affiche que sur l\'Edge du Mac.', en: 'Fremdev only shows on the Mac\'s Edge.' }
   }
 
@@ -132,6 +183,10 @@
      * holds, and a flash runs to its end.
      */
     var drawn = {}
+    /** The one unfolded row, as `deviceId:tabId`, or null. Cleared when its tab goes away. */
+    var unfolded = null
+    /** How long "Copied ✓" or "Copy failed" stays on a copy button. */
+    var COPIED_MS = 2000
 
     function el(tag, cls) {
       var e = document.createElement(tag)
@@ -142,18 +197,34 @@
     function send(name, row) {
       Fremkit.sendCommand(CHANNEL, name, { deviceId: row.deviceId, tabId: row.tabId }).catch(function () {})
     }
+    function pad(n) { return (n < 10 ? '0' : '') + n }
+    /** An entry's time, local, as HH:MM:SS. */
+    function clock(ms) {
+      if (!(ms > 0)) return ''
+      var d = new Date(ms)
+      return pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds())
+    }
 
-    /** Lucide's "x" (ISC), built node by node. */
-    function crossIcon() {
+    /** A Lucide icon (ISC) from its elements, built node by node. */
+    function icon(parts) {
       var s = document.createElementNS(SVG, 'svg')
       s.setAttribute('viewBox', '0 0 24 24')
       s.setAttribute('aria-hidden', 'true')
-      ;[['18', '6', '6', '18'], ['6', '6', '18', '18']].forEach(function (c) {
-        var l = document.createElementNS(SVG, 'line')
-        l.setAttribute('x1', c[0]); l.setAttribute('y1', c[1]); l.setAttribute('x2', c[2]); l.setAttribute('y2', c[3])
-        s.appendChild(l)
+      parts.forEach(function (p) {
+        var e = document.createElementNS(SVG, p[0])
+        Object.keys(p[1]).forEach(function (k) { e.setAttribute(k, p[1][k]) })
+        s.appendChild(e)
       })
       return s
+    }
+    /** Lucide's "x". */
+    function crossIcon() {
+      return icon([['line', { x1: '18', y1: '6', x2: '6', y2: '18' }], ['line', { x1: '6', y1: '6', x2: '18', y2: '18' }]])
+    }
+    /** Lucide's "external-link". */
+    function showIcon() {
+      return icon([['path', { d: 'M15 3h6v6' }], ['path', { d: 'M10 14 21 3' }],
+        ['path', { d: 'M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6' }]])
     }
 
     function factEl(kind) {
@@ -181,12 +252,92 @@
       setText(f.t, resolved ? Fremkit.t(resolvedLabel, { n: total }) : lastText)
     }
 
+    /** A copy button's face: its label, or the answer for two seconds after one came. */
+    function paintCopy(c) {
+      var label = c.status === 'ok' ? L.copied : c.status === 'failed' ? L.copyFailed : c.stack ? L.copyStack : L.copy
+      setText(c.btn, Fremkit.t(label))
+      c.btn.classList.toggle('ok', c.status === 'ok')
+      c.btn.classList.toggle('failed', c.status === 'failed')
+      c.btn.disabled = c.status === 'busy'
+    }
+
+    /** Asks the server for the tab's report, onto the Mac's clipboard; one ask at a time per button. */
+    function copy(entry, c) {
+      if (c.status === 'busy') return
+      c.status = 'busy'
+      clearTimeout(c.timer)
+      paintCopy(c)
+      function done(ok) {
+        c.status = ok ? 'ok' : 'failed'
+        paintCopy(c)
+        c.timer = setTimeout(function () { c.status = 'idle'; paintCopy(c) }, COPIED_MS)
+      }
+      var row = entry.row, asked
+      try {
+        asked = Fremkit.sendCommand(CHANNEL, 'report', { deviceId: row.deviceId, tabId: row.tabId, stack: c.stack })
+      } catch (e) { done(false); return }
+      Promise.resolve(asked).then(function (res) { done(!!res && res.ok === true) }, function () { done(false) })
+    }
+
+    function copyButton(entry, stack) {
+      var c = { btn: el('button', 'copy'), stack: stack, status: 'idle', timer: 0 }
+      c.btn.type = 'button'
+      c.btn.addEventListener('click', function (ev) { ev.stopPropagation(); copy(entry, c) })
+      return c
+    }
+
+    /** The history list, rebuilt only when what it shows changed, so its scroll stays put. */
+    function updateHistory(entry) {
+      var hist = Array.isArray(entry.row.history) ? entry.row.history : []
+      var views = hist.map(FD.entryView).filter(Boolean)
+      var sig = JSON.stringify(views) + '|' + Fremkit.t(L.noAnswer) + '|' + Fremkit.t(L.limited, { n: 0 })
+      if (sig === entry.historySig) return
+      entry.historySig = sig
+      var ul = entry.history
+      while (ul.firstChild) ul.removeChild(ul.firstChild)
+      views.forEach(function (v) {
+        var li = el('li', 'entry ' + v.kind + ' ' + v.state)
+        var line = el('div', 'line')
+        var time = el('span', 'time')
+        time.textContent = clock(v.time)
+        line.appendChild(time)
+        if (v.kind !== 'limited' && v.n > 1) {
+          var times = el('span', 'times')
+          times.textContent = '×' + v.n
+          line.appendChild(times)
+        }
+        var what = el('span', 'what')
+        what.textContent = v.kind === 'limited' ? Fremkit.t(L.limited, { n: v.n })
+          : v.noAnswer ? v.text + ' ' + Fremkit.t(L.noAnswer) : v.text
+        line.appendChild(what)
+        li.appendChild(line)
+        var origin = el('div', 'origin')
+        origin.textContent = v.origin || ''
+        li.appendChild(origin)
+        ul.appendChild(li)
+      })
+    }
+
+    /** Folds or unfolds the row: only one at a time. */
+    function paintFold(entry) {
+      var open = entry.key === unfolded
+      entry.el.classList.toggle('unfolded', open)
+      entry.top.setAttribute('aria-expanded', open ? 'true' : 'false')
+      if (open) updateHistory(entry)
+    }
+    function toggle(entry) {
+      unfolded = unfolded === entry.key ? null : entry.key
+      Object.keys(drawn).forEach(function (k) { paintFold(drawn[k]) })
+      if (unfolded === entry.key && entry.el.scrollIntoView) entry.el.scrollIntoView({ block: 'nearest' })
+    }
+
     /** A row's elements, built once; `entry.row` is the latest data its handlers act on. */
-    function create() {
-      var entry = { row: null, total: null, flashAt: -Infinity }
+    function create(key) {
+      var entry = { key: key, row: null, total: null, flashAt: -Infinity, historySig: null }
       var r = entry.el = el('div', 'row')
-      r.setAttribute('role', 'button')
-      r.tabIndex = 0
+      var top = entry.top = el('div', 'top')
+      top.setAttribute('role', 'button')
+      top.tabIndex = 0
       entry.light = el('i', 'light')
       var body = el('div', 'body'), head = el('div', 'head'), facts = entry.facts = el('div', 'facts')
       entry.app = el('span', 'app')
@@ -201,22 +352,44 @@
       facts.appendChild(entry.requests)
       body.appendChild(head)
       body.appendChild(facts)
+      entry.show = el('button', 'show')
+      entry.show.type = 'button'
+      entry.show.appendChild(showIcon())
+      entry.showLabel = el('span', 'label')
+      entry.show.appendChild(entry.showLabel)
       entry.clear = el('button', 'clear')
       entry.clear.type = 'button'
       entry.clear.appendChild(crossIcon())
-      r.appendChild(entry.light)
-      r.appendChild(body)
-      r.appendChild(entry.clear)
+      top.appendChild(entry.light)
+      top.appendChild(body)
+      top.appendChild(entry.show)
+      top.appendChild(entry.clear)
 
+      var detail = el('div', 'detail')
+      entry.history = el('ul', 'history')
+      entry.actions = el('div', 'actions')
+      entry.copy = copyButton(entry, false)
+      entry.copyStack = copyButton(entry, true)
+      entry.actions.appendChild(entry.copy.btn)
+      entry.actions.appendChild(entry.copyStack.btn)
+      detail.appendChild(entry.history)
+      detail.appendChild(entry.actions)
+      r.appendChild(top)
+      r.appendChild(detail)
+
+      entry.show.addEventListener('click', function (ev) {
+        ev.stopPropagation()
+        send('focus', entry.row)
+      })
       entry.clear.addEventListener('click', function (ev) {
         ev.stopPropagation()
         send('clear', entry.row)
       })
-      r.addEventListener('click', function () { send('focus', entry.row) })
-      r.addEventListener('keydown', function (ev) {
-        if (ev.target !== r || (ev.key !== 'Enter' && ev.key !== ' ')) return
+      top.addEventListener('click', function () { toggle(entry) })
+      top.addEventListener('keydown', function (ev) {
+        if (ev.target !== top || (ev.key !== 'Enter' && ev.key !== ' ')) return
         ev.preventDefault()
-        send('focus', entry.row)
+        toggle(entry)
       })
       r.addEventListener('animationend', function () { r.classList.remove('flash') })
       return entry
@@ -226,7 +399,7 @@
       entry.row = row
       var r = entry.el, e = row.errors, q = row.requests
       entry.light.className = 'light ' + row.light + (row.seen ? ' seen' : '')
-      r.setAttribute('aria-label', Fremkit.t(L.show) + ' — ' + (row.app || row.host))
+      entry.top.setAttribute('aria-label', row.app || row.host)
       setText(entry.app, row.app || row.host)
       setText(entry.browser, several && row.browser ? row.browser : '')
       entry.browser.hidden = !(several && row.browser)
@@ -236,8 +409,15 @@
       var last = q && q.last
       updateFact(entry.requests, q, last ? (last.status === 0 ? Fremkit.t(L.noAnswer) : String(last.status)) + ' ' + last.path : '', L.resolvedRequests)
       entry.facts.hidden = entry.errors.hidden && entry.requests.hidden
+      setText(entry.showLabel, Fremkit.t(L.showTab))
+      entry.show.setAttribute('aria-label', Fremkit.t(L.showTab))
       entry.clear.setAttribute('aria-label', Fremkit.t(L.clear))
       entry.clear.hidden = !FD.hasUnseen(row)
+      // Copy only for an install that can build the report.
+      entry.actions.hidden = !row.report
+      paintCopy(entry.copy)
+      paintCopy(entry.copyStack)
+      paintFold(entry)
 
       // A new error flashes the row, at most once per flash: a page erroring at every snapshot
       // does not keep it blinking.
@@ -264,7 +444,7 @@
       var next = {}
       rows.forEach(function (row, i) {
         var key = row.deviceId + ':' + row.tabId
-        var entry = drawn[key] || create()
+        var entry = drawn[key] || create(key)
         next[key] = entry
         update(entry, row, several)
         // Moved only when out of place: the node, and the tap on it, survive.
@@ -274,6 +454,7 @@
         if (!next[key] && drawn[key].el.parentNode === list) list.removeChild(drawn[key].el)
       })
       drawn = next
+      if (unfolded !== null && !next[unfolded]) unfolded = null
 
       var s = FD.summaryOf(snap)
       $('sumLight').className = 'light ' + s.light + (s.seen ? ' seen' : '')

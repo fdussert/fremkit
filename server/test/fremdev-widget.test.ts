@@ -12,7 +12,11 @@ import { WidgetCatalog } from '../src/widgets/catalog.js'
 const SHIPPED = fileURLToPath(new URL('../../widgets', import.meta.url))
 
 type Light = 'red' | 'orange' | 'green'
-interface Row { tabId: number; deviceId: string; browser: string; light: Light; seen: boolean; app: string; activity: number }
+interface Row { tabId: number; deviceId: string; browser: string; light: Light; seen: boolean; app: string; activity: number; report: boolean }
+type EntryState = 'open' | 'seen' | 'resolved'
+interface EntryView {
+  kind: 'error' | 'request' | 'limited'; time: number; text: string; origin: string | null; n: number; state: EntryState; noAnswer: boolean
+}
 interface Logic {
   stateOf(snapshot: unknown): string
   lightOf(tab: unknown): Light
@@ -21,6 +25,7 @@ interface Logic {
   rowsOf(snapshot: unknown): Row[]
   summaryOf(snapshot: unknown): { light: Light; seen: boolean; errors: number }
   onMac(loc: unknown): boolean
+  entryView(entry: unknown): EntryView | null
 }
 
 async function loadLogic(): Promise<Logic> {
@@ -50,7 +55,8 @@ function tab(tabId: number, over: { errors?: Counts; requests?: Counts; server?:
     activity: over.activity ?? 1000,
   }
 }
-const install = (deviceId: string, tabs: unknown[], on = true, name = 'Chrome', connected = true) => ({ deviceId, name, on, connected, tabs })
+const install = (deviceId: string, tabs: unknown[], on = true, name = 'Chrome', connected = true, report = false) =>
+  ({ deviceId, name, on, connected, report, tabs })
 /** A listed install whose socket is closed: the extension's idle state, no rows. */
 const idle = (deviceId: string, on = true, name = 'Chrome') => install(deviceId, [], on, name, false)
 const snap = (installs: unknown[], over: { enabled?: boolean; paired?: number } = {}) =>
@@ -216,5 +222,53 @@ describe('fremdev/logic.js', () => {
     // Two new errors on top of three seen: red, and the count says two.
     expect(summaryOf(snap([install(DEV_A, [tab(1, { errors: [5, 5, 3] }), tab(2, { errors: [1, 1, 1] })])])))
       .toEqual({ light: 'red', seen: false, errors: 2 })
+  })
+
+  it('rowsOf carries the install\'s report flag onto each of its rows, false when absent', async () => {
+    const { rowsOf } = await loadLogic()
+    const rows = rowsOf(snap([
+      install(DEV_A, [tab(1, { activity: 2 })], true, 'Chrome', true, true),
+      install(DEV_B, [tab(2, { activity: 1 })], true, 'Edge', true, false),
+      { deviceId: DEV_C, name: 'Brave', on: true, connected: true, tabs: [tab(3, { activity: 0 })] },
+    ]))
+    expect(rows.map((r) => [r.tabId, r.report])).toEqual([[1, true], [2, false], [3, false]])
+  })
+
+  it('entryView: an error keeps its text and origin, in each state', async () => {
+    const { entryView } = await loadLogic()
+    for (const state of ['open', 'seen', 'resolved'] as const) {
+      expect(entryView({ kind: 'error', text: 'TypeError: x is undefined', origin: '/src/App.vue:12:5', n: 3, at: 1234, state }))
+        .toEqual({ kind: 'error', time: 1234, text: 'TypeError: x is undefined', origin: '/src/App.vue:12:5', n: 3, state, noAnswer: false })
+    }
+    expect(entryView({ kind: 'error', text: 'boom', origin: null, n: 1, at: 5, state: 'open' }))
+      .toMatchObject({ origin: null, n: 1 })
+  })
+
+  it('entryView: a request reads METHOD path status, with no origin', async () => {
+    const { entryView } = await loadLogic()
+    expect(entryView({ kind: 'request', method: 'POST', path: '/api/cart', status: 500, n: 2, at: 77, state: 'seen' }))
+      .toEqual({ kind: 'request', time: 77, text: 'POST /api/cart 500', origin: null, n: 2, state: 'seen', noAnswer: false })
+    expect(entryView({ kind: 'request', method: 'GET', path: '/api/items', status: 404, n: 1, at: 1, state: 'resolved' }))
+      .toMatchObject({ text: 'GET /api/items 404', state: 'resolved' })
+  })
+
+  it('entryView: a request with status 0 leaves the status for the widget to say "no answer"', async () => {
+    const { entryView } = await loadLogic()
+    expect(entryView({ kind: 'request', method: 'GET', path: '/api/health', status: 0, n: 4, at: 9, state: 'open' }))
+      .toEqual({ kind: 'request', time: 9, text: 'GET /api/health', origin: null, n: 4, state: 'open', noAnswer: true })
+  })
+
+  it('entryView: a limited entry has no text of its own, only its count, in each state', async () => {
+    const { entryView } = await loadLogic()
+    for (const state of ['open', 'seen', 'resolved'] as const) {
+      expect(entryView({ kind: 'limited', n: 120, at: 42, state }))
+        .toEqual({ kind: 'limited', time: 42, text: '', origin: null, n: 120, state, noAnswer: false })
+    }
+  })
+
+  it('entryView: anything else is null', async () => {
+    const { entryView } = await loadLogic()
+    expect(entryView(null)).toBeNull()
+    expect(entryView({ kind: 'console', text: 'x', n: 1, at: 1, state: 'open' })).toBeNull()
   })
 })

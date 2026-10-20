@@ -70,8 +70,8 @@
   }
 
   /**
-   * Every dev tab of every install that has Fremdev on, as `{ ...tab, deviceId, browser, light,
-   * seen }`: unseen red first, then unseen orange, then the seen rows (red before orange), then
+   * Every dev tab of every install that has Fremdev on, as `{ ...tab, deviceId, browser, report,
+   * light, seen }` (`report`: the install can copy a bug report): unseen red first, then unseen orange, then the seen rows (red before orange), then
    * green; the latest activity first within a group, then by tab id.
    */
   function rowsOf(snap) {
@@ -84,6 +84,7 @@
         for (var k in tab) if (Object.prototype.hasOwnProperty.call(tab, k)) row[k] = tab[k]
         row.deviceId = install.deviceId
         row.browser = install.name
+        row.report = install.report === true
         var st = stateOfTab(tab)
         row.light = st.light
         row.seen = st.seen
@@ -125,7 +126,42 @@
     return !!loc && loc.protocol !== 'https:'
   }
 
+  var STATES = { open: true, seen: true, resolved: true }
+
+  /**
+   * One history entry as the unfolded row draws it: `{ kind, time, text, origin, n, state,
+   * noAnswer }`. An error keeps its text and origin; a request reads `METHOD path status`, and with
+   * status 0 (no answer) the status is left out and `noAnswer` set for the widget to say it in the
+   * user's language; a `limited` entry has no text, the widget writes its label around `n`.
+   * Null for anything else.
+   */
+  function entryView(entry) {
+    if (!entry || typeof entry !== 'object') return null
+    var kind = entry.kind
+    if (kind !== 'error' && kind !== 'request' && kind !== 'limited') return null
+    var view = {
+      kind: kind,
+      time: typeof entry.at === 'number' ? entry.at : 0,
+      text: '',
+      origin: null,
+      n: typeof entry.n === 'number' && entry.n > 0 ? entry.n : 1,
+      state: STATES[entry.state] === true ? entry.state : 'open',
+      noAnswer: false
+    }
+    if (kind === 'error') {
+      view.text = typeof entry.text === 'string' ? entry.text : ''
+      view.origin = typeof entry.origin === 'string' && entry.origin ? entry.origin : null
+    } else if (kind === 'request') {
+      var parts = [String(entry.method || 'OTHER'), String(entry.path || '')]
+      if (entry.status === 0) view.noAnswer = true
+      else parts.push(String(entry.status))
+      view.text = parts.join(' ')
+    }
+    return view
+  }
+
   root.FremkitFremdev = {
+    entryView: entryView,
     stateOf: stateOf,
     rowsOf: rowsOf,
     lightOf: lightOf,
