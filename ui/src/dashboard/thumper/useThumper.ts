@@ -1,6 +1,6 @@
 /**
- * Listens for the thumper on the stage's two edge strips and, when the rhythm is right, calls
- * the worm on this screen only. Nothing leaves the page: no config, no socket, no save.
+ * Listens for the thumper wherever the stage hears a tap — its two edge strips and every bit of
+ * it no widget frame covers — and, when the rhythm is right, calls the worm on this screen only. Nothing leaves the page: no config, no socket, no save.
  */
 import { onUnmounted } from 'vue'
 import { createRhythm } from './rhythm'
@@ -16,23 +16,21 @@ export interface ThumperOptions {
 export function useThumper(o: ThumperOptions) {
   const rhythm = createRhythm()
   let press: { x: number; y: number; at: number; button: number; side: Side } | null = null
-  let lastSide: Side | null = null
   let scene: Scene | null = null
 
   // Never inside a frame: the dashboard embedded somewhere is not the screen that was tapped.
   const allowed = () => window.top === window
 
-  function down(e: PointerEvent, side: Side) {
-    press = { x: e.clientX, y: e.clientY, at: performance.now(), button: e.button, side }
+  /** A press; `side` is the edge strip it landed on, or the half of the screen it is in. */
+  function down(e: PointerEvent, side?: Side) {
+    const where = side ?? (e.clientX < window.innerWidth / 2 ? 'left' : 'right')
+    press = { x: e.clientX, y: e.clientY, at: performance.now(), button: e.button, side: where }
   }
 
   function up(e: PointerEvent) {
     const p = press
     press = null
     if (!p || scene || !allowed()) return
-    // A rhythm belongs to one edge: switching sides starts it over.
-    if (p.side !== lastSide) rhythm.reset()
-    lastSide = p.side
     const result = rhythm.press({ down: p.at, up: performance.now(), moved: Math.hypot(e.clientX - p.x, e.clientY - p.y), button: p.button })
     if (result.kind === 'thump') ripple(p.x, p.y, result.count)
     else if (result.kind === 'call') call(p.side)

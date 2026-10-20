@@ -1,23 +1,24 @@
 /**
- * The thumper's rhythm: four steady taps on one of the stage's edge strips.
+ * The thumper's rhythm: four steady taps on the stage, wherever the page itself hears them.
  *
  * A tap is a press and release that barely moved and did not linger. Four of them, each gap
  * between `MIN_GAP_MS` and `MAX_GAP_MS` and every gap within `TOLERANCE` of their mean, make a
  * call. Anything else — a swipe, a double tap, a long press, a pause, a gap out of step —
  * starts the count again, from that tap when it can still be the first of a new rhythm.
  *
- * The bounds keep clear of the bar's own gestures: a double tap is under 300 ms, a long press
- * arrives as the right button or a held one, and a swipe moves far more than `TAP_SLOP`.
+ * The stage has no double tap of its own (the bar's is not heard here), so the bounds only need
+ * to keep a hurried or a slow hand in: a long press arrives as the right button or a held one,
+ * and a swipe moves far more than `TAP_SLOP`.
  *
  * DOM-free on purpose, so the rule can be exercised without a browser.
  */
 import { HOLD_SLOP } from '../longPress'
 
 export const THUMPS = 4
-export const MIN_GAP_MS = 350
-export const MAX_GAP_MS = 700
+export const MIN_GAP_MS = 250
+export const MAX_GAP_MS = 900
 /** How far a gap may stray from the mean of the gaps, as a fraction of it. */
-export const TOLERANCE = 0.25
+export const TOLERANCE = 0.35
 /** Movement past this many pixels is a swipe, not a tap: the same slop a long press tolerates. */
 export const TAP_SLOP = HOLD_SLOP
 /** A press held longer than this is not a thump. */
