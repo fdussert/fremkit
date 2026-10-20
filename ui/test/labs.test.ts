@@ -28,6 +28,7 @@ const paired: PublicDevice = {
 
 const { default: ScreenSelector } = await import('../src/admin/ScreenSelector.vue')
 const { default: SettingsWindow } = await import('../src/admin/settings/SettingsWindow.vue')
+const { default: AboutPane } = await import('../src/admin/settings/AboutPane.vue')
 const { settingsPane, settingsQuery } = await import('../src/admin/settingsWindow')
 const { useAdminStore } = await import('../src/admin/store')
 const { useDevices } = await import('../src/admin/devices')
@@ -203,6 +204,41 @@ describe('the seven clicks on the version', () => {
     for (let i = 0; i < 20; i++) await version.trigger('keydown', { key: 'Enter', repeat: true })
     await flushPromises()
     expect(wrapper.find('[data-test="labs"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+})
+
+describe('a flag in the block, as the next one will be', () => {
+  // No flag exists today: this one is given to the pane the way `LAB_FLAGS` will give a real one.
+  const FLAG = { key: 'later' as never, label: 'admin.inspector.screen.labs', hint: 'admin.inspector.screen.labs.none' }
+  const about = () => mount(AboutPane, { attachTo: document.body, props: { flags: [FLAG] }, global: { stubs } })
+
+  it('renders its box, writes labs[key], keeps the other flags, and undoes', async () => {
+    seed({ other: true }, 1)
+    const s = useAdminStore()
+    const wrapper = about()
+    await flushPromises()
+    // Shown without the clicks: a flag is on.
+    const box = wrapper.find('[data-test="labs-later"] input')
+    expect((box.element as HTMLInputElement).checked).toBe(false)
+    expect(wrapper.find('[data-test="labs-none"]').exists()).toBe(false)
+    await box.setValue(true)
+    expect(s.state.config!.labs).toEqual({ other: true, later: true })
+    await box.setValue(false)
+    expect(s.state.config!.labs).toEqual({ other: true, later: false })
+    s.undo()
+    expect(s.state.config!.labs).toEqual({ other: true, later: true })
+    wrapper.unmount()
+  })
+
+  it('takes the focus on the seven clicks, rather than the block', async () => {
+    seed({}, 1)
+    const wrapper = about()
+    await flushPromises()
+    const version = wrapper.find('[data-test="version"]')
+    for (let i = 0; i < labs.REVEAL_TAPS; i++) await version.trigger('click')
+    await flushPromises()
+    expect(document.activeElement).toBe(wrapper.find('[data-test="labs-later"] input').element)
     wrapper.unmount()
   })
 })

@@ -9,7 +9,7 @@ import BaseSection from '../../shared/ui/BaseSection.vue'
 import DiagnosticsSection from '../DiagnosticsSection.vue'
 import { useI18n } from '../../shared/i18n'
 import { useAdminStore } from '../store'
-import { labsShown, tapVersion } from '../labs'
+import { LAB_FLAGS, labsShown, tapVersion, type LabFlag } from '../labs'
 import type { Labs } from '../../shared/types'
 import { CONTRIBUTORS, MAINTAINER, REGISTRY_REPOSITORY, REPOSITORY, VERSION } from '../../shared/credits'
 
@@ -17,15 +17,13 @@ const s = useAdminStore()
 const { t, locale } = useI18n()
 
 /**
- * The experimental features block: one checkbox per `config.labs` flag. It appears after seven
- * clicks on the version (see `labs.ts`) and stays while any flag is on, so it can be turned off
+ * The experimental features block: one checkbox per flag of `LAB_FLAGS` (`labs.ts`). It appears
+ * after seven clicks on the version and stays while any flag is on, so it can be turned off
  * again. Each switch goes through `apply` like every setting: saved, undoable, in the history.
- *
- * A flag added to `LabsSchema` gets one entry here, its label and hint keys in both locales:
- * `{ key: 'name', label: 'admin.inspector.screen.labs.name', hint: '….hint' }`. With none, the
- * block says there is nothing to try right now rather than show an empty heading.
+ * With no flag, the block says there is nothing to try right now rather than show an empty
+ * heading. `flags` is for tests, which give it a flag the schema does not have yet.
  */
-const LAB_FLAGS: readonly { key: keyof Labs; label: string; hint: string }[] = []
+const props = withDefaults(defineProps<{ flags?: readonly LabFlag[] }>(), { flags: () => LAB_FLAGS })
 const labsVisible = computed(() => labsShown(s.state.config))
 /**
  * The block appears right under the version; focusing its first box (the block itself when there
@@ -67,12 +65,12 @@ const contributors = computed(() =>
   <DiagnosticsSection />
   <div v-if="labsVisible" ref="labsBlock" class="labs" data-test="labs" tabindex="-1">
     <h3>{{ t('admin.inspector.screen.labs') }}</h3>
-    <template v-for="flag in LAB_FLAGS" :key="flag.key">
+    <template v-for="flag in props.flags" :key="flag.key">
       <BaseCheckbox :model-value="s.state.config?.labs?.[flag.key] === true" :label="t(flag.label)"
         :data-test="`labs-${flag.key}`" @update:model-value="setLab(flag.key, $event)" />
       <p class="ro">{{ t(flag.hint) }}</p>
     </template>
-    <p v-if="!LAB_FLAGS.length" class="ro" data-test="labs-none">{{ t('admin.inspector.screen.labs.none') }}</p>
+    <p v-if="!props.flags.length" class="ro" data-test="labs-none">{{ t('admin.inspector.screen.labs.none') }}</p>
   </div>
   </BaseSection>
 </template>

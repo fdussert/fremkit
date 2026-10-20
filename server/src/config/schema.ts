@@ -422,7 +422,7 @@ export type MarketplaceState = z.infer<typeof MarketplaceSchema>
  * (`ui/src/admin/labs.ts`).
  *
  * To add one: a key here, `name: z.boolean().default(false)`, the same key in `Labs` in
- * `ui/src/shared/types.ts`, and one entry in `LAB_FLAGS` in `ui/src/admin/settings/AboutPane.vue`.
+ * `ui/src/shared/types.ts`, and one entry in `LAB_FLAGS` in `ui/src/admin/labs.ts`.
  * A flag is a product switch for what the admin and the dashboard show; the server must never
  * rely on one for security. A config written before the flag existed gets its default; one that
  * should start on for some files needs a step in `migrateConfig` deciding it from the raw file.

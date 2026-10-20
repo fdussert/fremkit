@@ -7,7 +7,7 @@
  *
  * 1. a key in `LabsSchema` (`server/src/config/schema.ts`), `name: z.boolean().default(false)`,
  *    and the same key in `Labs` (`ui/src/shared/types.ts`);
- * 2. one entry in `LAB_FLAGS` (`settings/AboutPane.vue`) with its label and hint, both locales;
+ * 2. one entry in `LAB_FLAGS` below with its label and hint keys, both locales;
  * 3. a reader here, `config?.labs?.name === true`, for what the flag hides.
  *
  * PUT /api/config keeps a flag the admin does not send, a restore keeps this Mac's, and
@@ -16,7 +16,21 @@
  * developer options do.
  */
 import { ref } from 'vue'
-import type { Config } from '../shared/types'
+import type { Config, Labs } from '../shared/types'
+
+/** One switch of the experimental features block in Settings → About. */
+export interface LabFlag {
+  key: keyof Labs
+  /** Locale keys of its checkbox and the line under it. */
+  label: string
+  hint: string
+}
+
+/**
+ * The flags Settings → About offers, in order: none right now. An entry looks like
+ * `{ key: 'name', label: 'admin.inspector.screen.labs.name', hint: 'admin.inspector.screen.labs.name.hint' }`.
+ */
+export const LAB_FLAGS: readonly LabFlag[] = []
 
 /** Clicks on the version that reveal the switches. */
 export const REVEAL_TAPS = 7
