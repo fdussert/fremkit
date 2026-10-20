@@ -58,6 +58,8 @@ let fremdevBusy = false
 let fremdevError = null
 /** tabId → 'done' | 'failed': what the last Copy report of that tab gave, shown for COPY_SHOWN_MS. */
 const copied = new Map()
+/** tabId → the timer that puts its button back. */
+const copyTimers = new Map()
 const COPY_SHOWN_MS = 2_000
 
 const hostOf = (url) => {
@@ -206,11 +208,13 @@ async function copyReport(tabId) {
   }
   copied.set(tabId, outcome)
   render()
-  setTimeout(() => {
-    if (copied.get(tabId) !== outcome) return
+  // One timer per tab: a second click restarts it, so its own outcome stays its full time.
+  clearTimeout(copyTimers.get(tabId))
+  copyTimers.set(tabId, setTimeout(() => {
+    copyTimers.delete(tabId)
     copied.delete(tabId)
     render()
-  }, COPY_SHOWN_MS)
+  }, COPY_SHOWN_MS))
 }
 
 /** tabId → its list item, kept across renders: the rows change every 500 ms under an error storm, and a button rebuilt mid-press loses the click. */
