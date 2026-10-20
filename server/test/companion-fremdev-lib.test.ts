@@ -3,14 +3,14 @@ import { describe, expect, it, vi } from 'vitest'
 // @ts-expect-error plain JS module outside server/, no declarations
 import { BUILTIN_PERMISSION_ORIGINS, FREMKIT_EXCLUDES, inOrigins, isDevUrl, parsePattern, releasableOrigins } from '../../companion/lib/devhosts.js'
 // @ts-expect-error plain JS module
-import { boundFrames, errorText, framePlace, hotReloadSignal, isNoise, MAX_FRAME, MAX_FRAMES, MAX_STACK, MAX_TEXT, methodOf, parseStack, pathOf, RateLimiter } from '../../companion/lib/devlog.js'
+import { boundFrames, errorText, framePlace, hotReloadSignal, isNoise, MAX_FRAME, MAX_FRAMES, MAX_STACK, MAX_TEXT, METHODS, methodOf, parseStack, pathOf, RateLimiter } from '../../companion/lib/devlog.js'
 // @ts-expect-error plain JS module
 import { emptyTab, fremdevSupport, HISTORY_MAX, reduce, Throttle, validRow, wireTabs } from '../../companion/lib/devtabs.js'
 // @ts-expect-error plain JS module
 import { hello, devTabs, modulesMsg, ping } from '../../companion/lib/protocol.js'
 // @ts-expect-error plain JS module
 import { buildReport, REPORT_MAX, reportMessage } from '../../companion/lib/devreport.js'
-import { DevTabSchema } from '../src/companion/protocol.js'
+import { DEV_METHODS, DevTabSchema } from '../src/companion/protocol.js'
 
 const both = (host: string) => [`http://${host}/*`, `https://${host}/*`]
 
@@ -267,6 +267,8 @@ describe('devlog frames', () => {
     expect(methodOf('PROPFIND')).toBe('OTHER')
     expect(methodOf(undefined)).toBe('OTHER')
     expect(methodOf({ toString: () => 'GET' })).toBe('OTHER')
+    // The extension's one list, plus OTHER, is the server's.
+    expect([...METHODS, 'OTHER']).toEqual([...DEV_METHODS])
   })
 })
 

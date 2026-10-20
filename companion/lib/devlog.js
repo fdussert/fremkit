@@ -291,7 +291,8 @@ function parseStack(stack, pageOrigin) {
 
 export { boundFrames, framePlace, MAX_FRAME, MAX_FRAMES, MAX_STACK, parseStack }
 
-const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS']
+/** The request methods reported as themselves; any other reads `OTHER`. The one list: devtabs.js reads it too. */
+export const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS']
 
 /** A request's method from the closed list, `OTHER` for anything else. */
 export function methodOf(m) {

@@ -1,4 +1,4 @@
-import { clip, methodOf } from './devlog.js'
+import { clip, METHODS, methodOf } from './devlog.js'
 
 // One dev tab's state as a pure reducer, and the rows `dev.tabs` carries. The wire shape mirrors
 // DevTabSchema in server/src/companion/protocol.ts, which is strict.
@@ -171,7 +171,6 @@ function wireTally(t, shape) {
 }
 
 const STATES = ['open', 'seen', 'resolved']
-const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS', 'OTHER']
 const statusOf = (s) => Math.max(0, Math.min(599, Math.trunc(s) || 0))
 
 /**
@@ -248,7 +247,7 @@ const okEntry = (e) => {
     case 'error':
       return keys === 'at,kind,n,origin,state,text' && isText(e.text, MAX_TEXT) && (e.origin === null || isText(e.origin, MAX_TEXT))
     case 'request':
-      return keys === 'at,kind,method,n,path,state,status' && METHODS.includes(e.method) &&
+      return keys === 'at,kind,method,n,path,state,status' && (METHODS.includes(e.method) || e.method === 'OTHER') &&
         isText(e.path, MAX_TEXT) && PATH_RE.test(e.path) && Number.isInteger(e.status) && e.status >= 0 && e.status <= 599
     case 'limited':
       return keys === 'at,kind,n,state'
