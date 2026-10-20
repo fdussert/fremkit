@@ -550,9 +550,17 @@ describe('companion/fremdev.js', () => {
 
     it('fetches exactly the editor URL, without credentials, cache or redirects, and answers ok', async () => {
       const f = await openable()
-      await f.fremdev.onServer({ type: 'dev.open.ask', id, tabId: 7, entryId: f.entryId })
-      expect(f.fetch).toHaveBeenCalledTimes(1)
-      expect(f.fetch).toHaveBeenCalledWith(WANT, { method: 'GET', credentials: 'omit', cache: 'no-store', redirect: 'error' })
+      const timeout = vi.spyOn(AbortSignal, 'timeout')
+      try {
+        await f.fremdev.onServer({ type: 'dev.open.ask', id, tabId: 7, entryId: f.entryId })
+        expect(f.fetch).toHaveBeenCalledTimes(1)
+        // Given up after the server's own 5 s, not Chrome's network timeout minutes later.
+        expect(timeout).toHaveBeenCalledWith(5_000)
+        const signal = timeout.mock.results[0].value as AbortSignal
+        expect(f.fetch).toHaveBeenCalledWith(WANT, { method: 'GET', credentials: 'omit', cache: 'no-store', redirect: 'error', signal })
+      } finally {
+        timeout.mockRestore()
+      }
       expect(f.cancel).toHaveBeenCalled()
       expect(f.answers()).toEqual([{ type: 'dev.open.done', id, tabId: 7, ok: true }])
     })

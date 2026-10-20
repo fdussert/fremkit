@@ -71,6 +71,8 @@ const REPORT_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{
 const REPORT_MODULE = 'fremdev.report'
 /** The open-in-editor request: no cookie, nothing cached, no redirect followed, its body never read. */
 const OPEN_INIT = { method: 'GET', credentials: 'omit', cache: 'no-store', redirect: 'error' }
+/** How long the open-in-editor request may take: the server gives up on the answer then too (OPEN_TIMEOUT_MS). */
+const OPEN_TIMEOUT_MS = 5_000
 /**
  * The modules of the features a control on the Edge depends on (FREMDEV_FEATURES on the server),
  * announced after the report's while Fremdev is on. Each feature appends its own.
@@ -404,7 +406,7 @@ export function createFremdev({
     const url = entry ? editorUrl(tab, entry) : null
     if (url === null) return false
     try {
-      const res = await fetch(url, OPEN_INIT)
+      const res = await fetch(url, { ...OPEN_INIT, signal: AbortSignal.timeout(OPEN_TIMEOUT_MS) })
       res.body?.cancel().catch(() => undefined)
       return res.ok === true
     } catch {
