@@ -16,12 +16,11 @@ import BaseCheckbox from '../shared/ui/BaseCheckbox.vue'
 import BaseIcon from '../shared/ui/BaseIcon.vue'
 import { useI18n } from '../shared/i18n'
 import { useConfirm } from '../shared/useConfirm'
-import { IPAD_APP_STORE_URL } from '../shared/credits'
+import { COMPANION_STORE_URL, IPAD_APP_STORE_URL } from '../shared/credits'
 import { shortExtensionId, type PublicExtensionDevice, type PublicIpadDevice } from '../shared/api'
 import type { Screen } from '../shared/types'
 import AddScreenDialog from './AddScreenDialog.vue'
 import { useDevices } from './devices'
-import { labsCompanion, showsExtensions } from './labs'
 import { useAdminStore } from './store'
 
 const s = useAdminStore()
@@ -67,24 +66,13 @@ const deviceScreens = computed<Screen[]>(() => (s.state.config?.screens ?? []).f
 const list = computed<PublicIpadDevice[]>(() => (status.value?.devices ?? []).filter((d): d is PublicIpadDevice => d.kind === 'ipad'))
 const extensions = computed<PublicExtensionDevice[]>(() => (status.value?.devices ?? []).filter((d): d is PublicExtensionDevice => d.kind === 'extension'))
 /**
- * Two parts: the iPad one, always there, and the browser extension one, which follows
- * `labs.companion` or a paired extension (`labs.ts`), so a paired extension can always be renamed
- * or removed. Once shown, the extension part stays while the pane is open, so removing the last
- * one does not pull it from under the pointer; turning the flag off reads the rule again. The
- * request card follows `labs.companion` alone: with it off, no request can be allowed here.
- */
-const companionOn = computed(() => labsCompanion(s.state.config))
-const extensionsShown = ref(false)
-watch(() => showsExtensions(s.state.config, status.value), (on) => { if (on) extensionsShown.value = true }, { immediate: true })
-watch(companionOn, (on) => { if (!on) extensionsShown.value = showsExtensions(s.state.config, status.value) })
-/**
  * The extension's request, until its expiry even if the next poll is still to come, and never
  * while the last poll failed: a server that restarted has dropped it, and a code left on show
  * could be typed for a program that took the port meanwhile.
  */
 const request = computed(() => {
   if (pollError.value) return null
-  const r = companionOn.value ? status.value?.companionRequest ?? null : null
+  const r = status.value?.companionRequest ?? null
   return r && now.value < r.expiresAt ? r : null
 })
 
@@ -193,8 +181,9 @@ async function onCreated(screenId: string): Promise<void> {
       <p class="ro">{{ t('admin.devices.resetCertificate.hint') }}</p>
     </div>
 
-    <section v-if="extensionsShown" class="extensions" data-test="extensions">
+    <section class="extensions" data-test="extensions">
       <h4>{{ t('admin.devices.extensions') }}</h4>
+      <p class="ro"><a :href="COMPANION_STORE_URL" target="_blank" rel="noopener noreferrer" data-test="companion-store">{{ t('admin.devices.companionStore') }}</a></p>
       <div v-if="status?.companionLocked" class="request" role="alert" data-test="companion-locked">
         <p class="ask">{{ t('admin.devices.extension.locked') }}</p>
         <div class="row">

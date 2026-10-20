@@ -386,10 +386,8 @@ keep asking: after five requests refused for wrong codes within a day, pairing l
 you press **Unlock pairing** in **Settings → Devices** (`POST /api/companion/unlock`, behind the
 secret, local-only, on no allow-list). The lock is a flag in `companion-lock.json` next to
 `devices.json` as well as in memory, so restarting Fremkit does not clear it; a file that cannot be
-read counts as locked. Fifteen guesses in all is about one chance in 70,000. While
-`labs.companion` is off and no extension is linked, pairing requests are refused outright (409),
-since the Edge would show nobody the request; this keeps guessing from going unseen and is not a
-security boundary, as nothing else relies on the switch. A program that keeps a request of its own waiting can
+read counts as locked. Fifteen guesses in all is about one chance in 70,000. Every request shows
+on the Edge and in **Settings → Devices**, so guessing does not go unseen. A program that keeps a request of its own waiting can
 hold pairing up (you then see a request you did not start, and the Edge counts the other browsers
 turned away since you last answered one, a count only your answer clears, or two minutes with no
 request waiting at all: refuse it), but it cannot swap its request in under the code you type: the

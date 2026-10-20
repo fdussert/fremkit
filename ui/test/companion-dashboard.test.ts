@@ -180,7 +180,7 @@ describe('the dashboard and the companion channel', () => {
   const config = (): Config => ({
     version: 4, theme: 'fremkit', connections: [], secrets: { backend: 'file' }, locale: 'en',
     privacy: { claudeAccountUsage: false, showAccountEmail: false, codexAccount: false, codexHistorySources: [], macmonTemperature: false },
-    labs: { companion: true },
+    labs: {},
     widgets: {},
     screens: [{
       id: 'edge', name: 'edge', kind: 'edge',
@@ -276,22 +276,21 @@ describe('the dashboard and the companion channel', () => {
     w.unmount()
   })
 
-  it('shows no prompt while labs.companion is off', async () => {
+  it('shows the prompt whatever a 0.5.0 config said about labs.companion', async () => {
     for (const labs of [{ companion: false }, {}, undefined]) {
       fake.config = { ...(config() as object), labs } as unknown as Config
       vi.resetModules()
       const w = await mountApp('http://127.0.0.1:4242/')
       push('companion', state({ pairing: { requestId: 'r1', code: 'K7M2', name: 'Companion', expiresAt: Date.now() + 60_000 } }))
       await nextTick()
-      expect(w.find('.companion-prompt').exists(), JSON.stringify(labs)).toBe(false)
+      expect(w.find('.companion-prompt').exists(), JSON.stringify(labs)).toBe(true)
       w.unmount()
     }
   })
 
   /** Fremplay on p1 alone and in the bar, a clock beside a Fremplay on p2. */
-  const withFremplay = (companion: boolean): Config => {
-    const c = config() as unknown as { labs: object; widgets: Record<string, unknown>; screens: { nav: unknown[]; pages: { id: string; items: unknown[] }[] }[] }
-    c.labs = { companion }
+  const withFremplay = (): Config => {
+    const c = config() as unknown as { widgets: Record<string, unknown>; screens: { nav: unknown[]; pages: { id: string; items: unknown[] }[] }[] }
     c.widgets = {
       fp: { widgetId: 'fremplay', showTitle: false, settings: {} },
       fp2: { widgetId: 'fremplay', showTitle: false, settings: {} },
@@ -305,67 +304,35 @@ describe('the dashboard and the companion channel', () => {
     return c as unknown as Config
   }
 
-  it('draws no Fremplay while labs.companion is off, drops the page that held only one, and restores it', async () => {
-    fake.config = withFremplay(false)
+  it('draws every Fremplay, in the pages and in the bar, a 0.5.0 config with labs.companion off included', async () => {
+    fake.config = { ...(withFremplay() as object), labs: { companion: false } } as unknown as Config
     const w = await mountApp('http://127.0.0.1:4242/')
-    // p1 held only Fremplay: two pages left, the second being p2 without its Fremplay.
-    expect(w.findAll('[data-nav-instance]')).toHaveLength(0)
-    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight' }))
-    await nextTick()
-    expect(w.find('.page-stub').text()).toBe('p2')
-    expect(w.find('.page-stub').attributes('data-items')).toBe('clock')
-    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight' }))
-    await nextTick()
-    expect(w.find('.page-stub').text()).toBe('p0')
-    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft' }))
-    await nextTick()
-    expect(w.find('.page-stub').text()).toBe('p2')
-    // The switch on again: the config never lost them, so they come back in place, and the page
-    // shown stays the one it was.
-    push('config', withFremplay(true))
-    await flushPromises(); await nextTick()
-    expect(w.find('.page-stub').text()).toBe('p2')
-    expect(w.find('.page-stub').attributes('data-items')).toBe('clock,fp2')
     expect(w.findAll('[data-nav-instance]').map((e) => e.attributes('data-nav-instance'))).toEqual(['bar'])
-    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft' }))
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight' }))
     await nextTick()
     expect(w.find('.page-stub').text()).toBe('p1')
-    // Off again while on p1, which drops out: the page now at its place.
-    push('config', withFremplay(false))
-    await flushPromises(); await nextTick()
-    expect(w.find('.page-stub').text()).toBe('p2')
+    expect(w.find('.page-stub').attributes('data-items')).toBe('fp')
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight' }))
+    await nextTick()
+    expect(w.find('.page-stub').attributes('data-items')).toBe('clock,fp2')
     w.unmount()
   })
 
-  it('a paired device draws its Fremplay tiles with the switch on and leaves them out with it off', async () => {
-    // The device's view of the config: one screen, its widgets, and labs.companion alone.
-    const deviceView = (companion: boolean) => {
-      const c = withFremplay(companion) as unknown as Record<string, unknown>
-      return { version: c.version, theme: c.theme, locale: c.locale, labs: { companion }, widgets: c.widgets, screens: c.screens } as unknown as Config
-    }
-    const device = async () => { push('device', { id: 'd1', name: 'Pad', screenId: 'edge', brightness: null }); await flushPromises(); await nextTick() }
-    fake.config = deviceView(true)
-    const on = await mountApp('https://example.local:4243/')
-    await device()
-    expect(on.findAll('.page-stub')).toHaveLength(1)
+  it('a paired device draws its Fremplay tiles', async () => {
+    // The device's view of the config: one screen and its widgets.
+    const c = withFremplay() as unknown as Record<string, unknown>
+    fake.config = { version: c.version, theme: c.theme, locale: c.locale, widgets: c.widgets, screens: c.screens } as unknown as Config
+    const w = await mountApp('https://example.local:4243/')
+    push('device', { id: 'd1', name: 'Pad', screenId: 'edge', brightness: null }); await flushPromises(); await nextTick()
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight' }))
     await nextTick()
-    expect(on.find('.page-stub').text()).toBe('p1')
-    expect(on.find('.page-stub').attributes('data-items')).toBe('fp')
-    on.unmount()
-    vi.resetModules()
-    fake.config = deviceView(false)
-    const off = await mountApp('https://example.local:4243/')
-    await device()
-    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight' }))
-    await nextTick()
-    expect(off.find('.page-stub').text()).toBe('p2')
-    expect(off.find('.page-stub').attributes('data-items')).toBe('clock')
-    off.unmount()
+    expect(w.find('.page-stub').text()).toBe('p1')
+    expect(w.find('.page-stub').attributes('data-items')).toBe('fp')
+    w.unmount()
   })
 
   it('a dashboard that has just loaded turns to the Fremplay page when a share is live', async () => {
-    const c = withFremplay(true) as unknown as { screens: { nav: unknown[] }[] }
+    const c = withFremplay() as unknown as { screens: { nav: unknown[] }[] }
     c.screens[0].nav = []
     fake.config = c as unknown as Config
     const w = await mountApp('http://127.0.0.1:4242/')
@@ -386,7 +353,7 @@ describe('the dashboard and the companion channel', () => {
     beforeEach(() => { vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(NOW) })
     afterEach(() => { vi.useRealTimers() })
     const placed = () => {
-      const c = withFremplay(true) as unknown as { screens: { nav: unknown[] }[] }
+      const c = withFremplay() as unknown as { screens: { nav: unknown[] }[] }
       c.screens[0].nav = []
       return c as unknown as Config
     }
@@ -448,11 +415,10 @@ describe('the dashboard and the companion channel', () => {
     })
   })
 
-  it('does not land anywhere when nothing is shared, the bar holds the widget, or the switch is off', async () => {
+  it('does not land anywhere when nothing is shared or the bar holds the widget', async () => {
     for (const [cfg, tab] of [
-      [withFremplay(true), { state: 'idle' }],
-      [withFremplay(true), { state: 'sharing' }],
-      [withFremplay(false), { state: 'sharing' }],
+      [withFremplay(), { state: 'idle' }],
+      [withFremplay(), { state: 'sharing' }],
     ] as const) {
       fake.config = cfg
       vi.resetModules()
@@ -470,18 +436,16 @@ describe('landingPage', () => {
     nav: nav.map((instanceId) => ({ instanceId, slot: 'left' as const })),
     pages: pages.map((ids, i) => ({ id: `p${i}`, name: '', items: ids.map((instanceId) => ({ instanceId, x: 0, y: 0, w: 1, h: 1 })) })),
   })
-  const cfg = (companion: boolean) => ({
-    labs: { companion },
+  const cfg = () => ({
     widgets: { fp: { widgetId: 'fremplay', showTitle: false, settings: {} }, c: { widgetId: 'clock', showTitle: false, settings: {} } },
   }) as unknown as Config
 
   it('is the first page holding Fremplay while a share is live', async () => {
     const { landingPage } = await import('../src/dashboard/companionReveal')
-    expect(landingPage({ tab: { state: 'sharing' } }, cfg(true), screen([], [['c'], ['c', 'fp'], ['fp']]))).toBe(1)
-    expect(landingPage({ tab: { state: 'idle' } }, cfg(true), screen([], [['c'], ['fp']]))).toBeNull()
-    expect(landingPage({}, cfg(true), screen([], [['c'], ['fp']]))).toBeNull()
-    expect(landingPage({ tab: { state: 'sharing' } }, cfg(false), screen([], [['c'], ['fp']]))).toBeNull()
-    expect(landingPage({ tab: { state: 'sharing' } }, cfg(true), screen(['fp'], [['c'], ['fp']]))).toBeNull()
-    expect(landingPage({ tab: { state: 'sharing' } }, cfg(true), screen([], [['c']]))).toBeNull()
+    expect(landingPage({ tab: { state: 'sharing' } }, cfg(), screen([], [['c'], ['c', 'fp'], ['fp']]))).toBe(1)
+    expect(landingPage({ tab: { state: 'idle' } }, cfg(), screen([], [['c'], ['fp']]))).toBeNull()
+    expect(landingPage({}, cfg(), screen([], [['c'], ['fp']]))).toBeNull()
+    expect(landingPage({ tab: { state: 'sharing' } }, cfg(), screen(['fp'], [['c'], ['fp']]))).toBeNull()
+    expect(landingPage({ tab: { state: 'sharing' } }, cfg(), screen([], [['c']]))).toBeNull()
   })
 })

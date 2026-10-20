@@ -53,25 +53,7 @@ describe('migrateConfig', () => {
       codexHistorySources: [],
     })
   })
-  describe('labs.devices, dropped', () => {
-    /** A v4 file as 0.5.0 wrote it, with the iPad switch stated. */
-    const withDevices = (devices: boolean) => {
-      const c = JSON.parse(JSON.stringify(migrateConfig(v1))) as Record<string, any>
-      c.labs = { devices, companion: false }
-      return c
-    }
-
-    it('is not in a fresh config nor in an older file brought up to date', () => {
-      expect(DEFAULT_CONFIG.labs).toEqual({ companion: false })
-      expect(migrateConfig(v1).labs).toEqual({ companion: false })
-    })
-    it('is stripped from a v4 file that still states it, on or off', () => {
-      for (const devices of [true, false]) {
-        expect(migrateConfig(withDevices(devices)).labs, String(devices)).toEqual({ companion: false })
-      }
-    })
-  })
-  describe('labs.companion', () => {
+  describe('labs, with no flag left', () => {
     /** A v4 file holding these widgets, with `labs` as given (absent when undefined). */
     const v4 = (widgetIds: string[], labs?: Record<string, boolean>) => {
       const c = JSON.parse(JSON.stringify(migrateConfig(v1))) as Record<string, any>
@@ -83,17 +65,17 @@ describe('migrateConfig', () => {
       return c
     }
 
-    it('starts off for a v4 file with no Fremplay, an old devices switch stated or not', () => {
-      expect(migrateConfig(v4(['clock'])).labs.companion).toBe(false)
-      expect(migrateConfig(v4(['clock'], { devices: true })).labs).toEqual({ companion: false })
+    it('is empty in a fresh config and in an older file brought up to date', () => {
+      expect(DEFAULT_CONFIG.labs).toEqual({})
+      expect(migrateConfig(v1).labs).toEqual({})
     })
-    it('starts on for a v4 file that already holds a Fremplay widget', () => {
-      expect(migrateConfig(v4(['clock', 'fremplay'])).labs.companion).toBe(true)
-      expect(migrateConfig(v4(['fremplay'], { devices: false })).labs).toEqual({ companion: true })
-    })
-    it('keeps a stated value either way, whatever the widgets', () => {
-      expect(migrateConfig(v4(['fremplay'], { companion: false })).labs.companion).toBe(false)
-      expect(migrateConfig(v4(['clock'], { companion: true })).labs.companion).toBe(true)
+    it('strips the former switches from a v4 file that still states them, on or off', () => {
+      for (const on of [true, false]) {
+        expect(migrateConfig(v4(['clock'], { devices: on, companion: on })).labs, String(on)).toEqual({})
+        // A Fremplay widget used to turn `companion` on for a file without it; nothing to decide now.
+        expect(migrateConfig(v4(['fremplay'], { devices: on })).labs, String(on)).toEqual({})
+      }
+      expect(migrateConfig(v4(['fremplay'])).labs).toEqual({})
     })
   })
   it('rejects an unknown version with a clear message', () => {
@@ -122,16 +104,16 @@ describe('ConfigStore migration', () => {
     expect(await readFile(file, 'utf8')).toBe(before)
     await expect(readFile(file + '.bak', 'utf8')).rejects.toThrow()
   })
-  it('loads a 0.5.0 file with labs.devices and saves it without the key', async () => {
-    for (const devices of [true, false]) {
-      const file = join(dir, `fremkit-${devices}.json`)
-      const written = { ...migrateConfig(v1), labs: { devices, companion: true } }
+  it('loads a 0.5.0 file with labs.devices and labs.companion and saves it without them', async () => {
+    for (const on of [true, false]) {
+      const file = join(dir, `fremkit-${on}.json`)
+      const written = { ...migrateConfig(v1), labs: { devices: on, companion: !on } }
       await writeFile(file, JSON.stringify(written, null, 2))
       const store = new ConfigStore(file)
       const cfg = await store.load()
-      expect(cfg.labs, String(devices)).toEqual({ companion: true })
+      expect(cfg.labs, String(on)).toEqual({})
       await store.save(cfg)
-      expect(JSON.parse(await readFile(file, 'utf8')).labs, String(devices)).toEqual({ companion: true })
+      expect(JSON.parse(await readFile(file, 'utf8')).labs, String(on)).toEqual({})
     }
   })
   it('serves the defaults on an unknown version and leaves the file untouched', async () => {

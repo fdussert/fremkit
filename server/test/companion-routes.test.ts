@@ -29,7 +29,7 @@ const exec: Exec = (cmd, args) =>
 const CONFIG = {
   version: CONFIG_VERSION,
   locale: 'en',
-  labs: { companion: true },
+  labs: {},
   secrets: { backend: 'file' },
   connections: [],
   widgets: {},

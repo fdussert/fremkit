@@ -21,8 +21,7 @@ export interface CompanionOptions {
   store: DeviceStore
   /** Where the pairing lock is kept (lock.ts); in memory only without one. */
   lockPath?: string
-  /** `onChange` tells the session when `labs.companion` turns; without it, only new shares see it. */
-  config: Pick<ConfigStore, 'get'> & Partial<Pick<ConfigStore, 'onChange'>>
+  config: Pick<ConfigStore, 'get'>
   registry: Pick<ProviderRegistry, 'register' | 'refresh'>
 }
 
@@ -59,20 +58,9 @@ export async function createCompanion(opts: CompanionOptions): Promise<Companion
     // A share starts only when the Edge's screen has somewhere to show it.
     canShare: () => placeFremplay(config.get()) !== null,
     pairedCount: () => store.list().filter((d) => d.kind === 'extension').length,
-    // `labs.companion` off is Fremplay off (docs/companion.md). A product switch: what keeps a
-    // share to this Mac is the socket's handshake and the channel's guards, never this.
-    enabled: () => config.get().labs?.companion === true,
   })
   provider = createCompanionProvider({ session, pairing, config: () => config.get() })
   registry.register(provider)
-
-  let companionOn = config.get().labs?.companion === true
-  const unsubscribeConfig = config.onChange?.((next) => {
-    const on = next.labs?.companion === true
-    if (on === companionOn) return
-    companionOn = on
-    session.switched()
-  }) ?? (() => undefined)
 
   const unsubscribePairing = pairing.onChange(refresh)
   // An extension paired or removed in Appareils changes `extensions.paired`, connected or not.
@@ -87,7 +75,6 @@ export async function createCompanion(opts: CompanionOptions): Promise<Companion
     closed = true
     unsubscribePairing()
     unsubscribeStore()
-    unsubscribeConfig()
     pairing.dispose()
   }
   app.addHook('onClose', async () => { close() })

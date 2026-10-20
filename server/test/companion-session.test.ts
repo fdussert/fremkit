@@ -10,7 +10,7 @@ const R = (n: number) => `00000000-0000-4000-8000-00000000000${n}`
 const TOKEN = 'a'.repeat(43)
 const INSTALL = '0b7d1c2e-4f5a-4b6c-8d7e-9f0a1b2c3d4e'
 
-function setup(opts: { canShare?: boolean; paired?: number; enabled?: () => boolean } = {}) {
+function setup(opts: { canShare?: boolean; paired?: number } = {}) {
   let time = 1_000_000
   const sent: Array<{ to: string; msg: ServerMessage }> = []
   let changes = 0
@@ -20,7 +20,6 @@ function setup(opts: { canShare?: boolean; paired?: number; enabled?: () => bool
     changed: () => { changes++ },
     canShare: () => opts.canShare ?? true,
     pairedCount: () => opts.paired ?? 2,
-    ...(opts.enabled ? { enabled: opts.enabled } : {}),
   })
   const hello = (device: string, extra: object = {}) => {
     session.connect(device, `Browser ${device}`)
@@ -484,50 +483,9 @@ describe('CompanionSession tab.meta throttle', () => {
     expect(t.changes()).toBe(base)
   })
 
-  describe('with Fremplay off (labs.companion)', () => {
-    it('says so in ready and refuses a new share with disabled', () => {
-      const t = setup({ enabled: () => false })
-      t.hello('a')
-      expect(t.to('a')).toEqual([{ type: 'ready', protocol: 2, modules: { fremplay: false } }])
-      t.clear()
-      t.start('a')
-      expect(t.to('a')).toEqual([{ type: 'tab.refused', sessionId: S1, reason: 'disabled' }])
-      expect(t.session.snapshot().tab.state).toBe('idle')
-    })
-
-    it('refuses a share carried back by hello', () => {
-      const t = setup({ enabled: () => false })
-      t.hello('a', { session: { sessionId: S1, meta: META } })
-      expect(t.to('a')).toEqual([
-        { type: 'ready', protocol: 2, modules: { fremplay: false } },
-        { type: 'tab.refused', sessionId: S1, reason: 'disabled' },
-      ])
-      expect(t.session.snapshot().tab.state).toBe('idle')
-    })
-
-    it('ends a running share when the switch goes off, and tells every extension', () => {
-      let on = true
-      const t = setup({ enabled: () => on })
-      t.hello('a')
-      t.hello('b')
-      t.start('a')
-      t.session.view(R(1), 'w1')
-      t.clear()
-      on = false
-      t.session.switched()
-      expect(t.to('a')).toEqual([
-        { type: 'ready', protocol: 2, modules: { fremplay: false } },
-        { type: 'tab.refused', sessionId: S1, reason: 'disabled' },
-      ])
-      expect(t.to('b')).toEqual([{ type: 'ready', protocol: 2, modules: { fremplay: false } }])
-      expect(t.session.snapshot().tab).toMatchObject({ state: 'idle', receivers: [] })
-      // Back on: the extensions hear it, and a share starts again.
-      t.clear()
-      on = true
-      t.session.switched()
-      expect(t.to('a')).toEqual([{ type: 'ready', protocol: 2, modules: { fremplay: true } }])
-      t.start('a', S2)
-      expect(t.session.snapshot().tab.state).toBe('sharing')
-    })
+  it('greets with Fremplay on, which a released extension still reads', () => {
+    const t = setup()
+    t.hello('a')
+    expect(t.to('a')).toEqual([{ type: 'ready', protocol: 2, modules: { fremplay: true } }])
   })
 })

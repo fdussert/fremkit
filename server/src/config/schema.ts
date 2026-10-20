@@ -417,21 +417,22 @@ export const MarketplaceSchema = z.object({
 export type MarketplaceState = z.infer<typeof MarketplaceSchema>
 
 /**
- * Features that ship in the code but stay out of the admin until they are ready for everyone.
+ * Features that ship in the code but stay out of the admin until they are ready for everyone:
+ * none right now. The switches live in Settings → About, revealed by seven clicks on the version
+ * (`ui/src/admin/labs.ts`).
  *
- * `companion` is the Fremkit Companion browser extension and the Fremplay widget it feeds: the
- * extension rows and pairing request in the Devices pane, Fremplay in the widget library and the
- * pairing prompt on the Edge. UI only: the server never reads it, and must not rely
- * on it for security. The companion routes, the socket's challenge and the `companion` channel's
- * refusal to paired devices guard the same way whether it is on or off.
+ * To add one: a key here, `name: z.boolean().default(false)`, the same key in `Labs` in
+ * `ui/src/shared/types.ts`, and one entry in `LAB_FLAGS` in `ui/src/admin/settings/AboutPane.vue`.
+ * A flag is a product switch for what the admin and the dashboard show; the server must never
+ * rely on one for security. A config written before the flag existed gets its default; one that
+ * should start on for some files needs a step in `migrateConfig` deciding it from the raw file.
+ * PUT /api/config keeps a flag the body leaves out, and a restore keeps this Mac's.
  *
- * `devices` (iPad pairing and extra screens) lived here until they shipped for everyone. A file
- * that still carries it loads as is: the schema strips the unknown key, and the next save leaves
- * it out.
+ * `devices` (iPad pairing and extra screens) and `companion` (the browser extension and Fremplay)
+ * lived here until they shipped for everyone. A file that still carries them loads as is: the
+ * schema strips unknown keys, and the next save leaves them out.
  */
-export const LabsSchema = z.object({
-  companion: z.boolean().default(false),
-}).prefault({})
+export const LabsSchema = z.object({}).prefault({})
 export type Labs = z.infer<typeof LabsSchema>
 
 /**
@@ -479,7 +480,7 @@ export const DEFAULT_CONFIG: Config = {
   secrets: { backend: defaultSecretsBackend() },
   locale: defaultLocale(),
   privacy: { claudeAccountUsage: false, showAccountEmail: false, codexAccount: false, codexHistorySources: [], macmonTemperature: false },
-  labs: { companion: false },
+  labs: {},
   marketplace: { installed: {} },
   widgets: {
     'clock-1': { widgetId: 'clock', showTitle: true, settings: {} },

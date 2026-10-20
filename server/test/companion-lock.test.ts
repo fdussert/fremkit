@@ -58,7 +58,5 @@ describe('PairingLock', () => {
   it('says why in both languages, word for word', () => {
     expect(tr('fr', 'companion.pairLocked')).toBe('Appairage bloqué après trop de codes faux. Débloquez-le dans Réglages → Appareils.')
     expect(tr('en', 'companion.pairLocked')).toBe('Pairing locked after too many wrong codes. Unlock it in Settings → Devices.')
-    expect(tr('fr', 'companion.disabled')).toBe('Activez le compagnon dans les fonctions expérimentales de Fremkit.')
-    expect(tr('en', 'companion.disabled')).toBe("Turn the companion on in Fremkit's experimental features.")
   })
 })

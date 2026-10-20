@@ -6,7 +6,6 @@ import { useSocket } from '../shared/socket'
 import type { Config, NavItem, WidgetManifest } from '../shared/types'
 import { navHeightOf, navItemsOf } from '../shared/types'
 import { pickScreen } from '../shared/screens'
-import { visibleScreen } from '../shared/companionGate'
 import { pageBackground, rootBackgroundStyle } from '../shared/background'
 import { followThemeSchedule, useConfigTheme } from '../shared/theme'
 import PageView from './PageView.vue'
@@ -53,19 +52,14 @@ const screen = computed(() => {
 })
 // Every frame below is told which screen it is on (`Fremkit.screen`).
 provide(SCREEN_ID, () => screen.value?.id)
-/**
- * The screen as drawn: with `labs.companion` off, without its Fremplay tiles and bar items, nor
- * the pages that held only those (`companionGate.ts`). Page indexes below count these pages.
- */
-const shown = computed(() => (config.value && screen.value ? visibleScreen(config.value, screen.value) : null))
 const display = computed(() => screen.value?.display ?? null)
 const pageIndex = ref(0)
-const page = computed(() => shown.value?.pages[pageIndex.value] ?? null)
+const page = computed(() => screen.value?.pages[pageIndex.value] ?? null)
 /**
- * The pages drawn changed (the switch turned, a page went): stay on the page shown, wherever it now
+ * The pages changed (one went, or moved): stay on the page shown, wherever it now
  * sits, or on the same index while there is one.
  */
-watch(() => shown.value?.pages.map((p) => p.id) ?? [], (ids, before) => {
+watch(() => screen.value?.pages.map((p) => p.id) ?? [], (ids, before) => {
   const id = before?.[pageIndex.value]
   const at = id === undefined ? -1 : ids.indexOf(id)
   if (at !== -1) pageIndex.value = at
@@ -110,8 +104,8 @@ let offReload: (() => void) | undefined
 let offScreenReload: (() => void) | undefined
 
 function go(delta: number) {
-  if (!shown.value) return
-  const n = shown.value.pages.length
+  if (!screen.value) return
+  const n = screen.value.pages.length
   direction.value = delta >= 0 ? 1 : -1
   pageIndex.value = (pageIndex.value + delta + n) % n
 }
@@ -186,11 +180,11 @@ onMounted(async () => {
       // Once per page load, within its first seconds, never on a reconnect: the first snapshot
       // that shows a live share lands on its page. After a server restart the kiosk is back before
       // the extension has resumed its share, so that snapshot is rarely the first one.
-      const looking = !landed && Date.now() - loadedAt <= LANDING_WINDOW_MS && config.value && shown.value
-      const landing = looking ? landingPage(snap, config.value!, shown.value!) : null
+      const looking = !landed && Date.now() - loadedAt <= LANDING_WINDOW_MS && config.value && screen.value
+      const landing = looking ? landingPage(snap, config.value!, screen.value!) : null
       if (landing !== null) landed = true
       const target = revealed ?? landing
-      if (target !== null && target !== pageIndex.value && target < (shown.value?.pages.length ?? 0)) select(target)
+      if (target !== null && target !== pageIndex.value && target < (screen.value?.pages.length ?? 0)) select(target)
     })
     // A reconnect replays a snapshot that must not move the page on its own. And the code on show
     // goes with the socket: a server that restarted no longer has that request, and a program
@@ -231,7 +225,7 @@ watch(() => config.value?.locale, (l) => setLocale(l))
     <p class="remote-name">{{ device.name }}</p>
     <p class="remote-title">{{ t('dashboard.remote.noScreen') }}</p>
   </div>
-  <div class="root" :class="{ kiosk }" :style="rootStyle" v-else-if="config && screen && shown && display && page">
+  <div class="root" :class="{ kiosk }" :style="rootStyle" v-else-if="config && screen && display && page">
     <Transition name="bg-fade">
       <div :key="backgroundKey" class="background" :style="backgroundLayerStyle" aria-hidden="true" />
     </Transition>
@@ -252,8 +246,8 @@ watch(() => config.value?.locale, (l) => setLocale(l))
       <div class="edge left" @pointerdown.stop="edgeDown($event, 'left')" @pointerup.stop="edgeUp" @pointercancel.stop="edgeCancel" @wheel.stop="edgeWheel" />
       <div class="edge right" @pointerdown.stop="edgeDown($event, 'right')" @pointerup.stop="edgeUp" @pointercancel.stop="edgeCancel" @wheel.stop="edgeWheel" />
     </div>
-    <NavBar class="bar" :style="{ width: gridWidth }" :pages="shown.pages" :active="pageIndex" :height="navHeightOf(display)"
-      :opacity="display.navOpacity" :nav-items="navItemsOf(shown)" :widgets="config.widgets"
+    <NavBar class="bar" :style="{ width: gridWidth }" :pages="screen.pages" :active="pageIndex" :height="navHeightOf(display)"
+      :opacity="display.navOpacity" :nav-items="navItemsOf(screen)" :widgets="config.widgets"
       :manifests="manifests" :cell="display.cell" :admin-gesture="display.adminGesture"
       :nav-style="display.navStyle"
       @select="select" @swipe="go"
@@ -268,9 +262,7 @@ watch(() => config.value?.locale, (l) => setLocale(l))
       :anchor="popover.open.value.anchor"
       :screen="popover.open.value.screen"
       @root="popover.setPopoverEl" />
-    <!-- Experimental: only while `labs.companion` is on. The server answers the extension the same
-         either way; with the prompt hidden (and the admin's card too) no request can be allowed. -->
-    <CompanionPrompt v-if="companionPairing && socket.status.value === 'open' && config?.labs?.companion === true" :pairing="companionPairing" />
+    <CompanionPrompt v-if="companionPairing && socket.status.value === 'open'" :pairing="companionPairing" />
   </div>
 </template>
 

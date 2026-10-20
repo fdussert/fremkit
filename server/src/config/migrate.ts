@@ -140,24 +140,9 @@ function adoptPrivacy(config: V3Config, raw: unknown): V3Config {
  */
 export function migrateConfig(raw: unknown): Config {
   const version = (raw as { version?: unknown } | null)?.version
-  if (version === CONFIG_VERSION) return adoptLabs(renameFieldValues(ConfigSchema.parse(raw)), raw)
+  if (version === CONFIG_VERSION) return renameFieldValues(ConfigSchema.parse(raw))
   // Anything older than v4 had one screen and no pairing: the default (off) is the right answer.
   return toV4(normalizeV3(readV3(raw, version)))
-}
-
-/**
- * Decides the `labs` switch a v4 config was written without.
- *
- * `companion`: on when a Fremplay widget is already placed, since that config was written by
- * someone using the browser extension; off otherwise. A switch the file already carries is left
- * exactly as written.
- */
-export function adoptLabs(config: Config, raw: unknown): Config {
-  const stated = (raw as { labs?: unknown } | null)?.labs
-  const has = (key: string): boolean => !!stated && typeof stated === 'object' && key in stated
-  const labs = { ...config.labs }
-  if (!has('companion')) labs.companion = Object.values(config.widgets).some((w) => w.widgetId === 'fremplay')
-  return { ...config, labs }
 }
 
 /** Any file older than v4, as the v3 config it would have become under the previous release. */

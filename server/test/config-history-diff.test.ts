@@ -78,11 +78,10 @@ describe('summarizeChange', () => {
     expect(isEmptySummary(s)).toBe(false)
   })
 
-  it('counts the experimental features switch as a change', () => {
-    for (const key of ['companion'] as const) {
-      const after = base()
-      after.labs = { ...after.labs, [key]: !after.labs[key] }
-      expect(summarizeChange(base(), after).other, key).toBe(true)
-    }
+  it('counts an experimental features switch as a change', () => {
+    // No flag exists today: one added later is a key of `labs` like this one.
+    const after = base()
+    after.labs = { later: true } as unknown as typeof after.labs
+    expect(summarizeChange(base(), after).other).toBe(true)
   })
 })

@@ -7,36 +7,6 @@ Fremplay widget on your Edge, and gives you touch controls for it there: play an
 It is optional. Nothing in Fremkit needs it except the Fremplay widget, which shows how to get it
 until an extension is linked.
 
-It is **experimental** for now, and hidden until you turn it on: in the admin, open
-**Settings → About**, click the version number seven times (or focus it and press Enter seven
-times), and tick **Browser companion (Fremplay)** under **Experimental features**. Until then the
-admin leaves Fremplay out of the widget library and the bar's list and hides the pairing request in
-**Settings → Devices**, and the Edge shows no pairing prompt, so no code can be typed. A
-browser already linked stays listed in **Settings → Devices** whatever the switch says, so it can
-always be renamed or removed.
-
-**Off is Fremplay off.** While the switch (`labs.companion` in the config) is off:
-
-- the Edge draws no Fremplay widget, in a page or in the bar, and a page that held nothing else
-  drops out of the navigation. The config keeps them, so ticking the switch again brings them back
-  where they were;
-- the admin's canvas still shows them, greyed and labelled *Fonction désactivée* / *Feature turned
-  off*, so they can be deleted as usual;
-- the server refuses a share (`tab.refused` with reason `disabled`), and ends the one running when
-  the switch goes off. It tells every connected extension in its `ready` (`modules: { fremplay:
-  false }`, sent again when the switch turns), so the popup says *Fremplay est désactivé dans
-  Fremkit (fonctions expérimentales).* / *Fremplay is turned off in Fremkit (experimental
-  features).* with **Send** greyed, and the shortcut flashes `!` and leaves that message for the
-  popup;
-- a pairing request is turned down (*Activez le compagnon dans les fonctions expérimentales de
-  Fremkit.* / *Turn the companion on in Fremkit's experimental features.*), a browser already
-  linked included, since the Edge would show nobody the request.
-
-That is a product switch, not a security boundary: the server does not rely on it for security. The
-companion routes, the socket's challenge and the refusal of the `companion` channel to paired
-devices guard the same way whether it is on or off, and a browser linked before you turned it off
-stays linked, its socket connected, until you remove it.
-
 ## What you need
 
 - A Chromium browser: Chrome, Edge, Brave or Arc. Firefox and Safari are not supported.
@@ -143,9 +113,7 @@ Edge*), or press **⌃⇧F** (Control-Shift-F). Press it again to stop. The shor
 - **On the Mac's Edge only.** A Fremplay widget on a paired iPad's screen shows *Fremplay ne
   s'affiche que sur l'Edge du Mac.* / *Fremplay only shows on the Mac's Edge.* and nothing else:
   the picture goes peer to peer between addresses of this Mac, and the iPad's copy of the widget
-  gets no WebRTC and no `companion` channel. With the switch off, the iPad leaves its Fremplay
-  widgets out as the Edge does: its view of the config carries `labs.companion`, and nothing
-  else of the experimental switches.
+  gets no WebRTC and no `companion` channel.
 - The browser can be in the background, on another tab or another desktop. Quitting it, or
   closing the tab, ends the share.
 - The video travels directly between the browser and the Edge over WebRTC, between addresses of

@@ -95,19 +95,19 @@ describe('history routes', () => {
 })
 
 describe('restoring an old version keeps this Mac\'s security settings', () => {
-  it('leaves the experimental features switch as it is now', async () => {
-    // An old version from before the switch was ticked: one screen, flag off.
-    const old = ConfigSchema.parse({ ...CONFIG, labs: { companion: false } })
+  it('brings back no former experimental switch', async () => {
+    // An old version written while 0.5.0's switches existed: the schema has none now.
+    const old = ConfigSchema.parse({ ...CONFIG, labs: { devices: true, companion: true } })
     const history = new ConfigHistory(join(dir, 'history'))
     await history.recordChange(old, old, 'save')
     const [entry] = await history.list()
 
     app = await build()
     const current = await config()
-    expect((await app.inject({ method: 'PUT', url: '/api/config', payload: { ...current, labs: { companion: true } } })).statusCode).toBe(200)
+    expect((await app.inject({ method: 'PUT', url: '/api/config', payload: current })).statusCode).toBe(200)
     const res = await app.inject({ method: 'POST', url: `/api/history/${entry.id}/restore` })
     expect(res.statusCode).toBe(200)
-    expect((await config()).labs).toEqual({ companion: true })
+    expect((await config()).labs).toEqual({})
   })
 
   it('leaves the secrets backend, privacy and consent records as they are now', async () => {

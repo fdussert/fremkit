@@ -146,11 +146,12 @@ export interface Privacy {
   macmonTemperature: boolean
 }
 
-/** Features shipped but kept out of the admin until they are ready (`LabsSchema` on the server). */
-export interface Labs {
-  /** The browser companion and Fremplay; absent in a config the admin built itself, meaning off. */
-  companion?: boolean
-}
+/**
+ * Features shipped but kept out of the admin until they are ready (`LabsSchema` on the server):
+ * none right now. A flag added there gets its key here, `name?: boolean`, absent meaning off
+ * (see `admin/labs.ts`).
+ */
+export interface Labs {}
 
 export interface Config {
   version: 4

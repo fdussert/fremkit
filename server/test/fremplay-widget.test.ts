@@ -472,7 +472,7 @@ describe('the fremplay page', () => {
     const page = await loadPage()
     page.publish(snap({ paired: 0, connected: 0 }))
     expect(page.nodes.get('line')!.textContent).toBe('Installez Fremkit Companion dans Chrome, puis cliquez Connecter dans son menu')
-    expect(page.nodes.get('sub')!.textContent).toContain('docs/companion.md')
+    expect(page.nodes.get('sub')!.textContent).toContain('Chrome Web Store')
     page.publish(snap({ paired: 1, connected: 0 }))
     expect(page.nodes.get('line')!.textContent).toBe('Navigateur fermé ou extension inactive')
     page.publish(snap())
