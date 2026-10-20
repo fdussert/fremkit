@@ -23,10 +23,12 @@ export class PairingViewers {
 
   /**
    * @param dashboards How many of this Mac's dashboards are subscribed to `companion` (`Hub`).
+   * @param now A monotonic clock: the wall clock set back (by NTP or by hand) would keep a closed
+   *   pane counting until it caught up.
    */
   constructor(
     private readonly dashboards: () => number,
-    private readonly now: () => number = () => Date.now(),
+    private readonly now: () => number = () => performance.now(),
   ) {}
 
   /** The Devices pane asked for the status while open (`GET /api/devices?watch=1`). */

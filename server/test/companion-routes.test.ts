@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -146,7 +146,14 @@ describe('companion routes', () => {
 
   describe('a request nobody can see', () => {
     /** The pane's last poll (beforeEach) is now out of the window. */
-    const paneGone = () => vi.setSystemTime(Date.now() + PANE_POLL_WINDOW_MS + 1)
+    // The window is read on a monotonic clock (`performance.now`), which the fake Date leaves alone.
+    let ahead = 0
+    beforeEach(() => {
+      const real = performance.now.bind(performance)
+      vi.spyOn(performance, 'now').mockImplementation(() => real() + ahead)
+    })
+    afterEach(() => { ahead = 0; vi.mocked(performance.now).mockRestore() })
+    const paneGone = () => { ahead += PANE_POLL_WINDOW_MS + 1 }
     /** Takes a waiting request back off, so the next test is not told someone else waits. */
     const withdraw = async (requestId: string) => {
       expect((await answer(requestId, 'refuse', { code: await codeOf(requestId) })).statusCode).toBe(200)
@@ -170,7 +177,8 @@ describe('companion routes', () => {
       const taken = await pair(ORIGIN)
       expect(taken.statusCode).toBe(200)
       await withdraw(taken.json().requestId)
-      vi.setSystemTime(Date.now() + PANE_POLL_WINDOW_MS)
+      // Still within the window, with room for the real time the requests take.
+      ahead += PANE_POLL_WINDOW_MS - 1_000
       expect((await pair(ORIGIN)).statusCode).not.toBe(409)
       await withdraw((await pending()).requestId)
       paneGone()
