@@ -65,7 +65,7 @@
   button.clear:active{background:var(--accent, #d9b36a);color:var(--on-accent, #0b0d10)}
   button.clear[hidden]{display:inline-flex;visibility:hidden}
   .facts[hidden],.fact[hidden],.n[hidden],.browser[hidden],.down[hidden]{display:none}
-  .top:focus-visible{outline:2px solid var(--accent, #d9b36a);outline-offset:-2px}
+  .body:focus-visible{outline:2px solid var(--accent, #d9b36a);outline-offset:2px;border-radius:6px}
   button:focus-visible{outline:2px solid var(--accent, #d9b36a);outline-offset:-2px}
 
   /* Unfolded: the tab's history, newest first, scrolling inside the row, and the copy buttons. */
@@ -325,7 +325,7 @@
     function paintFold(entry) {
       var open = entry.key === unfolded
       entry.el.classList.toggle('unfolded', open)
-      entry.top.setAttribute('aria-expanded', open ? 'true' : 'false')
+      entry.body.setAttribute('aria-expanded', open ? 'true' : 'false')
       if (open) updateHistory(entry)
     }
     function toggle(entry) {
@@ -339,10 +339,14 @@
       var entry = { key: key, row: null, total: null, flashAt: -Infinity, historySig: null }
       var r = entry.el = el('div', 'row')
       var top = entry.top = el('div', 'top')
-      top.setAttribute('role', 'button')
-      top.tabIndex = 0
       entry.light = el('i', 'light')
-      var body = el('div', 'body'), head = el('div', 'head'), facts = entry.facts = el('div', 'facts')
+      // The unfold control is the name and the facts, not the whole line: Show tab and × are
+      // buttons of their own and must not sit inside another. A tap anywhere else on the line
+      // still unfolds it (the click below is on `top`).
+      var body = entry.body = el('div', 'body')
+      body.setAttribute('role', 'button')
+      body.tabIndex = 0
+      var head = el('div', 'head'), facts = entry.facts = el('div', 'facts')
       entry.app = el('span', 'app')
       entry.browser = el('span', 'browser')
       entry.down = el('span', 'down')
@@ -389,8 +393,8 @@
         send('clear', entry.row)
       })
       top.addEventListener('click', function () { toggle(entry) })
-      top.addEventListener('keydown', function (ev) {
-        if (ev.target !== top || (ev.key !== 'Enter' && ev.key !== ' ')) return
+      body.addEventListener('keydown', function (ev) {
+        if (ev.target !== body || (ev.key !== 'Enter' && ev.key !== ' ')) return
         ev.preventDefault()
         toggle(entry)
       })
@@ -402,7 +406,7 @@
       entry.row = row
       var r = entry.el, e = row.errors, q = row.requests
       entry.light.className = 'light ' + row.light + (row.seen ? ' seen' : '')
-      entry.top.setAttribute('aria-label', row.app || row.host)
+      entry.body.setAttribute('aria-label', row.app || row.host)
       setText(entry.app, row.app || row.host)
       setText(entry.browser, several && row.browser ? row.browser : '')
       entry.browser.hidden = !(several && row.browser)
