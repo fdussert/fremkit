@@ -6,30 +6,35 @@ import { computerName } from '../src/devices/host.js'
 import { createAdvertiser, type AdvertiserChild } from '../src/devices/bonjour.js'
 
 const FILE = new URL('../src/devices/fingerprint-words.txt', import.meta.url)
+/** The pairing-protocol vectors shared with FremkitKit and the Android kit. */
+const { fingerprint } = JSON.parse(readFileSync(new URL('../../test-vectors/devices.json', import.meta.url), 'utf8'))
 
 describe('fingerprintWords', () => {
   it('maps the first four bytes of the hash to words', () => {
-    const hash = Buffer.from([0x00, 0x01, 0xfe, 0xff, ...new Array(28).fill(7)]).toString('base64url')
-    expect(fingerprintWords(hash)).toEqual([WORDS[0], WORDS[1], WORDS[254], WORDS[255]])
-    expect(fingerprintWords(hash)).toEqual(['aardvark', 'absurd', 'woodlark', 'zulu'])
+    for (const { bytesHex, keyHash, words } of fingerprint.cases) {
+      const bytes = Buffer.from(bytesHex, 'hex')
+      expect(bytes.toString('base64url')).toBe(keyHash)
+      expect(fingerprintWords(keyHash)).toEqual([...bytes.subarray(0, 4)].map((b) => WORDS[b]))
+      expect(fingerprintWords(keyHash)).toEqual(words)
+    }
   })
 
   it('ships 256 unique lowercase ASCII words whose bytes match the pinned hash', () => {
     const bytes = readFileSync(FILE)
     const lines = bytes.toString('utf8').split('\n')
     expect(lines.pop()).toBe('')
-    expect(lines).toHaveLength(256)
+    expect(lines).toHaveLength(fingerprint.listLength)
     expect(new Set(lines).size).toBe(256)
     for (const w of lines) expect(w).toMatch(/^[a-z]+$/)
     expect(createHash('sha256').update(bytes).digest('hex')).toBe(FINGERPRINT_LIST_SHA256)
+    expect(FINGERPRINT_LIST_SHA256).toBe(fingerprint.listSha256)
     expect([...WORDS]).toEqual(lines)
   })
 })
 
 describe('fingerprintWords on a short hash', () => {
   it('throws rather than mapping missing bytes to aardvark', () => {
-    expect(() => fingerprintWords(Buffer.from([1, 2, 3]).toString('base64url'))).toThrow()
-    expect(() => fingerprintWords('')).toThrow()
+    for (const keyHash of fingerprint.tooShort) expect(() => fingerprintWords(keyHash)).toThrow()
   })
 })
 
