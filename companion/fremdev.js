@@ -12,7 +12,8 @@
 // a dev URL alone is not a permission. Where the events come from:
 // - the page: fremdev/hook.js (page world) → fremdev/relay.js (isolated world) → `dev.event`,
 //   taken only from this extension's own content script in the top frame of a dev tab; beside the
-//   relay, fremdev/kind.js tells the dev server's kind from the page's script tags (`devserver`);
+//   relay, fremdev/kind.js tells the dev server's kind from the page's script tags (`devserver`)
+//   and fremdev/build.js reads the dev server's compile error overlay (`build`, `build-clear`);
 // - the requests: chrome.webRequest, for a tab that has a row; the top frame's own load tells the
 //   dev server's state (answered: up; refused: down);
 // - navigations and titles: chrome.tabs.onUpdated.
@@ -31,9 +32,10 @@ const RELAY_ID = 'fremdev-relay'
 const HOOK_ID = 'fremdev-hook'
 const RELAY_JS = 'fremdev/relay.js'
 const KIND_JS = 'fremdev/kind.js'
+const BUILD_JS = 'fremdev/build.js'
 const HOOK_JS = 'fremdev/hook.js'
 /** The isolated-world scripts, registered as one and injected together; later features append theirs. */
-export const ISOLATED_JS = [RELAY_JS, KIND_JS]
+export const ISOLATED_JS = [RELAY_JS, KIND_JS, BUILD_JS]
 /** `dev.tabs` at most this often. */
 const SEND_MS = 500
 /** Keeps the worker, and so the socket, alive while a dev tab is open; also the cue to reconnect. */
@@ -56,7 +58,7 @@ const REPORT_MODULE = 'fremdev.report'
  * The modules of the features a control on the Edge depends on (FREMDEV_FEATURES on the server),
  * announced after the report's while Fremdev is on. Each feature appends its own.
  */
-export const FEATURE_MODULES = []
+export const FEATURE_MODULES = ['fremdev.build']
 const cleanPatterns = (list) =>
   Array.isArray(list) ? [...new Set(list.map((p) => parsePattern(p)?.pattern).filter(Boolean))] : []
 
@@ -67,6 +69,32 @@ function errorEvent(msg) {
   if (Array.isArray(msg.stack) && msg.stack.every((f) => typeof f === 'string')) {
     const stack = boundFrames(msg.stack)
     if (stack.length > 0) event.stack = stack
+  }
+  return event
+}
+
+/** The longest file path a build event carries: the overlay's own, before homePath. */
+const MAX_FILE = 1024
+/** The highest line or column a build event carries. */
+const MAX_POS = 10_000_000
+const isPos = (v) => Number.isInteger(v) && v >= 1 && v <= MAX_POS
+
+/**
+ * A compile error from fremdev/build.js rebuilt: its text clipped, and its file, line and column
+ * when given. A field that is there but not one (a file that is no bounded string, a line 0) drops
+ * the event: build.js never sends one.
+ */
+function buildEvent(msg) {
+  if (typeof msg.text !== 'string') return null
+  const event = { kind: 'build', text: clip(msg.text, MAX_TEXT) }
+  if (msg.file !== undefined) {
+    if (typeof msg.file !== 'string' || msg.file.length > MAX_FILE) return null
+    event.file = msg.file
+  }
+  for (const key of ['line', 'col']) {
+    if (msg[key] === undefined) continue
+    if (!isPos(msg[key])) return null
+    event[key] = msg[key]
   }
   return event
 }
@@ -86,6 +114,10 @@ export function pageEvent(msg) {
       return { kind: 'server', state: msg.kind }
     case 'hot':
       return { kind: 'hot' }
+    case 'build':
+      return buildEvent(msg)
+    case 'build-clear':
+      return { kind: 'build-clear' }
     case 'devserver':
       // null: the page's kind is unknown (kind.js found a Vite base it cannot use). It carries no base.
       if (msg.server === null) return { kind: 'devserver', server: null }

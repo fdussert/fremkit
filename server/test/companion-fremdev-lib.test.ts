@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 // @ts-expect-error plain JS module outside server/, no declarations
 import { BUILTIN_PERMISSION_ORIGINS, FREMKIT_EXCLUDES, inOrigins, isDevUrl, parsePattern, releasableOrigins } from '../../companion/lib/devhosts.js'
 // @ts-expect-error plain JS module
-import { boundFrames, errorText, framePlace, hotReloadSignal, isNoise, MAX_FRAME, MAX_FRAMES, MAX_STACK, MAX_TEXT, METHODS, methodOf, parseStack, pathOf, RateLimiter } from '../../companion/lib/devlog.js'
+import { boundFrames, errorText, framePlace, homePath, hotReloadSignal, isNoise, MAX_FRAME, MAX_FRAMES, MAX_STACK, MAX_TEXT, METHODS, methodOf, parseStack, pathOf, RateLimiter } from '../../companion/lib/devlog.js'
 // @ts-expect-error plain JS module
 import { emptyTab, fremdevSupport, HISTORY_MAX, reduce, restoredTabs, Throttle, validRow, wireTabs } from '../../companion/lib/devtabs.js'
 // @ts-expect-error plain JS module
@@ -883,5 +883,115 @@ describe('devreport', () => {
       expect(new TextEncoder().encode(JSON.stringify(msg)).length).toBeLessThanOrEqual(60_000)
       expect(msg.text).toContain('E19 ')
     }
+  })
+})
+
+describe('build entries', () => {
+  const base = () => emptyTab(1, 'http://localhost:5173/', 'App', 100)
+  const build = (text: string, extra: Record<string, unknown> = {}) => ({ kind: 'build', text, file: '/Users/example/app/src/App.vue', line: 12, col: 3, ...extra })
+  const builds = (tab: { history: Array<{ kind: string; state: string }> }) => tab.history.filter((e) => e.kind === 'build')
+
+  it('homePath writes every home folder as ~/ and leaves anything else', () => {
+    expect(homePath('/Users/example/app/x.ts')).toBe('~/app/x.ts')
+    expect(homePath('at /Users/Jane Example/a.js and /Users/b/c')).toBe('at ~/a.js and ~/c')
+    expect(homePath('/var/tmp/x')).toBe('/var/tmp/x')
+    // A line break ends the name: the next line is not swallowed.
+    expect(homePath('/Users/a\n/Users/b/c')).toBe('/Users/a\n~/c')
+  })
+
+  it('records a build error once however often the overlay says it again', () => {
+    let tab = reduce(base(), build('Invalid end tag.'), 200)
+    const same = reduce(tab, build('Invalid end tag.'), 300)
+    expect(same).toBe(tab)
+    tab = same
+    expect(builds(tab)).toHaveLength(1)
+    expect(tab.history[0]).toEqual({ kind: 'build', id: 1, text: 'Invalid end tag.', path: '/Users/example/app/src/App.vue', line: 12, col: 3, n: 1, at: 200, state: 'open' })
+    expect(tab.errors).toMatchObject({ total: 1, open: 1, seen: 0, last: { text: 'Invalid end tag.', at: 200 } })
+  })
+
+  it('a different build error resolves the last one and keeps one open', () => {
+    let tab = reduce(base(), build('Invalid end tag.'), 200)
+    tab = reduce(tab, build('Invalid end tag.', { line: 13 }), 300)
+    // Same text and path, another line: the same error, moved.
+    expect(builds(tab)).toHaveLength(1)
+    tab = reduce(tab, build('Element is missing end tag.'), 400)
+    expect(builds(tab).map((e) => e.state)).toEqual(['open', 'resolved'])
+    expect(tab.errors).toMatchObject({ total: 2, open: 1, last: { text: 'Element is missing end tag.' } })
+  })
+
+  it('build-clear resolves it, and keeps seen within open after a clear', () => {
+    let tab = reduce(base(), build('Invalid end tag.'), 200)
+    const cleared = reduce(tab, { kind: 'build-clear' }, 300)
+    expect(cleared.errors).toMatchObject({ total: 1, open: 0, seen: 0 })
+    expect(cleared.history[0].state).toBe('resolved')
+
+    tab = reduce(tab, { kind: 'error', text: 'TypeError: x' }, 250)
+    tab = reduce(tab, { kind: 'clear' }, 260)
+    expect(tab.errors).toMatchObject({ open: 2, seen: 2 })
+    tab = reduce(tab, { kind: 'build-clear' }, 300)
+    expect(tab.errors).toMatchObject({ total: 2, open: 1, seen: 1 })
+    expect(tab.errors.seen).toBeLessThanOrEqual(tab.errors.open)
+    expect(validRow(wireTabs([tab])[0])).toBe(true)
+    // Nothing open: build-clear changes nothing.
+    expect(reduce(base(), { kind: 'build-clear' }, 300).errors).toMatchObject({ total: 0, open: 0, seen: 0 })
+  })
+
+  it('a reload or a hot update resolves a build entry', () => {
+    const tab = reduce(base(), build('Invalid end tag.'), 200)
+    expect(reduce(tab, { kind: 'hot' }, 300).history[0].state).toBe('resolved')
+    expect(reduce(tab, { kind: 'navigated', url: 'http://localhost:5173/', title: 'App' }, 300).history[0].state).toBe('resolved')
+  })
+
+  it('sends the home folder as ~/ while the extension keeps the full path', () => {
+    const tab = reduce(base(), build('Failed at /Users/Jane Example/app/src/App.vue', { file: '/Users/Jane Example/app/src/App.vue' }), 200)
+    expect(tab.history[0].path).toBe('/Users/Jane Example/app/src/App.vue')
+    const [row] = wireTabs([tab])
+    expect(row.history[0]).toEqual({ kind: 'build', id: 1, text: 'Failed at ~/app/src/App.vue', file: '~/app/src/App.vue', line: 12, col: 3, n: 1, at: 200, state: 'open' })
+    expect(row.errors.last.text).toBe('Failed at ~/app/src/App.vue')
+    expect(JSON.stringify(row)).not.toContain('/Users/')
+    expect(validRow(row)).toBe(true)
+    expect(DevTabSchema.safeParse(row).success).toBe(true)
+    // No file: null, and no line or column either way.
+    const bare = wireTabs([reduce(base(), { kind: 'build', text: 'x' }, 200)])[0]
+    expect(bare.history[0]).toMatchObject({ file: null, line: null, col: null })
+    expect(DevTabSchema.safeParse(bare).success).toBe(true)
+  })
+
+  it('validRow and DevTabSchema refuse a build entry with line 0 or an extra key', () => {
+    const [row] = wireTabs([reduce(base(), build('x'), 200)])
+    const entry = row.history[0]
+    for (const [name, bad] of [
+      ['line 0', { ...entry, line: 0 }],
+      ['col 0', { ...entry, col: 0 }],
+      ['line too big', { ...entry, line: 10_000_001 }],
+      ['extra key', { ...entry, path: '/Users/example/app/src/App.vue' }],
+      ['long file', { ...entry, file: 'x'.repeat(301) }],
+    ] as Array<[string, unknown]>) {
+      expect(validRow({ ...row, history: [bad] }), name).toBe(false)
+      expect(DevTabSchema.safeParse({ ...row, history: [bad] }).success, name).toBe(false)
+    }
+  })
+
+  it('restores a build entry from the session copy', () => {
+    const tab = reduce(base(), build('x'), 200)
+    expect(Object.keys(restoredTabs({ 1: tab }))).toEqual(['1'])
+  })
+
+  it('reports a Build section with ~/ paths', () => {
+    const WORDS: Record<string, (...s: unknown[]) => string> = {
+      reportTitle: () => 'Bug report',
+      reportServer: () => 'dev server',
+      reportLines: () => 'Line numbers are those of the code the dev server sent.',
+      reportErrors: (open, total) => `Errors (${open} open, ${total} total)`,
+      reportBuild: () => 'Build',
+      stateSeen: () => 'seen',
+      stateResolved: () => 'resolved',
+    }
+    const fmt = { stack: false, now: 9_000, t: (key: string, ...subs: unknown[]) => WORDS[key](...subs), time: (ms: number) => `T${ms}`, date: (ms: number) => `D${ms}` }
+    let tab = reduce(base(), { kind: 'error', text: 'TypeError: x', origin: '/src/a.js:1:2' }, 150)
+    tab = reduce(tab, build('Invalid end tag in /Users/Jane Example/app/src/App.vue', { file: '/Users/Jane Example/app/src/App.vue' }), 200)
+    const text = buildReport(tab, fmt)
+    expect(text).toContain('### Build\n- T200 Invalid end tag in ~/app/src/App.vue\n  at ~/app/src/App.vue:12:3\n\n### Errors (2 open, 2 total)\n- T150 TypeError: x\n')
+    expect(text).not.toContain('/Users/')
   })
 })

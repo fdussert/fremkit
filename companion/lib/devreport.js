@@ -1,10 +1,11 @@
-import { clip, pathOf } from './devlog.js'
+import { clip, homePath, pathOf } from './devlog.js'
 
 // A dev tab's bug report, in Markdown: what the Edge copies (`dev.report`, through the server) and
 // what the popup copies. Pure: the words, the time and the date are the caller's (chrome.i18n and
 // the browser's locale in the worker), so a test reads the exact text.
 //
-// The tab is lib/devtabs.js's internal one, stacks included: they leave the worker only here.
+// The tab is lib/devtabs.js's internal one, stacks included: they leave the worker only here. A
+// build entry's full path stays in the worker too: the report writes its home folder `~/` (homePath).
 
 /** The longest report text; the server refuses a longer one (REPORT_MAX in server/src/companion/protocol.ts). */
 export const REPORT_MAX = 48_000
@@ -14,6 +15,9 @@ const MAX_FIELD = 300
 
 /** One line of Markdown: no line break from the page can open a heading or a list item. */
 const line = (s, max = MAX_FIELD) => clip(String(s ?? '').replace(/\s*[\r\n]+\s*/g, ' '), max)
+/** A line that may name a file on this Mac: its home folder is `~/`. */
+const homeLine = (s, max = MAX_FIELD) => line(homePath(String(s ?? '')), max)
+const isPos = (v) => Number.isInteger(v) && v >= 1
 
 function entryLines(e, { stack, t, time }) {
   const count = e.n > 1 ? `×${e.n} ` : ''
@@ -21,7 +25,7 @@ function entryLines(e, { stack, t, time }) {
   const at = time(e.at)
   switch (e.kind) {
     case 'error': {
-      const out = [`- ${at} ${count}${line(e.text)}${state}`]
+      const out = [`- ${at} ${count}${homeLine(e.text)}${state}`]
       if (typeof e.origin === 'string' && e.origin !== '') out.push(`  at ${line(e.origin)}`)
       // The first frame is the origin already.
       if (stack && Array.isArray(e.stack)) for (const frame of e.stack.slice(1)) out.push(`    ${line(frame, Infinity)}`)
@@ -31,6 +35,14 @@ function entryLines(e, { stack, t, time }) {
       return [`- ${at} ${count}${line(e.method)} ${line(e.path)} ${e.status > 0 ? e.status : t('noAnswer')}${state}`]
     case 'limited':
       return [`- ${at} +${e.n} ${t('reportLimited')}${state}`]
+    case 'build': {
+      const out = [`- ${at} ${count}${homeLine(e.text)}${state}`]
+      if (typeof e.path === 'string' && e.path !== '') {
+        const pos = isPos(e.line) ? `:${e.line}${isPos(e.col) ? `:${e.col}` : ''}` : ''
+        out.push(`  at ${homeLine(e.path)}${pos}`)
+      }
+      return out
+    }
     default:
       return []
   }
@@ -45,8 +57,14 @@ function render(tab, entries, opts) {
     `${date(now)} · ${t('reportServer')}: ${tab.server === 'down' ? 'down' : 'up'}`,
     t('reportLines'),
   ]
+  const builds = entries.filter((e) => e.kind === 'build')
   const errors = entries.filter((e) => e.kind === 'error' || e.kind === 'limited')
   const requests = entries.filter((e) => e.kind === 'request')
+  // The compile error first: while it shows, nothing else on the page is current.
+  if (builds.length > 0) {
+    out.push('', `### ${t('reportBuild')}`)
+    for (const e of builds) out.push(...entryLines(e, opts))
+  }
   if (errors.length > 0) {
     out.push('', `### ${t('reportErrors', tab.errors?.open ?? 0, tab.errors?.total ?? 0)}`)
     for (const e of errors) out.push(...entryLines(e, opts))

@@ -80,13 +80,15 @@
   .entry .what{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--font-mono, ui-monospace, Menlo, monospace)}
   .entry.error .what{color:var(--danger, #ff6b5e)}
   .entry.request .what{color:var(--warn, #f0a020)}
+  .entry.build .what{color:var(--danger, #ff6b5e)}
+  .entry .kind{flex:none;font-weight:700;color:var(--danger, #ff6b5e)}
   .entry.limited .what{font-family:inherit;color:var(--text-muted, #8b93a0);font-style:italic}
   .entry .origin{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-left:calc(8ch + 8px);
     font-family:var(--font-mono, ui-monospace, Menlo, monospace);font-size:calc(12px * var(--text-scale, 1));color:var(--text-dim, #6b737c)}
   .entry .origin:empty{display:none}
   /* Seen: dimmed. Resolved: greyed and struck through. */
   .entry.seen{opacity:.55}
-  .entry.resolved .what,.entry.resolved .time,.entry.resolved .times{color:var(--text-dim, #6b737c)}
+  .entry.resolved .what,.entry.resolved .time,.entry.resolved .times,.entry.resolved .kind{color:var(--text-dim, #6b737c)}
   .entry.resolved .what{text-decoration:line-through}
   .entry.resolved{opacity:.7}
   .actions{display:flex;flex-wrap:wrap;gap:8px}
@@ -109,7 +111,7 @@
   html.on-light .entry .time,html.on-light .entry .times,html.on-light .entry.limited .what,html.on-light .entry .origin{color:var(--on-surface, #0b0d10);opacity:.7}
   /* The warning orange reads too faint on a light body: darkened towards the text colour. */
   html.on-light .entry.request .what,html.on-light .fact.requests .n{color:color-mix(in srgb, var(--warn, #f0a020) 55%, var(--on-surface, #0b0d10))}
-  html.on-light .entry.resolved .what,html.on-light .entry.resolved .time,html.on-light .entry.resolved .times{color:var(--on-surface, #0b0d10)}
+  html.on-light .entry.resolved .what,html.on-light .entry.resolved .time,html.on-light .entry.resolved .times,html.on-light .entry.resolved .kind{color:var(--on-surface, #0b0d10)}
   html.on-light .fact.resolved,html.on-light .fact.resolved .n{color:var(--on-surface, #0b0d10);opacity:.5}
   html.on-light .fact.seen,html.on-light .fact.seen .n,html.on-light .fact.seen .t{color:var(--on-surface, #0b0d10);opacity:.5}
   /* An accent body: the accent of the clear button would vanish, so it takes the text colour. */
@@ -157,6 +159,7 @@
     copied: { fr: 'Copié ✓', en: 'Copied ✓' },
     copyFailed: { fr: 'Échec de la copie', en: 'Copy failed' },
     limited: { fr: '+{n} erreurs (débit limité)', en: '+{n} errors (rate limited)' },
+    build: { fr: 'Compilation', en: 'Build' },
     elsewhere: { fr: 'Fremdev ne s\'affiche que sur l\'Edge du Mac.', en: 'Fremdev only shows on the Mac\'s Edge.' }
   }
 
@@ -293,7 +296,7 @@
     function updateHistory(entry) {
       var hist = Array.isArray(entry.row.history) ? entry.row.history : []
       var views = hist.map(FD.entryView).filter(Boolean)
-      var sig = JSON.stringify(views) + '|' + Fremkit.t(L.noAnswer) + '|' + Fremkit.t(L.limited, { n: 0 })
+      var sig = JSON.stringify(views) + '|' + Fremkit.t(L.noAnswer) + '|' + Fremkit.t(L.limited, { n: 0 }) + '|' + Fremkit.t(L.build)
       if (sig === entry.historySig) return
       entry.historySig = sig
       var ul = entry.history
@@ -308,6 +311,11 @@
           var times = el('span', 'times')
           times.textContent = '×' + v.n
           line.appendChild(times)
+        }
+        if (v.kind === 'build') {
+          var kind = el('span', 'kind')
+          kind.textContent = Fremkit.t(L.build)
+          line.appendChild(kind)
         }
         var what = el('span', 'what')
         what.textContent = v.kind === 'limited' ? Fremkit.t(L.limited, { n: v.n })

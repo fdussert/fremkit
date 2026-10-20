@@ -169,6 +169,9 @@
   "reportRequests": {
     "message": "Failed requests"
   },
+  "reportBuild": {
+    "message": "Build"
+  },
   "reportLimited": {
     "message": "errors over the rate limit"
   },

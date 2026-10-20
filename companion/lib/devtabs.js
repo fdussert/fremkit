@@ -1,4 +1,4 @@
-import { clip, METHODS, methodOf } from './devlog.js'
+import { clip, homePath, METHODS, methodOf } from './devlog.js'
 
 // One dev tab's state as a pure reducer, and the rows `dev.tabs` carries. The wire shape mirrors
 // DevTabSchema in server/src/companion/protocol.ts, which is strict.
@@ -13,6 +13,8 @@ const MAX_BYTES = 60_000
 export const HISTORY_MAX = 20
 /** The highest entry id; the next one is 1 again. */
 const MAX_ID = 2_147_483_647
+/** The highest line or column a build entry carries. */
+const MAX_POS = 10_000_000
 /** The dev servers told apart (DEV_SERVERS on the server). */
 export const DEV_SERVERS = ['vite', 'next', 'webpack']
 const BASE_RE = /^\/[A-Za-z0-9._~\-/]{0,99}$/
@@ -68,9 +70,12 @@ export function emptyTab(tabId, url, title, now) {
   }
 }
 
-// The history ring: errors, failed requests and the relay's overflow (`limited`), newest first, an
-// entry repeated back to back folded into its `n`. Entries keep their stack here; the wire drops it.
-// state: `open` until the user marks it seen (`clear`), `resolved` once the page reloads or updates.
+// The history ring: errors, failed requests, the relay's overflow (`limited`) and the dev server's
+// compile errors (`build`), newest first, an entry repeated back to back folded into its `n`.
+// Entries keep their stack here; the wire drops it. A build entry keeps the file's full `path` here;
+// the wire carries it as `file`, its home folder written `~/` (homePath).
+// state: `open` until the user marks it seen (`clear`), `resolved` once the page reloads or updates
+// (and, for a build entry, once the overlay goes or shows another error).
 
 const sameEntry = (a, b) =>
   a.kind === b.kind &&
@@ -78,7 +83,9 @@ const sameEntry = (a, b) =>
     ? a.text === b.text && a.origin === b.origin
     : a.kind === 'request'
       ? a.method === b.method && a.path === b.path && a.status === b.status
-      : true)
+      : a.kind === 'build'
+        ? a.text === b.text && a.path === b.path
+        : true)
 
 const isId = (v) => Number.isInteger(v) && v >= 1 && v <= MAX_ID
 
@@ -107,6 +114,26 @@ const bump = (t, last) => ({
   last,
 })
 const resolved = (t) => ({ ...t, open: 0, seen: 0 })
+
+const isLive = (e) => e.kind === 'build' && (e.state === 'open' || e.state === 'seen')
+const isPos = (v) => Number.isInteger(v) && v >= 1 && v <= MAX_POS
+
+/**
+ * `{ errors, history }` with every open or seen build entry resolved, and the errors tally down by
+ * as many (the seen ones off `seen` too), never below zero and `seen` never above `open`.
+ */
+function resolveBuilds(tab) {
+  const ring = tab.history ?? []
+  const live = ring.filter(isLive)
+  if (live.length === 0) return { errors: tab.errors, history: ring }
+  const e = tab.errors
+  const open = Math.max(0, e.open - live.length)
+  const seen = Math.min(open, Math.max(0, (e.seen ?? 0) - live.filter((x) => x.state === 'seen').length))
+  return {
+    errors: { ...e, open, seen },
+    history: ring.map((x) => (isLive(x) ? { ...x, state: 'resolved' } : x)),
+  }
+}
 /** Marked seen: still open, no longer new. */
 const seenAll = (t) => ({ ...t, seen: t.open })
 
@@ -143,6 +170,34 @@ export function reduce(tab, event, now) {
         }),
         activity: now,
       }
+    case 'build': {
+      // The overlay re-renders as the user types: the same error again is not a new one.
+      const path = typeof event.file === 'string' ? event.file : null
+      const newest = (tab.history ?? []).find(isLive)
+      if (newest && newest.text === event.text && newest.path === path) return tab
+      // Another error replaces the one shown: one build entry open at a time.
+      const base = { ...tab, ...resolveBuilds(tab) }
+      return {
+        ...base,
+        errors: bump(base.errors, { text: event.text, at: now }),
+        ...record(base, {
+          kind: 'build',
+          text: event.text,
+          path,
+          line: isPos(event.line) ? event.line : null,
+          col: isPos(event.col) ? event.col : null,
+          n: 1,
+          at: now,
+          state: 'open',
+        }),
+        activity: now,
+      }
+    }
+    case 'build-clear': {
+      // The overlay went: the error is fixed.
+      if (!(tab.history ?? []).some(isLive)) return tab
+      return { ...tab, ...resolveBuilds(tab), activity: now }
+    }
     case 'navigated': {
       // The entry ids keep counting either way. The dev server's kind belongs to the origin: a
       // reload or a pushState route change keeps it, another origin forgets it and looks again.
@@ -239,8 +294,18 @@ function wireEntry(e) {
       return {
         kind: 'error',
         id,
-        text: clip(String(e.text ?? ''), MAX_TEXT),
+        text: clip(homePath(e.text ?? ''), MAX_TEXT),
         origin: typeof e.origin === 'string' ? clip(e.origin, MAX_TEXT) : null,
+        ...common,
+      }
+    case 'build':
+      return {
+        kind: 'build',
+        id,
+        text: clip(homePath(e.text ?? ''), MAX_TEXT),
+        file: typeof e.path === 'string' ? clip(homePath(e.path), MAX_TEXT) : null,
+        line: isPos(e.line) ? e.line : null,
+        col: isPos(e.col) ? e.col : null,
         ...common,
       }
     case 'request':
@@ -257,7 +322,7 @@ function wireRow(t) {
     tabId: t.tabId,
     app: clip(String(t.title || t.host), MAX_APP),
     host: t.host,
-    errors: wireTally(t.errors, (l) => ({ text: clip(String(l.text ?? ''), MAX_TEXT), at: Math.max(0, l.at) })),
+    errors: wireTally(t.errors, (l) => ({ text: clip(homePath(l.text ?? ''), MAX_TEXT), at: Math.max(0, l.at) })),
     requests: wireTally(t.requests, (l) => ({
       path: pathOnly(l.path),
       status: statusOf(l.status),
@@ -295,6 +360,9 @@ const okEntry = (e) => {
         isText(e.path, MAX_TEXT) && PATH_RE.test(e.path) && Number.isInteger(e.status) && e.status >= 0 && e.status <= 599
     case 'limited':
       return keys === 'at,id,kind,n,state'
+    case 'build':
+      return keys === 'at,col,file,id,kind,line,n,state,text' && isText(e.text, MAX_TEXT) &&
+        (e.file === null || isText(e.file, MAX_TEXT)) && (e.line === null || isPos(e.line)) && (e.col === null || isPos(e.col))
     default:
       return false
   }

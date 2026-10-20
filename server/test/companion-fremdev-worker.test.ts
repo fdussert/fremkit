@@ -204,6 +204,24 @@ describe('companion/fremdev.js', () => {
     expect(pageEvent({ kind: 'clear' })).toBeNull()
   })
 
+  it('rebuilds a build event from bounded fields, and drops one with a field that is not one', () => {
+    expect(pageEvent({ kind: 'build', text: 'x'.repeat(500), file: '/Users/example/app/src/App.vue', line: 12, col: 3, tabId: 3 }))
+      .toEqual({ kind: 'build', text: 'x'.repeat(300), file: '/Users/example/app/src/App.vue', line: 12, col: 3 })
+    expect(pageEvent({ kind: 'build', text: 'x' })).toEqual({ kind: 'build', text: 'x' })
+    expect(pageEvent({ kind: 'build', text: 'x', file: './src/index.js', line: 10_000_000 })).toEqual({ kind: 'build', text: 'x', file: './src/index.js', line: 10_000_000 })
+    for (const bad of [
+      { file: 7 },
+      { file: ['a'] },
+      { file: 'a'.repeat(1025) },
+      { line: 0 },
+      { line: 1.5 },
+      { col: 10_000_001 },
+      { line: '12' },
+      { text: 7 },
+    ]) expect(pageEvent({ kind: 'build', text: 'x', ...bad }), JSON.stringify(bad)).toBeNull()
+    expect(pageEvent({ kind: 'build-clear', text: 'ignored', tabId: 3 })).toEqual({ kind: 'build-clear' })
+  })
+
   it('rebuilds a devserver event from a known kind and a bounded base', () => {
     expect(pageEvent({ kind: 'devserver', server: 'vite', base: '/app/', tabId: 3 })).toEqual({ kind: 'devserver', server: 'vite', base: '/app/' })
     expect(pageEvent({ kind: 'devserver', server: 'next', base: '/' })).toEqual({ kind: 'devserver', server: 'next', base: '/' })
@@ -292,7 +310,7 @@ describe('companion/fremdev.js', () => {
     f.fremdev.onReady({ type: 'ready', protocol: 2, modules: { fremplay: true, fremdev: true } })
     await f.later()
     expect(f.sent.map((m) => m.type)).toEqual(['modules', 'dev.tabs'])
-    expect(f.sent[0]).toEqual({ type: 'modules', modules: ['fremplay', 'fremdev', 'fremdev.report'] })
+    expect(f.sent[0]).toEqual({ type: 'modules', modules: ['fremplay', 'fremdev', 'fremdev.report', 'fremdev.build'] })
     expect((f.sent[1].tabs as Array<{ tabId: number }>).map((t) => t.tabId)).toEqual([7])
     await f.fremdev.stop()
     expect(f.sent.at(-1)).toEqual({ type: 'modules', modules: ['fremplay'] })
@@ -350,11 +368,11 @@ describe('companion/fremdev.js', () => {
       const f = await makeFremdev({ on: false })
       expect(f.fremdev.modules()).toEqual(['fremplay'])
       await f.fremdev.start()
-      expect(f.fremdev.modules()).toEqual(['fremplay', 'fremdev', 'fremdev.report', 'fremdev.test'])
+      expect(f.fremdev.modules()).toEqual(['fremplay', 'fremdev', 'fremdev.report', 'fremdev.build', 'fremdev.test'])
     } finally {
       FEATURE_MODULES.pop()
     }
-    expect(FEATURE_MODULES).toEqual([])
+    expect(FEATURE_MODULES).toEqual(['fremdev.build'])
   })
 
   it('records the dev server a page reports, the latest replacing the last', async () => {
@@ -374,13 +392,27 @@ describe('companion/fremdev.js', () => {
     expect(f.rows()['7']).toMatchObject({ devServer: null, serverBase: '/' })
   })
 
+  it('records a build error a page reports, and resolves it when the overlay goes', async () => {
+    const f = await makeFremdev()
+    await f.fremdev.onPageEvent({ kind: 'build', text: 'Invalid end tag.', file: '/Users/example/app/src/App.vue', line: 12, col: 3 }, devSender())
+    await f.fremdev.onPageEvent({ kind: 'build', text: 'Invalid end tag.', file: '/Users/example/app/src/App.vue', line: 12, col: 3 }, devSender())
+    await f.later()
+    expect(f.rows()['7'].history).toEqual([expect.objectContaining({ kind: 'build', path: '/Users/example/app/src/App.vue', state: 'open' })])
+    expect(f.rows()['7'].errors).toMatchObject({ total: 1, open: 1 })
+    await f.fremdev.onPageEvent({ kind: 'build-clear' }, devSender())
+    await f.later()
+    expect(f.rows()['7'].history[0].state).toBe('resolved')
+    expect(f.rows()['7'].errors).toMatchObject({ total: 1, open: 0 })
+  })
+
   it('announces fremdev.report only while on', async () => {
     const f = await makeFremdev({ on: false })
     expect(f.fremdev.modules()).toEqual(['fremplay'])
     await f.fremdev.start()
-    expect(f.fremdev.modules()).toEqual(['fremplay', 'fremdev', 'fremdev.report'])
+    expect(f.fremdev.modules()).toEqual(['fremplay', 'fremdev', 'fremdev.report', 'fremdev.build'])
     await f.fremdev.stop()
     expect(f.fremdev.modules()).not.toContain('fremdev.report')
+    expect(f.fremdev.modules()).not.toContain('fremdev.build')
   })
 
   it('answers dev.report.ask with the report of a tab it has a row for, and nothing for another', async () => {
@@ -614,7 +646,7 @@ describe('companion/fremdev.js', () => {
     await onInstalled({ reason: 'update', previousVersion: '0.0.1' })
     const calls = f.api.scripting.executeScript.mock.calls as Array<[{ target: { tabId: number }; files: string[]; world?: string }]>
     expect(calls.map(([c]) => [c.target.tabId, c.files, c.world])).toEqual([
-      [7, ['fremdev/relay.js', 'fremdev/kind.js'], undefined],
+      [7, ['fremdev/relay.js', 'fremdev/kind.js', 'fremdev/build.js'], undefined],
       [7, ['fremdev/hook.js'], 'MAIN'],
     ])
     await f.later()
@@ -653,10 +685,10 @@ describe('companion/fremdev.js', () => {
     await f.fremdev.start()
     const scripts = f.api.scripting.registerContentScripts.mock.calls[0][0] as Array<{ id: string; world?: string; matches: string[]; js: string[] }>
     expect(scripts.map((s) => [s.id, s.world, s.matches, s.js])).toEqual([
-      ['fremdev-relay', undefined, ['http://localhost/*'], ['fremdev/relay.js', 'fremdev/kind.js']],
+      ['fremdev-relay', undefined, ['http://localhost/*'], ['fremdev/relay.js', 'fremdev/kind.js', 'fremdev/build.js']],
       ['fremdev-hook', 'MAIN', ['http://localhost/*'], ['fremdev/hook.js']],
     ])
-    expect(ISOLATED_JS).toEqual(['fremdev/relay.js', 'fremdev/kind.js'])
+    expect(ISOLATED_JS).toEqual(['fremdev/relay.js', 'fremdev/kind.js', 'fremdev/build.js'])
     expect(f.api.scripting.executeScript).toHaveBeenCalledTimes(2)
     expect(f.store.local.fremdev).toMatchObject({ on: true })
   })

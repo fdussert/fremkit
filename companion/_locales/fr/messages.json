@@ -169,6 +169,9 @@
   "reportRequests": {
     "message": "Requêtes en échec"
   },
+  "reportBuild": {
+    "message": "Compilation"
+  },
   "reportLimited": {
     "message": "erreurs au-delà de la limite"
   },

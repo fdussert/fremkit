@@ -8,6 +8,8 @@ import {
   ControlSchema,
   DevTabSchema,
   EXTENSION_ORIGIN_RE,
+  FREMDEV_BUILD_MODULE,
+  FREMDEV_FEATURES,
   MAX_MESSAGE_BYTES,
   MAX_SDP,
   MetaSchema,
@@ -278,6 +280,28 @@ describe('parseExtensionMessage', () => {
       expect(tabs([row({ history: [{ ...entry, stack: ['f /a.js:1:2'] }] })])).toBeNull()
       expect(tabs([row({ history: [{ ...entry, text: 'x'.repeat(301) }] })])).toBeNull()
       expect(tabs([row({ history: [{ kind: 'limited', id: 1, n: 1, at: 1, state: 'open', text: 'x' }] })])).toBeNull()
+    })
+
+    it('takes a build entry with a file or none, and refuses line 0, a long file or an extra key', () => {
+      const build = { kind: 'build', id: 4, text: 'Invalid end tag.', file: '~/app/src/App.vue', line: 12, col: 3, n: 1, at: 1, state: 'open' }
+      expect(tabs([row({ history: [build] })])).not.toBeNull()
+      expect(tabs([row({ history: [{ ...build, file: null, line: null, col: null }] })])).not.toBeNull()
+      expect(tabs([row({ history: [{ ...build, line: 10_000_000, col: 10_000_000 }] })])).not.toBeNull()
+      for (const bad of [
+        { ...build, line: 0 },
+        { ...build, col: 0 },
+        { ...build, line: 10_000_001 },
+        { ...build, line: 1.5 },
+        { ...build, file: 'x'.repeat(301) },
+        { ...build, text: 'x'.repeat(301) },
+        { ...build, path: '/Users/example/app/src/App.vue' },
+        (({ file: _, ...rest }) => rest)(build),
+      ]) expect(tabs([row({ history: [bad] })]), JSON.stringify(bad)).toBeNull()
+    })
+
+    it('lists fremdev.build among the Fremdev features', () => {
+      expect(FREMDEV_BUILD_MODULE).toBe('fremdev.build')
+      expect(FREMDEV_FEATURES).toContain(FREMDEV_BUILD_MODULE)
     })
 
     it('needs an entry id from 1 to 2 147 483 647', () => {

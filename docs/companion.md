@@ -246,6 +246,32 @@ extension**: for Vite, the base path the client script is served under (`/app/`)
 extension to build that dev server's own URLs, and is never sent; a base with an empty or a dot
 segment (`//x/`, `/../`) is refused, so those URLs can only name the tab's own origin.
 
+**Build errors.** A third script in the same isolated world reads the dev server's error overlay
+when it shows a **compile error**, and the tab gets a `build` entry, counted among its errors (the
+light turns red), shown on the Edge with "Build" before its text:
+- **Vite**: the `vite-error-overlay` element's open shadow root, its message, its file
+  (`path:line:col`) and, when the message is empty, its code frame;
+- **webpack-dev-server**: the overlay's iframe, only while its heading says *Compiled with
+  problems* or *Failed to compile*, and only its first `ERROR` (a warning is no failed build): the
+  message, and the file, line and column of its `ERROR in ./src/index.js 2:0` header (webpack counts
+  columns from 0; the entry counts them from 1);
+- **Next**: inside `nextjs-portal`'s shadow root, the dialog labelled *Build Error* only: its
+  message, the file its code frame names, and the line and column in that frame.
+
+Runtime errors are the hook's to report: webpack-dev-server's *Uncaught runtime errors* overlay and
+Next's runtime dialog add no entry, so an error is never counted twice, and `nextjs-portal` alone
+(Next's dev indicator) is nothing. The script reads text and attributes only, through the browser's
+own `textContent`, `shadowRoot` and `contentDocument`, never a property the page defined, and runs
+none of the page's code. It looks again 200 ms after the overlay last changed, says only what changed,
+and at most twice a second: an overlay that re-renders as you type stays one entry. A different error
+resolves the one before it; the overlay going away (`build-clear`), a reload or a hot update resolves
+it. What is sent is the message clipped to 300 characters, the file as the overlay names it (an
+absolute path under Vite, `./src/…` under webpack and Next) and its line and column.
+
+**Home folders read `~/`.** Whatever leaves the extension (the Edge, the report, the popup) writes a
+path under `/Users/<name>/` as `~/…`, in an error's or a build's text and in a build's file; the
+extension keeps the full path for itself.
+
 ### The history and the bug report
 
 Tap a row's top line on the Edge and it unfolds to that tab's last 20 errors and failed requests

@@ -145,11 +145,14 @@ export const FREMDEV_MODULE = 'fremdev'
 /** Fremdev can answer `dev.report.ask`; announced only while Fremdev is on. */
 export const FREMDEV_REPORT_MODULE = 'fremdev.report'
 
+/** Fremdev reports a dev server's compile error overlay as a `build` entry. */
+export const FREMDEV_BUILD_MODULE = 'fremdev.build'
+
 /**
  * The Fremdev modules a control on the Edge depends on (`features` in the snapshot): an install
  * that lists one is shown that control. Each feature's task appends its module name here.
  */
-export const FREMDEV_FEATURES: readonly string[] = []
+export const FREMDEV_FEATURES: readonly string[] = [FREMDEV_BUILD_MODULE]
 
 /**
  * The names of the modules an extension runs. Unknown names pass, so a newer extension with a module
@@ -162,6 +165,9 @@ const ModulesSchema = z.array(z.string().min(1).max(32)).max(16)
 export const MAX_DEV_TABS = 32
 /** The longest error text or request path a dev tab row carries. */
 export const MAX_DEV_TEXT = 300
+/** The highest line or column a build entry carries. */
+const MAX_DEV_POS = 10_000_000
+const Pos = z.number().int().min(1).max(MAX_DEV_POS)
 
 const MAX_COUNT = 1_000_000
 const Count = z.number().int().min(0).max(MAX_COUNT)
@@ -204,7 +210,10 @@ const TabId = z.number().int().min(0).max(2_147_483_647)
 /** The dev servers Fremdev tells apart. */
 export const DEV_SERVERS = ['vite', 'next', 'webpack'] as const
 
-/** A tab's last errors and failed requests, without stacks; `limited` the errors the relay only counted. */
+/**
+ * A tab's last errors and failed requests, without stacks; `limited` the errors the relay only
+ * counted; `build` the dev server's compile errors (fremdev/build.js), counted among the errors.
+ */
 const DevHistorySchema = z
   .array(
     z.discriminatedUnion('kind', [
@@ -223,6 +232,16 @@ const DevHistorySchema = z
         ...entry,
       }),
       z.strictObject({ kind: z.literal('limited'), ...entry }),
+      z.strictObject({
+        kind: z.literal('build'),
+        /** The dev server's compile error, as its overlay says it, a home folder written `~/`. */
+        text: z.string().max(MAX_DEV_TEXT),
+        /** The file the overlay names (an absolute path under Vite, `./src/…` otherwise), `~/` for a home folder. */
+        file: z.string().max(MAX_DEV_TEXT).nullable(),
+        line: Pos.nullable(),
+        col: Pos.nullable(),
+        ...entry,
+      }),
     ]),
   )
   .max(MAX_DEV_HISTORY)

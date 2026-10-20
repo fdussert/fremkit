@@ -10,6 +10,15 @@ export function clip(s, max) {
   return cut.length === max && last >= 0xd800 && last <= 0xdbff ? cut.slice(0, -1) : cut
 }
 
+/**
+ * `s` with every home folder written `~/`: `/Users/<name>/` becomes `~/`, whatever the name holds
+ * but a slash or a line break (`/Users/Jane Example/` too). What leaves the extension (the wire, the
+ * Edge, the report, the popup) goes through this; the extension keeps the full path for itself.
+ */
+export function homePath(s) {
+  return String(s).replace(/\/Users\/[^/\n]+\//g, '~/')
+}
+
 // Taken once: errorText reads values with these alone, so a page that replaces them later runs no
 // code through it.
 const gopd = Object.getOwnPropertyDescriptor

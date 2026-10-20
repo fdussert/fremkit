@@ -135,17 +135,22 @@
 
   var STATES = { open: true, seen: true, resolved: true }
 
+  function isPos(v) {
+    return typeof v === 'number' && isFinite(v) && v >= 1 && Math.floor(v) === v
+  }
+
   /**
    * One history entry as the unfolded row draws it: `{ kind, time, text, origin, n, state,
    * noAnswer }`. An error keeps its text and origin; a request reads `METHOD path status`, and with
    * status 0 (no answer) the status is left out and `noAnswer` set for the widget to say it in the
-   * user's language; a `limited` entry has no text, the widget writes its label around `n`.
-   * Null for anything else.
+   * user's language; a `limited` entry has no text, the widget writes its label around `n`; a
+   * `build` entry (the dev server's compile error) keeps its text, its origin its `file:line:col`
+   * (`file:line`, or the bare file, when the overlay gave less). Null for anything else.
    */
   function entryView(entry) {
     if (!entry || typeof entry !== 'object') return null
     var kind = entry.kind
-    if (kind !== 'error' && kind !== 'request' && kind !== 'limited') return null
+    if (kind !== 'error' && kind !== 'request' && kind !== 'limited' && kind !== 'build') return null
     var view = {
       kind: kind,
       time: typeof entry.at === 'number' ? entry.at : 0,
@@ -158,6 +163,16 @@
     if (kind === 'error') {
       view.text = typeof entry.text === 'string' ? entry.text : ''
       view.origin = typeof entry.origin === 'string' && entry.origin ? entry.origin : null
+    } else if (kind === 'build') {
+      view.text = typeof entry.text === 'string' ? entry.text : ''
+      if (typeof entry.file === 'string' && entry.file) {
+        var at = entry.file
+        if (isPos(entry.line)) {
+          at += ':' + entry.line
+          if (isPos(entry.col)) at += ':' + entry.col
+        }
+        view.origin = at
+      }
     } else if (kind === 'request') {
       var parts = [String(entry.method || 'OTHER'), String(entry.path || '')]
       if (entry.status === 0) view.noAnswer = true

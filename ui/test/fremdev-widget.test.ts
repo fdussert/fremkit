@@ -75,6 +75,20 @@ describe('the Fremdev widget page', () => {
     expect(unfoldedApps()).toEqual([])
   })
 
+  it('writes "Build" before a build entry\'s text, and its file under it', () => {
+    const w = load()
+    const build = { kind: 'build', id: 2, text: 'Invalid end tag.', file: '~/app/src/App.vue', line: 12, col: 3, n: 1, at: 2000, state: 'open' }
+    w.publish(snapshot([tab(7, { history: [build] })]))
+    rowOf('App 7').querySelector<HTMLElement>('.top')!.click()
+    const entry = rowOf('App 7').querySelector('.history .entry.build')!
+    expect(entry.querySelector('.kind')!.textContent).toBe('Build')
+    expect(entry.querySelector('.what')!.textContent).toBe('Invalid end tag.')
+    expect(entry.querySelector('.origin')!.textContent).toBe('~/app/src/App.vue:12:3')
+    // Only a build entry carries the label.
+    w.publish(snapshot([tab(7)]))
+    expect(rowOf('App 7').querySelector('.history .entry .kind')).toBeNull()
+  })
+
   it('puts the unfold role on the name and facts, with no button inside it, and keeps Enter and Space', () => {
     const w = load()
     w.publish(snapshot([tab(7)]))

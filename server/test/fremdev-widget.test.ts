@@ -289,6 +289,15 @@ describe('fremdev/logic.js', () => {
     }
   })
 
+  it('entryView: a build entry shows its file, line and column as its origin, or the bare file', async () => {
+    const { entryView } = await loadLogic()
+    const build = { kind: 'build', id: 1, text: 'Invalid end tag.', file: '~/app/src/App.vue', line: 12, col: 3, n: 1, at: 50, state: 'open' }
+    expect(entryView(build)).toEqual({ kind: 'build', time: 50, text: 'Invalid end tag.', origin: '~/app/src/App.vue:12:3', n: 1, state: 'open', noAnswer: false })
+    expect(entryView({ ...build, col: null })).toMatchObject({ origin: '~/app/src/App.vue:12' })
+    expect(entryView({ ...build, line: null, col: null })).toMatchObject({ origin: '~/app/src/App.vue' })
+    expect(entryView({ ...build, file: null, line: null, col: null })).toMatchObject({ kind: 'build', origin: null })
+  })
+
   it('entryView: anything else is null', async () => {
     const { entryView } = await loadLogic()
     expect(entryView(null)).toBeNull()
