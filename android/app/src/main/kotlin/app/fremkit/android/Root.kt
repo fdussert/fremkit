@@ -4,7 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -17,6 +17,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -51,7 +52,11 @@ import kotlinx.coroutines.flow.StateFlow
  *
  * Every screen is laid out in the same region, the dashboard's WebView included; that region is
  * what pairing reports as the viewport ([ViewportMeter]), so it is measured here, on the container
- * itself, in dp (a CSS pixel in the WebView at text zoom 100 %).
+ * itself, in dp (a CSS pixel in the WebView at text zoom 100 %), after immersive mode has hidden
+ * the system bars ([Immersive]): the whole display but a notch. Bars that come back for a moment
+ * (a swipe, a dialog) overlay it rather than shrink it, and the keyboard is left out of it too
+ * (the window pans for the code field), so neither changes the page's size or the viewport
+ * reported while pairing.
  */
 @Composable
 fun Root(
@@ -82,7 +87,7 @@ fun Root(
             Modifier
                 .fillMaxSize()
                 .background(Color.Black)
-                .windowInsetsPadding(WindowInsets.safeDrawing)
+                .windowInsetsPadding(WindowInsets.displayCutout)
                 .onSizeChanged { meter.measured(MeasuredSize(it.width / density, it.height / density)) },
         ) {
             val step = pairing.step
@@ -172,6 +177,12 @@ private fun DashboardScreen(host: String, mac: PairedMac, model: AppModel, hygie
             brightness.show(mac, host)
             // Reports every 10 s while started; stopped, the Mac marks the screen gone after 30 s.
             lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) { brightness.run() }
+        }
+        // Awake while the dashboard is shown, and only then (the iPad's isIdleTimerDisabled).
+        val view = LocalView.current
+        DisposableEffect(view) {
+            view.keepScreenOn = true
+            onDispose { view.keepScreenOn = false }
         }
         DisposableEffect(lifecycle, dashboard) {
             val observer = LifecycleEventObserver { _, event ->

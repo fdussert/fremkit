@@ -26,6 +26,8 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Full screen from the first frame: the region pairing measures is the dashboard's.
+        Immersive.apply(window)
         // Before the first WebView exists: an outdated one never gets to show a half dashboard.
         app.webView.check()
         // The window the Mac's brightness target is set on (re-applied to a new activity).
@@ -50,6 +52,12 @@ class MainActivity : ComponentActivity() {
                 }
             }
         })
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        // A dialog, the keyboard or a swipe from the edge may have brought the bars back.
+        if (hasFocus) Immersive.apply(window)
     }
 
     override fun onNewIntent(intent: Intent) {
