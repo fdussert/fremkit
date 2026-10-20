@@ -335,12 +335,23 @@ describe('Fremdev reports', () => {
     expect(settled).toBeUndefined()
     await vi.advanceTimersByTimeAsync(1)
     expect(settled).toBeNull()
-    // The pending entry is gone: a late answer changes nothing.
-    t.dev.onMessage(A, { type: 'dev.report', id: asked(t.send)[0][1].id, tabId: 7, text: 'late' })
+    // The pending entry is gone: a late answer changes nothing, and does not answer the next ask.
+    const lateId = asked(t.send)[0][1].id
+    t.dev.onMessage(A, { type: 'dev.report', id: lateId, tabId: 7, text: 'late' })
+    await vi.advanceTimersByTimeAsync(0)
+    expect(settled).toBeNull()
+    const next = t.dev.report(A, 7, false)
+    const nextId = asked(t.send)[1][1].id
+    expect(nextId).not.toBe(lateId)
+    t.dev.onMessage(A, { type: 'dev.report', id: lateId, tabId: 7, text: 'late again' })
+    t.dev.onMessage(A, { type: 'dev.report', id: nextId, tabId: 7, text: 'fresh' })
+    expect(await next).toBe('fresh')
+    // Neither left an entry behind: all 8 places are free again.
+    const cut = Array.from({ length: 8 }, () => t.dev.report(A, 7, false))
+    expect(asked(t.send)).toHaveLength(10)
 
-    const cut = t.dev.report(A, 7, false)
     t.dev.disconnect(A)
-    expect(await cut).toBeNull()
+    expect(await Promise.all(cut)).toEqual(Array(8).fill(null))
   })
 
   it('gives null and sends nothing for an install without fremdev.report, an unknown tab or install', async () => {
