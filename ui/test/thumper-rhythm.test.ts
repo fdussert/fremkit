@@ -27,9 +27,11 @@ describe('steady', () => {
   it('wants every gap in bounds and close to the mean', () => {
     expect(steady([500, 500, 500])).toBe(true)
     expect(steady([450, 520, 480])).toBe(true)
-    expect(steady([360, 690])).toBe(false)
-    expect(steady([300, 300, 300])).toBe(false)
-    expect(steady([800, 800, 800])).toBe(false)
+    expect(steady([300, 300, 300])).toBe(true)
+    expect(steady([850, 850, 850])).toBe(true)
+    expect(steady([300, 700])).toBe(false)
+    expect(steady([200, 200, 200])).toBe(false)
+    expect(steady([1000, 1000, 1000])).toBe(false)
   })
 })
 
@@ -47,15 +49,15 @@ describe('the rhythm', () => {
   it('accepts a human wobble', () => {
     expect(play([0, 480, 1010, 1490]).at(-1)?.kind).toBe('call')
   })
-  it('refuses taps too fast: that is a double tap, not a thumper', () => {
-    expect(play([0, 250, 500, 750, 1000, 1250]).some((r) => r.kind === 'call')).toBe(false)
+  it('refuses taps too fast to be a deliberate beat', () => {
+    expect(play([0, 200, 400, 600, 800, 1000]).some((r) => r.kind === 'call')).toBe(false)
   })
   it('refuses taps too slow', () => {
-    expect(play([0, 900, 1800, 2700, 3600]).some((r) => r.kind === 'call')).toBe(false)
+    expect(play([0, 1000, 2000, 3000, 4000]).some((r) => r.kind === 'call')).toBe(false)
   })
   it('refuses an irregular rhythm', () => {
     expect(play([0, 380, 1050, 1430]).some((r) => r.kind === 'call')).toBe(false)
-    expect(play([0, 400, 1050, 1450, 2100]).some((r) => r.kind === 'call')).toBe(false)
+    expect(play([0, 350, 1100, 1450, 2200]).some((r) => r.kind === 'call')).toBe(false)
   })
   it('refuses taps split across a long pause, but lets a new rhythm start after it', () => {
     const r = createRhythm()

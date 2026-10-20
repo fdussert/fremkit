@@ -148,6 +148,8 @@ function edgeDown(e: PointerEvent, side: Side) { stageSwipe.down(e); thumper.dow
 function edgeUp(e: PointerEvent) { stageSwipe.up(e); thumper.up(e) }
 function edgeCancel() { stageSwipe.cancel(); thumper.cancel() }
 function edgeWheel(e: WheelEvent) { stageSwipe.wheel(e); thumper.wheel(e) }
+// The stage itself hears the taps no widget frame takes: between and around the tiles.
+function stageDown(e: PointerEvent) { stageSwipe.down(e); thumper.down(e) }
 /** The popover a bar widget opens when it is tapped; one at a time, against the viewport. */
 const popover = useNavPopover()
 // Changing page takes the popover with it: it belongs to the screen being left.
@@ -262,10 +264,10 @@ watch(() => config.value?.locale, (l) => setLocale(l))
       ref="stageEl"
       class="stage"
       :style="{ width: gridWidth, height: display.rows * display.cell + 'px' }"
-      @pointerdown="stageSwipe.down"
-      @pointerup="stageSwipe.up"
-      @pointercancel="stageSwipe.cancel"
-      @wheel="stageSwipe.wheel"
+      @pointerdown="stageDown"
+      @pointerup="edgeUp"
+      @pointercancel="edgeCancel"
+      @wheel="edgeWheel"
     >
       <Transition :name="direction === 1 ? 'slide-left' : 'slide-right'">
         <PageView :key="page.id" :page="page" :config="config" :display="display" :manifests="manifests"
