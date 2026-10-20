@@ -17,7 +17,7 @@ import { InFlight, MAX_IN_FLIGHT, MAX_TRACKED, SLOW_MS, STALE_MS } from '../../c
 // @ts-expect-error plain JS module
 import { CLS_POOR, LCP_POOR_MS, median, PERF_KEYS, PERF_MIN_MS, PERF_RATIO, PERF_SAMPLES, PerfMemory, perfVerdict } from '../../companion/lib/devperf.js'
 // @ts-expect-error plain JS module
-import { dataUrlBlob, fitShot } from '../../companion/lib/devshot.js'
+import { dataUrlBlob, fitShot, shootTab } from '../../companion/lib/devshot.js'
 import { DEV_METHODS, DevTabSchema } from '../src/companion/protocol.js'
 
 const both = (host: string) => [`http://${host}/*`, `https://${host}/*`]
@@ -1763,5 +1763,87 @@ describe('fitShot', () => {
     const never = fakes(1920, 1080, () => 3 * MB)
     expect(await fitShot(new Blob([new Uint8Array(3 * MB)], { type: 'image/jpeg' }), { decode: never.decode, canvas: never.canvas })).toBeNull()
     expect(never.encoded.map((e) => e.quality)).toEqual([0.85, 0.7, 0.5])
+  })
+})
+
+describe('shootTab', () => {
+  const URL = 'http://127.0.0.1:4242/companion/dev/shot'
+  const TAB = { id: 7, windowId: 3 }
+  function deps(over: Record<string, unknown> = {}) {
+    const flashes: string[] = []
+    const d = {
+      activeTab: vi.fn(async () => TAB),
+      isDevTab: vi.fn(async (id: number) => id === 7),
+      canSend: vi.fn(() => true),
+      token: vi.fn((): string | null => 'tok'),
+      capture: vi.fn(async () => 'data:image/jpeg;base64,/9j/4AAQ'),
+      fetch: vi.fn(async () => ({ status: 200 })),
+      url: URL,
+      flash: (t: string) => void flashes.push(t),
+      ...over,
+    }
+    return { d, flashes }
+  }
+
+  it('posts the capture with the token and flashes ✓ on a 200', async () => {
+    const { d, flashes } = deps()
+    await shootTab(TAB, d)
+    expect(d.capture).toHaveBeenCalledWith(3)
+    expect(d.fetch).toHaveBeenCalledTimes(1)
+    const [url, init] = d.fetch.mock.calls[0] as unknown as [string, RequestInit & { body: Blob }]
+    expect(url).toBe(URL)
+    expect(init).toMatchObject({ method: 'POST', headers: { Authorization: 'Bearer tok', 'Content-Type': 'image/jpeg' }, credentials: 'omit', cache: 'no-store' })
+    expect(init.body.type).toBe('image/jpeg')
+    expect(flashes).toEqual(['✓'])
+  })
+
+  it('takes the active tab when the command gave none', async () => {
+    const { d, flashes } = deps()
+    await shootTab(undefined, d)
+    expect(d.activeTab).toHaveBeenCalled()
+    expect(flashes).toEqual(['✓'])
+  })
+
+  it('sends nothing and flashes ! for a tab that is not a dev tab, a socket not greeted, or no token', async () => {
+    for (const over of [
+      { activeTab: vi.fn(async () => undefined) },
+      { isDevTab: vi.fn(async () => false) },
+      { canSend: vi.fn(() => false) },
+      { token: vi.fn(() => null) },
+    ]) {
+      const { d, flashes } = deps(over)
+      await shootTab(over.activeTab ? undefined : TAB, d)
+      expect(d.capture, JSON.stringify(Object.keys(over))).not.toHaveBeenCalled()
+      expect(d.fetch).not.toHaveBeenCalled()
+      expect(flashes).toEqual(['!'])
+    }
+    const { d, flashes } = deps()
+    await shootTab({ id: -1, windowId: 3 }, d)
+    expect(d.fetch).not.toHaveBeenCalled()
+    expect(flashes).toEqual(['!'])
+  })
+
+  it('sends nothing when the socket closed during the capture', async () => {
+    const canSend = vi.fn().mockReturnValueOnce(true).mockReturnValue(false)
+    const { d, flashes } = deps({ canSend })
+    await shootTab(TAB, d)
+    expect(d.capture).toHaveBeenCalled()
+    expect(d.fetch).not.toHaveBeenCalled()
+    expect(flashes).toEqual(['!'])
+  })
+
+  it('flashes ! on any other answer, a throw, a failed capture, or a shot that cannot fit', async () => {
+    for (const over of [
+      { fetch: vi.fn(async () => ({ status: 409 })) },
+      { fetch: vi.fn(async () => ({ status: 500 })) },
+      { fetch: vi.fn(async () => { throw new TypeError('Failed to fetch') }) },
+      { capture: vi.fn(async () => { throw new Error('no grant') }) },
+      { capture: vi.fn(async () => 'data:text/html,<b>') },
+      { fit: vi.fn(async () => null) },
+    ]) {
+      const { d, flashes } = deps(over)
+      await shootTab(TAB, d)
+      expect(flashes, JSON.stringify(Object.keys(over))).toEqual(['!'])
+    }
   })
 })

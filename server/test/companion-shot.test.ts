@@ -62,6 +62,19 @@ describe('POST /companion/dev/shot', () => {
     expect(text).not.toContain(TOKEN)
   })
 
+  it('is not found from another machine, whatever the request carries, and writes nothing', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/companion/dev/shot',
+      remoteAddress: '192.0.2.10',
+      headers: { 'content-type': 'image/jpeg', origin: ORIGIN, authorization: `Bearer ${TOKEN}` },
+      payload: JPEG,
+    })
+    expect(res.statusCode).toBe(404)
+    expect(written).toEqual([])
+    expect(canShot).not.toHaveBeenCalled()
+  })
+
   it('refuses no origin or another extension\'s origin with 403, before anything is written', async () => {
     expect((await shot({ origin: null })).statusCode).toBe(403)
     expect((await shot({ origin: OTHER })).statusCode).toBe(403)
@@ -93,7 +106,10 @@ describe('POST /companion/dev/shot', () => {
 
   it('refuses a body that is not a JPEG with 415', async () => {
     expect((await shot({ body: PNG })).statusCode).toBe(415)
-    expect((await shot({ body: PNG, type: 'image/png' })).statusCode).toBe(415)
+    const png = await shot({ body: PNG, type: 'image/png' })
+    expect(png.statusCode).toBe(415)
+    expect(png.json()).toEqual({ ok: false })
+    expect(png.headers['cache-control']).toBe('no-store')
     expect((await shot({ body: Buffer.from([0xff, 0xd8]) })).statusCode).toBe(415)
     expect(written).toEqual([])
   })
@@ -102,7 +118,11 @@ describe('POST /companion/dev/shot', () => {
     expect(SHOT_MAX_BYTES).toBe(2_097_152)
     const big = Buffer.alloc(SHOT_MAX_BYTES + 1, 0)
     JPEG.copy(big)
-    expect((await shot({ body: big })).statusCode).toBe(413)
+    const over = await shot({ body: big })
+    expect(over.statusCode).toBe(413)
+    // The route's own refusal, not Fastify's default error body.
+    expect(over.json()).toEqual({ ok: false })
+    expect(over.headers['cache-control']).toBe('no-store')
     expect(written).toEqual([])
     const fits = Buffer.alloc(SHOT_MAX_BYTES, 0)
     JPEG.copy(fits)

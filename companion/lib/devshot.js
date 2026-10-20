@@ -49,3 +49,39 @@ export async function fitShot(blob, {
   }
   return null
 }
+
+/** The shot route's request: this install's token, no cookie, nothing cached. */
+export function shotInit(blob, token) {
+  return {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'image/jpeg' },
+    body: blob,
+    credentials: 'omit',
+    cache: 'no-store',
+  }
+}
+
+/** Chrome throws on a tab id that is not a non-negative integer. */
+const validId = (id) => Number.isInteger(id) && id >= 0
+
+/**
+ * ⌃⇧S, the worker's half: the given tab, else the focused window's active one, captured and posted
+ * to Fremkit's shot route for the Mac's clipboard. Only for a dev tab this install has a row for
+ * (`isDevTab`), and only while the socket open now was greeted with Fremdev's yes (`canSend`): its
+ * challenge proved the port is Fremkit, so the token goes to nobody else. Checked again after the
+ * capture, which the socket may not have outlived. The key press is the activeTab grant the capture
+ * needs. Flashes ✓ when the route answered 200, ! otherwise, and sends nothing on a refusal here.
+ */
+export async function shootTab(given, { activeTab, isDevTab, canSend, token, capture, fetch, url, flash, fit = fitShot }) {
+  const tab = given ?? (await activeTab())
+  if (!tab || !validId(tab.id) || !(await isDevTab(tab.id)) || !canSend() || !token()) return flash('!')
+  try {
+    const shot = await fit(dataUrlBlob(await capture(tab.windowId)))
+    const bearer = token()
+    if (!shot || !canSend() || !bearer) return flash('!')
+    const res = await fetch(url, shotInit(shot, bearer))
+    flash(res.status === 200 ? '✓' : '!')
+  } catch {
+    flash('!')
+  }
+}

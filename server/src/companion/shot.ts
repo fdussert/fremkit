@@ -25,7 +25,7 @@ import { randomUUID } from 'node:crypto'
 import { rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
-import type { DeviceStore } from '../devices/store.js'
+import type { DeviceStore, PublicExtensionDevice } from '../devices/store.js'
 import { readBearer, isWellFormedToken } from '../http/access.js'
 import { isLocalRequest } from '../net/remote.js'
 import type { CompanionDev } from './dev.js'
@@ -95,14 +95,23 @@ export async function companionShotRoute(app: FastifyInstance, opts: CompanionSh
 
   const refuse = (reply: FastifyReply, status: number) => reply.code(status).header('cache-control', 'no-store').send({ ok: false })
 
+  // A body over the limit, or of another type, is refused in the route's own shape: Fastify's
+  // parser errors would otherwise answer with its default body and no `no-store`.
+  app.setErrorHandler((err: { statusCode?: number; code?: string }, _req, reply) => {
+    if (err.code === 'FST_ERR_CTP_BODY_TOO_LARGE') return refuse(reply, 413)
+    if (err.code === 'FST_ERR_CTP_INVALID_MEDIA_TYPE') return refuse(reply, 415)
+    throw err
+  })
+
   /** Who is asking, before the body is read. */
   const admit = async (req: FastifyRequest, reply: FastifyReply): Promise<void> => {
     if (!isLocalRequest(req)) return reply.callNotFound()
     const origin = req.headers.origin
     if (typeof origin !== 'string' || !EXTENSION_ORIGIN_RE.test(origin) || !origins.has(origin)) return refuse(reply, 403)
     const token = readBearer(req.headers.authorization)
-    const record = token !== undefined && isWellFormedToken(token) ? store.findByToken(token, 'extension') : null
-    if (record === null || record.kind !== 'extension' || record.origin !== origin) {
+    // `findByToken(…, 'extension')` answers extension records only.
+    const record = token !== undefined && isWellFormedToken(token) ? store.findByToken(token, 'extension') as PublicExtensionDevice | null : null
+    if (record === null || record.origin !== origin) {
       req.log.warn('companion shot refused: not a paired extension')
       return refuse(reply, 401)
     }
