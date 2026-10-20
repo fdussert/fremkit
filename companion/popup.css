@@ -2,7 +2,7 @@
 :root {
   --bg: #0b0d10; --surface: #14171c; --surface-2: #1a1e24; --surface-3: #252a32;
   --border: #22272e; --text: #e6e8eb; --muted: #8b93a0; --dim: #5f6771;
-  --accent: #d9b36a; --accent-hi: #ecd29a; --accent-2: #9a7540; --ok: #2fb36b; --danger: #d9463f;
+  --accent: #d9b36a; --accent-hi: #ecd29a; --accent-2: #9a7540; --ok: #2fb36b; --warn: #e08a2c; --danger: #d9463f;
 }
 * { box-sizing: border-box; }
 body { margin: 0; width: 340px; background: var(--bg); color: var(--text); font: 13px/1.4 -apple-system, BlinkMacSystemFont, system-ui, sans-serif; }
@@ -50,9 +50,9 @@ button.switch:focus-visible { outline: 2px solid var(--accent-hi); outline-offse
 .devtabs { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 .devtabs li { display: flex; align-items: center; gap: 8px; background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 6px 6px 6px 10px; min-width: 0; }
 .devtabs .light { flex: none; width: 9px; height: 9px; border-radius: 50%; background: var(--ok); }
-.devtabs .light.red { background: var(--danger); } .devtabs .light.orange { background: #e08a2c; }
+.devtabs .light.red { background: var(--danger); } .devtabs .light.orange { background: var(--warn); }
 .devtabs .light.seen { background: transparent; box-shadow: inset 0 0 0 2px var(--danger); }
-.devtabs .light.orange.seen { box-shadow: inset 0 0 0 2px #e08a2c; }
+.devtabs .light.orange.seen { box-shadow: inset 0 0 0 2px var(--warn); }
 .devtabs .dtitle { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .devtabs button { flex: none; height: 30px; padding: 0 10px; font-size: 12px; }
 .devtabs button.done { color: var(--ok); border-color: var(--ok); }
