@@ -171,12 +171,11 @@ at any time in `chrome://extensions`. The extension asks for no access to every 
 Fremdev is the extension's second module (extension version 0.2.0). It watches the development
 tabs of your browser and lists them in the built-in `fremdev` widget on the Edge: for each tab, its
 JavaScript errors, its failed requests and whether its dev server answers, with a red, orange or
-green light. Tap a row to unfold it; **Show tab** brings that tab forward. The **×** on a row marks its errors and failed
-requests as seen: the counters stay, dimmed, and the light turns hollow until a new one comes in or
-the tab reloads (green means a page with nothing open since its last load or hot update). A tap on the top line
-of a row also unfolds it to that tab's history and its **Show tab** and **Copy report** buttons
-(see [The history and the bug report](#the-history-and-the-bug-report)). It is
-experimental and behind the same switch as Fremplay (`labs.companion`): with the switch off the
+green light. Tap a row to unfold it to that tab's history and its **Copy report** buttons (see
+[The history and the bug report](#the-history-and-the-bug-report)); **Show tab** brings that tab
+forward. The **×** on a row marks its errors and failed requests as seen: the counters stay,
+dimmed, and the light turns hollow until a new one comes in or the tab reloads (green means a page
+with nothing open since its last load or hot update). It is experimental and behind the same switch as Fremplay (`labs.companion`): with the switch off the
 server reports Fremdev as disabled, the widget is left out like Fremplay's, and the popup says so.
 
 ### Turn it on
