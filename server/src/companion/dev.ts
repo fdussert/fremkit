@@ -190,6 +190,8 @@ export class CompanionDev {
       case 'dev.tabs':
         if (!install.on) return
         install.tabs = msg.tabs
+        // A tab that left the list is closed or no longer a dev tab: its report will not come.
+        abandonGone(install)
         return this.publish(install)
     }
   }
@@ -282,6 +284,16 @@ export class CompanionDev {
 }
 
 /** Resolves every report the install still owes with null, and forgets them. */
+/** Resolves to null the reports asked for a tab the install no longer lists. */
+function abandonGone(install: Install): void {
+  for (const [id, pending] of install.pending) {
+    if (install.tabs.some((t) => t.tabId === pending.tabId)) continue
+    clearTimeout(pending.timer)
+    install.pending.delete(id)
+    pending.resolve(null)
+  }
+}
+
 function abandon(install: Install): void {
   for (const pending of install.pending.values()) {
     clearTimeout(pending.timer)

@@ -365,6 +365,18 @@ describe('Fremdev reports', () => {
     expect(await quiet).toBeNull()
   })
 
+  it('gives null at once when the tab asked for leaves the install\'s rows, and keeps the others waiting', async () => {
+    const t = two()
+    t.tabs(A, [row(7), row(8)])
+    const gone = t.dev.report(A, 7, false)
+    const kept = t.dev.report(A, 8, false)
+    const keptId = asked(t.send)[1][1].id
+    t.tabs(A, [row(8)])
+    expect(await gone).toBeNull()
+    t.dev.onMessage(A, { type: 'dev.report', id: keptId, tabId: 8, text: 'still here' })
+    expect(await kept).toBe('still here')
+  })
+
   it('gives null and sends nothing for an install without fremdev.report, an unknown tab or install', async () => {
     const t = two()
     t.dev.connect(B, 'Brave', ['fremdev'])
