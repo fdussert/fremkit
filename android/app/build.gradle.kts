@@ -1,6 +1,7 @@
 // The Android app: Compose screens and one WebView over the kit.
 import org.gradle.api.artifacts.result.ResolvedComponentResult
 import org.gradle.api.artifacts.result.ResolvedDependencyResult
+import com.android.build.api.artifact.SingleArtifact
 
 plugins {
     alias(libs.plugins.android.application)
@@ -30,6 +31,7 @@ android {
         targetSdk = libs.versions.targetSdk.get().toInt()
         versionCode = commitCount
         versionName = fremkitVersion
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildTypes {
@@ -51,7 +53,24 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    buildFeatures { compose = true }
+    buildFeatures {
+        compose = true
+        // BuildConfig.DEBUG and VERSION_NAME: the debug-only seeding and the "update your Mac" line.
+        buildConfig = true
+    }
+}
+
+// ManifestTest reads the merged debug manifest: what the APK carries once every library added its part.
+androidComponents {
+    onVariants(selector().withBuildType("debug")) { variant ->
+        val manifest = variant.artifacts.get(SingleArtifact.MERGED_MANIFEST)
+        tasks.withType<Test>().matching { it.name == "testDebugUnitTest" }.configureEach {
+            inputs.file(manifest)
+            jvmArgumentProviders.add(CommandLineArgumentProvider {
+                listOf("-Dfremkit.mergedManifest=" + manifest.get().asFile.absolutePath)
+            })
+        }
+    }
 }
 
 dependencies {
@@ -59,7 +78,18 @@ dependencies {
     implementation(platform(libs.compose.bom))
     implementation(libs.androidx.activity.compose)
     implementation(libs.compose.ui)
+    implementation(libs.compose.foundation)
+    implementation(libs.compose.material3)
+    implementation(libs.androidx.core.ktx)
+    implementation(libs.androidx.lifecycle.runtime.compose)
+    implementation(libs.androidx.webkit)
+    implementation(libs.kotlinx.coroutines.android)
     testImplementation(libs.junit)
+    androidTestImplementation(libs.junit)
+    androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.androidx.test.ext.junit)
+    androidTestImplementation(libs.kotlinx.coroutines.test)
+    androidTestImplementation(libs.kotlinx.serialization.json)
 }
 
 // No Google Play services, Firebase, ML Kit or analytics SDK in the app, ever: the tablet talks to
