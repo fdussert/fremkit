@@ -165,12 +165,15 @@
    * `build` entry (the dev server's compile error) keeps its text, its origin its `file:line:col`
    * (`file:line`, or the bare file, when the overlay gave less); a `slow` entry (a request that
    * succeeded in a second or more) reads `METHOD path` and carries its `ms` (null when it is not a
-   * number), for the widget to write in seconds. Null for anything else.
+   * number), for the widget to write in seconds; a `perf` entry (a load's regression) carries its
+   * `metric` ('load', 'lcp' or 'cls'), its `value` and its `ratio` (null for a "poor" value), for the
+   * widget to write, and is null without a known metric and a value. Null for anything else.
    */
   function entryView(entry) {
     if (!entry || typeof entry !== 'object') return null
     var kind = entry.kind
-    if (kind !== 'error' && kind !== 'request' && kind !== 'limited' && kind !== 'build' && kind !== 'slow') return null
+    if (kind !== 'error' && kind !== 'request' && kind !== 'limited' && kind !== 'build' && kind !== 'slow' && kind !== 'perf') return null
+    if (kind === 'perf' && (METRICS[entry.metric] !== true || !isNum(entry.value))) return null
     var view = {
       kind: kind,
       time: typeof entry.at === 'number' ? entry.at : 0,
@@ -202,12 +205,51 @@
     } else if (kind === 'slow') {
       view.text = String(entry.method || 'OTHER') + ' ' + String(entry.path || '')
       view.ms = typeof entry.ms === 'number' && isFinite(entry.ms) && entry.ms >= 0 ? entry.ms : null
+    } else if (kind === 'perf') {
+      view.metric = entry.metric
+      view.value = entry.value
+      view.ratio = isNum(entry.ratio) ? entry.ratio : null
     }
     return view
   }
 
+  /** The metrics a perf entry names. */
+  var METRICS = { load: true, lcp: true, cls: true }
+  /** A row's values, in the order they are written. */
+  var PERF_KEYS = ['load', 'lcp', 'cls', 'longTasks', 'heapMb']
+  /** The "poor" Web Vitals bands (LCP_POOR_MS and CLS_POOR in the extension). */
+  var LCP_POOR_MS = 4000
+  var CLS_POOR = 0.25
+
+  function isNum(v) {
+    return typeof v === 'number' && isFinite(v) && v >= 0
+  }
+
+  /**
+   * A row's performance values as the unfolded row writes them: `[{ key, value, poor, dim }]` in
+   * the order load, LCP, CLS, long tasks, heap, for the values there are. `poor`: an LCP over 4 s
+   * or a CLS over 0.25, drawn in the danger colour; `dim`: the heap, which Chrome rounds off and
+   * refreshes rarely.
+   */
+  function perfView(perf) {
+    var out = []
+    if (!perf || typeof perf !== 'object') return out
+    PERF_KEYS.forEach(function (key) {
+      var v = perf[key]
+      if (!isNum(v)) return
+      out.push({
+        key: key,
+        value: v,
+        poor: (key === 'lcp' && v > LCP_POOR_MS) || (key === 'cls' && v > CLS_POOR),
+        dim: key === 'heapMb'
+      })
+    })
+    return out
+  }
+
   root.FremkitFremdev = {
     entryView: entryView,
+    perfView: perfView,
     stateOf: stateOf,
     rowsOf: rowsOf,
     hasFeature: hasFeature,

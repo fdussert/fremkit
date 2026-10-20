@@ -20,6 +20,7 @@ function row(tabId: number, total = 1): DevTab {
     history: [],
     devServer: null,
     inFlight: 0,
+    perf: {},
     server: 'up',
     activity: 1_000,
   }

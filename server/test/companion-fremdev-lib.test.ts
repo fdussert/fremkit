@@ -14,6 +14,8 @@ import { buildReport, REPORT_MAX, reportMessage } from '../../companion/lib/devr
 import { editorUrl, parsePlace } from '../../companion/lib/devopen.js'
 // @ts-expect-error plain JS module
 import { InFlight, MAX_IN_FLIGHT, MAX_TRACKED, SLOW_MS, STALE_MS } from '../../companion/lib/devflight.js'
+// @ts-expect-error plain JS module
+import { CLS_POOR, LCP_POOR_MS, median, PERF_KEYS, PERF_MIN_MS, PERF_RATIO, PERF_SAMPLES, PerfMemory, perfVerdict } from '../../companion/lib/devperf.js'
 import { DEV_METHODS, DevTabSchema } from '../src/companion/protocol.js'
 
 const both = (host: string) => [`http://${host}/*`, `https://${host}/*`]
@@ -320,7 +322,7 @@ describe('devtabs', () => {
     expect(rows).toHaveLength(32)
     expect(rows[0].tabId).toBe(39)
     expect(rows[31].tabId).toBe(8)
-    expect(Object.keys(rows[0]).sort()).toEqual(['activity', 'app', 'devServer', 'errors', 'history', 'host', 'inFlight', 'requests', 'server', 'tabId'])
+    expect(Object.keys(rows[0]).sort()).toEqual(['activity', 'app', 'devServer', 'errors', 'history', 'host', 'inFlight', 'perf', 'requests', 'server', 'tabId'])
     for (const r of rows) expect(DevTabSchema.safeParse(r).success).toBe(true)
   })
 
@@ -1393,5 +1395,231 @@ describe('slow requests and requests in flight', () => {
     const text = buildReport(tab, fmt)
     expect(text).toContain('\n\n### Slow requests\n- 10:00:00 ×2 POST /@fs/~/app/x.ts 2600 ms\n- 10:00:00 GET /api/items 1200 ms')
     expect(text).not.toContain('/Users/')
+  })
+})
+
+describe('performance and regressions', () => {
+  const base = () => emptyTab(1, 'http://localhost:5173/', 'App', 100)
+  const perf = (values: Record<string, number>, doc = 'D1') => ({ kind: 'perf', values, doc })
+  const regression = (metric: string, value: number, ratio: number | null) => ({ kind: 'perf-regression', metric, value, ratio })
+  /** The widget's own light (widgets/fremdev/logic.js), on a wire row. */
+  const logic = () => {
+    const scope: Record<string, any> = {}
+    new Function('globalThis', readFileSync(new URL('../../widgets/fremdev/logic.js', import.meta.url), 'utf8'))(scope)
+    return scope.FremkitFremdev
+  }
+  /** chrome.storage.session, just wide enough. */
+  const area = () => {
+    const data: Record<string, unknown> = {}
+    return {
+      data,
+      get: async (k: string) => (k in data ? { [k]: structuredClone(data[k]) } : {}),
+      set: async (patch: Record<string, unknown>) => void Object.assign(data, structuredClone(patch)),
+    }
+  }
+
+  it('has the rule constants', () => {
+    expect([PERF_RATIO, PERF_MIN_MS, LCP_POOR_MS, CLS_POOR, PERF_SAMPLES, PERF_KEYS]).toEqual([1.5, 500, 4000, 0.25, 5, 50])
+  })
+
+  it('median takes the middle value, or the mean of the two middle ones', () => {
+    expect(median([1200, 1000, 1100])).toBe(1100)
+    expect(median([1000, 1200])).toBe(1100)
+    expect(median([7])).toBe(7)
+  })
+
+  it('perfVerdict: at least 1.5 × the median of the previous loads and 500 ms slower', () => {
+    expect(perfVerdict([{ lcp: 1000 }, { lcp: 1100 }, { lcp: 1200 }], { lcp: 1800 })).toEqual({ metric: 'lcp', value: 1800, ratio: 1.6 })
+    expect(perfVerdict([{ lcp: 900 }], { lcp: 1400 })).toEqual({ metric: 'lcp', value: 1400, ratio: 1.6 })
+    expect(perfVerdict([{ lcp: 900 }], { lcp: 1390 })).toBeNull()
+    // 2 × but only 300 ms slower.
+    expect(perfVerdict([{ load: 300 }], { load: 600 })).toBeNull()
+    expect(perfVerdict([{ load: 1000 }, { load: 1000 }], { load: 2600 })).toEqual({ metric: 'load', value: 2600, ratio: 2.6 })
+    // The ratio rules need a previous value for that metric.
+    expect(perfVerdict([{ load: 1000 }], { lcp: 3900 })).toBeNull()
+  })
+
+  it('perfVerdict: LCP ratio, then load ratio, then LCP poor, then CLS poor; the first load ever is judged on the bands alone', () => {
+    const before = [{ load: 1000, lcp: 1000 }]
+    expect(perfVerdict(before, { load: 3000, lcp: 2000 })).toEqual({ metric: 'lcp', value: 2000, ratio: 2 })
+    expect(perfVerdict(before, { load: 3000, lcp: 1100, cls: 0.5 })).toEqual({ metric: 'load', value: 3000, ratio: 3 })
+    expect(perfVerdict([{ lcp: 4000 }], { lcp: 4100, cls: 0.5 })).toEqual({ metric: 'lcp', value: 4100, ratio: null })
+    expect(perfVerdict([], { lcp: 4100 })).toEqual({ metric: 'lcp', value: 4100, ratio: null })
+    expect(perfVerdict([], { lcp: 4000 })).toBeNull()
+    expect(perfVerdict([], { cls: 0.3 })).toEqual({ metric: 'cls', value: 0.3, ratio: null })
+    expect(perfVerdict([], { cls: 0.25 })).toBeNull()
+    expect(perfVerdict([], { load: 9000, lcp: 2000 })).toBeNull()
+    expect(perfVerdict([], {})).toBeNull()
+  })
+
+  it('PerfMemory keeps the last 5 samples per key and 50 keys, the least recently used dropped', async () => {
+    const storage = area()
+    const memory = new PerfMemory(storage)
+    expect(await memory.samples('http://localhost:5173/')).toEqual([])
+    for (let i = 1; i <= 7; i++) await memory.push('http://localhost:5173/', { load: i * 100, lcp: i * 10 })
+    expect(await memory.samples('http://localhost:5173/')).toEqual([3, 4, 5, 6, 7].map((i) => ({ load: i * 100, lcp: i * 10 })))
+    // Kept in chrome.storage.session.fremdevPerf.
+    expect(storage.data.fremdevPerf).toBeDefined()
+    for (let k = 1; k < 50; k++) await memory.push(`http://localhost:5173/p${k}`, { load: k })
+    // The first key used again: p1 is now the least recently used.
+    await memory.push('http://localhost:5173/', { load: 800 })
+    await memory.push('http://localhost:5173/p50', { load: 50 })
+    expect(await memory.samples('http://localhost:5173/p1')).toEqual([])
+    expect(await memory.samples('http://localhost:5173/p2')).toEqual([{ load: 2 }])
+    expect((await memory.samples('http://localhost:5173/')).at(-1)).toEqual({ load: 800 })
+    expect(await memory.samples('http://localhost:5173/p50')).toEqual([{ load: 50 }])
+    // A stored value that is not ours reads as nothing.
+    storage.data.fremdevPerf = { evil: 1 }
+    expect(await memory.samples('http://localhost:5173/')).toEqual([])
+  })
+
+  it('emptyTab starts with no values and no perf entry', () => {
+    expect(base()).toMatchObject({ perf: {}, perfEntryId: null })
+  })
+
+  it('reduce merges the values of one document, and starts again for another', () => {
+    let tab = reduce(base(), perf({ lcp: 800 }), 200)
+    tab = reduce(tab, perf({ load: 1234, lcp: 900, cls: 0.02, longTasks: 1, heapMb: 45 }), 300)
+    expect(tab.perf).toEqual({ load: 1234, lcp: 900, cls: 0.02, longTasks: 1, heapMb: 45 })
+    // A perf event stamps no activity: it is a measure, not an event.
+    expect(tab.activity).toBe(100)
+    expect(reduce(tab, perf({ lcp: 500 }, 'D2'), 400).perf).toEqual({ lcp: 500 })
+  })
+
+  it('keeps the values across a same-origin navigation (a pushState route change keeps its document), and forgets them for another origin', () => {
+    let tab = reduce(base(), perf({ load: 1234, lcp: 900 }), 200)
+    tab = reduce(tab, regression('lcp', 900, 1.6), 250)
+    const id = tab.perfEntryId
+    expect(id).toBe(1)
+    const same = reduce(tab, { kind: 'navigated', url: 'http://localhost:5173/route', title: 'App' }, 300)
+    expect(same.perf).toEqual({ load: 1234, lcp: 900 })
+    expect(same.history[0]).toMatchObject({ kind: 'perf', state: 'resolved' })
+    const other = reduce(tab, { kind: 'navigated', url: 'http://localhost:3000/', title: '' }, 300)
+    expect(other).toMatchObject({ perf: {}, perfEntryId: null })
+  })
+
+  it('two regressions in one load give one perf entry, one tally bump, and requests.last untouched', () => {
+    let tab = reduce(base(), { kind: 'request', method: 'GET', path: '/api', status: 500 }, 150)
+    const last = tab.requests.last
+    tab = reduce(tab, perf({ load: 2600, lcp: 1800 }), 200)
+    tab = reduce(tab, regression('lcp', 1800, 1.6), 210)
+    expect(tab.requests).toEqual({ total: 2, open: 2, seen: 0, last })
+    tab = reduce(tab, regression('cls', 0.3, null), 220)
+    expect(tab.history.filter((e: { kind: string }) => e.kind === 'perf')).toEqual([
+      { kind: 'perf', id: tab.perfEntryId, metric: 'cls', value: 0.3, ratio: null, n: 1, at: 210, state: 'open' },
+    ])
+    expect(tab.requests).toEqual({ total: 2, open: 2, seen: 0, last })
+    // Marked seen: the values still follow, nothing is counted again.
+    tab = reduce(tab, { kind: 'clear' }, 230)
+    tab = reduce(tab, regression('lcp', 4200, null), 240)
+    expect(tab.history.filter((e: { kind: string }) => e.kind === 'perf')).toEqual([expect.objectContaining({ metric: 'lcp', value: 4200, state: 'seen' })])
+    expect(tab.requests).toEqual({ total: 2, open: 2, seen: 2, last })
+  })
+
+  it('a reload (a new document) after a navigation adds a second entry; the same load is not flagged again once resolved', () => {
+    let tab = reduce(base(), perf({ lcp: 4100 }), 200)
+    tab = reduce(tab, regression('lcp', 4100, null), 210)
+    tab = reduce(tab, { kind: 'navigated', url: 'http://localhost:5173/', title: 'App' }, 300)
+    expect(tab.requests.open).toBe(0)
+    // The same document still talking (a route change, a hot update): its load already had its entry.
+    const again = reduce(reduce(tab, perf({ cls: 0.4 }), 310), regression('cls', 0.4, null), 320)
+    expect(again.history.filter((e: { kind: string }) => e.kind === 'perf')).toHaveLength(1)
+    expect(again.requests.open).toBe(0)
+    // The reload's document.
+    tab = reduce(tab, perf({ lcp: 4300 }, 'D2'), 400)
+    expect(tab.perfEntryId).toBeNull()
+    tab = reduce(tab, regression('lcp', 4300, null), 410)
+    expect(tab.history.filter((e: { kind: string }) => e.kind === 'perf').map((e: { state: string; value: number }) => [e.state, e.value]))
+      .toEqual([['open', 4300], ['resolved', 4100]])
+    expect(tab.requests).toMatchObject({ total: 2, open: 1 })
+  })
+
+  it('un-counts a perf entry the ring pushes out while open or seen, keeping seen <= open', () => {
+    let tab = reduce(base(), { kind: 'request', method: 'GET', path: '/api', status: 500 }, 150)
+    tab = reduce(tab, perf({ lcp: 4100 }), 160)
+    tab = reduce(tab, regression('lcp', 4100, null), 170)
+    tab = reduce(tab, { kind: 'clear' }, 180)
+    expect(tab.requests).toMatchObject({ total: 2, open: 2, seen: 2 })
+    // 18 errors fill the ring; the 19th pushes out the request entry (still counted), the 20th the perf entry.
+    for (let i = 0; i < 19; i++) tab = reduce(tab, { kind: 'error', text: `e${i}` }, 200 + i)
+    expect(tab.history.some((e: { kind: string }) => e.kind === 'perf')).toBe(true)
+    tab = reduce(tab, { kind: 'error', text: 'e19' }, 300)
+    expect(tab.history.some((e: { kind: string }) => e.kind === 'perf')).toBe(false)
+    expect(tab.requests).toMatchObject({ total: 2, open: 1, seen: 1 })
+    const [row] = wireTabs([tab])
+    expect(validRow(row)).toBe(true)
+    // Pushed out, the load's regression may be told again, and is counted once more.
+    tab = reduce(tab, regression('lcp', 4200, null), 310)
+    expect(tab.history[0]).toMatchObject({ kind: 'perf', value: 4200, state: 'open' })
+    expect(tab.requests).toMatchObject({ total: 3, open: 2 })
+  })
+
+  it('wireRow carries the perf entry and the values, never trimmed, and the light is orange, never red', () => {
+    let tab = reduce(base(), perf({ load: 1234, lcp: 4100, cls: 0.02, longTasks: 3, heapMb: 45 }), 200)
+    tab = reduce(tab, regression('lcp', 4100, null), 210)
+    const [row] = wireTabs([tab])
+    expect(row.perf).toEqual({ load: 1234, lcp: 4100, cls: 0.02, longTasks: 3, heapMb: 45 })
+    expect(row.history[0]).toEqual({ kind: 'perf', id: 1, metric: 'lcp', value: 4100, ratio: null, n: 1, at: 210, state: 'open' })
+    expect(row.requests).toMatchObject({ total: 1, open: 1, last: null })
+    expect(DevTabSchema.safeParse(row).success).toBe(true)
+    expect(validRow(row)).toBe(true)
+    const { lightOf, stateOfTab } = logic()
+    expect(lightOf(row)).toBe('orange')
+    expect(stateOfTab(DevTabSchema.parse(row))).toEqual({ light: 'orange', seen: false })
+    // The perf document id stays in the extension.
+    expect(JSON.stringify(row)).not.toContain('D1')
+    // Over the size cap: the history goes, perf stays.
+    const big = Array.from({ length: 32 }, (_, i) => {
+      let t = reduce(emptyTab(i, `http://localhost:${3000 + i}/`, 'A', i), perf({ load: 1000 + i, heapMb: 9 }), 1)
+      for (let j = 0; j < HISTORY_MAX; j++) t = reduce(t, { kind: 'error', text: `${'e'.repeat(290)}${j}` }, 5 + j)
+      return t
+    })
+    const rows = wireTabs(big)
+    expect(rows.reduce((s: number, r: { history: unknown[] }) => s + r.history.length, 0)).toBeLessThan(32 * HISTORY_MAX)
+    for (const r of rows) expect(r.perf).toMatchObject({ heapMb: 9 })
+  })
+
+  it('DevTabSchema refuses perf.cls 101, an extra perf key, a perf entry out of bounds, and takes a row without perf', () => {
+    const [row] = wireTabs([reduce(reduce(base(), perf({ lcp: 4100, cls: 0.3 }), 200), regression('lcp', 4100, null), 210)])
+    expect(DevTabSchema.safeParse(row).success).toBe(true)
+    for (const bad of [{ cls: 101 }, { lcp: 600_001 }, { load: -1 }, { longTasks: 1.5 }, { heapMb: 65_537 }, { fps: 60 }, { lcp: 1.5 }]) {
+      expect(DevTabSchema.safeParse({ ...row, perf: bad }).success, JSON.stringify(bad)).toBe(false)
+      expect(validRow({ ...row, perf: bad }), JSON.stringify(bad)).toBe(false)
+    }
+    expect(DevTabSchema.safeParse({ ...row, perf: { cls: 100, lcp: 600_000, load: 0, longTasks: 100_000, heapMb: 65_536 } }).success).toBe(true)
+    const entry = row.history[0]
+    for (const bad of [{ ...entry, metric: 'fps' }, { ...entry, value: 600_001 }, { ...entry, ratio: 0.5 }, { ...entry, ratio: 1001 }, { ...entry, extra: 1 }]) {
+      expect(DevTabSchema.safeParse({ ...row, history: [bad] }).success, JSON.stringify(bad)).toBe(false)
+      expect(validRow({ ...row, history: [bad] }), JSON.stringify(bad)).toBe(false)
+    }
+    expect(DevTabSchema.safeParse({ ...row, history: [{ ...entry, metric: 'load', ratio: 1.6 }] }).success).toBe(true)
+    const { perf: _, ...without } = row
+    expect(DevTabSchema.parse(without).perf).toEqual({})
+  })
+
+  it('restores a tab with its values, its perf entry and the document they belong to', () => {
+    let tab = reduce(base(), perf({ load: 1234, lcp: 4100 }), 200)
+    tab = reduce(tab, regression('lcp', 4100, null), 210)
+    const restored = restoredTabs({ 1: tab })['1']
+    expect(restored).toMatchObject({ perf: { load: 1234, lcp: 4100 }, perfEntryId: 1, perfDoc: 'D1' })
+    // A row from before this feature comes back with none.
+    const { perf: _p, perfEntryId: _e, perfDoc: _d, ...old } = base()
+    expect(restoredTabs({ 1: old })['1']).toMatchObject({ perf: {}, perfEntryId: null, perfDoc: null })
+    expect(restoredTabs({ 1: { ...tab, perf: { lcp: -5 } } })).toEqual({})
+  })
+
+  it('reports a Performance line under the header, only when there are values', () => {
+    const WORDS: Record<string, (...s: unknown[]) => string> = {
+      reportTitle: () => 'Bug report',
+      reportServer: () => 'dev server',
+      reportLines: () => 'Line numbers are those of the code the dev server sent.',
+      reportPerf: () => 'Performance',
+    }
+    const fmt = { stack: false, now: 9_000, t: (key: string, ...subs: unknown[]) => WORDS[key](...subs), time: () => '10:00:00', date: (ms: number) => `D${ms}` }
+    const tab = reduce(base(), perf({ load: 1234, lcp: 800, cls: 0.02, longTasks: 3, heapMb: 45 }), 200)
+    const lines = buildReport(tab, fmt).split('\n')
+    expect(lines[2]).toBe('Performance: Load 1.2 s · LCP 0.8 s · CLS 0.02 · 3 long tasks · 45 MB')
+    expect(buildReport(reduce(base(), perf({ cls: 0.3 }), 200), fmt).split('\n')[2]).toBe('Performance: CLS 0.30')
+    expect(buildReport(base(), fmt)).not.toContain('Performance')
   })
 })

@@ -15,7 +15,8 @@ type Light = 'red' | 'orange' | 'green'
 interface Row { tabId: number; deviceId: string; browser: string; light: Light; seen: boolean; app: string; activity: number; report: boolean; features: string[] }
 type EntryState = 'open' | 'seen' | 'resolved'
 interface EntryView {
-  kind: 'error' | 'request' | 'limited' | 'build' | 'slow'; time: number; text: string; origin: string | null; n: number; state: EntryState; noAnswer: boolean; ms?: number | null
+  kind: 'error' | 'request' | 'limited' | 'build' | 'slow' | 'perf'; time: number; text: string; origin: string | null; n: number; state: EntryState; noAnswer: boolean; ms?: number | null
+  metric?: string; value?: number; ratio?: number | null
 }
 interface Logic {
   stateOf(snapshot: unknown): string
@@ -28,6 +29,7 @@ interface Logic {
   summaryOf(snapshot: unknown): { light: Light; seen: boolean; errors: number }
   onMac(loc: unknown): boolean
   entryView(entry: unknown): EntryView | null
+  perfView(perf: unknown): Array<{ key: string; value: number; poor: boolean; dim: boolean }>
 }
 
 async function loadLogic(): Promise<Logic> {
@@ -331,6 +333,31 @@ describe('fremdev/logic.js', () => {
     const slow = { kind: 'slow', id: 3, method: 'GET', path: '/api/items', ms: 1200, n: 1, at: 60, state: 'open' }
     expect(entryView(slow)).toEqual({ kind: 'slow', time: 60, text: 'GET /api/items', origin: null, n: 1, state: 'open', noAnswer: false, ms: 1200 })
     expect(entryView({ ...slow, ms: 'x' })).toMatchObject({ kind: 'slow', ms: null })
+  })
+
+  it('entryView: a perf entry carries its metric, value and ratio for the widget to write', async () => {
+    const { entryView } = await loadLogic()
+    const perf = { kind: 'perf', id: 4, metric: 'lcp', value: 1800, ratio: 1.6, n: 1, at: 70, state: 'open' }
+    expect(entryView(perf)).toEqual({ kind: 'perf', time: 70, text: '', origin: null, n: 1, state: 'open', noAnswer: false, metric: 'lcp', value: 1800, ratio: 1.6 })
+    expect(entryView({ ...perf, metric: 'cls', value: 0.3, ratio: null })).toMatchObject({ metric: 'cls', value: 0.3, ratio: null })
+    expect(entryView({ ...perf, metric: 'fps' })).toBeNull()
+    expect(entryView({ ...perf, value: 'x' })).toBeNull()
+    expect(entryView({ ...perf, ratio: 'x' })).toMatchObject({ ratio: null })
+  })
+
+  it('perfView: the values in order, LCP over 4 s and CLS over 0.25 poor, the heap dimmed', async () => {
+    const { perfView } = await loadLogic()
+    expect(perfView({ lcp: 4100, cls: 0.1, heapMb: 45 })).toEqual([
+      { key: 'lcp', value: 4100, poor: true, dim: false },
+      { key: 'cls', value: 0.1, poor: false, dim: false },
+      { key: 'heapMb', value: 45, poor: false, dim: true },
+    ])
+    expect(perfView({ heapMb: 45, longTasks: 3, cls: 0.3, lcp: 4000, load: 1234 }).map((v) => [v.key, v.poor])).toEqual([
+      ['load', false], ['lcp', false], ['cls', true], ['longTasks', false], ['heapMb', false],
+    ])
+    expect(perfView({})).toEqual([])
+    expect(perfView(undefined)).toEqual([])
+    expect(perfView({ lcp: 'x', fps: 60 })).toEqual([])
   })
 
   it('entryView: anything else is null', async () => {

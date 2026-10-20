@@ -169,6 +169,9 @@
   "reportRequests": {
     "message": "Failed requests"
   },
+  "reportPerf": {
+    "message": "Performance"
+  },
   "reportSlow": {
     "message": "Slow requests"
   },

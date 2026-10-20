@@ -225,6 +225,8 @@ newest first, each open, seen or resolved, plus a `limited` entry when a burst w
 as `file:line:col` (the file's path when it is the page's own, `host/path` for another origin); for
 a request, its **method**, the HTTP status and the URL's **path only**: request URLs never go with
 their query or fragment (in an origin either), and nothing is taken from bodies, headers or cookies.
+The row's performance values and a `perf` entry are numbers only (see
+[Performance](#performance-and-regressions)).
 An error's **full stack stays in the extension**: it is not in what the Edge receives, and leaves
 the browser only in a report you asked for (below). The title and an error's own message are free
 text and go as the page set or logged them, clipped, so a title or an error that quotes a token
@@ -367,6 +369,49 @@ Nothing in the page runs for this, and nothing is read from bodies, headers or c
 
 An install that times requests lists `fremdev.slow`; an older one sends neither, and its rows read
 0 in flight.
+
+### Performance and regressions
+
+A third script in the extension's isolated world of a dev tab, `fremdev/perf.js`, reads the page's
+performance timeline, which that world sees as the page does, and calls no page code:
+
+- **load**: the navigation entry's `loadEventEnd`, in ms, once the load event has ended;
+- **LCP**: the latest `largest-contentful-paint` entry, in ms;
+- **CLS**: the sum of the `layout-shift` values, leaving out the shifts right after an input;
+- **long tasks**: the `longtask` entries (50 ms or more) since the document loaded;
+- **heap**: `performance.memory.usedJSHeapSize` in MB, where Chrome has it. Chrome rounds it off and
+  refreshes it rarely: it is shown dimmed and never judged.
+
+The observers are buffered, so what happened before the script ran counts. The script sends these
+numbers, rounded and bounded (load and LCP up to ten minutes, CLS up to 100, long tasks up to
+100 000, heap up to 64 GB), **at most once a second and only when one changed**; the worker drops an
+event with a value out of its bounds. The values belong to the document Chrome says sent them (its
+`documentId`, which stays in the extension): a client-side route change keeps them, a reload's new
+document replaces them with its own, and a navigation to another origin forgets them. The row
+carries them as `perf`, never trimmed, and the Edge writes them on one dimmed line above the unfolded
+row's history (*Chargement 1,2 s · LCP 0,8 s · CLS 0,02 · 3 tâches longues · 45 Mo*), a poor value in
+the danger colour. The report has a *Performance* line under its header.
+
+**Regressions.** The extension keeps, per origin and path (never the query), the load and LCP of the
+last 5 loads, in `chrome.storage.session.fremdevPerf`: at most 50 origins and paths, the least
+recently used dropped, gone when the browser closes or Fremdev is turned off. The first event of a
+load that carries its load time is judged against them, then added to them; every later event of
+that load is judged on the poor bands alone. A load is a regression when:
+
+- its LCP, then its load, is at least **1.5 ×** the median of the previous loads *and* at least
+  **500 ms** slower (each needs at least one previous value of its own); or
+- its LCP is over **4 s**, or its CLS over **0.25** (the "poor" Web Vitals bands).
+
+A regression adds one `perf` entry to the history (*LCP 1,8 s, ×1,6 plus lent* / *LCP 1.8 s, ×1.6
+slower*; *CLS 0,30, mauvais* / *CLS 0.30, poor*), counted in the **requests tally**: the light turns
+**orange, never red**, and the tally's last failed request stays as it was. A later regression of
+the same load updates that entry rather than adding another, so a load counts once; it is marked
+seen and resolves like the others (a reload, a hot update), and a load whose entry was resolved is
+not flagged again. An entry the 20-entry history pushes out while open or seen is taken off the
+tally.
+
+An install that reads performance lists `fremdev.perf`; an older one sends no values, and its rows
+read none.
 
 ### The hook in the page
 

@@ -12,20 +12,23 @@
 // a dev URL alone is not a permission. Where the events come from:
 // - the page: fremdev/hook.js (page world) → fremdev/relay.js (isolated world) → `dev.event`,
 //   taken only from this extension's own content script in the top frame of a dev tab; beside the
-//   relay, fremdev/kind.js tells the dev server's kind from the page's script tags (`devserver`)
-//   and fremdev/build.js reads the dev server's compile error overlay (`build`, `build-clear`);
+//   relay, fremdev/kind.js tells the dev server's kind from the page's script tags (`devserver`),
+//   fremdev/build.js reads the dev server's compile error overlay (`build`, `build-clear`) and
+//   fremdev/perf.js the page's performance timeline (`perf`), judged here (lib/devperf.js);
 // - the requests: chrome.webRequest, for a tab that has a row; the top frame's own load tells the
 //   dev server's state (answered: up; refused: down);
 // - navigations and titles: chrome.tabs.onUpdated.
 //
 // State: `chrome.storage.local.fremdev = { on, patterns }` (the options page edits the patterns),
-// `chrome.storage.session.devTabs = { [tabId]: tab }` (stacks dropped) and `chrome.storage.session.fremdevSupport`
+// `chrome.storage.session.devTabs = { [tabId]: tab }` (stacks dropped), `chrome.storage.session.fremdevPerf`
+// (the previous loads' load and LCP, per origin and path) and `chrome.storage.session.fremdevSupport`
 // for the popup. Nothing Fremdev is sent unless this socket's `ready` said the server speaks it.
 
 import { BUILTIN_PERMISSION_ORIGINS, FREMKIT_EXCLUDES, inOrigins, isDevUrl, parsePattern } from './lib/devhosts.js'
 import { boundFrames, clip, isNoise, MAX_FRAME, MAX_TEXT, methodOf, pathOf } from './lib/devlog.js'
 import { InFlight, SLOW_MS } from './lib/devflight.js'
 import { editorUrl } from './lib/devopen.js'
+import { PerfMemory, perfValues, perfVerdict } from './lib/devperf.js'
 import { buildReport, reportMessage } from './lib/devreport.js'
 import { DEV_SERVERS, emptyTab, fremdevSupport, reduce, restoredTabs, sessionTabs, Throttle, validBase, wireTabs } from './lib/devtabs.js'
 import * as protocol from './lib/protocol.js'
@@ -35,9 +38,10 @@ const HOOK_ID = 'fremdev-hook'
 const RELAY_JS = 'fremdev/relay.js'
 const KIND_JS = 'fremdev/kind.js'
 const BUILD_JS = 'fremdev/build.js'
+const PERF_JS = 'fremdev/perf.js'
 const HOOK_JS = 'fremdev/hook.js'
 /** The isolated-world scripts, registered as one and injected together; later features append theirs. */
-export const ISOLATED_JS = [RELAY_JS, KIND_JS, BUILD_JS]
+export const ISOLATED_JS = [RELAY_JS, KIND_JS, BUILD_JS, PERF_JS]
 /** `dev.tabs` at most this often. */
 const SEND_MS = 500
 /** Keeps the worker, and so the socket, alive while a dev tab is open; also the cue to reconnect. */
@@ -71,7 +75,7 @@ const OPEN_INIT = { method: 'GET', credentials: 'omit', cache: 'no-store', redir
  * The modules of the features a control on the Edge depends on (FREMDEV_FEATURES on the server),
  * announced after the report's while Fremdev is on. Each feature appends its own.
  */
-export const FEATURE_MODULES = ['fremdev.build', 'fremdev.open', 'fremdev.reload', 'fremdev.slow']
+export const FEATURE_MODULES = ['fremdev.build', 'fremdev.open', 'fremdev.reload', 'fremdev.slow', 'fremdev.perf']
 const cleanPatterns = (list) =>
   Array.isArray(list) ? [...new Set(list.map((p) => parsePattern(p)?.pattern).filter(Boolean))] : []
 
@@ -131,6 +135,11 @@ export function pageEvent(msg) {
       return buildEvent(msg)
     case 'build-clear':
       return { kind: 'build-clear' }
+    case 'perf': {
+      // Bounded numbers only (lib/devperf.js); one out of its bounds drops the whole event.
+      const values = perfValues(msg)
+      return values ? { kind: 'perf', values } : null
+    }
     case 'devserver':
       // null: the page's kind is unknown (kind.js found a Vite base it cannot use). It carries no base.
       if (msg.server === null) return { kind: 'devserver', server: null }
@@ -192,6 +201,8 @@ export function createFremdev({
   const flight = new InFlight()
   /** Whether a timer waits for the oldest pending request to go stale. */
   let staleArmed = false
+  /** The previous loads' samples, which a load's regression is judged against. */
+  const perfMemory = new PerfMemory(storage.session)
 
   const supported = () => known === null || known === 'yes'
   const active = () => on && supported() && Object.keys(tabs).length > 0
@@ -266,6 +277,41 @@ export function createFremdev({
   /** Rows whose tab is no longer a dev tab (a pattern removed, a permission taken back) go. */
   function dropOutside() {
     for (const tab of Object.values(tabs)) if (!isDev(tab.url)) drop(tab.tabId)
+  }
+
+  /** The key a load's samples are kept under: its origin and path, never its query. */
+  const perfKey = (url) => {
+    try {
+      const u = new URL(url)
+      return u.origin + u.pathname
+    } catch {
+      return null
+    }
+  }
+
+  /**
+   * A `perf` event from the tab's document `doc` (Chrome's documentId): its values applied quietly,
+   * then judged. The first event of a load that carries `load` is judged against the previous loads
+   * of the same origin and path, then remembered; every other event on the poor bands alone.
+   */
+  async function onPerf(tabId, values, doc, seed) {
+    const key = String(tabId)
+    const before = tabs[key]
+    const sameDoc = !!before && (doc === null || doc === before.perfDoc)
+    const first = values.load !== undefined && !(sameDoc && before.perf?.load !== undefined)
+    apply(tabId, { kind: 'perf', values, doc }, seed, { quiet: true })
+    const tab = tabs[key]
+    if (!tab) return
+    let verdict
+    const storeKey = first ? perfKey(tab.url) : null
+    if (storeKey !== null) {
+      verdict = perfVerdict(await perfMemory.samples(storeKey), tab.perf)
+      await perfMemory.push(storeKey, tab.perf)
+    } else verdict = perfVerdict([], tab.perf)
+    // The tab may have gone, or loaded another document, while the samples were read.
+    const latest = tabs[key]
+    if (!verdict || !on || !latest || (doc !== null && latest.perfDoc !== doc)) return
+    apply(tabId, { kind: 'perf-regression', ...verdict })
   }
 
   // --- permissions and content scripts ----------------------------------------------------------
@@ -631,6 +677,7 @@ export function createFremdev({
       tabs = {}
       flight.clear()
       await storage.session.set({ devTabs: {} })
+      await perfMemory.clear()
       if (support === 'yes') send(protocol.modulesMsg(modules()))
       refresh()
     },
@@ -708,7 +755,10 @@ export function createFremdev({
       if (!tab || !validId(tab.id) || !isDev(tab.url)) return
       if (sender.url !== undefined && !isDev(sender.url)) return
       const event = pageEvent(msg)
-      if (event) apply(tab.id, event, { url: tab.url, title: tab.title })
+      if (!event) return
+      const seed = { url: tab.url, title: tab.title }
+      if (event.kind === 'perf') return onPerf(tab.id, event.values, typeof sender.documentId === 'string' ? sender.documentId : null, seed)
+      apply(tab.id, event, seed)
     },
 
     /** The popup's copy: the report of a tab this install has a row for, or null. */

@@ -1,5 +1,6 @@
 import { MAX_IN_FLIGHT, SLOW_MS } from './devflight.js'
 import { clip, homePath, METHODS, methodOf } from './devlog.js'
+import { cleanPerf, isPerfValue, PERF_METRICS } from './devperf.js'
 
 // One dev tab's state as a pure reducer, and the rows `dev.tabs` carries. The wire shape mirrors
 // DevTabSchema in server/src/companion/protocol.ts, which is strict.
@@ -74,14 +75,25 @@ export function emptyTab(tabId, url, title, now) {
     server: 'up',
     /** The requests started and not finished (lib/devflight.js counts them; the worker sets it). */
     inFlight: 0,
+    /**
+     * The current document's performance values (lib/devperf.js), `perfDoc` that document's id
+     * (Chrome's `documentId`, never on the wire), `perfEntryId` the id of this load's `perf` entry.
+     * A document's values stay across a same-origin navigation (a pushState route change keeps its
+     * document); another document's first values replace them, another origin forgets them.
+     */
+    perf: {},
+    perfDoc: null,
+    perfEntryId: null,
     activity: now,
   }
 }
 
 // The history ring: errors, failed requests, the relay's overflow (`limited`), the dev server's
-// compile errors (`build`) and the requests that succeeded slowly (`slow`), newest first, an entry
-// repeated back to back folded into its `n`. A slow entry counts in no tally and never colours the
-// light: it is information, not a fault.
+// compile errors (`build`), the requests that succeeded slowly (`slow`) and a load's performance
+// regression (`perf`), newest first, an entry repeated back to back folded into its `n` (never a
+// perf entry: a later regression of the same load replaces its values instead). A slow entry counts
+// in no tally and never colours the light: it is information, not a fault. A perf entry counts in
+// the requests tally, so it lights the row orange, never red.
 // Entries keep their stack here; the wire drops it. A build entry keeps the file's full `path` here;
 // the wire carries it as `file`, its home folder written `~/` (homePath).
 // state: `open` until the user marks it seen (`clear`), `resolved` once the page reloads or updates
@@ -97,16 +109,18 @@ const sameEntry = (a, b) =>
         ? a.text === b.text && a.path === b.path
         : a.kind === 'slow'
           ? a.method === b.method && a.path === b.path
-          : true)
+          : a.kind !== 'perf')
 
 const isId = (v) => Number.isInteger(v) && v >= 1 && v <= MAX_ID
 
 /**
- * `{ history, nextId, errors }` after `entry` (n 1 or more, open): put on top of the ring with the
- * tab's `nextId`, the next one counting on (1 again after MAX_ID), or folded into the newest entry,
- * whose id it keeps, when it is the same and open. `errors` is the tab's, less the open or seen
- * build entries the ring pushed out: nothing could resolve them any more (`build-clear` finds
- * none), and the light would stay red.
+ * `{ history, nextId, errors, requests }` after `entry` (n 1 or more, open): put on top of the ring
+ * with the tab's `nextId`, the next one counting on (1 again after MAX_ID), or folded into the
+ * newest entry, whose id it keeps, when it is the same and open. `errors` is the tab's, less the
+ * open or seen build entries the ring pushed out: nothing could resolve them any more
+ * (`build-clear` finds none), and the light would stay red. `requests` is the tab's, less the open
+ * or seen perf entries it pushed out: the tally counts each one once, and a regression told again
+ * for that load (`perf-regression`) counts again.
  */
 function record(tab, entry) {
   const ring = tab.history ?? []
@@ -114,14 +128,16 @@ function record(tab, entry) {
   if (top && top.state === 'open' && sameEntry(top, entry)) {
     const merged = { ...top, n: Math.min(MAX_COUNT, top.n + entry.n), at: entry.at }
     if (entry.kind === 'error') merged.stack = entry.stack
-    return { history: [merged, ...ring.slice(1)], nextId: tab.nextId, errors: tab.errors }
+    return { history: [merged, ...ring.slice(1)], nextId: tab.nextId, errors: tab.errors, requests: tab.requests }
   }
   const id = isId(tab.nextId) ? tab.nextId : 1
   const all = [{ ...entry, id }, ...ring]
+  const out = all.slice(HISTORY_MAX)
   return {
     history: all.slice(0, HISTORY_MAX),
     nextId: id === MAX_ID ? 1 : id + 1,
-    errors: uncount(tab.errors, all.slice(HISTORY_MAX).filter(isLive)),
+    errors: uncount(tab.errors, out.filter(isLive)),
+    requests: uncount(tab.requests, out.filter(isLivePerf)),
   }
 }
 const restate = (history, from, to) => (history ?? []).map((e) => (from.includes(e.state) ? { ...e, state: to } : e))
@@ -135,11 +151,12 @@ const bump = (t, last) => ({
 const resolved = (t) => ({ ...t, open: 0, seen: 0 })
 
 const isLive = (e) => e.kind === 'build' && (e.state === 'open' || e.state === 'seen')
+const isLivePerf = (e) => e.kind === 'perf' && (e.state === 'open' || e.state === 'seen')
 const isPos = (v) => Number.isInteger(v) && v >= 1 && v <= MAX_POS
 
 /**
- * The errors tally less the open or seen build entries `live` (the seen ones off `seen` too), never
- * below zero and `seen` never above `open`.
+ * A tally (errors or requests) less the open or seen entries `live` (the seen ones off `seen` too),
+ * never below zero and `seen` never above `open`.
  */
 function uncount(e, live) {
   if (live.length === 0) return e
@@ -205,6 +222,47 @@ function addSlow(tab, entry) {
 }
 
 /**
+ * A document's performance values (`{ kind: 'perf', values, doc }`, the worker's checked event):
+ * merged into the tab's when they are the same document's, replacing them for another document (a
+ * reload), whose load has no perf entry yet. A measure, not an event: no activity stamped.
+ */
+function perfValuesOf(tab, event) {
+  const values = cleanPerf(event.values)
+  const doc = typeof event.doc === 'string' ? event.doc : null
+  const same = doc === null || doc === (tab.perfDoc ?? null)
+  if (same) return { ...tab, perf: { ...cleanPerf(tab.perf), ...values } }
+  return { ...tab, perf: values, perfDoc: doc, perfEntryId: null }
+}
+
+/**
+ * A load's regression (`{ kind: 'perf-regression', metric, value, ratio }`, from lib/devperf.js's
+ * verdict): at most one entry and one tally bump per load. While this load's entry is in the ring
+ * and open or seen, it takes the new metric, value and ratio; once resolved (a route change or a hot
+ * update since), the load is not flagged again. Otherwise (none yet, or pushed out of the ring and
+ * un-counted) a new open entry, counted in the requests tally with `requests.last` left as it is.
+ */
+function perfRegression(tab, event, now) {
+  if (!PERF_METRICS.includes(event.metric) || !isPerfValue(event.metric, event.value)) return tab
+  const ratio = isRatio(event.ratio) ? event.ratio : null
+  const ring = tab.history ?? []
+  const current = isId(tab.perfEntryId) ? ring.find((e) => e.kind === 'perf' && e.id === tab.perfEntryId) : undefined
+  if (current) {
+    if (current.state === 'resolved') return tab
+    const next = { ...current, metric: event.metric, value: event.value, ratio }
+    return { ...tab, history: ring.map((e) => (e === current ? next : e)) }
+  }
+  const r = tab.requests
+  const requests = { total: Math.min(MAX_COUNT, r.total + 1), open: Math.min(MAX_COUNT, r.open + 1), seen: r.seen ?? 0, last: r.last }
+  const id = isId(tab.nextId) ? tab.nextId : 1
+  return {
+    ...tab,
+    ...record({ ...tab, requests }, { kind: 'perf', metric: event.metric, value: event.value, ratio, n: 1, at: now, state: 'open' }),
+    perfEntryId: id,
+    activity: now,
+  }
+}
+
+/**
  * The next state of a tab after an event. Every event but `title`, `devserver`, `slow` and
  * `inflight` stamps `activity`.
  */
@@ -227,8 +285,7 @@ export function reduce(tab, event, now) {
     case 'request':
       return {
         ...tab,
-        requests: bump(tab.requests, { path: event.path, status: event.status, at: now }),
-        ...record(tab, {
+        ...record({ ...tab, requests: bump(tab.requests, { path: event.path, status: event.status, at: now }) }, {
           kind: 'request',
           method: methodOf(event.method),
           path: event.path,
@@ -275,6 +332,10 @@ export function reduce(tab, event, now) {
     }
     case 'slow':
       return slowEntry(tab, event, now)
+    case 'perf':
+      return perfValuesOf(tab, event)
+    case 'perf-regression':
+      return perfRegression(tab, event, now)
     case 'inflight':
       return { ...tab, inFlight: Math.min(MAX_IN_FLIGHT, count(event.n)) }
     case 'navigated': {
@@ -283,8 +344,14 @@ export function reduce(tab, event, now) {
       // The count in flight stays for the same origin (the worker still times those requests) and
       // starts again at 0 for another, whose timings the worker forgets.
       const next = { ...tab, url: event.url, host: hostOf(event.url), title: event.title ?? '', activity: now }
+      // The performance values belong to the document: a pushState route change keeps it (its
+      // values and its load's entry stay; a reload's new document replaces them with its first
+      // values, `perf`), another origin forgets them.
       if (originOf(event.url) !== originOf(tab.url)) {
-        return { ...next, inFlight: 0, errors: tally(), requests: tally(), history: [], server: 'up', devServer: null, serverBase: '/' }
+        return {
+          ...next, inFlight: 0, errors: tally(), requests: tally(), history: [], server: 'up', devServer: null, serverBase: '/',
+          perf: {}, perfDoc: null, perfEntryId: null,
+        }
       }
       return { ...next, errors: resolved(tab.errors), requests: resolved(tab.requests), history: restate(tab.history, ['open', 'seen'], 'resolved') }
     }
@@ -399,6 +466,9 @@ function wireEntry(e) {
     case 'slow':
       if (!isSlowMs(e.ms)) return null
       return { kind: 'slow', id, method: methodOf(e.method), path: pathOnly(e.path), ms: e.ms, ...common }
+    case 'perf':
+      if (!PERF_METRICS.includes(e.metric) || !isPerfValue(e.metric, e.value) || !(e.ratio === null || isRatio(e.ratio))) return null
+      return { kind: 'perf', id, metric: e.metric, value: e.value, ratio: e.ratio, ...common }
     default:
       return null
   }
@@ -420,6 +490,8 @@ function wireRow(t) {
     devServer: DEV_SERVERS.includes(t.devServer) ? t.devServer : null,
     // Never trimmed: it is one number, and the live part of the row.
     inFlight: Math.min(MAX_IN_FLIGHT, count(t.inFlight)),
+    // Never trimmed either: five bounded numbers. The document's id stays in the extension.
+    perf: cleanPerf(t.perf),
     server: t.server,
     activity: Math.max(0, t.activity),
   }
@@ -433,6 +505,13 @@ const isStamp = (v) => typeof v === 'number' && Number.isFinite(v) && v >= 0
 const isCount = (v) => Number.isInteger(v) && v >= 0 && v <= MAX_COUNT
 const isSlowMs = (v) => Number.isInteger(v) && v >= MIN_SLOW_MS && v <= MAX_SLOW_MS
 const isMethod = (m) => METHODS.includes(m) || m === 'OTHER'
+/** A perf entry's ratio: from 1 (the verdict's 1.5 at least) to 1000 (DevTabSchema's bounds). */
+const isRatio = (v) => typeof v === 'number' && Number.isFinite(v) && v >= 1 && v <= 1000
+const PERF_KEYS_RE = /^(cls|heapMb|lcp|load|longTasks)?(,(cls|heapMb|lcp|load|longTasks))*$/
+/** A row's `perf`: an object of known keys only, each within its bounds. */
+const okPerf = (p) =>
+  !!p && typeof p === 'object' && !Array.isArray(p) && PERF_KEYS_RE.test(Object.keys(p).join()) &&
+  Object.entries(p).every(([k, v]) => isPerfValue(k, v))
 const isText = (v, max) => typeof v === 'string' && v.length <= max
 const okTally = (t, last) =>
   isCount(t?.total) && isCount(t?.open) && isCount(t?.seen) && t.seen <= t.open && t.open <= t.total &&
@@ -454,6 +533,9 @@ const okEntry = (e) => {
     case 'slow':
       return keys === 'at,id,kind,method,ms,n,path,state' && isMethod(e.method) && isText(e.path, MAX_TEXT) && PATH_RE.test(e.path) &&
         isSlowMs(e.ms)
+    case 'perf':
+      return keys === 'at,id,kind,metric,n,ratio,state,value' && PERF_METRICS.includes(e.metric) && isPerfValue(e.metric, e.value) &&
+        (e.ratio === null || isRatio(e.ratio))
     case 'build':
       return keys === 'at,col,file,id,kind,line,n,state,text' && isText(e.text, MAX_TEXT) &&
         (e.file === null || isText(e.file, MAX_TEXT)) && (e.line === null || isPos(e.line)) && (e.col === null || isPos(e.col))
@@ -477,6 +559,7 @@ export function validRow(r) {
     Array.isArray(r.history) && r.history.length <= HISTORY_MAX && r.history.every(okEntry) &&
     (r.devServer === null || DEV_SERVERS.includes(r.devServer)) &&
     (r.inFlight === undefined || (Number.isInteger(r.inFlight) && r.inFlight >= 0 && r.inFlight <= MAX_IN_FLIGHT)) &&
+    (r.perf === undefined || okPerf(r.perf)) &&
     (r.server === 'up' || r.server === 'down') &&
     isStamp(r.activity)
   )
@@ -550,9 +633,17 @@ export function restoredTabs(raw) {
       if (!isId(t.nextId) || !t.history.every((e) => e.id < t.nextId)) continue
       if (!(t.devServer === null || DEV_SERVERS.includes(t.devServer))) continue
       if (!validBase(t.serverBase, t.devServer)) continue
+      // A row from before the performance values has none; one with values out of bounds is not ours.
+      if (t.perf !== undefined && !okPerf(t.perf)) continue
       if (!validRow(wireRow(t))) continue
       // The timings behind the count lived in the stopped worker's memory: none is pending now.
-      out[key] = { ...t, inFlight: 0 }
+      out[key] = {
+        ...t,
+        inFlight: 0,
+        perf: t.perf ?? {},
+        perfDoc: typeof t.perfDoc === 'string' && t.perfDoc.length <= 128 ? t.perfDoc : null,
+        perfEntryId: isId(t.perfEntryId) ? t.perfEntryId : null,
+      }
     } catch {
       // a shape wireRow cannot read: dropped
     }

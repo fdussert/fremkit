@@ -1,3 +1,4 @@
+import { cleanPerf } from './devperf.js'
 import { clip, homePath, pathOf } from './devlog.js'
 
 // A dev tab's bug report, in Markdown: what the Edge copies (`dev.report`, through the server) and
@@ -51,6 +52,24 @@ function entryLines(e, { stack, t, time }) {
   }
 }
 
+const seconds = (ms) => `${(ms / 1000).toFixed(1)} s`
+
+/**
+ * The current document's values on one line, in the order perf.js reads them, or null when there
+ * is none: `Load 1.2 s · LCP 0.8 s · CLS 0.02 · 3 long tasks · 45 MB`. The names are the metrics'
+ * own, the same in every language.
+ */
+function perfLine(perf) {
+  const p = cleanPerf(perf)
+  const parts = []
+  if (p.load !== undefined) parts.push(`Load ${seconds(p.load)}`)
+  if (p.lcp !== undefined) parts.push(`LCP ${seconds(p.lcp)}`)
+  if (p.cls !== undefined) parts.push(`CLS ${p.cls.toFixed(2)}`)
+  if (p.longTasks !== undefined) parts.push(`${p.longTasks} long ${p.longTasks === 1 ? 'task' : 'tasks'}`)
+  if (p.heapMb !== undefined) parts.push(`${p.heapMb} MB`)
+  return parts.length > 0 ? parts.join(' · ') : null
+}
+
 function render(tab, entries, opts) {
   const { t, date, now } = opts
   const host = line(tab.host)
@@ -58,8 +77,10 @@ function render(tab, entries, opts) {
   const out = [
     `## ${t('reportTitle')}: ${title} (${host}${homeLine(pathOf(tab.url))})`,
     `${date(now)} · ${t('reportServer')}: ${tab.server === 'down' ? 'down' : 'up'}`,
-    t('reportLines'),
   ]
+  const perf = perfLine(tab.perf)
+  if (perf !== null) out.push(`${t('reportPerf')}: ${perf}`)
+  out.push(t('reportLines'))
   const builds = entries.filter((e) => e.kind === 'build')
   const errors = entries.filter((e) => e.kind === 'error' || e.kind === 'limited')
   const requests = entries.filter((e) => e.kind === 'request')

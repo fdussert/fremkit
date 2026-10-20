@@ -157,11 +157,20 @@ export const FREMDEV_RELOAD_MODULE = 'fremdev.reload'
 /** Fremdev reports a tab's slow requests (`slow` entries) and its requests in flight (`inFlight`). */
 export const FREMDEV_SLOW_MODULE = 'fremdev.slow'
 
+/** Fremdev reports a tab's performance values (`perf`) and a load's regression (`perf` entries). */
+export const FREMDEV_PERF_MODULE = 'fremdev.perf'
+
 /**
  * The Fremdev modules a control on the Edge depends on (`features` in the snapshot): an install
  * that lists one is shown that control. Each feature's task appends its module name here.
  */
-export const FREMDEV_FEATURES: readonly string[] = [FREMDEV_BUILD_MODULE, FREMDEV_OPEN_MODULE, FREMDEV_RELOAD_MODULE, FREMDEV_SLOW_MODULE]
+export const FREMDEV_FEATURES: readonly string[] = [
+  FREMDEV_BUILD_MODULE,
+  FREMDEV_OPEN_MODULE,
+  FREMDEV_RELOAD_MODULE,
+  FREMDEV_SLOW_MODULE,
+  FREMDEV_PERF_MODULE,
+]
 
 /**
  * The names of the modules an extension runs. Unknown names pass, so a newer extension with a module
@@ -219,10 +228,27 @@ const TabId = z.number().int().min(0).max(2_147_483_647)
 /** The dev servers Fremdev tells apart. */
 export const DEV_SERVERS = ['vite', 'next', 'webpack'] as const
 
+/** A load or LCP time, in ms: up to ten minutes. */
+const PerfMs = z.number().int().min(0).max(600_000)
+
+/**
+ * A tab's performance values, from its current document (companion/fremdev/perf.js): each one
+ * optional. `cls` is the cumulative layout shift, `longTasks` the tasks of 50 ms or more since the
+ * load, `heapMb` the JS heap where Chrome tells it (coarse, shown dimmed, never judged).
+ */
+const DevPerfSchema = z.strictObject({
+  load: PerfMs.optional(),
+  lcp: PerfMs.optional(),
+  cls: z.number().min(0).max(100).optional(),
+  longTasks: z.number().int().min(0).max(100_000).optional(),
+  heapMb: z.number().int().min(0).max(65_536).optional(),
+})
+
 /**
  * A tab's last errors and failed requests, without stacks; `limited` the errors the relay only
  * counted; `build` the dev server's compile errors (fremdev/build.js), counted among the errors;
- * `slow` the requests that succeeded in a second or more, counted in no tally.
+ * `slow` the requests that succeeded in a second or more, counted in no tally; `perf` a load's
+ * performance regression, counted among the requests (orange, never red).
  */
 const DevHistorySchema = z
   .array(
@@ -261,6 +287,15 @@ const DevHistorySchema = z
         ms: z.number().int().min(1000).max(3_600_000),
         ...entry,
       }),
+      z.strictObject({
+        kind: z.literal('perf'),
+        /** What regressed: the load, the LCP (both in ms) or the CLS. */
+        metric: z.enum(['load', 'lcp', 'cls']),
+        value: z.number().min(0).max(600_000),
+        /** How many times slower than the median of the previous loads; null for a "poor" Web Vital. */
+        ratio: z.number().min(1).max(1000).nullable(),
+        ...entry,
+      }),
     ]),
   )
   .max(MAX_DEV_HISTORY)
@@ -293,6 +328,8 @@ export const DevTabSchema = z.strictObject({
   devServer: z.enum(DEV_SERVERS).nullable().default(null),
   /** The tab's requests started and not finished (one pending over 30 s no longer counts), capped. */
   inFlight: z.number().int().min(0).max(999).default(0),
+  /** The current document's performance values; `{}` until one is known, or from an older install. */
+  perf: DevPerfSchema.default({}),
   server: z.enum(['up', 'down']),
   /** Milliseconds since the epoch of the tab's last event. */
   activity: Stamp,

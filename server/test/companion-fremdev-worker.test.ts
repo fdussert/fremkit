@@ -162,6 +162,7 @@ const devSender = (over: Record<string, unknown> = {}) => ({
   id: 'ext',
   frameId: 0,
   url: 'http://localhost:5173/',
+  documentId: 'DOC0',
   tab: { id: 7, url: 'http://localhost:5173/', title: 'App' },
   ...over,
 })
@@ -312,7 +313,7 @@ describe('companion/fremdev.js', () => {
     f.fremdev.onReady({ type: 'ready', protocol: 2, modules: { fremplay: true, fremdev: true } })
     await f.later()
     expect(f.sent.map((m) => m.type)).toEqual(['modules', 'dev.tabs'])
-    expect(f.sent[0]).toEqual({ type: 'modules', modules: ['fremplay', 'fremdev', 'fremdev.report', 'fremdev.build', 'fremdev.open', 'fremdev.reload', 'fremdev.slow'] })
+    expect(f.sent[0]).toEqual({ type: 'modules', modules: ['fremplay', 'fremdev', 'fremdev.report', 'fremdev.build', 'fremdev.open', 'fremdev.reload', 'fremdev.slow', 'fremdev.perf'] })
     expect((f.sent[1].tabs as Array<{ tabId: number }>).map((t) => t.tabId)).toEqual([7])
     await f.fremdev.stop()
     expect(f.sent.at(-1)).toEqual({ type: 'modules', modules: ['fremplay'] })
@@ -384,11 +385,11 @@ describe('companion/fremdev.js', () => {
       const f = await makeFremdev({ on: false })
       expect(f.fremdev.modules()).toEqual(['fremplay'])
       await f.fremdev.start()
-      expect(f.fremdev.modules()).toEqual(['fremplay', 'fremdev', 'fremdev.report', 'fremdev.build', 'fremdev.open', 'fremdev.reload', 'fremdev.slow', 'fremdev.test'])
+      expect(f.fremdev.modules()).toEqual(['fremplay', 'fremdev', 'fremdev.report', 'fremdev.build', 'fremdev.open', 'fremdev.reload', 'fremdev.slow', 'fremdev.perf', 'fremdev.test'])
     } finally {
       FEATURE_MODULES.pop()
     }
-    expect(FEATURE_MODULES).toEqual(['fremdev.build', 'fremdev.open', 'fremdev.reload', 'fremdev.slow'])
+    expect(FEATURE_MODULES).toEqual(['fremdev.build', 'fremdev.open', 'fremdev.reload', 'fremdev.slow', 'fremdev.perf'])
   })
 
   it('records the dev server a page reports, the latest replacing the last', async () => {
@@ -425,7 +426,7 @@ describe('companion/fremdev.js', () => {
     const f = await makeFremdev({ on: false })
     expect(f.fremdev.modules()).toEqual(['fremplay'])
     await f.fremdev.start()
-    expect(f.fremdev.modules()).toEqual(['fremplay', 'fremdev', 'fremdev.report', 'fremdev.build', 'fremdev.open', 'fremdev.reload', 'fremdev.slow'])
+    expect(f.fremdev.modules()).toEqual(['fremplay', 'fremdev', 'fremdev.report', 'fremdev.build', 'fremdev.open', 'fremdev.reload', 'fremdev.slow', 'fremdev.perf'])
     await f.fremdev.stop()
     expect(f.fremdev.modules()).not.toContain('fremdev.report')
     expect(f.fremdev.modules()).not.toContain('fremdev.build')
@@ -746,7 +747,7 @@ describe('companion/fremdev.js', () => {
     await onInstalled({ reason: 'update', previousVersion: '0.0.1' })
     const calls = f.api.scripting.executeScript.mock.calls as Array<[{ target: { tabId: number }; files: string[]; world?: string }]>
     expect(calls.map(([c]) => [c.target.tabId, c.files, c.world])).toEqual([
-      [7, ['fremdev/relay.js', 'fremdev/kind.js', 'fremdev/build.js'], undefined],
+      [7, ['fremdev/relay.js', 'fremdev/kind.js', 'fremdev/build.js', 'fremdev/perf.js'], undefined],
       [7, ['fremdev/hook.js'], 'MAIN'],
     ])
     await f.later()
@@ -785,10 +786,10 @@ describe('companion/fremdev.js', () => {
     await f.fremdev.start()
     const scripts = f.api.scripting.registerContentScripts.mock.calls[0][0] as Array<{ id: string; world?: string; matches: string[]; js: string[] }>
     expect(scripts.map((s) => [s.id, s.world, s.matches, s.js])).toEqual([
-      ['fremdev-relay', undefined, ['http://localhost/*'], ['fremdev/relay.js', 'fremdev/kind.js', 'fremdev/build.js']],
+      ['fremdev-relay', undefined, ['http://localhost/*'], ['fremdev/relay.js', 'fremdev/kind.js', 'fremdev/build.js', 'fremdev/perf.js']],
       ['fremdev-hook', 'MAIN', ['http://localhost/*'], ['fremdev/hook.js']],
     ])
-    expect(ISOLATED_JS).toEqual(['fremdev/relay.js', 'fremdev/kind.js', 'fremdev/build.js'])
+    expect(ISOLATED_JS).toEqual(['fremdev/relay.js', 'fremdev/kind.js', 'fremdev/build.js', 'fremdev/perf.js'])
     expect(f.api.scripting.executeScript).toHaveBeenCalledTimes(2)
     expect(f.store.local.fremdev).toMatchObject({ on: true })
   })
@@ -984,5 +985,74 @@ describe('slow requests and requests in flight', () => {
     expect(f.fremdev.modules()).toContain('fremdev.slow')
     await f.fremdev.stop()
     expect(f.fremdev.modules()).not.toContain('fremdev.slow')
+  })
+})
+
+describe('performance and regressions', () => {
+  const perfOf = (f: { rows: () => Record<string, any> }) => (f.rows()['7']?.history ?? []).filter((e: { kind: string }) => e.kind === 'perf')
+  const stored = (f: { store: { session: Record<string, unknown> } }) => f.store.session.fremdevPerf as Array<{ key: string; samples: unknown[] }>
+
+  it('rebuilds a perf event from bounded numbers, and drops one over its bounds', () => {
+    expect(pageEvent({ kind: 'perf', load: 1234, lcp: 800, cls: 0.0234, longTasks: 1, heapMb: 45, tabId: 3, fps: 60 }))
+      .toEqual({ kind: 'perf', values: { load: 1234, lcp: 800, cls: 0.023, longTasks: 1, heapMb: 45 } })
+    expect(pageEvent({ kind: 'perf', lcp: 0 })).toEqual({ kind: 'perf', values: { lcp: 0 } })
+    expect(pageEvent({ kind: 'perf', load: 600_000, cls: 100, longTasks: 100_000, heapMb: 65_536 }))
+      .toEqual({ kind: 'perf', values: { load: 600_000, cls: 100, longTasks: 100_000, heapMb: 65_536 } })
+    expect(pageEvent({ kind: 'perf' })).toBeNull()
+    for (const bad of [
+      { load: 600_001 }, { load: 1.5 }, { load: -1 }, { lcp: '800' }, { lcp: Number.NaN }, { cls: 100.5 }, { cls: -0.1 },
+      { cls: Number.POSITIVE_INFINITY }, { longTasks: 100_001 }, { longTasks: 2.5 }, { heapMb: 65_537 }, { load: 1000, heapMb: null },
+    ]) expect(pageEvent({ kind: 'perf', ...bad }), JSON.stringify(bad)).toBeNull()
+  })
+
+  it('judges the first event of a load that carries load against the stored samples, then pushes it', async () => {
+    const f = await makeFremdev()
+    f.fremdev.onReady({ type: 'ready', protocol: 2, modules: { fremplay: true, fremdev: true } })
+    for (const [i, lcp] of [1000, 1100, 1200].entries()) {
+      await f.fremdev.onPageEvent({ kind: 'perf', load: 1000, lcp }, devSender({ documentId: `D${i}` }))
+    }
+    await f.later()
+    expect(perfOf(f)).toEqual([])
+    expect(f.rows()['7'].requests.open).toBe(0)
+    expect(stored(f)).toEqual([{ key: 'http://localhost:5173/', samples: [{ load: 1000, lcp: 1000 }, { load: 1000, lcp: 1100 }, { load: 1000, lcp: 1200 }] }])
+    // The next load: LCP first, judged on the bands alone; then load, judged against the three before it.
+    await f.fremdev.onPageEvent({ kind: 'perf', lcp: 1800 }, devSender({ documentId: 'D9' }))
+    await f.later()
+    expect(perfOf(f)).toEqual([])
+    await f.fremdev.onPageEvent({ kind: 'perf', lcp: 1800, load: 1100 }, devSender({ documentId: 'D9' }))
+    await f.later()
+    expect(perfOf(f)).toEqual([expect.objectContaining({ metric: 'lcp', value: 1800, ratio: 1.6, state: 'open' })])
+    expect(f.rows()['7'].requests).toMatchObject({ total: 1, open: 1, last: null })
+    expect(stored(f)[0].samples).toHaveLength(4)
+    // A later event of that load: the bands only, and never pushed again.
+    await f.fremdev.onPageEvent({ kind: 'perf', lcp: 1800, load: 1100, cls: 0.4 }, devSender({ documentId: 'D9' }))
+    await f.later()
+    expect(perfOf(f)).toEqual([expect.objectContaining({ metric: 'cls', value: 0.4, ratio: null })])
+    expect(f.rows()['7'].requests.open).toBe(1)
+    expect(stored(f)[0].samples).toHaveLength(4)
+    const wire = (f.sent.filter((m) => m.type === 'dev.tabs').at(-1)!.tabs as Array<Record<string, any>>)[0]
+    expect(wire.perf).toEqual({ lcp: 1800, load: 1100, cls: 0.4 })
+    // Turned off, the samples go too.
+    await f.fremdev.stop()
+    expect(f.store.session.fremdevPerf).toEqual([])
+  })
+
+  it('drops a perf event over its bounds', async () => {
+    const f = await makeFremdev()
+    await f.fremdev.onPageEvent({ kind: 'perf', cls: 101 }, devSender())
+    await f.fremdev.onPageEvent({ kind: 'perf', load: 1000, lcp: 700_000 }, devSender())
+    await f.later()
+    expect(f.rows()).toEqual({})
+    expect(f.store.session.fremdevPerf).toBeUndefined()
+  })
+
+  it('announces fremdev.perf only while on', async () => {
+    expect(FEATURE_MODULES).toContain('fremdev.perf')
+    const f = await makeFremdev({ on: false })
+    expect(f.fremdev.modules()).not.toContain('fremdev.perf')
+    await f.fremdev.start()
+    expect(f.fremdev.modules()).toContain('fremdev.perf')
+    await f.fremdev.stop()
+    expect(f.fremdev.modules()).not.toContain('fremdev.perf')
   })
 })

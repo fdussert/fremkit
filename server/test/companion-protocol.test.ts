@@ -10,6 +10,7 @@ import {
   EXTENSION_ORIGIN_RE,
   FREMDEV_BUILD_MODULE,
   FREMDEV_FEATURES,
+  FREMDEV_PERF_MODULE,
   FREMDEV_SLOW_MODULE,
   MAX_MESSAGE_BYTES,
   MAX_SDP,
@@ -241,6 +242,7 @@ describe('parseExtensionMessage', () => {
       ],
       devServer: null,
       inFlight: 0,
+      perf: {},
       server: 'up',
       activity: 1_760_000_000_000,
       ...over,
@@ -309,6 +311,35 @@ describe('parseExtensionMessage', () => {
     it('lists fremdev.slow among the Fremdev features', () => {
       expect(FREMDEV_SLOW_MODULE).toBe('fremdev.slow')
       expect(FREMDEV_FEATURES).toContain(FREMDEV_SLOW_MODULE)
+    })
+
+    it('lists fremdev.perf among the Fremdev features', () => {
+      expect(FREMDEV_PERF_MODULE).toBe('fremdev.perf')
+      expect(FREMDEV_FEATURES).toContain(FREMDEV_PERF_MODULE)
+    })
+
+    it('takes a perf entry and a row\'s values within bounds, and refuses anything else', () => {
+      const perf = { kind: 'perf', id: 6, metric: 'lcp', value: 1800, ratio: 1.6, n: 1, at: 1, state: 'open' }
+      expect(tabs([row({ history: [perf] })])).not.toBeNull()
+      expect(tabs([row({ history: [{ ...perf, metric: 'cls', value: 0.31, ratio: null }] })])).not.toBeNull()
+      expect(tabs([row({ history: [{ ...perf, metric: 'load', value: 600_000, ratio: 1000 }] })])).not.toBeNull()
+      for (const bad of [
+        { ...perf, metric: 'fps' },
+        { ...perf, value: -1 },
+        { ...perf, value: 600_001 },
+        { ...perf, ratio: 0.9 },
+        { ...perf, ratio: 1000.5 },
+        { ...perf, path: '/' },
+        (({ ratio: _, ...rest }) => rest)(perf),
+      ]) expect(tabs([row({ history: [bad] })]), JSON.stringify(bad)).toBeNull()
+      const values = { load: 1234, lcp: 800, cls: 0.02, longTasks: 3, heapMb: 45 }
+      expect(DevTabSchema.parse(row({ perf: values })).perf).toEqual(values)
+      expect(DevTabSchema.parse(row({ perf: { lcp: 800 } })).perf).toEqual({ lcp: 800 })
+      const { perf: _, ...without } = row({ perf: values })
+      expect(DevTabSchema.parse(without).perf).toEqual({})
+      for (const bad of [{ cls: 101 }, { cls: -0.1 }, { load: 600_001 }, { lcp: 1.5 }, { longTasks: 100_001 }, { heapMb: 65_537 }, { fps: 60 }, { heapMb: '45' }]) {
+        expect(DevTabSchema.safeParse(row({ perf: bad })).success, JSON.stringify(bad)).toBe(false)
+      }
     })
 
     it('takes a slow entry from 1 s to an hour, and refuses one outside it, with a query or an extra key', () => {

@@ -169,6 +169,9 @@
   "reportRequests": {
     "message": "Requêtes en échec"
   },
+  "reportPerf": {
+    "message": "Performance"
+  },
   "reportSlow": {
     "message": "Requêtes lentes"
   },

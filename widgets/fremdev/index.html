@@ -87,6 +87,13 @@
   /* A slow request is no fault: muted, its duration beside it. */
   .entry.slow .what{color:var(--text-muted, #8b93a0)}
   .entry .dur{flex:none;font-variant-numeric:tabular-nums;font-weight:600;color:var(--text-muted, #8b93a0)}
+  /* A load's regression: orange, as it lights the row. */
+  .entry.perf .what{font-family:inherit;color:var(--warn, #f0a020)}
+  /* The current document's values, one dimmed line above the history; a poor one in the danger colour. */
+  .perfline{display:flex;flex-wrap:wrap;gap:2px 14px;font-size:calc(13px * var(--text-scale, 1));font-variant-numeric:tabular-nums;color:var(--text-muted, #8b93a0)}
+  .perfline[hidden]{display:none}
+  .perfline .poor{color:var(--danger, #ff6b5e);font-weight:600}
+  .perfline .dim{color:var(--text-dim, #6b737c)}
   .entry .origin{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-left:calc(8ch + 8px);
     font-family:var(--font-mono, ui-monospace, Menlo, monospace);font-size:calc(12px * var(--text-scale, 1));color:var(--text-dim, #6b737c)}
   .entry .origin:empty{display:none}
@@ -120,7 +127,10 @@
   html.on-light button.act{border-color:color-mix(in srgb, var(--on-surface, #0b0d10) 35%, transparent)}
   html.on-light .entry .time,html.on-light .entry .times,html.on-light .entry.limited .what,html.on-light .entry.slow .what,html.on-light .entry .dur,html.on-light .flight,html.on-light .entry .origin{color:var(--on-surface, #0b0d10);opacity:.7}
   /* The warning orange reads too faint on a light body: darkened towards the text colour. */
-  html.on-light .entry.request .what,html.on-light .fact.requests .n{color:color-mix(in srgb, var(--warn, #f0a020) 55%, var(--on-surface, #0b0d10))}
+  html.on-light .perfline{color:var(--on-surface, #0b0d10)}
+  html.on-light .perfline span:not(.poor){opacity:.7}
+  html.on-light .perfline .dim{color:inherit;opacity:.45}
+  html.on-light .entry.request .what,html.on-light .entry.perf .what,html.on-light .fact.requests .n{color:color-mix(in srgb, var(--warn, #f0a020) 55%, var(--on-surface, #0b0d10))}
   html.on-light .entry.resolved .what,html.on-light .entry.resolved .time,html.on-light .entry.resolved .times,html.on-light .entry.resolved .kind,html.on-light .entry.resolved .dur{color:var(--on-surface, #0b0d10)}
   html.on-light .fact.resolved,html.on-light .fact.resolved .n{color:var(--on-surface, #0b0d10);opacity:.5}
   html.on-light .fact.seen,html.on-light .fact.seen .n,html.on-light .fact.seen .t{color:var(--on-surface, #0b0d10);opacity:.5}
@@ -179,6 +189,13 @@
     openFile: { fr: 'Ouvrir dans l’éditeur', en: 'Open in the editor' },
     inFlight: { fr: '{n} en cours', en: '{n} in flight' },
     seconds: { fr: '{n} s', en: '{n} s' },
+    load: { fr: 'Chargement', en: 'Load' },
+    lcp: { fr: 'LCP', en: 'LCP' },
+    cls: { fr: 'CLS', en: 'CLS' },
+    longTasks: { fr: '{n} tâches longues', en: '{n} long tasks' },
+    heap: { fr: '{n} Mo', en: '{n} MB' },
+    perfSlower: { fr: '{m} {v}, ×{r} plus lent', en: '{m} {v}, ×{r} slower' },
+    perfPoor: { fr: '{m} {v}, mauvais', en: '{m} {v}, poor' },
     elsewhere: { fr: 'Fremdev ne s\'affiche que sur l\'Edge du Mac.', en: 'Fremdev only shows on the Mac\'s Edge.' }
   }
 
@@ -227,10 +244,43 @@
       Fremkit.sendCommand(CHANNEL, 'reload', { deviceId: row.deviceId, tabId: row.tabId, bypassCache: bypassCache }).catch(function () {})
     }
     function pad(n) { return (n < 10 ? '0' : '') + n }
-    /** A slow entry's duration, in seconds with one decimal, in the user's language. */
+    /** A number with `digits` decimals, in the user's language. */
+    function num(n, digits) {
+      return n.toLocaleString(Fremkit.locale === 'fr' ? 'fr' : 'en', { minimumFractionDigits: digits, maximumFractionDigits: digits })
+    }
+    /** A duration, in seconds with one decimal, in the user's language. */
     function seconds(ms) {
-      var n = (ms / 1000).toLocaleString(Fremkit.locale === 'fr' ? 'fr' : 'en', { minimumFractionDigits: 1, maximumFractionDigits: 1 })
-      return Fremkit.t(L.seconds, { n: n })
+      return Fremkit.t(L.seconds, { n: num(ms / 1000, 1) })
+    }
+    /** A perf metric's value: a time in seconds, the CLS with two decimals. */
+    function metricValue(metric, value) {
+      return metric === 'cls' ? num(value, 2) : seconds(value)
+    }
+    /** A perf entry's text: "LCP 1.8 s, ×1.6 slower", or "CLS 0.30, poor" without a ratio. */
+    function perfText(v) {
+      return Fremkit.t(v.ratio !== null ? L.perfSlower : L.perfPoor,
+        { m: Fremkit.t(L[v.metric]), v: metricValue(v.metric, v.value), r: v.ratio !== null ? num(v.ratio, 1) : '' })
+    }
+    /** One of the row's values, as the perf line writes it. */
+    function perfPart(p) {
+      if (p.key === 'longTasks') return Fremkit.t(L.longTasks, { n: p.value })
+      if (p.key === 'heapMb') return Fremkit.t(L.heap, { n: p.value })
+      return Fremkit.t(L[p.key]) + ' ' + metricValue(p.key, p.value)
+    }
+    /** The perf line, rebuilt only when what it shows changed. */
+    function updatePerf(entry) {
+      var parts = FD.perfView(entry.row.perf).map(function (p) { return { text: perfPart(p), poor: p.poor, dim: p.dim } })
+      var sig = JSON.stringify(parts)
+      if (sig === entry.perfSig) return
+      entry.perfSig = sig
+      var line = entry.perf
+      while (line.firstChild) line.removeChild(line.firstChild)
+      parts.forEach(function (p) {
+        var span = el('span', p.poor ? 'poor' : p.dim ? 'dim' : '')
+        span.textContent = p.text
+        line.appendChild(span)
+      })
+      line.hidden = parts.length === 0
     }
     /** An entry's time, local, as HH:MM:SS. */
     function clock(ms) {
@@ -382,6 +432,7 @@
         }
         var what = el('span', 'what')
         what.textContent = v.kind === 'limited' ? Fremkit.t(L.limited, { n: v.n })
+          : v.kind === 'perf' ? perfText(v)
           : v.noAnswer ? v.text + ' ' + Fremkit.t(L.noAnswer) : v.text
         line.appendChild(what)
         if (v.kind === 'slow' && v.ms !== null) {
@@ -412,7 +463,10 @@
       var open = entry.key === unfolded
       entry.el.classList.toggle('unfolded', open)
       entry.body.setAttribute('aria-expanded', open ? 'true' : 'false')
-      if (open) updateHistory(entry)
+      if (open) {
+        updatePerf(entry)
+        updateHistory(entry)
+      }
     }
     function toggle(entry) {
       unfolded = unfolded === entry.key ? null : entry.key
@@ -422,7 +476,7 @@
 
     /** A row's elements, built once; `entry.row` is the latest data its handlers act on. */
     function create(key) {
-      var entry = { key: key, row: null, total: null, flashAt: -Infinity, historySig: null, opens: {} }
+      var entry = { key: key, row: null, total: null, flashAt: -Infinity, historySig: null, perfSig: null, opens: {} }
       var r = entry.el = el('div', 'row')
       var top = entry.top = el('div', 'top')
       entry.light = el('i', 'light')
@@ -461,6 +515,8 @@
       top.appendChild(entry.clear)
 
       var detail = el('div', 'detail')
+      entry.perf = el('div', 'perfline')
+      entry.perf.hidden = true
       entry.history = el('ul', 'history')
       entry.actions = el('div', 'actions')
       entry.copy = copyButton(entry, false)
@@ -475,6 +531,7 @@
       entry.actions.appendChild(entry.reloadHard)
       entry.reload.addEventListener('click', function (ev) { ev.stopPropagation(); reload(entry.row, false) })
       entry.reloadHard.addEventListener('click', function (ev) { ev.stopPropagation(); reload(entry.row, true) })
+      detail.appendChild(entry.perf)
       detail.appendChild(entry.history)
       detail.appendChild(entry.actions)
       r.appendChild(top)

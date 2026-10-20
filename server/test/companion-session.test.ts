@@ -596,7 +596,7 @@ describe('CompanionSession with Fremdev', () => {
     t.session.onMessage('a', { type: 'dev.tabs', tabs: [{
       tabId: 7, app: 'App', host: 'localhost:5173',
       errors: { total: 0, open: 0, seen: 0, last: null }, requests: { total: 0, open: 0, seen: 0, last: null },
-      history: [], devServer: null, inFlight: 0, server: 'up', activity: 1,
+      history: [], devServer: null, inFlight: 0, perf: {}, server: 'up', activity: 1,
     }] })
     t.sent.length = 0
     const pending = t.dev.report('a', 7, false)
@@ -614,7 +614,7 @@ describe('CompanionSession with Fremdev', () => {
       tabId: 7, app: 'App', host: 'localhost:5173',
       errors: { total: 1, open: 1, seen: 0, last: { text: 'TypeError', at: 1 } }, requests: { total: 0, open: 0, seen: 0, last: null },
       history: [{ kind: 'error', id: 3, text: 'TypeError', origin: '/src/main.ts:1:1', n: 1, at: 1, state: 'open' }],
-      devServer: 'vite', inFlight: 0, server: 'up', activity: 1,
+      devServer: 'vite', inFlight: 0, perf: {}, server: 'up', activity: 1,
     }] })
     t.sent.length = 0
     const pending = t.dev.open('a', 7, 3)
