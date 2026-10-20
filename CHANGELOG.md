@@ -18,6 +18,13 @@ tagged `vX.Y.Z`.
   SVG, PNG or WebP, tinted to the theme or in its own colours. Under **/admin**, select a tile,
   then **Icon**. Fremkit ships no brand logos; the marks you import stay in your installation.
 
+### Changed
+
+- **Paired devices are filed as tablets.** Fremkit now records a paired iPad as a tablet and
+  notes which platform it runs, ready for tablets other than the iPad. Nothing changes for an
+  iPad already paired. Going back to an older version of Fremkit afterwards sets the list of
+  paired devices aside: every iPad and browser extension then has to pair again.
+
 ### Fixed
 
 - **Backgrounds with dots at the end of their name.** A background uploaded from a file called,

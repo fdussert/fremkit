@@ -171,6 +171,23 @@ describe.skipIf(!hasOpenssl)('device routes', () => {
     expect((await pair({ secret: `${'A'.repeat(42)}=`, name: 'x', viewport })).status).toBe(400)
   })
 
+  it('records the platform a tablet says it runs, an iPad when it says none', async () => {
+    const platformOf = async (deviceId: string) =>
+      (await app.inject({ url: '/api/devices' })).json().devices.find((d: { id: string }) => d.id === deviceId)
+    const viewport = { width: 640, height: 480 }
+    // The shipped iPad app sends no platform.
+    const ipad = await pairWith(viewport)
+    expect(await platformOf(ipad.deviceId)).toMatchObject({ kind: 'tablet', platform: 'ios' })
+    const offer = await issueOffer()
+    const res = await pair({ ...typed(offer.code, offer.keyHash), name: 'Kitchen tablet', viewport, platform: 'android' })
+    expect(res.status).toBe(200)
+    expect(await platformOf(JSON.parse(res.body).deviceId)).toMatchObject({ kind: 'tablet', platform: 'android' })
+    await issueCode()
+    for (const platform of ['x', 'windows', 'ipad', 1, null]) {
+      expect((await pair({ proof: 'A'.repeat(43), name: 'x', viewport, platform })).status, String(platform)).toBe(400)
+    }
+  })
+
   it('answers /api/pair 404, as a route that does not exist, while no code is live', async () => {
     // The code `pairWith` used is spent: nothing is live now.
     await pairWith({ width: 640, height: 480 })
@@ -883,15 +900,16 @@ describe('browser extensions in the device list', () => {
     expect((await eapp.inject({ method: 'PATCH', url: '/api/devices/nobody', headers: { host: HOST }, payload: { name: 'x' } })).statusCode).toBe(404)
   })
 
-  it.skipIf(!hasOpenssl)('remove every iPad and a certificate reset leave the extensions paired', async () => {
+  it.skipIf(!hasOpenssl)('remove every tablet and a certificate reset take both platforms and leave the extensions paired', async () => {
     const { deviceId } = await pairExtension()
     const kinds = async () => ((await eapp.inject({ url: '/api/devices', headers: { host: HOST } })).json().devices as { id: string; kind: string }[])
     for (const [method, url] of [['DELETE', '/api/devices'], ['POST', '/api/devices/reset-certificate']] as const) {
-      const { device: ipad } = await eapp.pairing.store.create('iPad', { width: 1180, height: 820 }, null)
-      expect((await kinds()).map((d) => d.id)).toEqual(expect.arrayContaining([ipad.id, deviceId]))
+      const { device: ipad } = await eapp.pairing.store.create('iPad', { width: 1180, height: 820 }, null, 'ios')
+      const { device: android } = await eapp.pairing.store.create('Kitchen tablet', { width: 1280, height: 800 }, null, 'android')
+      expect((await kinds()).map((d) => d.id)).toEqual(expect.arrayContaining([ipad.id, android.id, deviceId]))
       expect((await eapp.inject({ method, url, headers: { host: HOST } })).statusCode, url).toBeLessThan(300)
       const left = await kinds()
-      expect(left.some((d) => d.kind === 'ipad'), url).toBe(false)
+      expect(left.some((d) => d.kind === 'tablet'), url).toBe(false)
       expect(left.map((d) => d.id), url).toContain(deviceId)
     }
   })

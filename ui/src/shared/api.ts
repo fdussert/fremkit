@@ -73,8 +73,10 @@ interface PublicDeviceBase {
   /** ISO date, written at most once a minute; null until the device first connects. */
   lastSeen: string | null
 }
-export interface PublicIpadDevice extends PublicDeviceBase {
-  kind: 'ipad'
+/** A tablet running the Fremkit app: an iPad, or an Android tablet. */
+export interface PublicTabletDevice extends PublicDeviceBase {
+  kind: 'tablet'
+  platform: 'ios' | 'android'
   viewport: { width: number; height: number }
   screenId: string | null
 }
@@ -86,7 +88,7 @@ export interface PublicExtensionDevice extends PublicDeviceBase {
   connected: boolean
 }
 /** A paired device as `GET /api/devices` lists it. */
-export type PublicDevice = PublicIpadDevice | PublicExtensionDevice
+export type PublicDevice = PublicTabletDevice | PublicExtensionDevice
 /** What `GET /api/devices` answers: the remote listener's state and the paired devices. */
 export interface DeviceStatus {
   enabled: boolean

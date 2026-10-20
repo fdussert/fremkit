@@ -49,10 +49,10 @@ describe('constant-time comparisons', () => {
     const { token } = await store.create('A', { width: 1, height: 1 }, null)
     await store.create('B', { width: 1, height: 1 }, null)
     spy.calls = 0
-    expect(store.findByToken(token, 'ipad')).not.toBeNull()
+    expect(store.findByToken(token, 'tablet')).not.toBeNull()
     expect(spy.calls).toBe(2)
     spy.calls = 0
-    expect(store.findByToken('not-a-token', 'ipad')).toBeNull()
+    expect(store.findByToken('not-a-token', 'tablet')).toBeNull()
     expect(spy.calls).toBe(2)
   })
 })

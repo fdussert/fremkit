@@ -25,13 +25,13 @@ import type { PairingCodes } from './codes.js'
 import { lanAddresses as readLanAddresses, cachedPick, computerName, isPrivate, lanAppAddresses, localHostName, preferredAddress } from './host.js'
 import { REMOTE_PORT, RemoteListener } from './listener.js'
 import { deviceThemeView } from '../themes/schedule.js'
-import type { DeviceStore, PublicDevice, PublicExtensionDevice, PublicIpadDevice, Viewport } from './store.js'
+import type { DeviceStore, PublicDevice, PublicExtensionDevice, PublicTabletDevice, Platform, Viewport } from './store.js'
 
 /** How often the LAN addresses are re-read while listening, to follow a DHCP change. */
 const ADDRESS_CHECK_MS = 30_000
 
 /** What the admin lists: an extension row also says whether its socket is open right now. */
-export type StatusDevice = PublicIpadDevice | (PublicExtensionDevice & { connected: boolean })
+export type StatusDevice = PublicTabletDevice | (PublicExtensionDevice & { connected: boolean })
 
 /** A browser extension asking to pair, as the admin shows it: never a token. */
 export type CompanionRequest = { requestId: string; code: string; name: string; extension: string; expiresAt: number }
@@ -329,14 +329,14 @@ export class DeviceService {
    * attached to the one device screen made for its viewport; none, or more than one, leaves it
    * unattached for the user to choose.
    */
-  async pair(credential: PairCredential, name: string, viewport: Viewport, peer = ''): Promise<PairResult> {
+  async pair(credential: PairCredential, name: string, viewport: Viewport, peer = '', platform: Platform = 'ios'): Promise<PairResult> {
     const result = 'secret' in credential
       ? this.codes.consumeSecret(credential.secret, peer)
       : this.codes.consume(credential.proof, peer)
     if (result !== 'ok') return { error: result }
     const matches = this.config.get().screens.filter((s) => s.kind === 'device' && fits(s, viewport))
     const screenId = matches.length === 1 ? matches[0].id : null
-    const { device, token } = await this.store.create(name, viewport, screenId)
+    const { device, token } = await this.store.create(name, viewport, screenId, platform)
     return { token, device }
   }
 
@@ -348,7 +348,7 @@ export class DeviceService {
   /** Puts a device on a device screen, or on none. Refuses any other screen. */
   async attach(id: string, screenId: string | null): Promise<PublicDevice | null | 'screenNotDevice'> {
     if (screenId !== null && !isDeviceScreen(this.config.get(), screenId)) return 'screenNotDevice'
-    // Only an iPad shows a screen: an extension record is not attachable.
+    // Only a tablet shows a screen: an extension record is not attachable.
     if (!this.me(id)) return null
     const device = await this.store.update(id, { screenId })
     if (device) this.hub.refreshDevice(id)
@@ -370,7 +370,7 @@ export class DeviceService {
 
   /** Every paired iPad; a browser extension is left, removed from its own row instead. */
   async revokeAll(): Promise<void> {
-    for (const id of await this.store.removeIpads()) this.hub.closeDevice(id)
+    for (const id of await this.store.removeTablets()) this.hub.closeDevice(id)
   }
 
   /**
@@ -385,7 +385,7 @@ export class DeviceService {
       this.keyHashKnown = true
       this.codes.clear()
       // `revokeAll`'s body, inline: it is not serialized itself, and this already is.
-      for (const id of await this.store.removeIpads()) this.hub.closeDevice(id)
+      for (const id of await this.store.removeTablets()) this.hub.closeDevice(id)
       this.hub.closeRemote()
       if (this.listener.running) {
         const cert = await issueCertificate(key, { host: this.dnsName(), addresses: this.certAddresses }, { exec: this.exec })
@@ -399,7 +399,7 @@ export class DeviceService {
   me(deviceId: string): DeviceInfo | null {
     const device = this.store.list().find((d) => d.id === deviceId)
     // An extension is no device screen: it has no `me`, as before main's brightness.
-    if (device?.kind !== 'ipad') return null
+    if (device?.kind !== 'tablet') return null
     const brightness = device.screenId === null ? null : this.brightnessOf(device.screenId)
     return { id: device.id, name: device.name, screenId: device.screenId, brightness }
   }
@@ -428,7 +428,7 @@ export class DeviceService {
   /** The screen a device is bound to, only while it is a device screen: where its brightness goes. */
   deviceScreenOf(deviceId: string): string | null {
     const device = this.store.list().find((d) => d.id === deviceId)
-    const screenId = device?.kind === 'ipad' ? device.screenId : null
+    const screenId = device?.kind === 'tablet' ? device.screenId : null
     return screenId !== null && isDeviceScreen(this.config.get(), screenId) ? screenId : null
   }
 
@@ -440,7 +440,7 @@ export class DeviceService {
   /** Re-sends the `device` payload to every device bound to one of these screens. */
   screensChanged(screenIds: string[]): void {
     for (const d of this.store.list()) {
-      if (d.kind === 'ipad' && d.screenId !== null && screenIds.includes(d.screenId)) this.hub.refreshDevice(d.id)
+      if (d.kind === 'tablet' && d.screenId !== null && screenIds.includes(d.screenId)) this.hub.refreshDevice(d.id)
     }
   }
 
@@ -650,7 +650,7 @@ export class DeviceService {
   private onConfigChange(cfg: Config): void {
     this.manifests = null
     for (const device of this.store.list()) {
-      if (device.kind !== 'ipad' || device.screenId === null || isDeviceScreen(cfg, device.screenId)) continue
+      if (device.kind !== 'tablet' || device.screenId === null || isDeviceScreen(cfg, device.screenId)) continue
       // Conditional, inside the store's queue: an attach to another screen queued before this
       // write runs must not be undone by it.
       void this.store.detach(device.id, device.screenId)

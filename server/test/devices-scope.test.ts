@@ -423,6 +423,20 @@ describe.skipIf(!hasOpenssl)('a paired device acts on its own screen only', () =
     }
   })
 
+  it('narrows the host channels to an Android tablet\'s own screen, as to an iPad\'s', async () => {
+    const { token } = await app.pairing.store.create('Kitchen tablet', { width: 1180, height: 820 }, 'tab-b', 'android')
+    const ws = await openWs(token)
+    try {
+      ws.send({ type: 'subscribe', channel: 'config' })
+      const config = await ws.next((m) => m.channel === 'config')
+      expect(config.data.screens.map((s: { id: string }) => s.id)).toEqual(['tab-b'])
+      expect(Object.keys(config.data.widgets)).not.toContain('clock-a')
+      expect((await conn(token, 'clock', 'clock-a')).status).toBe(404)
+    } finally {
+      ws.close()
+    }
+  })
+
   it('follows the device to another screen over a live socket', async () => {
     const { device, token } = await app.pairing.store.create('Mover', { width: 1180, height: 820 }, 'tab-b')
     const ws = await openWs(token)

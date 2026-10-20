@@ -51,7 +51,7 @@ export function offeredManifests(config: Config | null | undefined, manifests: R
  * browser extension does not count: it needs no listener, and has its own rule below.
  */
 export function pairingInUse(status: DeviceStatus | null | undefined): boolean {
-  return status?.enabled === true || (status?.devices ?? []).some((d) => d.kind === 'ipad')
+  return status?.enabled === true || (status?.devices ?? []).some((d) => d.kind === 'tablet')
 }
 
 /** True when a browser extension is paired, whatever `labs.companion` says. */

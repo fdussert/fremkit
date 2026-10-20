@@ -7,11 +7,11 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
-import type { DeviceStatus, PublicDevice, PublicExtensionDevice, PublicIpadDevice } from '../src/shared/api'
+import type { DeviceStatus, PublicDevice, PublicExtensionDevice, PublicTabletDevice } from '../src/shared/api'
 import type { Config } from '../src/shared/types'
 
-const device = (over: Partial<PublicIpadDevice> = {}): PublicDevice => ({
-  id: 'dev-1', kind: 'ipad', name: 'Kitchen iPad', pairedAt: '2026-10-01T08:00:00.000Z', lastSeen: null,
+const device = (over: Partial<PublicTabletDevice> = {}): PublicDevice => ({
+  id: 'dev-1', kind: 'tablet', platform: 'ios', name: 'Kitchen iPad', pairedAt: '2026-10-01T08:00:00.000Z', lastSeen: null,
   viewport: { width: 1376, height: 1032 }, screenId: null, ...over,
 })
 const extension = (over: Partial<PublicExtensionDevice> = {}): PublicDevice => ({
