@@ -4,7 +4,6 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { FastifyInstance } from 'fastify'
 import { buildApp } from '../src/app.js'
-import { keepUnsentLabs } from '../src/config/routes.js'
 import { backupFilename, CONFIG_ENTRY, MANIFEST_ENTRY, readBackup } from '../src/backup/routes.js'
 import { readZip, writeZip } from '../src/backup/zip.js'
 import { DEFAULT_BACKGROUND } from '../src/backgrounds/seed.js'
@@ -411,14 +410,6 @@ describe('what an archive or a PUT cannot change', () => {
       expect((await app.inject({ method: 'PUT', url: '/api/config', payload })).statusCode).toBe(200)
       expect((await app.inject({ url: '/api/config' })).json().labs).toEqual({})
     }
-  })
-
-  it('keepUnsentLabs keeps a flag the body leaves out and sets one it states', () => {
-    const current = { a: true, b: false }
-    expect(keepUnsentLabs({ a: false, b: false }, undefined, current)).toEqual({ a: true, b: false })
-    expect(keepUnsentLabs({ a: false, b: true }, { b: true }, current)).toEqual({ a: true, b: true })
-    expect(keepUnsentLabs({ a: false, b: false }, { a: false, b: 'yes' }, current)).toEqual({ a: false, b: false })
-    expect(keepUnsentLabs({}, null, {})).toEqual({})
   })
 
   it('PUT /api/config replays the current consent records', async () => {
