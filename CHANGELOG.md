@@ -19,8 +19,10 @@ tagged `vX.Y.Z`.
   zoxide, tmux and Herdr — and opens one with a tap in Finder, a terminal, your editor (a
   JetBrains IDE included) or Herdr (the pane already in that folder, else a new one, with Herdr's
   terminal brought to the front), or starts Claude Code or Codex in a new Herdr pane or tmux
-  window on it; a long press offers the other installed applications. Only folder paths and
-  dates are read, never a conversation or a file's contents.
+  window on it; a long press offers the other installed applications, and can make one the
+  project's own for every later tap. Without one, the files at a project's root can suggest the
+  right IDE (a `.sln` for Rider, a `Cargo.toml` for RustRover…). Only folder paths, dates and
+  the names at a project's root are read, never a conversation or a file's contents.
 
 ### Fixed
 

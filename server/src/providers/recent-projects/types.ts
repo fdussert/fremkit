@@ -1,3 +1,5 @@
+import type { AppId } from './apps.js'
+
 /** Every source the provider knows, in the order the settings list them. */
 export const SOURCE_IDS = ['git', 'claude', 'codex', 'vscode', 'cursor', 'jetbrains', 'zoxide', 'tmux', 'herdr'] as const
 export type SourceId = (typeof SOURCE_IDS)[number]
@@ -45,6 +47,10 @@ export interface RecentProject {
   sources: SourceId[]
   /** For a repository the git source found: the roots (as typed) it sits under. */
   gitRoots?: string[]
+  /** The application this project was told to always open with (`setOpener`). */
+  opener?: AppId
+  /** Without an opener: the application the names at the project's root suggest, if installed. */
+  suggested?: AppId
 }
 
 export interface SourceStatus {

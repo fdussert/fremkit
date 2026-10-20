@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { mkdir, mkdtemp, readFile, readdir, realpath, rm, stat, symlink, utimes, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, readFile, readdir, realpath, rm, stat, symlink, utimes, writeFile } from 'node:fs/promises'
 import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
@@ -15,7 +15,9 @@ import { parseRecentProjects } from '../src/providers/recent-projects/sources/je
 import { binaryCandidates, createCliSources, parseHerdrPanes, parseTmux, parseZoxide } from '../src/providers/recent-projects/sources/cli.js'
 import { installedApps, openWith } from '../src/providers/recent-projects/apps.js'
 import { detectHerdrTerminal } from '../src/providers/recent-projects/herdr.js'
-import { LIVE_MEMORY, loadMemory } from '../src/providers/recent-projects/memory.js'
+import { LIVE_MEMORY, MAX_OPENERS, loadMemory, loadState } from '../src/providers/recent-projects/memory.js'
+import { suggestApp } from '../src/providers/recent-projects/suggest.js'
+import type { AppId } from '../src/providers/recent-projects/apps.js'
 import type { Source } from '../src/providers/recent-projects/types.js'
 import { BUILTIN_ONLY_CHANNELS } from '../src/widgets/manifest.js'
 import { LOCAL_ONLY_CHANNELS } from '../src/ws/hub.js'
@@ -492,6 +494,143 @@ describe('recent projects: Herdr', () => {
     expect(await ps(PS_ITERM + '\n  400     1 /Applications/Ghostty.app/Contents/MacOS/ghostty\n  410   400 herdr')).toBeNull()
     expect(await ps('  340     1 herdr')).toBeNull()
     expect(await ps('  300     1 /Applications/iTerm.app/Contents/MacOS/iTerm2')).toBeNull()
+  })
+})
+
+describe('recent projects: suggested application', () => {
+  const ALL: AppId[] = ['finder', 'xcode', 'jetbrains-idea', 'jetbrains-pycharm', 'jetbrains-rider', 'jetbrains-rustrover',
+    'jetbrains-goland', 'jetbrains-phpstorm', 'jetbrains-rubymine', 'jetbrains-clion', 'jetbrains-android-studio']
+
+  async function project(entries: Record<string, 'file' | 'dir'>): Promise<string> {
+    const dir = await mkdtemp(join(home, 'p-'))
+    for (const [name, kind] of Object.entries(entries)) {
+      if (kind === 'dir') await mkdir(join(dir, name), { recursive: true })
+      else {
+        await mkdir(join(dir, name, '..'), { recursive: true })
+        await writeFile(join(dir, name), '')
+      }
+    }
+    return dir
+  }
+
+  it.each([
+    [{ 'Shop.sln': 'file' }, 'jetbrains-rider'],
+    [{ 'Api.csproj': 'file' }, 'jetbrains-rider'],
+    [{ 'Lib.fsproj': 'file' }, 'jetbrains-rider'],
+    [{ 'App.xcodeproj': 'dir' }, 'xcode'],
+    [{ 'App.xcworkspace': 'dir' }, 'xcode'],
+    [{ 'Package.swift': 'file' }, 'xcode'],
+    [{ 'Cargo.toml': 'file' }, 'jetbrains-rustrover'],
+    [{ 'go.mod': 'file' }, 'jetbrains-goland'],
+    [{ 'pyproject.toml': 'file' }, 'jetbrains-pycharm'],
+    [{ 'requirements.txt': 'file' }, 'jetbrains-pycharm'],
+    [{ 'composer.json': 'file' }, 'jetbrains-phpstorm'],
+    [{ Gemfile: 'file' }, 'jetbrains-rubymine'],
+    [{ 'build.gradle': 'file' }, 'jetbrains-idea'],
+    [{ 'build.gradle.kts': 'file' }, 'jetbrains-idea'],
+    [{ 'pom.xml': 'file' }, 'jetbrains-idea'],
+    [{ 'build.gradle.kts': 'file', 'app/src/main/AndroidManifest.xml': 'file' }, 'jetbrains-android-studio'],
+    [{ 'AndroidManifest.xml': 'file', 'build.gradle': 'file' }, 'jetbrains-android-studio'],
+    [{ 'CMakeLists.txt': 'file' }, 'jetbrains-clion'],
+    [{ 'package.json': 'file', 'README.md': 'file' }, null],
+    [{ 'sub/Cargo.toml': 'file' }, null],
+  ] as [Record<string, 'file' | 'dir'>, AppId | null][])('%o suggests %s', async (entries, app) => {
+    expect(await suggestApp(await project(entries), ALL)).toBe(app)
+  })
+
+  it('suggests only an installed application, trying the next candidate, else nothing', async () => {
+    expect(await suggestApp(await project({ 'Cargo.toml': 'file' }), ['finder', 'vscode'])).toBeNull()
+    expect(await suggestApp(await project({ 'pom.xml': 'file' }), ['jetbrains-idea-ce'])).toBe('jetbrains-idea-ce')
+    expect(await suggestApp(await project({ 'requirements.txt': 'file' }), ['jetbrains-pycharm-ce'])).toBe('jetbrains-pycharm-ce')
+    // Android Studio missing: a Gradle build is still IntelliJ's.
+    expect(await suggestApp(await project({ 'build.gradle': 'file', 'AndroidManifest.xml': 'file' }), ['jetbrains-idea'])).toBe('jetbrains-idea')
+    // Rider missing, but the same root names another rule's installed IDE.
+    expect(await suggestApp(await project({ 'Tool.sln': 'file', 'CMakeLists.txt': 'file' }), ['jetbrains-clion'])).toBe('jetbrains-clion')
+  })
+
+  it('reads names only, never a file', async () => {
+    const dir = await project({ 'Cargo.toml': 'file' })
+    await chmod(join(dir, 'Cargo.toml'), 0o000)
+    expect(await suggestApp(dir, ALL)).toBe('jetbrains-rustrover')
+    expect(await suggestApp(join(home, 'gone'), ALL)).toBeNull()
+  })
+})
+
+describe('recent projects: a project’s own application', () => {
+  async function setup(opts: { settings?: Record<string, unknown>; file?: string } = {}) {
+    await mkdir(join(home, 'Dev', 'api'), { recursive: true })
+    await writeFile(join(home, 'Dev', 'api', 'Api.sln'), '')
+    const onChange = vi.fn()
+    const provider = createRecentProjectsProvider({
+      instances: () => [{ widgetId: 'recent-projects', settings: opts.settings ?? {} }],
+      home, sources: [fakeSource('git', async () => [{ path: join(home, 'Dev', 'api'), seenAt: 1 }])],
+      exec: vi.fn(async () => ''), resolveBinary: async () => null,
+      appExists: async (p) => p === '/Applications/Rider.app' || p === '/Applications/Zed.app' || p.endsWith('Finder.app'),
+      memoryFile: opts.file ?? join(home, 'recent-projects.json'), onChange,
+    })
+    const snap = async () => (await provider.poll!()) as RecentProjectsSnapshot
+    return { provider, snap, onChange, path: join(home, 'Dev', 'api'), set: provider.commands!.setOpener }
+  }
+
+  it('suggests from the root’s names, unless every tile turned suggestions off', async () => {
+    expect((await (await setup()).snap()).projects[0]).toMatchObject({ suggested: 'jetbrains-rider' })
+    expect((await (await setup({ settings: { suggestApp: false } })).snap()).projects[0].suggested).toBeUndefined()
+  })
+
+  it('keeps the chosen application over the suggestion, clears it, and tells the registry', async () => {
+    const { snap, set, path, onChange } = await setup()
+    await snap()
+    expect(await set({ path, app: 'zed' }, LOCAL)).toEqual({ ok: true })
+    expect(onChange).toHaveBeenCalledTimes(1)
+    const chosen = (await snap()).projects[0]
+    expect(chosen.opener).toBe('zed')
+    expect(chosen.suggested).toBeUndefined()
+    expect(await set({ path, app: null }, LOCAL)).toEqual({ ok: true })
+    expect((await snap()).projects[0]).toMatchObject({ suggested: 'jetbrains-rider' })
+    expect((await snap()).projects[0].opener).toBeUndefined()
+  })
+
+  it('refuses a remote or paired caller, a bad payload, an unlisted or non-canonical path, an app not installed', async () => {
+    const { snap, set, path, onChange } = await setup()
+    await snap()
+    expect(await set({ path, app: 'zed' })).toMatchObject({ ok: false, error: 'local-only' })
+    expect(await set({ path, app: 'zed' }, { loopback: false, paired: false })).toMatchObject({ ok: false, error: 'local-only' })
+    expect(await set({ path, app: 'zed' }, { loopback: false, paired: true, deviceId: 'd' })).toMatchObject({ ok: false, error: 'local-only' })
+    expect(await set({ path, app: 'Calculator' }, LOCAL)).toMatchObject({ ok: false, error: 'invalid-request' })
+    expect(await set({ path }, LOCAL)).toMatchObject({ ok: false, error: 'invalid-request' })
+    expect(await set({ path: 42, app: 'zed' }, LOCAL)).toMatchObject({ ok: false, error: 'invalid-request' })
+    expect(await set({ path: join(home, 'Dev'), app: 'zed' }, LOCAL)).toMatchObject({ ok: false, error: 'unknown-project' })
+    expect(await set({ path: path + '/', app: 'zed' }, LOCAL)).toMatchObject({ ok: false, error: 'unknown-project' })
+    expect(await set({ path: home + '/Dev/../Dev/api', app: 'zed' }, LOCAL)).toMatchObject({ ok: false, error: 'unknown-project' })
+    expect(await set({ path, app: 'cursor' }, LOCAL)).toMatchObject({ ok: false, error: 'not-installed' })
+    expect(onChange).not.toHaveBeenCalled()
+    expect((await snap()).projects[0].opener).toBeUndefined()
+  })
+
+  it('survives a restart in the 0600 data file, beside the live memory, and is dropped with its folder', async () => {
+    const file = join(home, 'recent-projects.json')
+    const first = await setup({ file })
+    await first.snap()
+    await first.set({ path: first.path, app: 'jetbrains-rider' }, LOCAL)
+    expect((await stat(file)).mode & 0o777).toBe(0o600)
+    expect(JSON.parse(await readFile(file, 'utf8')).openers).toEqual([{ path: first.path, app: 'jetbrains-rider' }])
+
+    const again = await setup({ file })
+    expect((await again.snap()).projects[0].opener).toBe('jetbrains-rider')
+
+    await rm(first.path, { recursive: true })
+    await again.snap()
+    expect((await loadState(file)).openers.size).toBe(0)
+  })
+
+  it('keeps the newest 200 and drops entries that do not check', async () => {
+    const file = join(home, 'recent-projects.json')
+    const openers = Array.from({ length: MAX_OPENERS + 50 }, (_, i) => ({ path: `/Users/demo/p${i}`, app: 'zed' }))
+    await writeFile(file, JSON.stringify({ version: 1, sources: {}, openers: [...openers, { path: '/Users/demo/x', app: 'sh' }, { path: 'rel', app: 'zed' }] }))
+    const state = await loadState(file)
+    expect(state.openers.size).toBe(MAX_OPENERS)
+    expect([...state.openers.keys()][0]).toBe('/Users/demo/p50')
+    expect(state.openers.has('/Users/demo/x')).toBe(false)
   })
 })
 

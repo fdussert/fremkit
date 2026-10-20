@@ -63,6 +63,8 @@
         { "value": "tmux-claude", "label": { "fr": "tmux + Claude Code (nouvelle fenêtre)", "en": "tmux + Claude Code (new window)" } },
         { "value": "tmux-codex", "label": { "fr": "tmux + Codex (nouvelle fenêtre)", "en": "tmux + Codex (new window)" } }
       ] },
+    "suggestApp": { "type": "boolean", "default": true,
+      "label": { "fr": "Suggérer une appli d’après les fichiers du projet", "en": "Suggest an app from the project’s files" } },
     "herdrTerminal": { "type": "enum", "default": "auto",
       "label": { "fr": "Terminal de Herdr (mis au premier plan)", "en": "Herdr’s terminal (brought to the front)" },
       "options": [

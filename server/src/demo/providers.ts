@@ -70,38 +70,55 @@ export function createDemoProviders(opts: DemoProviderOptions): Provider[] {
 /** Invented folders under an invented home, touched over the last few days. */
 function recentProjectsProvider(now: () => number): Provider {
   const HOUR = 3_600_000
-  const rows: { name: string; parent: string; ago: number; sources: string[] }[] = [
-    { name: 'example-api', parent: '~/Dev', ago: 0.3, sources: ['git', 'claude', 'herdr'] },
+  const rows: { name: string; parent: string; ago: number; sources: string[]; suggested?: string }[] = [
+    { name: 'example-api', parent: '~/Dev', ago: 0.3, sources: ['git', 'claude', 'herdr'], suggested: 'jetbrains-rider' },
     { name: 'dashboard-web', parent: '~/Dev', ago: 2, sources: ['git', 'vscode'] },
-    { name: 'mobile-app', parent: '~/Dev/clients/acme', ago: 5, sources: ['git', 'claude'] },
-    { name: 'infra', parent: '~/Dev', ago: 26, sources: ['git', 'herdr'] },
+    { name: 'mobile-app', parent: '~/Dev/clients/acme', ago: 5, sources: ['git', 'claude'], suggested: 'xcode' },
+    { name: 'infra', parent: '~/Dev', ago: 26, sources: ['git', 'herdr'], suggested: 'jetbrains-goland' },
     { name: 'design-system', parent: '~/Dev/clients/acme', ago: 50, sources: ['git', 'vscode', 'claude'] },
     { name: 'notes', parent: '~/Documents', ago: 74, sources: ['claude'] },
     { name: 'blog', parent: '~/Dev/personal', ago: 120, sources: ['git'] },
   ]
+  const pathOf = (r: { parent: string; name: string }) => `${r.parent.replace('~', '/Users/demo')}/${r.name}`
+  // Openers set during the demo, in memory; the dashboard one starts with one of its own.
+  const openers = new Map<string, string>([[pathOf(rows[1]), 'zed']])
   return {
     channel: 'recent-projects',
     intervalMs: 60_000,
     poll: async () => {
       const t = now()
-      const projects = rows.map((r) => ({
-        path: `${r.parent.replace('~', '/Users/demo')}/${r.name}`,
-        name: r.name,
-        parent: r.parent,
-        seenAt: Math.round(t - r.ago * HOUR),
-        sources: r.sources,
-        ...(r.sources.includes('git') ? { gitRoots: ['~/Dev'] } : {}),
-      }))
+      const projects = rows.map((r) => {
+        const path = pathOf(r)
+        const opener = openers.get(path)
+        return {
+          path,
+          name: r.name,
+          parent: r.parent,
+          seenAt: Math.round(t - r.ago * HOUR),
+          sources: r.sources,
+          ...(r.sources.includes('git') ? { gitRoots: ['~/Dev'] } : {}),
+          ...(opener ? { opener } : r.suggested ? { suggested: r.suggested } : {}),
+        }
+      })
       const ids = ['git', 'claude', 'codex', 'vscode', 'cursor', 'jetbrains', 'zoxide', 'tmux', 'herdr']
       const on = new Set(['git', 'claude', 'vscode', 'herdr'])
       return {
         projects,
         sources: ids.map((id) => ({ id, enabled: on.has(id), available: on.has(id), count: projects.filter((p) => p.sources.includes(id)).length })),
-        apps: ['finder', 'terminal', 'vscode', 'zed', 'herdr', 'herdr-claude', 'herdr-codex'],
+        apps: ['finder', 'terminal', 'vscode', 'zed', 'xcode', 'herdr', 'herdr-claude', 'herdr-codex', 'jetbrains-rider', 'jetbrains-goland'],
         updatedAt: t,
       }
     },
-    commands: { open: ACTED },
+    commands: {
+      open: ACTED,
+      setOpener: async (payload: unknown) => {
+        const { path, app } = (payload ?? {}) as { path?: unknown; app?: unknown }
+        if (typeof path !== 'string' || !rows.some((r) => pathOf(r) === path)) return { ok: false, error: 'unknown-project' }
+        if (typeof app === 'string') openers.set(path, app)
+        else openers.delete(path)
+        return { ok: true }
+      },
+    },
   }
 }
 

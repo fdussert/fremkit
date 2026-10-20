@@ -316,6 +316,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     recentProjects = createRecentProjectsProvider({
       instances: () => findInstances(store.get(), RECENT_PROJECTS_WIDGET),
       memoryFile: join(opts.dataDir, RECENT_PROJECTS_FILE),
+      onChange: () => registry.refresh(RECENT_PROJECTS_CHANNEL),
     })
     registry.register(recentProjects)
     // A paired device may set only its own screen's brightness: see mayCommandBrightness. Read

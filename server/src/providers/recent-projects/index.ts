@@ -5,7 +5,8 @@ import { execCommand, type Exec } from '../exec.js'
 import type { CommandContext, Provider } from '../types.js'
 import { APP_IDS, installedApps, openWith, type AppId } from './apps.js'
 import { HERDR_TERMINALS } from './herdr.js'
-import { LIVE_MEMORY, MEMORY_FILE, loadMemory, saveMemory, serializeMemory, type LiveMemory } from './memory.js'
+import { LIVE_MEMORY, MAX_OPENERS, MEMORY_FILE, loadState, saveMemory, serializeMemory, type LiveMemory, type Openers } from './memory.js'
+import { suggestApp } from './suggest.js'
 import { canonicalProject, projectName, shortParent } from './paths.js'
 import { createClaudeSource } from './sources/claude.js'
 import { createCliSources, resolveBinary as defaultResolveBinary, type ResolveBinary } from './sources/cli.js'
@@ -14,7 +15,7 @@ import { gitSource } from './sources/git.js'
 import { createJetbrainsSource } from './sources/jetbrains.js'
 import { createVscodeSource } from './sources/vscode.js'
 import { SOURCE_IDS, type RecentProject, type Source, type SourceEntry, type SourceId, type SourceStatus } from './types.js'
-import { withTimeout } from './util.js'
+import { exists, withTimeout } from './util.js'
 
 export { SOURCE_IDS, APP_IDS, MEMORY_FILE }
 export type { RecentProject, SourceId, AppId }
@@ -37,7 +38,7 @@ export function sourceKey(id: SourceId): string {
 }
 
 /** What one tile asked for: the sources it ticked and the git roots it typed. */
-export function tileWants(settings: Record<string, unknown>): { sources: Set<SourceId>; gitRoots: string[] } {
+export function tileWants(settings: Record<string, unknown>): { sources: Set<SourceId>; gitRoots: string[]; suggest: boolean } {
   const sources = new Set<SourceId>()
   for (const id of SOURCE_IDS) {
     const v = settings[sourceKey(id)]
@@ -50,19 +51,21 @@ export function tileWants(settings: Record<string, unknown>): { sources: Set<Sou
       if (typeof p === 'string' && p.trim() && p.length <= 1024) gitRoots.push(p.trim())
     }
   }
-  return { sources, gitRoots }
+  return { sources, gitRoots, suggest: settings.suggestApp !== false }
 }
 
 /** Every shown tile's wishes merged: a source is read when one tile wants it, never otherwise. */
-export function mergedWants(instances: InstanceView[]): { sources: Set<SourceId>; gitRoots: string[] } {
+export function mergedWants(instances: InstanceView[]): { sources: Set<SourceId>; gitRoots: string[]; suggest: boolean } {
   const sources = new Set<SourceId>()
   const roots = new Set<string>()
+  let suggest = false
   for (const i of instances) {
     const w = tileWants(i.settings)
     w.sources.forEach((s) => sources.add(s))
     w.gitRoots.forEach((r) => roots.add(r))
+    suggest ||= w.suggest
   }
-  return { sources, gitRoots: [...roots].slice(0, 20) }
+  return { sources, gitRoots: [...roots].slice(0, 20), suggest }
 }
 
 interface Tagged extends SourceEntry {
@@ -125,7 +128,15 @@ export interface RecentProjectsOptions {
    * folder; without one it lives in memory only. Paths and dates, nothing else.
    */
   memoryFile?: string
+  /** Something a command changed (a project's opener) should be published now, not at the next tick. */
+  onChange?: () => void
 }
+
+export const SetOpenerSchema = z.object({
+  path: z.string().min(1).max(4096),
+  /** null clears it: a tap opens the project with the tile's choice (or the suggestion) again. */
+  app: z.enum(APP_IDS).nullable(),
+})
 
 export const OpenSchema = z.object({
   path: z.string().min(1).max(4096),
@@ -165,6 +176,7 @@ export function createRecentProjectsProvider(opts: RecentProjectsOptions): Provi
   const appDeps = { exec, resolveBinary: resolve, exists: opts.appExists }
   const lastGood = new Map<SourceId, SourceEntry[]>()
   let memory: LiveMemory = new Map()
+  let openers: Openers = new Map()
   let loaded: Promise<void> | null = null
   let saved = ''
   let saving: Promise<void> = Promise.resolve()
@@ -190,7 +202,7 @@ export function createRecentProjectsProvider(opts: RecentProjectsOptions): Provi
   /** Loads the saved memory once, before the first poll uses it. */
   function load(): Promise<void> {
     loaded ??= opts.memoryFile
-      ? loadMemory(opts.memoryFile).then((m) => { memory = m; saved = serializeMemory(m) })
+      ? loadState(opts.memoryFile).then((s) => { memory = s.live; openers = s.openers; saved = serializeMemory(memory, openers) })
       : Promise.resolve()
     return loaded
   }
@@ -199,7 +211,7 @@ export function createRecentProjectsProvider(opts: RecentProjectsOptions): Provi
   function persist(): Promise<void> {
     const file = opts.memoryFile
     if (!file) return saving
-    const text = serializeMemory(memory)
+    const text = serializeMemory(memory, openers)
     if (text === saved) return saving
     saving = saving.then(() => saveMemory(file, text)).then(() => { saved = text }, () => undefined)
     return saving
@@ -232,12 +244,23 @@ export function createRecentProjectsProvider(opts: RecentProjectsOptions): Provi
       }
       for (const e of entries) tagged.push({ ...e, source: source.id })
     }))
+    // A project's own application is forgotten once its folder is gone.
+    for (const path of [...openers.keys()]) if (!(await exists(path))) openers.delete(path)
     await persist()
     statuses.sort((a, b) => SOURCE_IDS.indexOf(a.id) - SOURCE_IDS.indexOf(b.id))
     const projects = await mergeEntries(tagged, home)
     for (const s of statuses) s.count = projects.filter((p) => p.sources.includes(s.id)).length
     if (!apps || now() - apps.at > APPS_TTL_MS) apps = { list: await installedApps(appDeps), at: now() }
-    last = { projects, sources: statuses, apps: apps.list, updatedAt: now() }
+    const installed = apps.list
+    await Promise.all(projects.map(async (p) => {
+      const opener = openers.get(p.path)
+      if (opener) p.opener = opener
+      else if (wants.suggest) {
+        const suggested = await suggestApp(p.path, installed)
+        if (suggested) p.suggested = suggested
+      }
+    }))
+    last = { projects, sources: statuses, apps: installed, updatedAt: now() }
     return last
   }
 
@@ -274,6 +297,34 @@ export function createRecentProjectsProvider(opts: RecentProjectsOptions): Provi
           await persist()
         }
         return result
+      },
+
+      /**
+       * Gives one listed project an application a tap opens it with, whatever the tile's choice,
+       * or (`app: null`) takes it back. Kept in the data folder's `recent-projects.json`, never in
+       * the config: shared by every tile, and no project path ever reaches a backup. Local only,
+       * like `open`; the application must be one this Mac has.
+       */
+      async setOpener(payload: unknown, ctx?: CommandContext) {
+        if (ctx?.loopback !== true || ctx.paired) return { ok: false, error: 'local-only' }
+        const parsed = SetOpenerSchema.safeParse(payload)
+        if (!parsed.success) return { ok: false, error: 'invalid-request' }
+        const { path, app } = parsed.data
+        if (!last?.projects.some((p) => p.path === path)) return { ok: false, error: 'unknown-project' }
+        if ((await canonicalProject(path, home)) !== path) return { ok: false, error: 'unknown-project' }
+        if (app !== null && !last.apps.includes(app)) return { ok: false, error: 'not-installed' }
+        openers.delete(path)
+        if (app !== null) openers.set(path, app)
+        while (openers.size > MAX_OPENERS) openers.delete(openers.keys().next().value!)
+        await persist()
+        // The next snapshot carries it; until then the one in hand says so too.
+        for (const p of last.projects) {
+          if (p.path !== path) continue
+          if (app) p.opener = app
+          else delete p.opener
+        }
+        opts.onChange?.()
+        return { ok: true }
       },
     },
   }
