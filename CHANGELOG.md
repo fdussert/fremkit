@@ -10,6 +10,13 @@ Anything that changes what the dashboard, the admin or a widget can do gets a li
 (`package.json`, `server/package.json`, `ui/package.json`, `server/src/version.ts`) and is
 tagged `vX.Y.Z`.
 
+## Unreleased
+
+### Fixed
+
+- **The clipboard widget keeps accents and symbols intact.** Under the Fremkit Helper, text with
+  an accent, a `·` or a `×` came out garbled in the clipboard history and when copied back from it.
+
 ## 0.5.0 — 2026-10-19
 
 ### Added
