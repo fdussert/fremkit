@@ -29,7 +29,7 @@
   const EVENT = '__fremkit_fremdev__'
   const PER_SECOND = 10
   const MAX_TEXT = 300
-  // The stack bounds of lib/devlog.js (MAX_FRAMES, MAX_FRAME, MAX_STACK).
+  // The stack bounds of lib/devlog.js (MAX_FRAMES, MAX_FRAME, MAX_STACK); a test keeps them equal.
   const MAX_FRAMES = 10
   const MAX_FRAME = 300
   const MAX_STACK = 2000
@@ -60,6 +60,13 @@
     return true
   }
 
+  /** lib/devlog.js `clip`: `s` cut to `max` UTF-16 units, never ending on half of a surrogate pair. */
+  const clip = (s, max) => {
+    const cut = s.slice(0, max)
+    const last = cut.charCodeAt(cut.length - 1)
+    return cut.length === max && last >= 0xd800 && last <= 0xdbff ? cut.slice(0, -1) : cut
+  }
+
   /** A list of strings, each clipped, kept while it fits; undefined for anything else. */
   const frames = (list) => {
     if (!Array.isArray(list) || !list.every((f) => typeof f === 'string')) return undefined
@@ -67,7 +74,7 @@
     let length = 0
     for (const f of list) {
       if (out.length >= MAX_FRAMES) break
-      const frame = f.slice(0, MAX_FRAME)
+      const frame = clip(f, MAX_FRAME)
       const next = length + (out.length > 0 ? 1 : 0) + frame.length
       if (next > MAX_STACK) break
       out.push(frame)
@@ -77,8 +84,8 @@
   }
 
   const errorOf = (data) => {
-    const event = { kind: 'error', text: typeof data.text === 'string' ? data.text.slice(0, MAX_TEXT) : '' }
-    if (typeof data.origin === 'string' && data.origin !== '') event.origin = data.origin.slice(0, MAX_FRAME)
+    const event = { kind: 'error', text: typeof data.text === 'string' ? clip(data.text, MAX_TEXT) : '' }
+    if (typeof data.origin === 'string' && data.origin !== '') event.origin = clip(data.origin, MAX_FRAME)
     const stack = frames(data.stack)
     if (stack) event.stack = stack
     return event

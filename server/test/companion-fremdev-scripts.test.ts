@@ -136,7 +136,7 @@ describe('fremdev/hook.js', () => {
     expect(lib).not.toBeNull()
     expect(block(source('fremdev/hook.js'))).toBe(lib)
     // and the intrinsics it reads, taken the same way
-    for (const line of source('lib/devlog.js').split('\n').filter((l) => /^const (gopd|getProto|isArray|ownKeys|quote|symbolDescription|domProto|domName|domMessage|Url) = /.test(l))) {
+    for (const line of source('lib/devlog.js').split('\n').filter((l) => /^const (gopd|getProto|isArray|ownKeys|quote|symbolDescription|domProto|domName|domMessage|Url|reflectApply|defineProp|strSlice|strIndexOf|strCharCodeAt|regexpExec|urlOrigin|urlHost|urlPathname|urlProtocol) = /.test(l))) {
       expect(source('fremdev/hook.js')).toContain(line)
     }
   })
@@ -234,6 +234,58 @@ describe('fremdev/hook.js', () => {
     expect(events).toHaveLength(5)
     for (const e of events.slice(0, 4)) expect(e).not.toHaveProperty('stack')
     expect(events[4]).toHaveProperty('stack')
+  })
+
+  it("writes and reads its frame lists without the page's Array.prototype accessors", () => {
+    const h = runHook()
+    // Fills index 0 of the harness's own lists, so their push does not reach the accessor.
+    h.console.error('warm')
+    const get = vi.fn(() => 'page')
+    const set = vi.fn()
+    withPrepare(() => {
+      Object.defineProperty(Array.prototype, '0', { get, set, configurable: true })
+      try {
+        h.console.error(pageError("new Error('y')"))
+      } finally {
+        delete (Array.prototype as unknown as Record<string, unknown>)['0']
+      }
+    })
+    expect(get).not.toHaveBeenCalled()
+    expect(set).not.toHaveBeenCalled()
+    const e = h.events()[1]
+    expect(e.stack.length).toBeGreaterThan(0)
+    expect(e.stack[0]).toMatch(/\/src\/page\.js:3:\d+$/)
+    expect(e.origin).toBe(e.stack[0])
+  })
+
+  it("calls the builtins it took at load, not the page's later ones", () => {
+    const h = runHook()
+    const ran = vi.fn()
+    const saved = {
+      slice: String.prototype.slice,
+      indexOf: String.prototype.indexOf,
+      exec: RegExp.prototype.exec,
+      pathname: Object.getOwnPropertyDescriptor(URL.prototype, 'pathname')!,
+    }
+    withPrepare(() => {
+      const err = pageError("new Error('y')")
+      String.prototype.slice = function (...a: [number?, number?]) { ran(); return saved.slice.apply(this, a) }
+      String.prototype.indexOf = function (...a: [string, number?]) { ran(); return saved.indexOf.apply(this, a) }
+      RegExp.prototype.exec = function (s: string) { ran(); return saved.exec.call(this, s) }
+      Object.defineProperty(URL.prototype, 'pathname', { get() { ran(); return '/page' }, configurable: true })
+      try {
+        h.console.error(err)
+      } finally {
+        String.prototype.slice = saved.slice
+        String.prototype.indexOf = saved.indexOf
+        RegExp.prototype.exec = saved.exec
+        Object.defineProperty(URL.prototype, 'pathname', saved.pathname)
+      }
+    })
+    const e = h.events()[0]
+    expect(e.stack[0]).toMatch(/\/src\/page\.js:3:\d+$/)
+    // The harness's own clip and errorText may call the live ones; the frames never do.
+    expect(e.stack.join('\n')).not.toContain('/page:')
   })
 
   it('bounds the origin it takes from the event', () => {
@@ -444,6 +496,19 @@ describe('fremdev/relay.js', () => {
     expect(last.stack.length).toBe(6)
     r.post({ kind: 'hot', origin: 'o', stack: ['a'] })
     expect(r.sent.at(-1)).toEqual({ target: 'worker', type: 'dev.event', kind: 'hot' })
+  })
+
+  it("keeps the stack bounds of lib/devlog.js, and never splits a surrogate pair", () => {
+    const relay = source('fremdev/relay.js')
+    const value = (name: string) => Number(new RegExp(`const ${name} = (\\d+)`).exec(relay)?.[1])
+    expect([value('MAX_FRAMES'), value('MAX_FRAME'), value('MAX_STACK'), value('MAX_TEXT')]).toEqual([MAX_FRAMES, MAX_FRAME, MAX_STACK, MAX_TEXT])
+    const r = runRelay()
+    const pair = '\u{1F600}'
+    const odd = `${'a'.repeat(299)}${pair}`
+    r.post({ kind: 'error', text: odd, origin: odd, stack: [odd] })
+    expect(r.sent.at(-1)).toEqual({
+      target: 'worker', type: 'dev.event', kind: 'error', text: 'a'.repeat(299), origin: 'a'.repeat(299), stack: ['a'.repeat(299)],
+    })
   })
 
   it('writes nothing on the page', () => {

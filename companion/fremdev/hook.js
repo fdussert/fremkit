@@ -53,6 +53,16 @@ const domProto = typeof DOMException === 'function' ? DOMException.prototype : n
 const domName = domProto ? gopd(domProto, 'name')?.get : undefined
 const domMessage = domProto ? gopd(domProto, 'message')?.get : undefined
 const Url = URL
+const reflectApply = Reflect.apply
+const defineProp = Reflect.defineProperty
+const strSlice = String.prototype.slice
+const strIndexOf = String.prototype.indexOf
+const strCharCodeAt = String.prototype.charCodeAt
+const regexpExec = RegExp.prototype.exec
+const urlOrigin = gopd(URL.prototype, 'origin').get
+const urlHost = gopd(URL.prototype, 'host').get
+const urlPathname = gopd(URL.prototype, 'pathname').get
+const urlProtocol = gopd(URL.prototype, 'protocol').get
 
 // <errorText> This block is copied byte for byte into fremdev/hook.js, which cannot import it
 // (server/test/companion-fremdev-scripts.test.ts compares them). It never runs the logged value's
@@ -221,21 +231,44 @@ function errorText(args) {
 
 // <frames> This block is copied byte for byte into fremdev/hook.js, like <errorText> above. It reads
 // V8's stack text only: no source map is looked up and line numbers stay as Chrome reports them.
+// It calls only builtins taken at load and writes lists by definition, never by assignment: a page
+// that later puts an accessor on Array.prototype['0'] or replaces String.prototype.slice runs nothing.
 /** At most this many frames leave the tab, each this long, and this long joined by newlines. */
 const MAX_FRAMES = 10
 const MAX_FRAME = 300
 const MAX_STACK = 2000
 /** A line longer than this is not a frame worth parsing. */
 const MAX_LINE = 2000
-const FRAME = /^\s+at (?:(.+) \((.+):(\d+):(\d+)\)|(.+):(\d+):(\d+))$/
+const FRAME = /^\s+at (?:(.+) \((.+):(\d+):(\d+)\)|(async )?(.+):(\d+):(\d+))$/
+
+/** `clip` with the builtins taken at load. */
+function cutText(s, max) {
+  const cut = reflectApply(strSlice, s, [0, max])
+  const last = reflectApply(strCharCodeAt, cut, [cut.length - 1])
+  return cut.length === max && last >= 0xd800 && last <= 0xdbff ? reflectApply(strSlice, cut, [0, -1]) : cut
+}
+
+/** Appends `value` to `list` as an own data property: no setter up the chain is called. */
+function append(list, value) {
+  defineProp(list, list.length, { __proto__: null, value, writable: true, enumerable: true, configurable: true })
+}
+
+/** The own data value at `i` in `list`, or undefined. */
+function itemOf(list, i) {
+  const d = gopd(list, i)
+  return d && 'value' in d ? d.value : undefined
+}
 
 /** Where a script lives: its path on the page's origin, `host/path` elsewhere, '' when unknown. */
 function framePlace(url, pageOrigin) {
   if (typeof url !== 'string' || url === '') return ''
   try {
     const u = new Url(url)
-    if (u.protocol === 'data:' || u.protocol === 'blob:' || u.protocol === 'javascript:' || u.protocol === 'about:') return ''
-    return clip(u.origin === pageOrigin ? u.pathname : `${u.host}${u.pathname}`, MAX_FRAME)
+    const protocol = reflectApply(urlProtocol, u, [])
+    if (protocol === 'data:' || protocol === 'blob:' || protocol === 'javascript:' || protocol === 'about:') return ''
+    const path = reflectApply(urlPathname, u, [])
+    const same = reflectApply(urlOrigin, u, []) === pageOrigin
+    return cutText(same ? path : `${reflectApply(urlHost, u, [])}${path}`, MAX_FRAME)
   } catch {
     return ''
   }
@@ -246,33 +279,39 @@ function boundFrames(frames) {
   const out = []
   let length = 0
   for (let i = 0; i < frames.length && out.length < MAX_FRAMES; i++) {
-    const frame = clip(frames[i], MAX_FRAME)
+    const item = itemOf(frames, i)
+    if (typeof item !== 'string') break
+    const frame = cutText(item, MAX_FRAME)
     const next = length + (out.length > 0 ? 1 : 0) + frame.length
     if (next > MAX_STACK) break
-    out[out.length] = frame
+    append(out, frame)
     length = next
   }
   return out
 }
 
-/** V8's `at fn (url:line:col)` and `at url:line:col` lines as `fn place:line:col`; the rest skipped. */
+/**
+ * V8's `at fn (url:line:col)`, `at url:line:col` and `at async url:line:col` lines as
+ * `fn place:line:col` (`async place:line:col` for the last); the rest skipped.
+ */
 function parseStack(stack, pageOrigin) {
   if (typeof stack !== 'string') return []
   const frames = []
   let start = 0
   while (start < stack.length && frames.length < MAX_FRAMES) {
-    let end = stack.indexOf('\n', start)
+    let end = reflectApply(strIndexOf, stack, ['\n', start])
     if (end < 0) end = stack.length
-    const line = stack.slice(start, end)
+    const line = reflectApply(strSlice, stack, [start, end])
     start = end + 1
     if (line.length > MAX_LINE) continue
-    const m = FRAME.exec(line)
+    const m = reflectApply(regexpExec, FRAME, [line])
     if (!m) continue
-    const fn = m[1] === undefined ? '' : m[1]
-    const place = framePlace(m[1] === undefined ? m[5] : m[2], pageOrigin)
+    const named = itemOf(m, 1) !== undefined
+    const fn = named ? itemOf(m, 1) : itemOf(m, 5) !== undefined ? 'async' : ''
+    const place = framePlace(itemOf(m, named ? 2 : 6), pageOrigin)
     if (!place) continue
-    const at = m[1] === undefined ? `${m[6]}:${m[7]}` : `${m[3]}:${m[4]}`
-    frames[frames.length] = `${fn ? `${fn} ` : ''}${place}:${at}`
+    const at = named ? `${itemOf(m, 3)}:${itemOf(m, 4)}` : `${itemOf(m, 7)}:${itemOf(m, 8)}`
+    append(frames, `${fn ? `${fn} ` : ''}${place}:${at}`)
   }
   return boundFrames(frames)
 }
@@ -325,7 +364,6 @@ const read = (getter, e) => {
 // the chain is a data property holding a string or undefined). An own `stack` the page redefined
 // is not V8's getter and is never called; a data property (older engines) is read as a value.
 const NativeError = Error
-const reflectApply = Reflect.apply
 const stackGetter = (() => {
   try {
     const d = gopd(new NativeError(), 'stack')
@@ -397,7 +435,7 @@ const send = (kind, text, origin, stack) => {
     if (typeof origin === 'string' && origin !== '') detail += `,"origin":${quote(origin)}`
     if (stack !== undefined && stack.length > 0) {
       let list = ''
-      for (let i = 0; i < stack.length; i++) list += `${i > 0 ? ',' : ''}${quote(stack[i])}`
+      for (let i = 0; i < stack.length; i++) list += `${i > 0 ? ',' : ''}${quote(itemOf(stack, i))}`
       detail += `,"stack":[${list}]`
     }
     dispatch.call(doc, new Custom(EVENT, { __proto__: null, detail: `${detail}}` }))
@@ -408,7 +446,7 @@ const send = (kind, text, origin, stack) => {
 /** An error's text, with the frames of `error` and the first one as its origin, else `place`. */
 const sendError = (text, error, place) => {
   const stack = stackOf(error)
-  send('error', text, stack.length > 0 ? stack[0] : place, stack)
+  send('error', text, stack.length > 0 ? itemOf(stack, 0) : place, stack)
 }
 
 // A value whose inspection logs again (a Proxy trap calling console.error) is not followed.

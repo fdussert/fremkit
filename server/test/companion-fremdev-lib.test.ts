@@ -235,6 +235,10 @@ describe('devlog frames', () => {
     expect(parseStack('Error: y\n    at Array.map (<anonymous>)\n    at async load (https://cdn.example.com/lib.js?v=abc#x:1:2)', PAGE)).toEqual([
       'async load cdn.example.com/lib.js:1:2',
     ])
+    expect(parseStack('Error: z\n    at async http://localhost:5173/src/main.js?t=2:1:2\n    at async https://cdn.example.com/x.js:3:4', PAGE)).toEqual([
+      'async /src/main.js:1:2',
+      'async cdn.example.com/x.js:3:4',
+    ])
     expect(parseStack('', PAGE)).toEqual([])
     expect(parseStack(undefined as unknown as string, PAGE)).toEqual([])
   })
@@ -247,7 +251,9 @@ describe('devlog frames', () => {
     expect(long[0]).toHaveLength(MAX_FRAME)
     const wide = Array.from({ length: 10 }, (_, i) => `    at ${String(i).repeat(290)} (http://localhost:5173/a.js:1:1)`)
     const kept = parseStack(`Error: e\n${wide.join('\n')}`, PAGE)
-    expect(kept.length).toBeGreaterThan(0)
+    // Each frame is 300 long: six of them and five newlines make 1805, a seventh would make 2106.
+    expect(kept.every((f: string) => f.length === 300)).toBe(true)
+    expect(kept).toHaveLength(6)
     expect(kept.join('\n').length).toBeLessThanOrEqual(MAX_STACK)
     expect([MAX_FRAMES, MAX_FRAME, MAX_STACK]).toEqual([10, 300, 2000])
     expect(boundFrames(['a', 'b'.repeat(400)])).toEqual(['a', 'b'.repeat(300)])
