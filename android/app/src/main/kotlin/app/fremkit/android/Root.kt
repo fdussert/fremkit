@@ -25,6 +25,7 @@ import app.fremkit.android.screens.ConfirmLinkDialog
 import app.fremkit.android.screens.ConnectingScreen
 import app.fremkit.android.screens.FremkitTheme
 import app.fremkit.android.screens.KeyChangedScreen
+import app.fremkit.android.screens.ManualPairScreen
 import app.fremkit.android.screens.LinkPairingScreen
 import app.fremkit.android.screens.OutdatedWebViewScreen
 import app.fremkit.android.screens.ScannerScreen
@@ -58,6 +59,7 @@ fun Root(
     hygiene: WebViewHygiene,
     webView: WebViewSupport,
     restarting: StateFlow<Boolean>,
+    network: LocalNetwork,
     appVersion: String,
 ) {
     val state by model.state.collectAsStateWithLifecycle()
@@ -68,6 +70,7 @@ fun Root(
     val pairing by flow.state.collectAsStateWithLifecycle()
     val outdated by webView.outdated.collectAsStateWithLifecycle()
     val isRestarting by restarting.collectAsStateWithLifecycle()
+    val macs by network.macs.collectAsStateWithLifecycle()
     val density = LocalDensity.current.density.toDouble()
     val nudge = VersionNudge.of(serverVersion, appVersion)
 
@@ -87,8 +90,22 @@ fun Root(
                 current != null -> OutdatedWebViewScreen(current, checkAgain = webView::check)
                 step == PairingStep.Scanning -> ScannerScreen(
                     scanned = { flow.scanned(it) },
+                    enterCode = flow::enterCode,
                     cancel = flow::cancel,
                 )
+                step == PairingStep.ManualList || step is PairingStep.ManualKey || step is PairingStep.ManualCode ->
+                    ManualPairScreen(
+                        step = step,
+                        isWorking = pairing.isWorking,
+                        problem = pairing.problem,
+                        words = flow.words,
+                        macs = macs,
+                        refresh = network::refresh,
+                        choose = { flow.choose(it) },
+                        submit = { flow.submit(it) },
+                        otherMac = flow::enterCode,
+                        cancel = flow::cancel,
+                    )
                 step is PairingStep.Link -> LinkPairingScreen(
                     link = step.link,
                     isWorking = pairing.isWorking,
@@ -97,7 +114,7 @@ fun Root(
                     cancel = flow::cancel,
                 )
                 else -> when (val s = state) {
-                    AppState.Welcome -> WelcomeScreen(credentialsUnreadable, nudge, scan = flow::scan)
+                    AppState.Welcome -> WelcomeScreen(credentialsUnreadable, nudge, scan = flow::scan, enterCode = flow::enterCode)
                     AppState.Connecting -> ConnectingScreen(mac?.name)
                     is AppState.Dashboard -> mac?.let { DashboardScreen(s.host, it, model, hygiene) }
                     is AppState.Unreachable -> UnreachableScreen(s.name, isConnecting, nudge) { model.reconnect() }

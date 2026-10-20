@@ -50,4 +50,12 @@
     <string name="scan_allow_camera">Autoriser l’appareil photo dans les réglages</string>
     <string name="scan_open_settings">Ouvrir les réglages</string>
     <string name="scan_unavailable">L’appareil photo n’est pas disponible.</string>
+
+    <string name="welcome_enter_code">Saisir le code</string>
+    <string name="manual_choose">Choisissez votre Mac</string>
+    <string name="manual_none_yet">Aucun Mac trouvé pour l’instant. Dans Fremkit sur le Mac, activez « Autoriser un iPad sur le réseau local » (onglet Écran).</string>
+    <string name="manual_looking">Recherche de son adresse…</string>
+    <string name="manual_check_words">Vérifiez que le Mac affiche les mêmes mots.</string>
+    <string name="manual_code">Code</string>
+    <string name="manual_other_mac">Autre Mac</string>
 </resources>

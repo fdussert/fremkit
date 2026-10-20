@@ -13,9 +13,9 @@ import androidx.compose.ui.unit.sp
 import app.fremkit.android.R
 import app.fremkit.kit.VersionNudge
 
-/** Not paired yet: scan the Mac's QR code (`WelcomeView.swift`). The manual path comes next. */
+/** Not paired yet: scan the Mac's QR code, or pick the Mac and type its code (`WelcomeView.swift`). */
 @Composable
-fun WelcomeScreen(credentialsUnreadable: Boolean, nudge: VersionNudge?, scan: () -> Unit) {
+fun WelcomeScreen(credentialsUnreadable: Boolean, nudge: VersionNudge?, scan: () -> Unit, enterCode: () -> Unit) {
     ScreenColumn {
         Text("Fremkit", fontSize = 56.sp, fontWeight = FontWeight.Bold)
         Text(
@@ -26,6 +26,7 @@ fun WelcomeScreen(credentialsUnreadable: Boolean, nudge: VersionNudge?, scan: ()
         )
         Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             PrimaryButton(stringResource(R.string.welcome_scan), onClick = scan)
+            SecondaryButton(stringResource(R.string.welcome_enter_code), onClick = enterCode)
         }
         if (credentialsUnreadable) Body(stringResource(R.string.welcome_credentials_unreadable))
         NudgeLine(nudge)

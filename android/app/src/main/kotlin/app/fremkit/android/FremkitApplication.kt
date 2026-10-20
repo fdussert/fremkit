@@ -64,7 +64,8 @@ class FremkitApplication : Application() {
         webView = WebViewSupport(this)
 
         val main = Dispatchers.Main.immediate
-        model = AppModel(store = KeystoreCredentialStore(this), dispatcher = main)
+        // NSD's addresses are candidates too, read at the start of each attempt.
+        model = AppModel(store = KeystoreCredentialStore(this), discovered = { network.addresses }, dispatcher = main)
         flow = PairingFlow(
             model = model,
             dispatcher = main,
@@ -74,7 +75,8 @@ class FremkitApplication : Application() {
         // A pin change clears the WebView's SSL decisions and cookies before the next WebView, or,
         // once a WebView has loaded, restarts the process so no pooled connection survives it.
         scope.launch { model.macIdentityChanged.collect { pinChange.pinChanged() } }
-        // A network that comes back or changes is a reason to try now (the iPad's onChange).
+        // A network that comes back or changes, or a Mac found at a new address, is a reason to try
+        // now (the iPad's onChange).
         network = LocalNetwork(this) {
             when (model.state.value) {
                 is AppState.Unreachable, is AppState.KeyChanged -> model.reconnect()

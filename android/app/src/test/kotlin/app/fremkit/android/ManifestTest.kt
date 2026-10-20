@@ -87,6 +87,7 @@ class ManifestTest {
                 "android.permission.INTERNET",
                 "android.permission.ACCESS_NETWORK_STATE",
                 "android.permission.CAMERA",
+                "android.permission.CHANGE_WIFI_MULTICAST_STATE",
             ),
             requested - own,
         )

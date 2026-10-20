@@ -38,12 +38,13 @@ import app.fremkit.android.R
 
 /**
  * The camera, looking for the Mac's QR code (`ScannerView.swift`). The camera permission is asked
- * the first time; refused, the screen says where to allow it. Kept out of screenshots and the recent-apps thumbnail ([SecureWindow]): the code is on it.
+ * the first time; refused, the screen says where to allow it, and the manual path stays one tap
+ * away. Kept out of screenshots and the recent-apps thumbnail ([SecureWindow]): the code is on it.
  *
  * @param scanned what a frame held; the flow keeps only a pairing link (and stops the scan).
  */
 @Composable
-fun ScannerScreen(scanned: (String) -> Unit, cancel: () -> Unit) {
+fun ScannerScreen(scanned: (String) -> Unit, enterCode: () -> Unit, cancel: () -> Unit) {
     SecureWindow()
     val context = LocalContext.current
     val hasCamera = remember { context.packageManager.hasSystemFeature(PackageManager.FEATURE_CAMERA_ANY) }
@@ -79,6 +80,7 @@ fun ScannerScreen(scanned: (String) -> Unit, cancel: () -> Unit) {
             }
             else -> Box(Modifier.heightIn(min = 56.dp))
         }
+        SecondaryButton(stringResource(R.string.welcome_enter_code), onClick = enterCode)
         TextButton(onClick = cancel, modifier = Modifier.heightIn(min = 56.dp)) {
             Text(stringResource(R.string.pairing_cancel))
         }

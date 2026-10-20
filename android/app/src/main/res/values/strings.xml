@@ -50,4 +50,12 @@
     <string name="scan_allow_camera">Allow the camera in Settings</string>
     <string name="scan_open_settings">Open Settings</string>
     <string name="scan_unavailable">The camera is not available.</string>
+
+    <string name="welcome_enter_code">Enter the code</string>
+    <string name="manual_choose">Choose your Mac</string>
+    <string name="manual_none_yet">No Mac found yet. In Fremkit on the Mac, turn on “Allow an iPad on the local network” (Screen tab).</string>
+    <string name="manual_looking">Looking for its address…</string>
+    <string name="manual_check_words">Check that the Mac shows the same words.</string>
+    <string name="manual_code">Code</string>
+    <string name="manual_other_mac">Other Mac</string>
 </resources>
