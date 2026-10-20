@@ -14,10 +14,7 @@ object Dashboard {
     /** `https://<host>:<port>/`, with an IPv6 literal in brackets and its zone escaped. */
     fun url(host: String, port: Int): String = resource(host, port, "/")
 
-    /**
-     * `https://<host>:<port><path>`: the Swift kit's `Endpoint.url`, kept here until the probe's
-     * request builder lands and both share one.
-     */
+    /** `https://<host>:<port><path>`: the Swift kit's `Endpoint.url`, which [Endpoint.url] parses. */
     internal fun resource(host: String, port: Int, path: String): String {
         val h = if (host.contains(":") && !host.startsWith("[")) "[" + host.replace("%", "%25") + "]" else host
         return "https://$h:$port$path"
