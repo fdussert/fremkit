@@ -53,8 +53,9 @@ in `host_permissions` in `companion/manifest.json`, then reload the extension.
    popup does not show it: it asks *Tapez le code affiché sur l'Edge* (*Type the code shown on the
    Edge*). Fremkit takes the request only while one of those two can show it: the dashboard open
    on the Edge (or in a browser on this Mac), or **Settings → Devices** open in the admin.
-   Otherwise it refuses it (*Nobody would see the code*); the extension published before this
-   rule says *Another pairing request is already waiting on the Edge* instead.
+   Otherwise it refuses it, and the popup says *Nobody would see the code*; the extension's first
+   store release, 0.1.0, knew no such answer and says *Another pairing request is already waiting
+   on the Edge* instead (0.1.1 and later say it right).
 3. Type the code in the popup and press **Valider** (*Confirm*). That is the approval: there is no
    Allow button. **Refuse** on the Edge (or in the admin) drops the request.
 
