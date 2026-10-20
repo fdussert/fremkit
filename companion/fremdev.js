@@ -409,9 +409,10 @@ export function createFremdev({
   // The page keeps the previous run's hook, which still dispatches to the new relay; the new hook
   // finds it and stands aside (fremdev/hook.js), so each error is told once. Registered here, while
   // the worker's first task runs: Chrome delivers the event only to a listener added then.
+  // A registration that fails here is tried again at the next turn-on, grant or pattern change.
   api.runtime.onInstalled?.addListener(async () => {
     await loaded
-    if (on) await sync({ inject: true })
+    if (on) await sync({ inject: true }).catch(() => undefined)
   })
 
   async function doStart() {

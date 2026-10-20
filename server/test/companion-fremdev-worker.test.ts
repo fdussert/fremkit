@@ -568,6 +568,14 @@ describe('companion/fremdev.js', () => {
     expect(f.rows()['7']).toMatchObject({ url: 'http://localhost:5173/', title: 'App', server: 'up' })
   })
 
+  it('swallows a registration that fails after an install', async () => {
+    const f = await makeFremdev()
+    f.api.scripting.registerContentScripts.mockRejectedValueOnce(new Error('Duplicate script ID'))
+    const [onInstalled] = f.api.runtime.onInstalled.addListener.mock.calls[0]
+    await expect(onInstalled({ reason: 'update' })).resolves.toBeUndefined()
+    expect(f.api.scripting.executeScript).not.toHaveBeenCalled()
+  })
+
   it('injects nothing on a plain restart of the worker, nor on an install while off', async () => {
     const f = await makeFremdev()
     await f.later()
