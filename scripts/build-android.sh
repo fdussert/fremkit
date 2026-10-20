@@ -9,10 +9,20 @@
 #   scripts/build-android.sh build     a debug APK, lint, and the check that no Google Play services
 #                                      library reached the app
 #   scripts/build-android.sh install [--seed]
-#                                      not yet: a debug build onto the tablet named by
-#                                      FREMKIT_ANDROID_DEVICE, the pairing link read from stdin
+#                                      a debug build onto the tablet named by FREMKIT_ANDROID_DEVICE,
+#                                      then launched. --seed reads a fremkit://pair?… link from stdin
+#                                      (`pbpaste | … install --seed`) and writes it into the debug
+#                                      app's private files through `adb shell -T run-as`, where the app reads,
+#                                      deletes and pairs with it at launch: the link carries the
+#                                      code's secret, so it is never an argument, on the Mac or the
+#                                      tablet, and never a file on either's shared storage
 #   scripts/build-android.sh device-test
-#                                      not yet: the instrumented tests on that tablet
+#                                      the instrumented tests on that tablet. Starts a throwaway TLS
+#                                      server (scripts/android-test-server.mjs, two fresh keys) on
+#                                      the Mac's LAN address, ports FREMKIT_ANDROID_TEST_PORT..+2
+#                                      (default 18450), hands the tests its address and public pins,
+#                                      and stops it. The tablet must reach the Mac over the LAN: the
+#                                      Mac answers 421 over loopback (`adb reverse`), by design
 #   scripts/build-android.sh release   a signed release APK, dist/Fremkit-Android-<version>.apk, and its
 #                                      .sha256. Needs a clean tree, the keystore made by
 #                                      scripts/create-android-keystore.sh (folder 0700, file 0600, or
@@ -29,6 +39,11 @@
 #   FREMKIT_JAVA_HOME     the JDK Gradle runs on (default: the newest arm64 JDK 17+ that
 #                         /usr/libexec/java_home knows). An x86_64 JDK is refused: under Rosetta,
 #                         Gradle is several times slower.
+#   FREMKIT_ANDROID_DEVICE  the tablet's adb serial, for install and device-test (set it in your
+#                           shell; it is never written in a file)
+#   FREMKIT_ANDROID_TEST_HOST  the Mac's address the tablet reaches (default: the address of the
+#                           interface of the default route)
+#   FREMKIT_ANDROID_TEST_PORT  the test server's first port (default 18450; it takes three)
 #   FREMKIT_ANDROID_KEYSTORE           the release keystore (default ~/Library/Application
 #                                      Support/Fremkit-release/fremkit-android.p12)
 #   FREMKIT_ANDROID_KEYCHAIN           for tests: a keychain file instead of the login keychain
@@ -174,6 +189,88 @@ release() {
     echo "        $out.sha256"
 }
 
+DEBUG_PACKAGE=app.fremkit.android.debug
+DEBUG_APK=android/app/build/outputs/apk/debug/app-debug.apk
+
+# The tablet adb talks to, by its serial, or a stop.
+device() {
+    [[ -n "${FREMKIT_ANDROID_DEVICE:-}" ]] || die "set FREMKIT_ANDROID_DEVICE to the tablet's serial ($ADB devices -l)"
+    [[ -x "$ADB" ]] || die "no adb at $ADB (run doctor)"
+    [[ "$("$ADB" -s "$FREMKIT_ANDROID_DEVICE" get-state 2>/dev/null)" == device ]] ||
+        die "the tablet named by FREMKIT_ANDROID_DEVICE is not connected (or not authorized for this Mac)"
+    echo "$FREMKIT_ANDROID_DEVICE"
+}
+
+# The Mac's LAN address: the one of the interface the default route goes through.
+lan_address() {
+    if [[ -n "${FREMKIT_ANDROID_TEST_HOST:-}" ]]; then echo "$FREMKIT_ANDROID_TEST_HOST"; return; fi
+    local iface address
+    iface="$(/sbin/route -n get default 2>/dev/null | sed -n 's/^ *interface: //p')"
+    [[ -n "$iface" ]] || die "no default route: is the Mac on a network? (or set FREMKIT_ANDROID_TEST_HOST)"
+    address="$(/usr/sbin/ipconfig getifaddr "$iface" 2>/dev/null || true)"
+    [[ -n "$address" ]] || die "no IPv4 address on $iface (set FREMKIT_ANDROID_TEST_HOST)"
+    echo "$address"
+}
+
+install_app() {
+    local serial seed=0 link=""
+    case "${1:-}" in
+        "") ;;
+        --seed) seed=1 ;;
+        *) die "usage: scripts/build-android.sh install [--seed]" ;;
+    esac
+    serial="$(device)"
+    if [[ $seed -eq 1 ]]; then
+        # Read before the build, so a missing link fails fast. Kept in a shell variable and handed
+        # to adb on its stdin by printf, a builtin: no process ever has it in its arguments.
+        IFS= read -r link || true
+        [[ "$link" == fremkit://pair\?* ]] || die "--seed reads a fremkit://pair?… link from stdin"
+    fi
+    gradle :app:assembleDebug
+    "$ADB" -s "$serial" install -r "$DEBUG_APK"
+    if [[ $seed -eq 1 ]]; then
+        # Into the debug app's own files (Seed.kt), as the app's user: `run-as` works for a
+        # debuggable build only, and its shell starts in the app's data folder. `adb shell -T`
+        # (no tty) forwards stdin; `adb exec-in` drops it on Android 9 while still exiting 0. The
+        # command is one argument because the tablet's shell parses it again.
+        printf '%s\n' "$link" | "$ADB" -s "$serial" shell -T \
+            "run-as $DEBUG_PACKAGE sh -c 'umask 077 && mkdir -p files && cat > files/seed-link'"
+        unset link
+    fi
+    "$ADB" -s "$serial" shell am start -n "$DEBUG_PACKAGE/app.fremkit.android.MainActivity" >/dev/null
+    echo "installed and launched $DEBUG_PACKAGE"
+}
+
+device_test() {
+    local serial host port line i
+    serial="$(device)"
+    host="$(lan_address)"
+    port="${FREMKIT_ANDROID_TEST_PORT:-18450}"
+    [[ "$port" =~ ^[0-9]+$ ]] || die "FREMKIT_ANDROID_TEST_PORT is not a port"
+    # Global, not local: the EXIT trap runs after this function has returned.
+    test_work="$(mktemp -d "${TMPDIR:-/tmp}/fremkit-android-device-test.XXXXXX")"
+    node scripts/android-test-server.mjs "$host" "$port" >"$test_work/server.log" 2>&1 &
+    test_server=$!
+    trap 'kill "$test_server" 2>/dev/null; wait "$test_server" 2>/dev/null; rm -rf "${test_work:?}"' EXIT
+    for ((i = 0; i < 100; i++)); do
+        line="$(grep -m1 '^READY ' "$test_work/server.log" || true)"
+        [[ -n "$line" ]] && break
+        kill -0 "$test_server" 2>/dev/null || break
+        /bin/sleep 0.1
+    done
+    [[ -n "$line" ]] || { cat "$test_work/server.log" >&2; die "the test server did not start"; }
+    # Public test data only: the address, the ports, and the pins of two keys made for this run.
+    field() { sed -n "s/.*\"$1\":\"\{0,1\}\([^\",}]*\).*/\1/p" <<<"$line"; }
+    echo "test server on https://$host:$port (pins $(field pinA), $(field pinB))"
+    ANDROID_SERIAL="$serial" gradle :app:connectedDebugAndroidTest \
+        -Pandroid.testInstrumentationRunnerArguments.fremkitTestHost="$host" \
+        -Pandroid.testInstrumentationRunnerArguments.fremkitTestMainPort="$(field main)" \
+        -Pandroid.testInstrumentationRunnerArguments.fremkitTestOtherPort="$(field other)" \
+        -Pandroid.testInstrumentationRunnerArguments.fremkitTestWrongPort="$(field wrong)" \
+        -Pandroid.testInstrumentationRunnerArguments.fremkitTestPinA="$(field pinA)" \
+        -Pandroid.testInstrumentationRunnerArguments.fremkitTestPinB="$(field pinB)"
+}
+
 doctor() {
     local missing=() jdk ok=1
     jdk="$(find_jdk)"
@@ -253,8 +350,13 @@ case "$cmd" in
         use_toolchain
         verify_apk "$1"
         ;;
-    install | device-test)
-        die "$cmd: not yet (a later stage of the Android plan adds it)"
+    install)
+        use_toolchain
+        install_app "$@"
+        ;;
+    device-test)
+        use_toolchain
+        device_test
         ;;
     *)
         die "usage: scripts/build-android.sh doctor | test | build | install [--seed] | device-test | release | verify <apk>"
