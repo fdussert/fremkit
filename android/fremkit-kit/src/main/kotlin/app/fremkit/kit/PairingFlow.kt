@@ -102,6 +102,12 @@ sealed interface PairingStep {
     /** The manual path: the Macs NSD found, by name. */
     data object ManualList : PairingStep
 
+    /**
+     * The manual path when NSD finds nothing: the user types the Mac's address. [typed] is what
+     * the field starts with: empty, or the address that did not answer, to correct it.
+     */
+    data class ManualAddress(val typed: String = "") : PairingStep
+
     /** The manual path: reading the key of the Mac the user picked. */
     data class ManualKey(val service: MacService) : PairingStep
 
@@ -236,6 +242,9 @@ class PairingFlow(
     /** Starts the manual path. */
     fun enterCode() = move(PairingStep.ManualList)
 
+    /** The manual path: the user will type the Mac's address, the list being empty or wrong. */
+    fun typeAddress() = move(PairingStep.ManualAddress())
+
     /** Back to whatever [AppModel] shows; a request in flight is dropped. */
     fun cancel() {
         update { it.copy(pendingLink = null) }
@@ -287,14 +296,20 @@ class PairingFlow(
     }
 
     /** The manual path: the user picked a Mac in the list. Reads its key, to show its words. */
-    fun choose(service: MacService): Job {
-        move(PairingStep.ManualKey(service))
-        update { it.copy(isWorking = true) }
-        val generation = generation
-        return launch {
-            val keyHash = readKey(service.address, service.port)
-            finishReading(keyHash, service, generation)
-        }
+    fun choose(service: MacService): Job = read(service, back = PairingStep.ManualList)
+
+    /**
+     * The manual path: the user typed the Mac's address. From there it is the path of a Mac picked
+     * in the list: the key that answers is read and its words shown, and the code goes as a proof
+     * bound to that key. Typing adds no trust: comparing the words does. The address stands for the
+     * Mac's name, where a pick from the list has its service name. Null when [typed] is not an
+     * address ([TypedAddress.parse]).
+     */
+    fun connect(typed: String): Job? {
+        if (step !is PairingStep.ManualAddress || isWorking) return null
+        val address = TypedAddress.parse(typed) ?: return null
+        val service = MacService(name = address.host, address = address.host, port = address.port)
+        return read(service, back = PairingStep.ManualAddress(typed.trim()))
     }
 
     /**
@@ -342,6 +357,17 @@ class PairingFlow(
         return job
     }
 
+    /** Reads [service]'s key; when nothing usable answers, back to [back] with the reason. */
+    private fun read(service: MacService, back: PairingStep): Job {
+        move(PairingStep.ManualKey(service))
+        update { it.copy(isWorking = true) }
+        val generation = generation
+        return launch {
+            val keyHash = readKey(service.address, service.port)
+            finishReading(keyHash, service, back, generation)
+        }
+    }
+
     private fun send(
         hosts: List<String>,
         port: Int,
@@ -371,12 +397,12 @@ class PairingFlow(
         }
     }
 
-    private fun finishReading(keyHash: String?, service: MacService, generation: Int) {
+    private fun finishReading(keyHash: String?, service: MacService, back: PairingStep, generation: Int) {
         if (generation != this.generation) return
         running = null
         // A key that has no words cannot be compared, and is not a Fremkit Mac's anyway.
         if (keyHash == null || Fingerprint.words(keyHash).isEmpty()) {
-            update { it.copy(step = PairingStep.ManualList, isWorking = false, problem = PairingProblem.Unreachable) }
+            update { it.copy(step = back, isWorking = false, problem = PairingProblem.Unreachable) }
             return
         }
         update { it.copy(step = PairingStep.ManualCode(service, keyHash), isWorking = false) }

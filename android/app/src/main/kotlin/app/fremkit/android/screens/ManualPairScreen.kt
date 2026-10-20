@@ -39,12 +39,14 @@ import app.fremkit.kit.DiscoveredMac
 import app.fremkit.kit.MacService
 import app.fremkit.kit.PairingProblem
 import app.fremkit.kit.PairingStep
+import app.fremkit.kit.TypedAddress
 import app.fremkit.kit.normaliseCode
 import kotlinx.coroutines.delay
 
 /**
- * Pairing without the camera (`ManualPairView.swift`): pick the Mac NSD found, check that it shows
- * the same four words as this screen, type the code it shows.
+ * Pairing without the camera (`ManualPairView.swift`): pick the Mac NSD found (or type its address
+ * when NSD finds none), check that it shows the same four words as this screen, type the code it
+ * shows.
  */
 @Composable
 fun ManualPairScreen(
@@ -55,24 +57,29 @@ fun ManualPairScreen(
     macs: Map<String, DiscoveredMac>,
     refresh: () -> Unit,
     choose: (MacService) -> Unit,
+    typeAddress: () -> Unit,
+    connect: (String) -> Unit,
     submit: (String) -> Unit,
     otherMac: () -> Unit,
     cancel: () -> Unit,
 ) {
     when (step) {
+        is PairingStep.ManualAddress -> AddressEntry(step.typed, isWorking, problem, connect, otherMac, cancel)
         is PairingStep.ManualKey -> ScreenColumn {
             CircularProgressIndicator()
             Body(stringResource(R.string.connecting_to, step.service.name))
             CancelButton(cancel)
         }
         is PairingStep.ManualCode -> CodeEntry(step.service, words, isWorking, problem, submit, otherMac, cancel)
-        else -> MacList(macs, problem, refresh, choose, cancel)
+        else -> MacList(macs, problem, refresh, choose, typeAddress, cancel)
     }
 }
 
 /**
  * The Macs advertising Fremkit, by name, listed as soon as NSD sees them; one whose address is
- * not known yet says so and cannot be picked. A hint shows when none has turned up after 5 s.
+ * not known yet says so and cannot be picked. Typing the Mac's address is always offered, and
+ * becomes the main button, with a hint, when none has turned up after 5 s: multicast does not
+ * cross every network.
  */
 @Composable
 private fun MacList(
@@ -80,6 +87,7 @@ private fun MacList(
     problem: PairingProblem?,
     refresh: () -> Unit,
     choose: (MacService) -> Unit,
+    typeAddress: () -> Unit,
     cancel: () -> Unit,
 ) {
     var waitedLong by remember { mutableStateOf(false) }
@@ -106,7 +114,60 @@ private fun MacList(
             }
         }
         ProblemLine(problem)
+        if (sorted.isEmpty() && waitedLong) {
+            PrimaryButton(stringResource(R.string.manual_type_address), onClick = typeAddress)
+        } else {
+            TextButton(onClick = typeAddress, modifier = Modifier.heightIn(min = 56.dp)) {
+                Text(stringResource(R.string.manual_type_address))
+            }
+        }
         CancelButton(cancel)
+    }
+}
+
+/**
+ * The Mac's address, as Settings → Devices shows it. **Connect** reads the key of whatever
+ * answers there and shows its four words, as for a Mac from the list: the address is not a
+ * secret, and nothing typed here is kept but what a pairing stores.
+ */
+@Composable
+private fun AddressEntry(
+    typed: String,
+    isWorking: Boolean,
+    problem: PairingProblem?,
+    connect: (String) -> Unit,
+    back: () -> Unit,
+    cancel: () -> Unit,
+) {
+    var address by remember(typed) { mutableStateOf(typed) }
+    val canConnect = !isWorking && TypedAddress.parse(address) != null
+    ScreenColumn {
+        Title(stringResource(R.string.address_title))
+        Body(stringResource(R.string.address_hint))
+        OutlinedTextField(
+            value = address,
+            onValueChange = { address = it.take(300) },
+            label = { Text(stringResource(R.string.address_field)) },
+            singleLine = true,
+            textStyle = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 24.sp, textAlign = TextAlign.Center),
+            keyboardOptions = KeyboardOptions(
+                capitalization = KeyboardCapitalization.None,
+                autoCorrectEnabled = false,
+                keyboardType = KeyboardType.Uri,
+                imeAction = ImeAction.Go,
+            ),
+            keyboardActions = KeyboardActions(onGo = { if (canConnect) connect(address) }),
+            modifier = Modifier.fillMaxWidth().widthIn(max = 480.dp),
+        )
+        PrimaryButton(stringResource(R.string.address_connect), enabled = canConnect) { connect(address) }
+        BusySpinner(isWorking)
+        ProblemLine(problem)
+        Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+            TextButton(onClick = back, modifier = Modifier.heightIn(min = 56.dp)) {
+                Text(stringResource(R.string.address_back))
+            }
+            CancelButton(cancel)
+        }
     }
 }
 

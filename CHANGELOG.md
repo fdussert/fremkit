@@ -27,6 +27,11 @@ tagged `vX.Y.Z`.
   rather than from the Play Store, and needs nothing from Google Play: **Settings → Devices** and the
   site link to it, and the site shows its signing certificate's fingerprint to check it against.
   Obtainium can keep it up to date.
+- **Pairing by address when the tablet finds no Mac.** **Settings → Devices** now shows, beside the
+  code, the Mac's addresses to type on a tablet, and the Android app (the iPad app from its next
+  version) has **Enter the Mac's address** under its list of Macs: for networks where the tablet
+  never sees the Mac on its own, such as a Mac on both Wi-Fi and Ethernet. You still check the
+  four words before typing the code.
 
 ### Changed
 

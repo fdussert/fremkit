@@ -108,7 +108,8 @@ fun Root(
                     enterCode = flow::enterCode,
                     cancel = flow::cancel,
                 )
-                step == PairingStep.ManualList || step is PairingStep.ManualKey || step is PairingStep.ManualCode ->
+                step == PairingStep.ManualList || step is PairingStep.ManualAddress || step is PairingStep.ManualKey ||
+                    step is PairingStep.ManualCode ->
                     ManualPairScreen(
                         step = step,
                         isWorking = pairing.isWorking,
@@ -117,6 +118,8 @@ fun Root(
                         macs = macs,
                         refresh = network::refresh,
                         choose = { flow.choose(it) },
+                        typeAddress = flow::typeAddress,
+                        connect = { flow.connect(it) },
                         submit = { flow.submit(it) },
                         otherMac = flow::enterCode,
                         cancel = flow::cancel,

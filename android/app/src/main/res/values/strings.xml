@@ -53,11 +53,17 @@
 
     <string name="welcome_enter_code">Enter the code</string>
     <string name="manual_choose">Choose your Mac</string>
-    <string name="manual_none_yet">No Mac found yet. In Fremkit on the Mac, turn on “Allow a tablet on the local network” (Screen tab).</string>
+    <string name="manual_none_yet">No Mac found yet. In Fremkit on the Mac, turn on “Allow a tablet on the local network” (Settings → Devices), or enter its address.</string>
     <string name="manual_looking">Looking for its address…</string>
     <string name="manual_check_words">Check that the Mac shows the same words.</string>
     <string name="manual_code">Code</string>
     <string name="manual_other_mac">Other Mac</string>
+    <string name="manual_type_address">Enter the Mac’s address</string>
+    <string name="address_title">Enter the Mac’s address</string>
+    <string name="address_hint">Fremkit shows it on the Mac in Settings → Devices, beside the code: a name ending in .local, or four numbers separated by dots.</string>
+    <string name="address_field">Address</string>
+    <string name="address_connect">Connect</string>
+    <string name="address_back">Back to the list</string>
 
     <string name="settings_title">Settings</string>
     <string name="settings_open">Settings</string>

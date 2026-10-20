@@ -321,6 +321,62 @@ class PairingFlowTest {
     }
 
     @Test
+    fun aTypedAddressTakesThePathOfAPickedMac() = runTest {
+        val pairer = ScriptedPairer(Result.success(paired))
+        val read = mutableListOf<Pair<String, Int>>()
+        val (flow, model) = makeFlow(pairer = pairer, readKey = { host, port ->
+            read += host to port
+            otherKey
+        })
+        flow.enterCode()
+        flow.typeAddress()
+        assertEquals(PairingStep.ManualAddress(), flow.step)
+
+        flow.connect(" https://Studio.local:4300/ ")!!.join()
+        assertEquals("the key of whatever answers there is read", listOf("studio.local" to 4300), read)
+        val typed = MacService(name = "studio.local", address = "studio.local", port = 4300)
+        assertEquals(PairingStep.ManualCode(typed, otherKey), flow.step)
+        assertEquals("its words are compared, as for a Mac from the list", Fingerprint.words(otherKey), flow.words)
+
+        flow.submit("abcd efgh")?.join()
+        val attempt = pairer.attempts.single()
+        assertEquals(listOf("studio.local"), attempt.hosts)
+        assertEquals(4300, attempt.port)
+        assertEquals("the key the user compared is the pin", otherKey, attempt.keyHash)
+        assertNull("the code alone, sent as a proof under that key", attempt.secret)
+        assertEquals(paired, model.mac.value)
+        assertEquals(PairingStep.Idle, flow.step)
+    }
+
+    @Test
+    fun aTypedAddressThatIsNotOneIsRefusedWithoutAnyRequest() = runTest {
+        var reads = 0
+        val (flow, _) = makeFlow(readKey = { _, _ ->
+            reads += 1
+            otherKey
+        })
+        flow.enterCode()
+        assertNull("only from the address step", flow.connect("192.0.2.10"))
+        flow.typeAddress()
+        for (text in listOf("", "studio", "studio.local/admin", "user@192.0.2.10", "[2001:db8::1]:4243", "192.0.2.10:0")) {
+            assertNull(text, flow.connect(text))
+        }
+        runCurrent()
+        assertEquals(0, reads)
+        assertEquals(PairingStep.ManualAddress(), flow.step)
+    }
+
+    @Test
+    fun aTypedAddressThatDoesNotAnswerComesBackToBeCorrected() = runTest {
+        val (flow, _) = makeFlow(key = null)
+        flow.typeAddress()
+        flow.connect(" 192.0.2.10 ")!!.join()
+        assertEquals(PairingStep.ManualAddress("192.0.2.10"), flow.step)
+        assertEquals(PairingProblem.Unreachable, flow.problem)
+        assertFalse(flow.isWorking)
+    }
+
+    @Test
     fun anAttemptNeverPrintsTheCodeOrThePin() = runTest {
         val attempt = PairAttempt(listOf("192.0.2.10"), 4243, otherKey, "ABCDEFGH", linkSecret, "tablet", Viewport(1, 1), "Studio")
         val (flow, _) = makeFlow()
