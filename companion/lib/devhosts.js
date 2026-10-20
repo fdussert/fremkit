@@ -1,7 +1,11 @@
 // Which pages Fremdev watches: the built-in development hosts plus the user's own patterns.
 // A pattern is a bare host, with at most one `*` in its first label; nothing is listed by default.
 
-/** Host permissions requested when the module is turned on (optional, never at install). */
+/**
+ * Host permissions requested when the module is turned on (optional, never at install). Each host is
+ * spelled per scheme: Chrome reads a `*` scheme as covering ws and wss too, which the manifest's
+ * optional hosts (any http or https host) do not, and refuses the whole request without a prompt.
+ */
 export const BUILTIN_PERMISSION_ORIGINS = [
   'http://localhost/*',
   'https://localhost/*',
@@ -9,8 +13,10 @@ export const BUILTIN_PERMISSION_ORIGINS = [
   'https://127.0.0.1/*',
   'http://[::1]/*',
   'https://[::1]/*',
-  '*://*.localhost/*',
-  '*://*.test/*',
+  'http://*.localhost/*',
+  'https://*.localhost/*',
+  'http://*.test/*',
+  'https://*.test/*',
 ]
 
 /**
@@ -34,9 +40,11 @@ const PUBLIC_SUFFIXES = [
 ]
 const LOOPBACK = ['localhost', '127.0.0.1', '[::1]']
 
+const originsOf = (host) => [`http://${host}/*`, `https://${host}/*`]
+
 const isBuiltinHost = (host) => LOOPBACK.includes(host) || host.endsWith('.localhost') || host.endsWith('.test')
 
-/** A user pattern as `{ pattern, permission }`, or null when it is not one we accept. */
+/** A user pattern as `{ pattern, permissions }` (its http and https origins), or null when it is not one we accept. */
 export function parsePattern(input) {
   if (typeof input !== 'string') return null
   const pattern = input.trim().toLowerCase()
@@ -46,14 +54,14 @@ export function parsePattern(input) {
   const stars = pattern.split('*').length - 1
   if (stars > 1) return null
   if (isBuiltinHost(pattern.replace('*', 'x'))) return null
-  if (stars === 0) return { pattern, permission: `*://${pattern}/*` }
+  if (stars === 0) return { pattern, permissions: originsOf(pattern) }
   // The star lives in the first label only, and what follows it keeps at least two labels.
   if (!labels[0].includes('*') || labels.length < 3) return null
   const rest = labels.slice(1)
   if (PUBLIC_SUFFIXES.includes(rest.join('.'))) return null
   // A wildcard over numeric labels would stand for IP addresses, not a name the user owns.
   if (rest.every((l) => /^\d+$/.test(l))) return null
-  return { pattern, permission: `*://*.${labels.slice(1).join('.')}/*` }
+  return { pattern, permissions: originsOf(`*.${rest.join('.')}`) }
 }
 
 function matches(host, pattern) {
@@ -127,16 +135,15 @@ function overlaps(a, b) {
 }
 
 /**
- * The origin to give back when `pattern` is removed, or null to keep it: kept while a pattern still
- * listed (`rest`) overlaps it, while it covers another origin the extension holds (`held`, from
- * `chrome.permissions.getAll()`: a Fremplay player's, say), and always for a built-in one.
+ * The origins to give back when `pattern` is removed, or null to keep them: kept while a pattern
+ * still listed (`rest`) overlaps them, while they cover another origin the extension holds (`held`,
+ * from `chrome.permissions.getAll()`: a Fremplay player's, say), and always for a built-in one.
  */
-export function releasableOrigin(pattern, rest, held) {
-  const permission = parsePattern(pattern)?.permission
-  if (!permission || KEPT_ORIGINS.has(permission)) return null
-  const others = (rest ?? []).map((p) => parsePattern(p)?.permission).filter(Boolean)
-  if (others.some((o) => overlaps(permission, o))) return null
-  const elsewhere = (held ?? []).filter((o) => o !== permission && !KEPT_ORIGINS.has(o) && !others.includes(o))
-  if (elsewhere.some((o) => overlaps(permission, o))) return null
-  return permission
+export function releasableOrigins(pattern, rest, held) {
+  const own = parsePattern(pattern)?.permissions
+  if (!own || own.some((o) => KEPT_ORIGINS.has(o))) return null
+  const others = (rest ?? []).flatMap((p) => parsePattern(p)?.permissions ?? [])
+  const elsewhere = (held ?? []).filter((o) => !own.includes(o) && !KEPT_ORIGINS.has(o) && !others.includes(o))
+  if ([...others, ...elsewhere].some((o) => own.some((mine) => overlaps(mine, o)))) return null
+  return own
 }

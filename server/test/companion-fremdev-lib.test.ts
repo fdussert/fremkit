@@ -1,6 +1,7 @@
+import { readFileSync } from 'node:fs'
 import { describe, expect, it, vi } from 'vitest'
 // @ts-expect-error plain JS module outside server/, no declarations
-import { BUILTIN_PERMISSION_ORIGINS, FREMKIT_EXCLUDES, inOrigins, isDevUrl, parsePattern, releasableOrigin } from '../../companion/lib/devhosts.js'
+import { BUILTIN_PERMISSION_ORIGINS, FREMKIT_EXCLUDES, inOrigins, isDevUrl, parsePattern, releasableOrigins } from '../../companion/lib/devhosts.js'
 // @ts-expect-error plain JS module
 import { errorText, hotReloadSignal, isNoise, MAX_TEXT, pathOf, RateLimiter } from '../../companion/lib/devlog.js'
 // @ts-expect-error plain JS module
@@ -9,9 +10,12 @@ import { emptyTab, fremdevSupport, reduce, Throttle, validRow, wireTabs } from '
 import { hello, devTabs, modulesMsg, ping } from '../../companion/lib/protocol.js'
 import { DevTabSchema } from '../src/companion/protocol.js'
 
+const both = (host: string) => [`http://${host}/*`, `https://${host}/*`]
+
 describe('devhosts', () => {
   it('lists the built-in permissions and the Fremkit excludes', () => {
-    expect(BUILTIN_PERMISSION_ORIGINS).toHaveLength(8)
+    expect(BUILTIN_PERMISSION_ORIGINS).toHaveLength(10)
+    for (const o of BUILTIN_PERMISSION_ORIGINS) expect(o, o).toMatch(/^https?:\/\//)
     // Each host on both ports, under both schemes: Chrome refuses a port under the `*` scheme
     // ("Invalid port" from registerContentScripts), so they are spelled out.
     const hosts = ['127.0.0.1', 'localhost', '[::1]', '*.localhost']
@@ -49,45 +53,53 @@ describe('devhosts', () => {
 
   it('refuses wildcards over public suffixes and numeric labels', () => {
     for (const bad of ['*.co.uk', '*-dev.co.uk', '*.com.au', '*.0.2.1', '*-x.0.2.1']) expect(parsePattern(bad), bad).toBeNull()
-    expect(parsePattern('*.example.co.uk')?.permission).toBe('*://*.example.co.uk/*')
+    expect(parsePattern('*.example.co.uk')?.permissions).toEqual(['http://*.example.co.uk/*', 'https://*.example.co.uk/*'])
   })
 
   it('parses patterns', () => {
-    expect(parsePattern('  BO-Dev.Example.com ')).toEqual({ pattern: 'bo-dev.example.com', permission: '*://bo-dev.example.com/*' })
-    expect(parsePattern('*-dev.example.com')).toEqual({ pattern: '*-dev.example.com', permission: '*://*.example.com/*' })
-    expect(parsePattern('*.dev.example.com')).toEqual({ pattern: '*.dev.example.com', permission: '*://*.dev.example.com/*' })
+    expect(parsePattern('  BO-Dev.Example.com ')).toEqual({ pattern: 'bo-dev.example.com', permissions: both('bo-dev.example.com') })
+    expect(parsePattern('*-dev.example.com')).toEqual({ pattern: '*-dev.example.com', permissions: both('*.example.com') })
+    expect(parsePattern('*.dev.example.com')).toEqual({ pattern: '*.dev.example.com', permissions: both('*.dev.example.com') })
     for (const bad of ['', '  ', 'a b.example.com', 'https://x.example.com', 'x.example.com/path', 'a.*.example.com', '*.*.example.com', 'a-*.b-*.example.com', '*.com', '*-dev.com', 'localhost', '127.0.0.1', 'app.localhost', 'foo.test', '*.foo.test']) {
       expect(parsePattern(bad), bad).toBeNull()
     }
   })
+
+  // Chrome refuses a whole permissions.request, with no prompt, when one origin is not covered by
+  // the manifest's optional hosts; `*://` counts ws and wss, which `http://*/*` and `https://*/*` do not.
+  it('requests only origins the manifest lets it ask for', () => {
+    const optional: string[] = JSON.parse(readFileSync(new URL('../../companion/manifest.json', import.meta.url), 'utf8')).optional_host_permissions
+    const schemes = optional.map((o) => /^([a-z]+):\/\/\*\/\*$/.exec(o)?.[1])
+    const asked = [...BUILTIN_PERMISSION_ORIGINS, ...['bo.example.com', '*-dev.example.com'].flatMap((p) => parsePattern(p).permissions)]
+    for (const origin of asked) expect(schemes, origin).toContain(/^([a-z]+):\/\//.exec(origin)?.[1])
+  })
 })
 
-describe('releasableOrigin', () => {
+describe('releasableOrigins', () => {
   const held = (...extra: string[]) => [...BUILTIN_PERMISSION_ORIGINS, 'http://127.0.0.1:4242/*', ...extra]
 
-  it("releases a removed pattern's own origin when nothing else needs it", () => {
-    expect(releasableOrigin('bo-dev.example.com', [], held('*://bo-dev.example.com/*'))).toBe('*://bo-dev.example.com/*')
-    expect(releasableOrigin('*-dev.example.org', ['bo-dev.example.com'], held('*://*.example.org/*', '*://bo-dev.example.com/*'))).toBe('*://*.example.org/*')
+  it("releases a removed pattern's own origins when nothing else needs them", () => {
+    expect(releasableOrigins('bo-dev.example.com', [], held(...both('bo-dev.example.com')))).toEqual(both('bo-dev.example.com'))
+    expect(releasableOrigins('*-dev.example.org', ['bo-dev.example.com'], held(...both('*.example.org'), ...both('bo-dev.example.com')))).toEqual(both('*.example.org'))
   })
 
-  it('keeps an origin another pattern shares or overlaps', () => {
-    // Same permission.
-    expect(releasableOrigin('*-dev.example.org', ['*-qa.example.org'], held('*://*.example.org/*'))).toBeNull()
+  it('keeps origins another pattern shares or overlaps', () => {
+    // Same permissions.
+    expect(releasableOrigins('*-dev.example.org', ['*-qa.example.org'], held(...both('*.example.org')))).toBeNull()
     // The wildcard covers a narrower pattern still listed, and the other way round.
-    expect(releasableOrigin('*-dev.example.org', ['bo.example.org'], held('*://*.example.org/*', '*://bo.example.org/*'))).toBeNull()
-    expect(releasableOrigin('bo.example.org', ['*-dev.example.org'], held('*://*.example.org/*', '*://bo.example.org/*'))).toBeNull()
+    expect(releasableOrigins('*-dev.example.org', ['bo.example.org'], held(...both('*.example.org'), ...both('bo.example.org')))).toBeNull()
+    expect(releasableOrigins('bo.example.org', ['*-dev.example.org'], held(...both('*.example.org'), ...both('bo.example.org')))).toBeNull()
   })
 
-  it('keeps an origin that covers another grant, a Fremplay player say', () => {
-    expect(releasableOrigin('*-dev.example.org', [], held('*://*.example.org/*', 'https://player.example.org/*'))).toBeNull()
-    expect(releasableOrigin('player.example.org', [], held('*://player.example.org/*', 'https://player.example.org/*'))).toBeNull()
-    // A grant elsewhere does not hold it.
-    expect(releasableOrigin('*-dev.example.org', [], held('*://*.example.org/*', 'https://www.example.net/*'))).toBe('*://*.example.org/*')
+  it('keeps origins that cover another grant, a Fremplay player say', () => {
+    expect(releasableOrigins('*-dev.example.org', [], held(...both('*.example.org'), 'https://player.example.org/*'))).toBeNull()
+    // A grant elsewhere does not hold them.
+    expect(releasableOrigins('*-dev.example.org', [], held(...both('*.example.org'), 'https://www.example.net/*'))).toEqual(both('*.example.org'))
   })
 
   it('never releases what is not a pattern', () => {
-    expect(releasableOrigin('localhost', [], held())).toBeNull()
-    expect(releasableOrigin('not a host', [], held())).toBeNull()
+    expect(releasableOrigins('localhost', [], held())).toBeNull()
+    expect(releasableOrigins('not a host', [], held())).toBeNull()
   })
 })
 

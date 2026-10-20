@@ -176,7 +176,7 @@ export function createFremdev({
 
   /** The dev origins the user granted: the built-in hosts and the patterns' permissions. */
   async function refreshGranted() {
-    const wanted = [...new Set([...BUILTIN_PERMISSION_ORIGINS, ...patterns.map((p) => parsePattern(p)?.permission).filter(Boolean)])]
+    const wanted = [...new Set([...BUILTIN_PERMISSION_ORIGINS, ...patterns.flatMap((p) => parsePattern(p)?.permissions ?? [])])]
     const next = []
     for (const origin of wanted) {
       try {

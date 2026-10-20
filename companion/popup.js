@@ -256,7 +256,7 @@ $('fremdevswitch').addEventListener('click', () => {
   // Asked here, within the click (the worker has no gesture): webRequest and every dev origin,
   // the built-in hosts and the user's patterns, in one prompt.
   const patterns = Array.isArray(local.fremdev?.patterns) ? local.fremdev.patterns : []
-  const origins = [...new Set([...BUILTIN_PERMISSION_ORIGINS, ...patterns.map((p) => parsePattern(p)?.permission).filter(Boolean)])]
+  const origins = [...new Set([...BUILTIN_PERMISSION_ORIGINS, ...patterns.flatMap((p) => parsePattern(p)?.permissions ?? [])])]
   // Chrome's prompt may close this popup before it can say `fremdevOn`: the worker is told first and
   // turns Fremdev on itself when the grant lands (fremdev.js `expectGrant`); a start from both joins.
   ask('expectFremdev')

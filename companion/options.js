@@ -2,7 +2,7 @@
 // development hosts, and the Fremplay shortcut (changed on the browser's own shortcut page).
 
 import { localize, t } from './i18n.js'
-import { parsePattern, releasableOrigin } from './lib/devhosts.js'
+import { parsePattern, releasableOrigins } from './lib/devhosts.js'
 
 localize()
 
@@ -97,7 +97,7 @@ $('addhost').addEventListener('submit', (e) => {
   if (!parsed) return showHostError('optDevHostInvalid')
   showHostError(null)
   // Asked within the submit: the browser takes a permission request only from the user's gesture.
-  const asked = chrome.permissions.request({ origins: [parsed.permission] })
+  const asked = chrome.permissions.request({ origins: parsed.permissions })
   hostsBusy = true
   render()
   asked
@@ -126,13 +126,13 @@ async function removeHost(pattern) {
     const rest = patterns.filter((p) => p !== pattern)
     await savePatterns(saved, rest)
     // Its origin goes back unless another pattern still needs it (`*-dev.example.com` and
-    // `*-qa.example.com` share `*://*.example.com/*`), it covers another grant (a Fremplay player's),
-    // or it is one the extension keeps (lib/devhosts.js `releasableOrigin`).
+    // `*-qa.example.com` share `*.example.com`'s origins), it covers another grant (a Fremplay player's),
+    // or it is one the extension keeps (lib/devhosts.js `releasableOrigins`).
     const { origins: held = [] } = await chrome.permissions.getAll()
-    const release = releasableOrigin(pattern, rest, held)
+    const release = releasableOrigins(pattern, rest, held)
     // A failed removal is left alone on purpose: the pattern is already gone, so Fremdev no longer
     // watches that host, and the leftover grant shows in Chrome's site settings for the user to drop.
-    if (release) await chrome.permissions.remove({ origins: [release] }).catch(() => false)
+    if (release) await chrome.permissions.remove({ origins: release }).catch(() => false)
   } finally {
     hostsBusy = false
     render()
