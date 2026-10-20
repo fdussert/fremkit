@@ -107,6 +107,8 @@
   html.on-light button.show,html.on-light button.copy{color:var(--on-surface, #0b0d10)}
   html.on-light button.copy{border-color:color-mix(in srgb, var(--on-surface, #0b0d10) 35%, transparent)}
   html.on-light .entry .time,html.on-light .entry .times,html.on-light .entry.limited .what,html.on-light .entry .origin{color:var(--on-surface, #0b0d10);opacity:.7}
+  /* The warning orange reads too faint on a light body: darkened towards the text colour. */
+  html.on-light .entry.request .what,html.on-light .fact.requests .n{color:color-mix(in srgb, var(--warn, #f0a020) 55%, var(--on-surface, #0b0d10))}
   html.on-light .entry.resolved .what,html.on-light .entry.resolved .time,html.on-light .entry.resolved .times{color:var(--on-surface, #0b0d10)}
   html.on-light .fact.resolved,html.on-light .fact.resolved .n{color:var(--on-surface, #0b0d10);opacity:.5}
   html.on-light .fact.seen,html.on-light .fact.seen .n,html.on-light .fact.seen .t{color:var(--on-surface, #0b0d10);opacity:.5}
