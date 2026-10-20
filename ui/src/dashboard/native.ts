@@ -6,6 +6,8 @@ export type NativeMessage =
   | { type: 'unauthorized' }
   | { type: 'screen'; screenId: string | null }
   | { type: 'brightness'; target: number; seq: number }
+  /** The user asked for the app's own settings sheet (the Android app only; see `AppSettingsMenu`). */
+  | { type: 'settings' }
 
 interface NativeWindow {
   webkit?: { messageHandlers?: { fremkit?: { postMessage(msg: unknown): void } } }

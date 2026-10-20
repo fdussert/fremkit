@@ -184,6 +184,79 @@ describe('the dashboard on a paired device', () => {
   })
 })
 
+describe('the app settings entry', () => {
+  const me = { status: 200, body: { id: 'd1', name: 'Kitchen tablet', screenId: 'pad', brightness: null } }
+  /** Every message the Android app's listener was given, parsed. */
+  function androidListener() {
+    const postMessage = vi.fn()
+    vi.stubGlobal('fremkit', { postMessage })
+    return () => postMessage.mock.calls.map(([m]) => JSON.parse(m as string))
+  }
+
+  it('opens from the bar in the Android app and asks the app for its settings', async () => {
+    const sent = androidListener()
+    stubFetch(me)
+    const wrapper = await mountApp('https://example.local:4243/')
+    const { default: NavBar } = await import('../src/dashboard/NavBar.vue')
+    expect(wrapper.find('.app-menu').exists()).toBe(false)
+    wrapper.findComponent(NavBar).vm.$emit('admin')
+    await nextTick()
+    const entry = wrapper.find('.app-menu button')
+    expect(entry.text()).toBe('App settings')
+    await entry.trigger('click')
+    expect(sent()).toContainEqual({ type: 'settings' })
+    expect(wrapper.find('.app-menu').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('closes on a tap outside it, without asking anything', async () => {
+    const sent = androidListener()
+    stubFetch(me)
+    const wrapper = await mountApp('https://example.local:4243/')
+    const { default: NavBar } = await import('../src/dashboard/NavBar.vue')
+    wrapper.findComponent(NavBar).vm.$emit('admin')
+    await nextTick()
+    expect(wrapper.find('.app-menu').exists()).toBe(true)
+    document.body.dispatchEvent(new Event('pointerdown', { bubbles: true }))
+    await nextTick()
+    expect(wrapper.find('.app-menu').exists()).toBe(false)
+    expect(sent()).not.toContainEqual({ type: 'settings' })
+    wrapper.unmount()
+  })
+
+  it('is offered on the no-screen message in the Android app', async () => {
+    const sent = androidListener()
+    stubFetch({ status: 200, body: { ...me.body, screenId: null } })
+    const wrapper = await mountApp('https://example.local:4243/')
+    const entry = wrapper.find('.remote-action')
+    expect(entry.text()).toBe('App settings')
+    await entry.trigger('click')
+    expect(sent()).toContainEqual({ type: 'settings' })
+    wrapper.unmount()
+  })
+
+  it('is never offered in the iPad app nor in a browser', async () => {
+    for (const ipad of [true, false]) {
+      if (ipad) vi.stubGlobal('webkit', { messageHandlers: { fremkit: { postMessage: vi.fn() } } })
+      stubFetch(me)
+      const wrapper = await mountApp('https://example.local:4243/')
+      const { default: NavBar } = await import('../src/dashboard/NavBar.vue')
+      wrapper.findComponent(NavBar).vm.$emit('admin')
+      await nextTick()
+      expect(wrapper.find('.app-menu').exists()).toBe(false)
+      wrapper.unmount()
+      vi.unstubAllGlobals()
+
+      stubFetch({ status: 200, body: { ...me.body, screenId: null } })
+      if (ipad) vi.stubGlobal('webkit', { messageHandlers: { fremkit: { postMessage: vi.fn() } } })
+      const empty = await mountApp('https://example.local:4243/')
+      expect(empty.find('.remote-action').exists()).toBe(false)
+      empty.unmount()
+      vi.unstubAllGlobals()
+    }
+  })
+})
+
 describe('the dashboard on the Mac', () => {
   it('honours ?screen= and asks nothing about a device', async () => {
     const calls = stubFetch({ status: 404 })

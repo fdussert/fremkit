@@ -17,7 +17,8 @@ import CompanionPrompt from './CompanionPrompt.vue'
 import { createRevealTracker, LANDING_WINDOW_MS, landingPage, type CompanionReveal } from './companionReveal'
 import { useNavPopover } from './useNavPopover'
 import { isRemotePage, useDeviceScreen, type DeviceInfo } from './remote'
-import { nativePlatform, useNativeBridge } from './native'
+import { nativeBridge, nativePlatform, useNativeBridge } from './native'
+import AppSettingsMenu from './AppSettingsMenu.vue'
 import { SCREEN_ID } from '../shared/useWidgetBridge'
 import { onWidgetReload } from '../shared/widgetDev'
 import { onScreenReload } from '../shared/screenReload'
@@ -42,6 +43,17 @@ if (remote) useNativeBridge(device, unauthorized)
 const onIpad = remote && nativePlatform() === 'ios'
 const unauthorizedKey = onIpad ? 'dashboard.remote.unauthorized.ipad' : 'dashboard.remote.unauthorized'
 const noScreenKey = onIpad ? 'dashboard.remote.noScreen.ipad' : 'dashboard.remote.noScreen'
+/**
+ * Inside the Android app the page offers the app's own settings sheet (`AppSettingsMenu`): the
+ * app shows no chrome over its dashboard, so this is the way to it once paired. The iPad app keeps
+ * its settings in the system's Settings app and gets no entry.
+ */
+const onAndroid = remote && nativePlatform() === 'android'
+const appMenuOpen = ref(false)
+function openAppSettings(): void {
+  appMenuOpen.value = false
+  nativeBridge()?.post({ type: 'settings' })
+}
 /**
  * The screen this dashboard shows, named by `?screen=<id>`. The kiosk opens `/` with no id and
  * gets the first Edge screen; an id that no longer exists gets it too, never a blank page.
@@ -149,8 +161,12 @@ const kiosk = new URLSearchParams(location.search).has('kiosk')
  * open its own admin window; in an ordinary browser a new tab is what the user expects.
  */
 async function openAdmin() {
-  // A paired device has no admin: it is reached on the Mac only.
-  if (remote) return
+  // A paired device has no admin: it is reached on the Mac only. In the Android app the same
+  // gesture opens the page's menu instead.
+  if (remote) {
+    if (onAndroid) appMenuOpen.value = !appMenuOpen.value
+    return
+  }
   if (!kiosk) { window.open('/admin', '_blank'); return }
   try {
     await fetch('/api/helper/admin', { method: 'POST' })
@@ -215,7 +231,7 @@ onMounted(async () => {
   })
 })
 // Another screen for the device: start it on its first page, which every screen has.
-if (remote) watch(() => screen.value?.id, () => { pageIndex.value = 0; popover.close() })
+if (remote) watch(() => screen.value?.id, () => { pageIndex.value = 0; popover.close(); appMenuOpen.value = false })
 onUnmounted(() => { unsub?.(); unsubCompanion?.(); offReload?.(); offScreenReload?.(); window.removeEventListener('keydown', onKey); window.clearInterval(cycleTimer) })
 watch(() => display.value?.autoCycleSeconds, setupCycle)
 /** The manifest of the widget a bar item names, for the popover it opens. */
@@ -234,6 +250,8 @@ watch(() => config.value?.locale, (l) => setLocale(l))
   <div v-else-if="remote && config && !screen && device" class="remote-message" role="status">
     <p class="remote-name">{{ device.name }}</p>
     <p class="remote-title">{{ t(noScreenKey) }}</p>
+    <!-- No screen, no bar: the app's settings are offered here instead. -->
+    <button v-if="onAndroid" type="button" class="remote-action" @click="openAppSettings">{{ t('dashboard.remote.appSettings') }}</button>
   </div>
   <div class="root" :class="{ kiosk }" :style="rootStyle" v-else-if="config && screen && shown && display && page">
     <Transition name="bg-fade">
@@ -272,6 +290,8 @@ watch(() => config.value?.locale, (l) => setLocale(l))
       :anchor="popover.open.value.anchor"
       :screen="popover.open.value.screen"
       @root="popover.setPopoverEl" />
+    <AppSettingsMenu v-if="onAndroid && appMenuOpen" :bar-height="navHeightOf(display)"
+      @settings="openAppSettings" @close="appMenuOpen = false" />
     <!-- Experimental: only while `labs.companion` is on. The server answers the extension the same
          either way; with the prompt hidden (and the admin's card too) no request can be allowed. -->
     <CompanionPrompt v-if="companionPairing && socket.status.value === 'open' && config?.labs?.companion === true" :pairing="companionPairing" />
@@ -315,6 +335,10 @@ watch(() => config.value?.locale, (l) => setLocale(l))
 .remote-message p { margin: 0; max-width: 32em; }
 .remote-name { color: var(--accent); font-size: var(--fs-lg); font-weight: 600; }
 .remote-title { font-size: calc(var(--fs-lg) * 1.5); line-height: 1.3; }
+.remote-action { margin-top: var(--space-3); min-height: 56px; padding: 0 28px; border: 1px solid var(--border);
+  border-radius: var(--radius-md); background: var(--surface); color: var(--text); font: inherit;
+  font-size: calc(var(--fs-lg) * 1.25); cursor: pointer; }
+.remote-action:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 .banner { position: absolute; top: 0; left: 50%; transform: translateX(-50%); padding: 4px 12px; background: #a33; color: #fff; font-size: 14px; border-radius: 0 0 8px 8px; z-index: 10; }
 /* Scoped under .stage so these rules outrank `.page { position: relative }` from
    PageView whatever order the two scoped stylesheets are injected in. */
