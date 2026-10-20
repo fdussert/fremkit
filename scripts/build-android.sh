@@ -13,16 +13,26 @@
 #                                      FREMKIT_ANDROID_DEVICE, the pairing link read from stdin
 #   scripts/build-android.sh device-test
 #                                      not yet: the instrumented tests on that tablet
-#   scripts/build-android.sh release   not yet: a signed release APK in dist/
+#   scripts/build-android.sh release   a signed release APK, dist/Fremkit-Android-<version>.apk, and its
+#                                      .sha256. Needs a clean tree, the keystore made by
+#                                      scripts/create-android-keystore.sh (folder 0700, file 0600, or
+#                                      it refuses) and its password in the keychain. Gradle builds the
+#                                      APK unsigned and never sees the key; apksigner signs it with the
+#                                      password on its stdin, and the signer must match
+#                                      android/signing-cert.sha256 or nothing is written
 #   scripts/build-android.sh verify <apk>
-#                                      not yet: an APK's signer checked against
-#                                      android/signing-cert.sha256
+#                                      an APK's signature checked, and its signer compared with
+#                                      android/signing-cert.sha256: for a downloaded release asset
 #
 # Environment:
 #   FREMKIT_ANDROID_SDK   the Android SDK (default ~/Library/Android/sdk)
 #   FREMKIT_JAVA_HOME     the JDK Gradle runs on (default: the newest arm64 JDK 17+ that
 #                         /usr/libexec/java_home knows). An x86_64 JDK is refused: under Rosetta,
 #                         Gradle is several times slower.
+#   FREMKIT_ANDROID_KEYSTORE           the release keystore (default ~/Library/Application
+#                                      Support/Fremkit-release/fremkit-android.p12)
+#   FREMKIT_ANDROID_KEYCHAIN           for tests: a keychain file instead of the login keychain
+#   FREMKIT_ANDROID_KEYCHAIN_SERVICE   for tests: the service instead of fremkit-android-release
 #
 # Build output goes to android/**/build/ (git-ignored). Nothing secret is ever passed on a command
 # line here: any account on the Mac reads every process's arguments with `ps`.
@@ -73,6 +83,96 @@ use_toolchain() {
 }
 
 gradle() { (cd android && ./gradlew --console=plain "$@"); }
+
+BUILD_TOOLS_DIR="$SDK/build-tools/$BUILD_TOOLS"
+APKSIGNER="$BUILD_TOOLS_DIR/apksigner"
+ZIPALIGN="$BUILD_TOOLS_DIR/zipalign"
+DEXDUMP="$BUILD_TOOLS_DIR/dexdump"
+CERT_FILE=android/signing-cert.sha256
+KEYSTORE="${FREMKIT_ANDROID_KEYSTORE:-$HOME/Library/Application Support/Fremkit-release/fremkit-android.p12}"
+KEYCHAIN="${FREMKIT_ANDROID_KEYCHAIN:-}"
+KEYCHAIN_SERVICE="${FREMKIT_ANDROID_KEYCHAIN_SERVICE:-fremkit-android-release}"
+
+# The published signing certificate's SHA-256, lowercase hex.
+expected_cert() {
+    [[ -s "$CERT_FILE" ]] || die "$CERT_FILE is missing: the owner creates the key with scripts/create-android-keystore.sh"
+    local cert
+    cert="$(grep -v '^#' "$CERT_FILE" | tr -d '[:space:]' | tr 'A-F' 'a-f')"
+    [[ "$cert" =~ ^[0-9a-f]{64}$ ]] || die "$CERT_FILE holds no SHA-256"
+    echo "$cert"
+}
+
+# Checks an APK's signature and that its one signer is the published certificate.
+verify_apk() {
+    local apk="$1" expected out signers found
+    expected="$(expected_cert)"
+    [[ -f "$apk" ]] || die "no such APK: $apk"
+    out="$("$APKSIGNER" verify -v --print-certs "$apk" 2>&1)" || { echo "$out" >&2; die "$apk: the signature does not verify"; }
+    grep -Eq 'Verified using v[23] scheme .*: true' <<<"$out" || die "$apk: signed with neither scheme v2 nor v3"
+    signers="$(sed -n 's/^Number of signers: //p' <<<"$out")"
+    [[ "$signers" == 1 ]] || die "$apk: ${signers:-no} signers, expected one"
+    found="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' <<<"$out")"
+    [[ "$found" == "$expected" ]] || die "$apk: signed by $found, not by the published certificate $expected"
+    echo "verified: $apk is signed by the published certificate $expected"
+}
+
+# Refuses a keystore anyone but its owner could read, as tightenDataDir would.
+check_keystore() {
+    [[ -f "$KEYSTORE" ]] || die "no keystore at $KEYSTORE (scripts/create-android-keystore.sh)"
+    local dir mode
+    dir="$(dirname "$KEYSTORE")"
+    mode="$(/usr/bin/stat -f '%Lp' "$dir")"
+    [[ "$mode" == 700 ]] || die "$dir is $mode; the keystore's folder must be 0700 (chmod 700 it)"
+    mode="$(/usr/bin/stat -f '%Lp' "$KEYSTORE")"
+    [[ "$mode" == 600 ]] || die "$KEYSTORE is $mode; the keystore must be 0600 (chmod 600 it)"
+    [[ "$(/usr/bin/stat -f '%u' "$KEYSTORE")" == "$(id -u)" ]] || die "$KEYSTORE is not yours"
+}
+
+release() {
+    [[ -z "$(git status --porcelain)" ]] || die "commit or stash first: a release is built from a commit"
+    check_keystore
+    local version expected unsigned signed out password signer
+    version="$(sed -n 's/^ *"version": *"\([^"]*\)".*/\1/p' package.json | head -1)"
+    [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "package.json has no X.Y.Z version"
+    expected="$(expected_cert)"
+    # The password before the build, so a missing one fails fast. Captured, never echoed, and
+    # handed to apksigner on stdin by the shell's printf (a builtin: no process, no argv).
+    password="$(/usr/bin/security find-generic-password -s "$KEYCHAIN_SERVICE" -a release -w ${KEYCHAIN:+"$KEYCHAIN"} 2>/dev/null)" ||
+        die "no $KEYCHAIN_SERVICE password in the keychain (scripts/create-android-keystore.sh)"
+
+    gradle clean :app:assembleRelease :app:checkNoPlayServices
+    unsigned=android/app/build/outputs/apk/release/app-release-unsigned.apk
+    [[ -f "$unsigned" ]] || die "Gradle built no $unsigned"
+    # Global, not local: the EXIT trap runs after this function has returned.
+    work="$(mktemp -d "${TMPDIR:-/tmp}/fremkit-android-release.XXXXXX")"
+    trap 'rm -rf "${work:?}"' EXIT
+    # R8 drops every Log.d and Log.v (app/proguard-rules.pro); a call left means the rule broke.
+    "$DEXDUMP" -d "$unsigned" >"$work/dex.txt" 2>/dev/null || die "dexdump could not read $unsigned"
+    grep -q '^Processing ' "$work/dex.txt" || die "dexdump found no code in $unsigned"
+    local logs
+    logs="$(grep -Ec 'Landroid/util/Log;\.[dv]:' "$work/dex.txt" || true)"
+    [[ "$logs" == 0 ]] || die "$logs Log.d or Log.v calls survived R8 in the release APK"
+
+    "$ZIPALIGN" -p -f 4 "$unsigned" "$work/aligned.apk"
+    signed="$work/signed.apk"
+    # v2 and v3: v1 (JAR signing) only matters below API 24, and minSdk is 28.
+    if ! signer="$(printf '%s\n' "$password" | "$APKSIGNER" sign --ks "$KEYSTORE" --ks-pass stdin \
+        --v1-signing-enabled false --v2-signing-enabled true --v3-signing-enabled true \
+        --out "$signed" "$work/aligned.apk" 2>&1)"; then
+        unset password
+        grep -v 'password for signer' <<<"$signer" >&2 || true
+        die "apksigner could not sign the APK"
+    fi
+    unset password
+    verify_apk "$signed" >/dev/null
+
+    mkdir -p dist
+    out="dist/Fremkit-Android-$version.apk"
+    mv "$signed" "$out"
+    (cd dist && /usr/bin/shasum -a 256 "$(basename "$out")" >"$(basename "$out").sha256")
+    echo "signed: $out (certificate $expected)"
+    echo "        $out.sha256"
+}
 
 doctor() {
     local missing=() jdk ok=1
@@ -144,7 +244,16 @@ case "$cmd" in
         gradle :app:assembleDebug :app:lintDebug :app:checkNoPlayServices
         echo "built: $(ls android/app/build/outputs/apk/debug/*.apk)"
         ;;
-    install | device-test | release | verify)
+    release)
+        use_toolchain
+        release
+        ;;
+    verify)
+        [[ $# -eq 1 ]] || die "usage: scripts/build-android.sh verify <apk>"
+        use_toolchain
+        verify_apk "$1"
+        ;;
+    install | device-test)
         die "$cmd: not yet (a later stage of the Android plan adds it)"
         ;;
     *)
