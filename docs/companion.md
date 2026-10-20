@@ -9,13 +9,14 @@ development tabs on the Edge (see [Fremdev](#fremdev-your-development-tabs)). No
 needs the extension except the Fremplay and Fremdev widgets, which show how to get it until an
 extension is linked.
 
-It is **experimental** for now, and hidden until you turn it on: in the admin, open
-**Settings → About**, click the version number seven times (or focus it and press Enter seven
-times), and tick **Browser companion (Fremplay)** under **Experimental features** (Fremdev has its own box there, **Fremdev (development tabs)**, and needs the companion ticked as well). Until then the
-admin leaves Fremplay out of the widget library and the bar's list and hides the pairing request in
-**Settings → Devices**, and the Edge shows no pairing prompt, so no code can be typed. A
-browser already linked stays listed in **Settings → Devices** whatever the switch says, so it can
-always be renamed or removed.
+It is **experimental** for now, and hidden until you turn it on: in the admin, open **Settings →
+About**, click the version number seven times (or focus it and press Enter seven times), and tick
+**Browser companion (Fremplay)** under **Experimental features** (Fremdev has its own box there,
+**Fremdev (development tabs)**, and needs the companion ticked as well). Until then the admin leaves
+Fremplay out of the widget library and the bar's list and hides the pairing request in **Settings →
+Devices**, and the Edge shows no pairing prompt, so no code can be typed. A browser already linked
+stays listed in **Settings → Devices** whatever the switch says, so it can always be renamed or
+removed.
 
 **Off is Fremplay off.** While the switch (`labs.companion` in the config) is off:
 
@@ -146,8 +147,8 @@ Edge*), or press **⌃⇧F** (Control-Shift-F). Press it again to stop. The shor
   s'affiche que sur l'Edge du Mac.* / *Fremplay only shows on the Mac's Edge.* and nothing else:
   the picture goes peer to peer between addresses of this Mac, and the iPad's copy of the widget
   gets no WebRTC and no `companion` channel. With the switch off, the iPad leaves its Fremplay
-  widgets out as the Edge does: its view of the config carries `labs.companion` and `labs.fremdev` (so Fremdev's tiles are
-  gated the same way), and nothing else of the experimental switches.
+  widgets out as the Edge does: its view of the config carries `labs.companion` and `labs.fremdev`
+  (so Fremdev's tiles are gated the same way), and nothing else of the experimental switches.
 - The browser can be in the background, on another tab or another desktop. Quitting it, or
   closing the tab, ends the share.
 - The video travels directly between the browser and the Edge over WebRTC, between addresses of
@@ -175,12 +176,12 @@ green light. Tap a row to unfold it to that tab's history and its **Copy report*
 history and the bug report](#the-history-and-the-bug-report)); **Show tab** brings that tab forward.
 The **×** on a row marks its errors and failed requests as seen: the counters stay, dimmed, and the
 light turns hollow until a new one comes in or the tab reloads (green means a page with nothing open
-since its last load or hot update). It is experimental and behind its own switch, `labs.fremdev`, on top of `labs.companion`
-(Fremdev runs only while both are on, `fremdevEnabled`): with either off the server reports Fremdev
-as disabled (*Activez Fremdev dans les fonctions expérimentales* / *Turn Fremdev on under
-Experimental features*), the widget is left out like Fremplay's, and `ready` announces
-`modules.fremdev: false`. Turning a switch sends every connected install a fresh `ready`. A config
-that already places a Fremdev widget starts with `labs.fremdev` on.
+since its last load or hot update). It is experimental and behind its own switch, `labs.fremdev`, on
+top of `labs.companion` (Fremdev runs only while both are on, `fremdevEnabled`): with either off the
+server reports Fremdev as disabled (*Activez Fremdev dans les fonctions expérimentales* / *Turn
+Fremdev on under Experimental features*), the widget is left out like Fremplay's, and `ready`
+announces `modules.fremdev: false`. Turning a switch sends every connected install a fresh `ready`.
+A config that already places a Fremdev widget starts with `labs.fremdev` on.
 
 ### Turn it on
 
@@ -197,7 +198,8 @@ them back. Pages already loaded keep the hook they were given until they reload 
   https.
 - Your own hosts, added on the extension's options page: an exact host (`dev.example.com`) or one
   `*` in the first label (`*-dev.example.com`, `*.example.com`). Adding one asks Chrome for that
-  origin only, and removing it gives that permission back, unless another pattern or grant still covers it. Nothing else is listed by default.
+  origin only, and removing it gives that permission back, unless another pattern or grant still
+  covers it. Nothing else is listed by default.
 - Refused as a pattern: a wildcard over a common public suffix (`*.co.uk`; the list is short, and
   Chrome's own permission prompt names the hosts for any other), over numeric labels (an IP range),
   a built-in host, and anything with more than one `*`.
@@ -212,11 +214,11 @@ them back. Pages already loaded keep the hook they were given until they reload 
 
 Watched: `console.error` calls, uncaught errors, unhandled promise rejections, the dev server's
 connection and hot update signals (Vite, webpack-dev-server and Next lines such as *server
-connection lost*, *hot updated* or *[Fast Refresh] done*), failed
-requests (network errors and HTTP 4xx/5xx) and main-frame loads that fail because the server is
-down; and, timed but never counted as failures, requests that took a second or more and the
-requests in flight (see [Slow requests](#slow-requests-and-requests-in-flight)). Not counted: `favicon.ico`, hot-update traffic (`/@vite/*`, `/__webpack_hmr`,
-`/sockjs-node/*`, `*.hot-update.*`) and aborted requests.
+connection lost*, *hot updated* or *[Fast Refresh] done*), failed requests (network errors and HTTP
+4xx/5xx) and main-frame loads that fail because the server is down; and, timed but never counted as
+failures, requests that took a second or more and the requests in flight (see [Slow
+requests](#slow-requests-and-requests-in-flight)). Not counted: `favicon.ico`, hot-update traffic
+(`/@vite/*`, `/__webpack_hmr`, `/sockjs-node/*`, `*.hot-update.*`) and aborted requests.
 
 What goes to Fremkit, over the extension's authenticated socket to `127.0.0.1:4242`, is per tab: the
 **page's title** (or its host:port when it has none, clipped to 120 characters) and its
@@ -241,7 +243,7 @@ open, so the Edge can name one entry. A row also says which **dev server** serve
 isolated world, reads the page's script tags once the document has loaded (and the nodes added
 during the next 30 seconds): a module script ending in `/@vite/client` is Vite, a script under
 `/_next/` is Next, a script whose path names `webpack-dev-server`, or that server's overlay
-element, is webpack-dev-server. It reads attributes only and runs none of the page's code. The
+element, is webpack-dev-server. It reads attributes only and runs none of the page's code.
 Only scripts from the page's own origin count. The kind is kept for the tab's origin: a
 client-side route change keeps it, each fresh load of the page looks again (and may find another
 dev server on the same port, or a Vite client whose base cannot be used, which reads as none
@@ -281,18 +283,19 @@ a request's path, and a build's text and file. Inside a path the slash before it
 (`/@fs/Users/<name>/a.js`, Vite's URL for a file outside its root, reads `/@fs/~/a.js`), a request
 path that starts with it reads `/~/…`, and a name cut by the 300-character clip or by a line break
 (`…/Users/Jane Ex`) reads `~`. A percent-encoded one in a URL goes the same way
-(`%2FUsers%2F<name>%2F` reads `%2F~%2F`). This happens before anything is clipped for the wire. The extension
-keeps the full values for itself.
+(`%2FUsers%2F<name>%2F` reads `%2F~%2F`). This happens before anything is clipped for the wire. The
+extension keeps the full values for itself.
 
 ### The history and the bug report
 
 Tap a row's top line on the Edge and it unfolds to that tab's last 20 errors and failed requests
 (and the `limited` entries that stand for errors dropped by the rate limit), newest first, scrolling
-inside the row; only one row is unfolded at a time. Each entry shows its kind, text, method and
-status, and for an error its origin. **Line and column numbers are those of the code the dev server
-sent**: Fremdev does no source-map lookup, so a bundled or transpiled file reads as the browser
-reports it. The **×** still marks the row's issues as seen (the light turns hollow); it does not
-empty the history.
+inside the row; only one row is unfolded at a time. A full history makes room for a new entry with
+its oldest slow request, else its oldest resolved entry, and only then its oldest entry. Each entry
+shows its kind, text, method and status, and for an error its origin. **Line and column numbers are
+those of the code the dev server sent**: Fremdev does no source-map lookup, so a bundled or
+transpiled file reads as the browser reports it. The **×** still marks the row's issues as seen (the
+light turns hollow); it does not empty the history.
 
 **Copy report** puts a Markdown bug report for that tab on the Mac's clipboard: the page, the open
 issues and the history, at most 48 000 characters (the oldest entries are dropped first, then
@@ -302,8 +305,8 @@ clipboard with `pbcopy`, the text going through its standard input. The extensio
 same button for each tab, with a *stack* checkbox, and writes the clipboard from the popup itself.
 At most 8 reports can be pending per install. The report is built in the extension and goes nowhere
 else: only to the clipboard, when you press a button. It is available while Fremdev is on and
-`labs.companion` and `labs.fremdev` are ticked, for a tab the extension reported, and only from the Mac itself, never
-from a paired device.
+`labs.companion` and `labs.fremdev` are ticked, for a tab the extension reported, and only from the
+Mac itself, never from a paired device.
 
 The popup also has **Copy screenshot**, on the row of the tab it was opened on: the popup's
 `activeTab` grant lets it capture that tab (`tabs.captureVisibleTab`, PNG) and write the image to
@@ -336,12 +339,13 @@ shortcut.
 ### Open in editor
 
 In an unfolded row, a build entry's file, and under Vite an error thrown by a script on the page's
-own origin, is a button (under a dev server Fremdev recognised): tap it and the dev server opens that file at that line in your editor
-(*Envoyé à l’éditeur* / *Sent to the editor* for 2 seconds; *Impossible d’ouvrir ici* / *Can't open
-here* when it could not). It shows only for an install that lists `fremdev.open`. The widget sends
-an `open` command naming the tab and the entry's id; the server asks the extension (`dev.open.ask`)
-only when the tab's last `dev.tabs` still lists that id, and waits at most 5 seconds for its
-`dev.open.done`. The extension looks the entry up in its own copy of the tab, builds the URL from the
+own origin, is a button (under a dev server Fremdev recognised): tap it and the dev server opens
+that file at that line in your editor (*Envoyé à l’éditeur* / *Sent to the editor* for 2 seconds;
+*Impossible d’ouvrir ici* / *Can't open here* when it could not). It shows only for an install that
+lists `fremdev.open`. The widget sends an `open` command naming the tab and the entry's id; the
+server asks the extension (`dev.open.ask`) only when the tab's last `dev.tabs` still lists that id,
+and waits at most 5 seconds for its `dev.open.done`; the extension's request gives up after 5
+seconds too. The extension looks the entry up in its own copy of the tab, builds the URL from the
 tab's origin and that entry, and asks the dev server's own endpoint, one per kind:
 
 - **Vite**: `<base>__open-in-editor?file=<file>:<line>:<col>`. A build entry's file is the overlay's
@@ -386,23 +390,25 @@ Nothing in the page runs for this, and nothing is read from bodies, headers or c
   others. The history keeps at most 5 slow entries, and a new one never pushes out an open or seen
   error, failed request or build entry: it takes the place of the oldest slow entry, else of the
   oldest resolved one, else it is not kept. A long poll or an EventSource that answers within 1 to
-  30 seconds is a request that took that long, and shows as slow each time it does. A request that failed is a failed request, never a slow one. The Edge writes the duration
-  in seconds with one decimal; the report lists them under *Requêtes lentes* / *Slow requests*.
+  30 seconds is a request that took that long, and shows as slow each time it does. A request that
+  failed is a failed request, never a slow one. The Edge writes the duration in seconds with one
+  decimal; the report lists them under *Requêtes lentes* / *Slow requests*.
 - The row carries `inFlight`, the requests started and not finished, at most 999, sent on the same
   twice-a-second throttle as the rest (a change in it alone does not wake the socket). The widget
   shows *n en cours* / *n in flight* beside the tab's name while it is above zero. **A request still
   pending after 30 seconds stops counting** and is forgotten, so a long poll or an EventSource that
   never finishes stays neither in flight nor slow. A navigation within the same origin (a reload, a
   client-side route change) keeps the count, as the requests still pending are still timed; a
-  navigation to another origin sets it to 0 and forgets the tab's timings, as the tab closing does. At most 4 096 requests are timed at once,
-  all tabs together, the oldest dropped first. The timings live in the extension's memory only.
+  navigation to another origin sets it to 0 and forgets the tab's timings, as the tab closing does.
+  At most 4 096 requests are timed at once, all tabs together, the oldest dropped first. The timings
+  live in the extension's memory only.
 
 An install that times requests lists `fremdev.slow`; an older one sends neither, and its rows read
 0 in flight.
 
 ### Performance and regressions
 
-A third script in the extension's isolated world of a dev tab, `fremdev/perf.js`, reads the page's
+A fourth script in the extension's isolated world of a dev tab, `fremdev/perf.js`, reads the page's
 performance timeline, which that world sees as the page does, and calls no page code:
 
 - **load**: the navigation entry's `loadEventEnd`, in ms, once the load event has ended;
