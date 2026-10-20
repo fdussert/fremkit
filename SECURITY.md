@@ -397,7 +397,7 @@ What it holds and what it can do:
   dev URL.
 - *What leaves the tab:* the tab's row names it by the page's title (or its host:port when it has
   none, clipped to 120 characters) and its host:port; then a kind and text clipped to 300
-  characters, for each of the tab's last 20 events; an error's origin (its first frame as
+  characters, for each of the tab's last 20 events (including `limited` entries for errors dropped by the rate limit); an error's origin (its first frame as
   `file:line:col`, a path or `host/path`, no query or fragment) and a request's method (a closed
   list); request URLs as their path only, never query or fragment; nothing from bodies,
   headers or cookies. The title and an error's own message are free text, sent as the page set or
@@ -406,12 +406,12 @@ What it holds and what it can do:
 - *Stacks.* An error's stack (at most 10 frames, 2000 characters, URLs without query or fragment)
   stays in the extension and never travels in `dev.tabs`; it leaves the browser only in a bug
   report the user asked for. The hook reads it with V8's native `stack` getter, captured at hook
-  start and called with `Reflect.apply`, only when `Error.prepareStackTrace` is unset (checked by
+  start and called with `Reflect.apply`, only when `Error.prepareStackTrace` is absent or `undefined` (checked by
   descriptor, so no page getter runs) and the error's `name` and `message` are plain data strings;
   otherwise there is no stack.
 - *The bug report.* The extension builds the text (at most 48 000 characters) and answers the
   server's `dev.report.ask` with `dev.report`; the server waits 5 seconds, then writes it to the
-  clipboard through `pbcopy` with the text on stdin, never argv (`server/src/providers/clipboard.ts`).
+  clipboard through `pbcopy` (at most 8 reports pending per install) with the text on stdin, never argv (`server/src/providers/clipboard.ts`).
   The `report` command is loopback-only like `focus` and `clear`, names only a tab id the install
   reported, and is gated by `labs.companion`; the module is announced as `fremdev.report` only
   while Fremdev is on. The report reaches no one but the clipboard, and what it quotes (error
