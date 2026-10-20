@@ -43,7 +43,7 @@ private struct MacList: View {
             if macs.isEmpty {
                 ProgressView().controlSize(.large)
                 if waitedLong {
-                    Text("No Mac found yet. In Fremkit on the Mac, turn on “Allow an iPad on the local network” (Screen tab).")
+                    Text("No Mac found yet. In Fremkit on the Mac, turn on “Allow a tablet on the local network” (Screen tab).")
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
                 }
