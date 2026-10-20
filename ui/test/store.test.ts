@@ -1129,6 +1129,53 @@ describe('modals', () => {
   })
 })
 
+describe('imported tile icons', () => {
+  const nas = { kind: 'file' as const, name: '1-nas.svg' }
+  // clock-1 is on both screens, cpu-1 on the iPad only: a count is per widget, not per placement.
+  async function loaded() {
+    const m = makeTwoScreens((c) => {
+      c.widgets['clock-1'].icon = nas
+      c.widgets['clock-2'] = { widgetId: 'clock', showTitle: true, settings: {}, icon: { kind: 'lucide', name: 'server' } }
+      c.screens[0].pages[0].items.push({ instanceId: 'clock-2', x: 16, y: 0, w: 16, h: 4 })
+      c.widgets['cpu-1'].icon = { ...nas, tint: false }
+    })
+    await m.store.load()
+    return m
+  }
+
+  it('counts the widgets that use a file, on every screen, ignoring pictograms', async () => {
+    const { store } = await loaded()
+    expect(store.tileIconUsage('1-nas.svg')).toBe(2)
+    expect(store.tileIconUsage('server')).toBe(0)
+    expect(store.tileIconUsage('2-other.svg')).toBe(0)
+  })
+  it('removes it from every widget in one save, and says how many', async () => {
+    const { store, api } = await loaded()
+    expect(store.removeTileIconEverywhere('1-nas.svg')).toBe(2)
+    await vi.advanceTimersByTimeAsync(SAVE_DEBOUNCE_MS)
+    expect(api.putConfig).toHaveBeenCalledTimes(1)
+    const saved = (api.putConfig as ReturnType<typeof vi.fn>).mock.calls[0][0] as Config
+    expect(saved.widgets['clock-1']).not.toHaveProperty('icon')
+    expect(saved.widgets['cpu-1']).not.toHaveProperty('icon')
+    expect(saved.widgets['clock-2'].icon).toEqual({ kind: 'lucide', name: 'server' })
+  })
+  it('is undone in one step', async () => {
+    const { store } = await loaded()
+    store.removeTileIconEverywhere('1-nas.svg')
+    store.undo()
+    expect(widgetsOf(store)['clock-1'].icon).toEqual(nas)
+    expect(widgetsOf(store)['cpu-1'].icon).toEqual({ ...nas, tint: false })
+    expect(store.canUndo.value).toBe(false)
+  })
+  it('records nothing when no widget uses it', async () => {
+    const { store, api } = await loaded()
+    expect(store.removeTileIconEverywhere('2-other.svg')).toBe(0)
+    expect(store.canUndo.value).toBe(false)
+    await vi.advanceTimersByTimeAsync(SAVE_DEBOUNCE_MS)
+    expect(api.putConfig).not.toHaveBeenCalled()
+  })
+})
+
 describe('freeInstanceId', () => {
   it('stays within the 64 characters the server accepts, however long the widget id', () => {
     const long = 'w'.repeat(60)

@@ -20,6 +20,7 @@ import {
   detectImageType,
   safeBackgroundName,
 } from '../src/backgrounds/routes.js'
+import { isSafeBackgroundName } from '../src/config/schema.js'
 
 const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3])
 const JPEG = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3])
@@ -71,6 +72,14 @@ describe('safeBackgroundName', () => {
       expect(name.includes('..')).toBe(false)
       expect(name.startsWith('.')).toBe(false)
     }
+  })
+  it('never produces a name the routes would refuse, whatever the stem ends with', () => {
+    for (const raw of ['a..png', 'a.', 'a-.png', 'a.-.png', '-.png', `${'x'.repeat(59)}..png`]) {
+      const name = safeBackgroundName(raw, png, 42)
+      expect(isSafeBackgroundName(name), `${raw} -> ${name}`).toBe(true)
+    }
+    expect(safeBackgroundName('a..png', png, 42)).toBe('42-a.png')
+    expect(safeBackgroundName('-.png', png, 42)).toBe('42-image.png')
   })
   it('falls back to a placeholder stem', () => {
     expect(safeBackgroundName('', png, 42)).toBe('42-image.png')

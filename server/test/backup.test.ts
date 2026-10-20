@@ -1,15 +1,18 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { mkdtemp, mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
+import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { FastifyInstance } from 'fastify'
 import { buildApp } from '../src/app.js'
-import { backupFilename, CONFIG_ENTRY, MANIFEST_ENTRY, readBackup } from '../src/backup/routes.js'
+import { backupFilename, CONFIG_ENTRY, MANIFEST_ENTRY, readBackup, TILE_ICONS_PREFIX } from '../src/backup/routes.js'
 import { readZip, writeZip } from '../src/backup/zip.js'
 import { DEFAULT_BACKGROUND } from '../src/backgrounds/seed.js'
+import { checkTileIcon, MAX_TILE_ICON_BYTES } from '../src/tile-icons/routes.js'
+import { tr } from '../src/i18n.js'
 
 /** A one-pixel PNG, which is what detectImageType has to accept. */
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64')
+const NAS_SVG = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect width="20" height="8" x="2" y="8"/></svg>')
 
 const CONFIG = {
   version: 4,
@@ -36,6 +39,8 @@ beforeEach(async () => {
   await writeFile(join(dir, 'fremkit.json'), JSON.stringify(CONFIG), 'utf8')
   await mkdir(join(dir, 'backgrounds'), { recursive: true })
   await writeFile(join(dir, 'backgrounds', 'photo.png'), PNG)
+  await mkdir(join(dir, 'tile-icons'), { recursive: true })
+  await writeFile(join(dir, 'tile-icons', '1-nas.svg'), NAS_SVG)
   app = await build(dir)
 })
 afterEach(async () => { await app.close() })
@@ -340,6 +345,54 @@ describe('POST /api/restore and the secrets already on this machine', () => {
     // behind under an id nothing used, waiting for an archive to claim it.
     const { stored } = await restoreWith([])
     expect(stored['gh-x1z9/token']).toBeUndefined()
+  })
+})
+
+describe('tile icons in a backup', () => {
+  it('archives the imported icons', async () => {
+    const names = zipOf(await app.inject({ url: '/api/backup' })).map((e) => e.name)
+    expect(names).toContain(`${TILE_ICONS_PREFIX}1-nas.svg`)
+  })
+  it('restores them beside the config', async () => {
+    const archive = Buffer.from((await app.inject({ url: '/api/backup' })).rawPayload)
+    await rm(join(dir, 'tile-icons'), { recursive: true, force: true })
+    const res = await post(archive)
+    expect(res.statusCode).toBe(200)
+    expect(res.json().tileIcons).toBe(1)
+    expect(await readFile(join(dir, 'tile-icons', '1-nas.svg'))).toEqual(NAS_SVG)
+  })
+  it('refuses an archive smuggling an active SVG, a JPEG, an oversize icon or a bad name', () => {
+    const config = { name: CONFIG_ENTRY, data: Buffer.from(JSON.stringify(CONFIG)) }
+    // A plain drawing padded past the limit with a comment, so only its size is wrong.
+    const oversize = Buffer.concat([NAS_SVG, Buffer.from(`<!--${'x'.repeat(MAX_TILE_ICON_BYTES)}-->`)])
+    expect(checkTileIcon(oversize).ok).toBe(true)
+    for (const [entry, message] of [
+      [{ name: `${TILE_ICONS_PREFIX}1-x.svg`, data: Buffer.from('<svg onload="x"/>') }, tr(undefined, 'backup.badTileIcon')],
+      [{ name: `${TILE_ICONS_PREFIX}1-x.png`, data: Buffer.from([0xff, 0xd8, 0xff, 0xe0, 1]) }, tr(undefined, 'backup.badTileIcon')],
+      [{ name: `${TILE_ICONS_PREFIX}1-big.svg`, data: oversize }, tr(undefined, 'backup.badTileIcon')],
+      [{ name: `${TILE_ICONS_PREFIX}../../x.svg`, data: NAS_SVG }, tr(undefined, 'backup.badTileIconName')],
+    ] as const) expect(() => readBackup(writeZip([config, entry], new Date())), entry.name).toThrow(message)
+  })
+  it('takes a library of a few hundred backgrounds and icons together', () => {
+    const config = { name: CONFIG_ENTRY, data: Buffer.from(JSON.stringify(CONFIG)) }
+    const icons = Array.from({ length: 300 }, (_, i) => ({ name: `${TILE_ICONS_PREFIX}${i}-x.svg`, data: NAS_SVG }))
+    const bgs = Array.from({ length: 300 }, (_, i) => ({ name: `backgrounds/${i}.png`, data: PNG }))
+    const read = readBackup(writeZip([config, ...icons, ...bgs], new Date()))
+    expect([read.tileIcons.length, read.backgrounds.length]).toEqual([300, 300])
+  })
+  it('refuses an icon whose name claims another type than its bytes', () => {
+    // The route serves an icon by its extension, so a `.svg` name on raster bytes would be
+    // served as SVG — and RIFF…WEBP bytes can carry `<svg onload>` past the magic check.
+    const config = { name: CONFIG_ENTRY, data: Buffer.from(JSON.stringify(CONFIG)) }
+    const webpSvg = Buffer.concat([Buffer.from('RIFF\0\0\0\0WEBP'), Buffer.from('<svg onload="x"/>')])
+    expect(checkTileIcon(webpSvg).ok).toBe(true)
+    for (const entry of [
+      { name: `${TILE_ICONS_PREFIX}1-x.svg`, data: webpSvg },
+      { name: `${TILE_ICONS_PREFIX}1-x.svg`, data: PNG },
+      { name: `${TILE_ICONS_PREFIX}1-x.png`, data: NAS_SVG },
+    ]) expect(() => readBackup(writeZip([config, entry], new Date())), entry.name).toThrow(tr(undefined, 'backup.badTileIcon'))
+    const ok = readBackup(writeZip([config, { name: `${TILE_ICONS_PREFIX}1-x.png`, data: PNG }], new Date()))
+    expect(ok.tileIcons.map((i) => i.name)).toEqual(['1-x.png'])
   })
 })
 

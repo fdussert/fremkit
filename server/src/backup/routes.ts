@@ -1,10 +1,11 @@
 import type { FastifyInstance } from 'fastify'
 import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { isSafeBackgroundName, type Config } from '../config/schema.js'
+import { isSafeBackgroundName, isSafeTileIconName, type Config } from '../config/schema.js'
 import { migrateConfig } from '../config/migrate.js'
 import type { ConfigStore } from '../config/store.js'
 import { detectImageType, MAX_BACKGROUND_BYTES } from '../backgrounds/routes.js'
+import { checkTileIcon, MAX_TILE_ICON_BYTES, TILE_ICONS_DIR } from '../tile-icons/routes.js'
 import { isCrossSiteFetch } from '../http/guard.js'
 import { FREMKIT_VERSION } from '../version.js'
 import type { ConnectionTypeRegistry } from '../connections/registry.js'
@@ -16,9 +17,10 @@ import { tr } from '../i18n.js'
 /**
  * Taking the whole dashboard out and putting it back.
  *
- * What travels: the live config as the store has migrated it, and the background library. What
- * never travels: the secrets. They live in the macOS keychain, keyed by connection id, and the
- * whole point of putting them there is that a file copied to a USB stick does not carry them.
+ * What travels: the live config as the store has migrated it, the background library and the
+ * imported tile icons. What never travels: the secrets. They live in the macOS keychain, keyed by
+ * connection id, and the whole point of putting them there is that a file copied to a USB stick
+ * does not carry them.
  *
  * Keyed by connection id, though — and a restore keeps the ids. So on the same Mac the items are
  * still there and the connections work straight away, which is why the answer asks the store which
@@ -30,12 +32,17 @@ import { tr } from '../i18n.js'
 /** Where things sit inside the archive. */
 export const CONFIG_ENTRY = 'fremkit.json'
 export const BACKGROUNDS_PREFIX = 'backgrounds/'
+export const TILE_ICONS_PREFIX = 'tile-icons/'
 export const MANIFEST_ENTRY = 'manifest.json'
 
 /** Largest archive accepted. The background library is the bulk of it. */
 export const MAX_RESTORE_BYTES = 50 * 1024 * 1024
-/** Most files an archive may hold: one config, one manifest, and a large but finite library. */
-const MAX_ENTRIES = 256
+/**
+ * Most files an archive may hold: one config, one manifest, and two large but finite libraries,
+ * the backgrounds and the tile icons. Icons are small and many; the byte cap above still bounds
+ * the whole.
+ */
+const MAX_ENTRIES = 1024
 
 /** What the manifest records. Informational — the restore trusts the config, not this. */
 export interface BackupManifest {
@@ -66,6 +73,7 @@ export function backupFilename(when: Date): string {
 export function readBackup(archive: Buffer): {
   config: Config
   backgrounds: { name: string; data: Buffer }[]
+  tileIcons: { name: string; data: Buffer }[]
 } {
   const entries = readZip(archive, { maxEntries: MAX_ENTRIES, maxTotalBytes: MAX_RESTORE_BYTES })
   const config = entries.find((e) => e.name === CONFIG_ENTRY)
@@ -78,8 +86,22 @@ export function readBackup(archive: Buffer): {
   try { migrated = migrateConfig(raw) } catch { throw new ZipError(tr(undefined, 'backup.badConfig')) }
 
   const backgrounds: { name: string; data: Buffer }[] = []
+  const tileIcons: { name: string; data: Buffer }[] = []
   for (const entry of entries) {
     if (entry.name === CONFIG_ENTRY || entry.name === MANIFEST_ENTRY) continue
+    if (entry.name.startsWith(TILE_ICONS_PREFIX)) {
+      if (entry.name.endsWith('/')) continue
+      const name = entry.name.slice(TILE_ICONS_PREFIX.length)
+      // The same gates as an upload: a file name, a size, and bytes that are an icon and run nothing.
+      // An upload picks the extension from the bytes; here the archive picked it, and the route
+      // serves by extension, so the two must agree — else RIFF…WEBP bytes carrying `<svg onload>`
+      // under a `.svg` name would be served as an SVG nobody checked as one.
+      if (!isSafeTileIconName(name)) throw new ZipError(tr(undefined, 'backup.badTileIconName'))
+      const checked = entry.data.byteLength <= MAX_TILE_ICON_BYTES ? checkTileIcon(entry.data) : null
+      if (!checked?.ok || !name.endsWith('.' + checked.type.ext)) throw new ZipError(tr(undefined, 'backup.badTileIcon'))
+      tileIcons.push({ name, data: entry.data })
+      continue
+    }
     if (!entry.name.startsWith(BACKGROUNDS_PREFIX)) continue
     // A directory entry, which carries no bytes.
     if (entry.name.endsWith('/')) continue
@@ -89,7 +111,7 @@ export function readBackup(archive: Buffer): {
     if (!detectImageType(entry.data)) throw new ZipError(tr(undefined, 'backup.notAnImage'))
     backgrounds.push({ name, data: entry.data })
   }
-  return { config: migrated, backgrounds }
+  return { config: migrated, backgrounds, tileIcons }
 }
 
 /**
@@ -135,6 +157,7 @@ export async function backupRoutes(
 ): Promise<void> {
   const { store, dataDir } = opts
   const backgroundsDir = join(dataDir, 'backgrounds')
+  const tileIconsDir = join(dataDir, TILE_ICONS_DIR)
 
   /**
    * `GET /api/backup` — the whole dashboard as a zip.
@@ -165,6 +188,14 @@ export async function backupRoutes(
       try {
         const data = await readFile(join(backgroundsDir, name))
         entries.push({ name: BACKGROUNDS_PREFIX + name, data })
+      } catch { /* vanished between the listing and the read */ }
+    }
+    let iconNames: string[] = []
+    try { iconNames = await readdir(tileIconsDir) } catch { /* nothing imported yet */ }
+    for (const name of iconNames.sort()) {
+      if (!isSafeTileIconName(name)) continue
+      try {
+        entries.push({ name: TILE_ICONS_PREFIX + name, data: await readFile(join(tileIconsDir, name)) })
       } catch { /* vanished between the listing and the read */ }
     }
 
@@ -209,17 +240,20 @@ export async function backupRoutes(
       return reply.code(400).send({ errors: [message] })
     }
 
-    // The backgrounds first: the config may name one, and a dashboard that points at an image
-    // which is not there yet would paint a missing background for a moment. The cost is that a
-    // restore refused *after* this point — a config the store will not take — leaves the archive's
-    // images in the library beside the user's own. They are ordinary files in a list the Screen
-    // inspector shows, so the user can delete them; nothing references them, so nothing changes on
-    // screen. The other order would trade that for a visible flash on every successful restore.
+    // The backgrounds and the tile icons first: the config may name them, and a dashboard that
+    // points at an image which is not there yet would paint a missing background, or a title with a
+    // hole in it, for a moment. The cost is that a restore refused *after* this point — a config the
+    // store will not take — leaves the archive's images beside the user's own. They are ordinary
+    // files in lists the admin shows, so the user can delete them; nothing references them, so
+    // nothing changes on screen. The other order would trade that for a visible flash on every
+    // successful restore.
     try {
       await mkdir(backgroundsDir, { recursive: true })
       for (const image of read.backgrounds) await writeFile(join(backgroundsDir, image.name), image.data)
+      await mkdir(tileIconsDir, { recursive: true, mode: 0o700 })
+      for (const icon of read.tileIcons) await writeFile(join(tileIconsDir, icon.name), icon.data, { mode: 0o600 })
     } catch (err) {
-      req.log.warn({ err }, 'restore could not write the backgrounds')
+      req.log.warn({ err }, 'restore could not write the backgrounds or the tile icons')
       return reply.code(500).send({ errors: [tr(store.get().locale, 'backup.writeFailed')] })
     }
 
@@ -238,6 +272,7 @@ export async function backupRoutes(
       pages: saved.screens.reduce((n, screen) => n + screen.pages.length, 0),
       screens: saved.screens.length,
       backgrounds: read.backgrounds.length,
+      tileIcons: read.tileIcons.length,
       reenterSecrets,
     })
   })

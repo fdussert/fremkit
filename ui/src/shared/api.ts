@@ -23,6 +23,7 @@ export interface RestoreResult {
   pages: number
   screens: number
   backgrounds: number
+  tileIcons: number
   reenterSecrets: { id: string; name: string; type: string }[]
 }
 /** Which part of the dashboard a shared layout holds, and the free-text settings ticked into it. */
@@ -154,6 +155,16 @@ export const api = {
       .then((r) => json<{ name: string }>(r)),
   deleteBackground: (name: string) =>
     fetch(`/api/backgrounds/${encodeURIComponent(name)}`, { method: 'DELETE' }).then((r) => json<{ ok: boolean }>(r)),
+  /** The icons imported for tile titles, sorted. */
+  listTileIcons: () => fetch('/api/tile-icons').then((r) => json<{ names: string[] }>(r)),
+  /** `data` is the raw file base64-encoded; the server answers with the name it stored it under. */
+  uploadTileIcon: (name: string, data: string) =>
+    fetch('/api/tile-icons', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name, data }) })
+      .then((r) => json<{ name: string }>(r)),
+  /** A 404 is a success: the icon is already gone, which is what the caller asked for. */
+  deleteTileIcon: (name: string) =>
+    fetch(`/api/tile-icons/${encodeURIComponent(name)}`, { method: 'DELETE' })
+      .then((r) => (r.status === 404 ? { ok: true } : json<{ ok: boolean }>(r))),
 
   /** The registry index merged with what this machine has installed. Never throws on offline. */
   getMarketplace: () => fetch('/api/marketplace').then((r) => json<MarketplaceResponse>(r)),

@@ -37,6 +37,9 @@ tagged `vX.Y.Z`.
   when they paired and were last seen, whether they are connected, and a Remove button (**Remove
   every iPad** and **Reset the certificate** leave them linked), beside the pairing request
   waiting for an answer and a link to the extension's store page.
+- **Tile icons.** A tile's title can show an icon: a pictogram from the built-in set, or your own
+  SVG, PNG or WebP, tinted to the theme or in its own colours. Under **/admin**, select a tile,
+  then **Icon**. Fremkit ships no brand logos; the marks you import stay in your installation.
 
 ### Changed
 
@@ -44,6 +47,12 @@ tagged `vX.Y.Z`.
   iPad running the Fremkit app from the App Store, and links to the app there; the screen
   selector with its **+ Add a screen** is always above the canvas. Importing a layout brings its
   iPad screens along with the rest.
+
+### Fixed
+
+- **Backgrounds with dots at the end of their name.** A background uploaded from a file called,
+  say, "a..png" was saved under a name the dashboard then refused: it never showed in the
+  library and could not be deleted. It is now saved under a clean name.
 
 ## 0.5.0 — 2026-10-19
 

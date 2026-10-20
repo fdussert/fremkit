@@ -47,7 +47,9 @@ export function contentTypeFor(name: string): string {
 /**
  * Turns whatever the browser reported into a name that is safe to join onto a directory:
  * the stem keeps only `[A-Za-z0-9._-]`, the extension comes from the detected type, and a
- * timestamp prefix keeps two uploads of "photo.jpg" apart.
+ * timestamp prefix keeps two uploads of "photo.jpg" apart. The stem never ends in `.` or `-`
+ * either: "a..png" would otherwise give `a.` + `.png`, a `..` every route then refuses, leaving a
+ * file on disk that nothing can list, serve or delete.
  */
 export function safeBackgroundName(raw: unknown, type: ImageType, now: number = Date.now()): string {
   const base = typeof raw === 'string' ? raw.split(/[\\/]/).pop() ?? '' : ''
@@ -57,6 +59,7 @@ export function safeBackgroundName(raw: unknown, type: ImageType, now: number = 
     .replace(/\.+/g, '.')
     .replace(/^[.-]+/, '')
     .slice(0, 60)
+    .replace(/[.-]+$/, '')
   return `${now}-${stem || 'image'}.${type.ext}`
 }
 

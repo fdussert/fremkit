@@ -22,6 +22,7 @@ const fr = {
   // config/schema.ts — layout and connection checks
   'config.defaultPageName': 'Accueil',
   'config.backgroundName': 'nom de fichier invalide',
+  'config.tileIconName': 'nom d’icône invalide',
   'layout.duplicateScreen': 'écran {screen} : identifiant {id} déjà pris par un autre écran',
   'layout.duplicatePage': 'écran {screen} : page {page} dupliquée',
   'layout.missingWidget': 'écran {screen} : {instanceId} ne désigne aucun widget',
@@ -94,7 +95,9 @@ const fr = {
   'backup.badName': 'nom de fond d’écran invalide dans l’archive',
   'backup.notAnImage': 'un fond d’écran de l’archive n’est pas une image',
   'backup.imageTooLarge': 'un fond d’écran de l’archive est trop grand',
-  'backup.writeFailed': 'écriture des fonds d’écran impossible',
+  'backup.badTileIcon': 'une icône de l’archive n’est pas une icône utilisable',
+  'backup.badTileIconName': 'nom d’icône invalide dans l’archive',
+  'backup.writeFailed': 'écriture des fonds d’écran ou des icônes impossible',
   'history.notFound': 'cette version n’est plus dans l’historique',
   'history.unreadable': 'cette version de l’historique est illisible',
   'history.secretsFailed': 'impossible de retirer les secrets que cette version déplace',
@@ -283,6 +286,13 @@ const fr = {
   'backgrounds.emptyImage': 'image vide',
   'backgrounds.unknownImage': 'image inconnue',
 
+  // tile-icons/routes.ts
+  'tileIcons.missingData': 'données manquantes',
+  'tileIcons.empty': 'icône vide',
+  'tileIcons.tooLarge': 'icône trop grande (256 Ko maximum)',
+  'tileIcons.unsupportedFormat': 'format non supporté (PNG, WebP ou SVG)',
+  'tileIcons.activeSvg': 'ce SVG contient du script, des liens externes ou des caractères échappés : exportez-le en simple dessin',
+  'tileIcons.unknown': 'icône inconnue',
   // share/ — layouts exported and imported as .fremkit-layout.json
   'share.pageName': 'Page {n}',
   'share.screenName': 'Écran {n}',
@@ -319,6 +329,7 @@ export type MessageKey = keyof typeof fr
 const en: Record<MessageKey, string> = {
   'config.defaultPageName': 'Home',
   'config.backgroundName': 'invalid file name',
+  'config.tileIconName': 'invalid icon name',
   'layout.duplicateScreen': 'screen {screen}: id {id} is already taken by another screen',
   'layout.duplicatePage': 'screen {screen}: duplicate page {page}',
   'layout.missingWidget': 'screen {screen}: {instanceId} names no widget',
@@ -390,7 +401,9 @@ const en: Record<MessageKey, string> = {
   'backup.badName': 'invalid background name in the archive',
   'backup.notAnImage': 'a background in the archive is not an image',
   'backup.imageTooLarge': 'a background in the archive is too large',
-  'backup.writeFailed': 'the backgrounds could not be written',
+  'backup.badTileIcon': 'an icon in the archive is not a usable icon',
+  'backup.badTileIconName': 'invalid icon name in the archive',
+  'backup.writeFailed': 'the backgrounds or the icons could not be written',
   'history.notFound': 'this version is no longer in the history',
   'history.unreadable': 'this version of the history cannot be read',
   'history.secretsFailed': 'the secrets this version moves could not be removed',
@@ -567,6 +580,12 @@ const en: Record<MessageKey, string> = {
   'backgrounds.emptyImage': 'empty image',
   'backgrounds.unknownImage': 'unknown image',
 
+  'tileIcons.missingData': 'missing data',
+  'tileIcons.empty': 'empty icon',
+  'tileIcons.tooLarge': 'icon too large (256 KB maximum)',
+  'tileIcons.unsupportedFormat': 'unsupported format (PNG, WebP or SVG)',
+  'tileIcons.activeSvg': 'this SVG contains script, external links or escaped characters: export it as a plain drawing',
+  'tileIcons.unknown': 'unknown icon',
   // share/ — layouts exported and imported as .fremkit-layout.json
   'share.pageName': 'Page {n}',
   'share.screenName': 'Screen {n}',
