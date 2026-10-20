@@ -22,6 +22,7 @@ import AddScreenDialog from './AddScreenDialog.vue'
 import { useDevices } from './devices'
 import { labsCompanion, labsDevices, showsExtensions, showsIpads } from './labs'
 import { useAdminStore } from './store'
+import { ANDROID_APK_URL } from '../shared/credits'
 
 const s = useAdminStore()
 const { t, locale } = useI18n()
@@ -135,6 +136,9 @@ async function onCreated(screenId: string): Promise<void> {
       <BaseCheckbox :model-value="enabled" :label="t('admin.devices.enable')"
         @update:model-value="devices.setEnabled($event)" />
       <p class="ro">{{ t('admin.devices.firewall') }}</p>
+      <!-- A download in a browser; the helper's admin window hands it to the default browser rather
+           than replacing the admin with it. -->
+      <p class="ro"><a :href="ANDROID_APK_URL" target="_blank" rel="noopener noreferrer" data-test="android-apk">{{ t('admin.devices.androidApk') }}</a></p>
       <p v-if="portInUse" class="bad" role="alert" data-test="port-in-use">{{ t('admin.devices.portInUse', { port: status?.port ?? '' }) }}</p>
 
       <div v-if="live && offer" class="pair">
@@ -244,6 +248,8 @@ async function onCreated(screenId: string): Promise<void> {
 
 <style scoped>
 .ro { margin: 0 0 var(--space-2); font-size: var(--fs-sm); color: var(--text-muted); }
+.ro a { color: var(--accent); text-decoration: none; }
+.ro a:hover { text-decoration: underline; }
 .ro.ext { font-family: var(--font-mono); font-size: var(--fs-xs); color: var(--text-dim); }
 .bad { margin: 0 0 var(--space-2); font-size: var(--fs-sm); color: var(--danger); white-space: pre-wrap; }
 .bad.action { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
