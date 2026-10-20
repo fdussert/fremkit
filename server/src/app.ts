@@ -577,6 +577,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
       channelFor: (connection) => connections.channelFor(connection),
       secretsFor: (connection) => connections.secretsFor(connection),
       channels: () => registry.status(),
+      recentProjects: () => recentProjects?.snapshot()?.sources ?? null,
       devices: () => devices.list(),
       remoteAccess: () => devices.enabled,
       accessToken: opts.accessToken,
