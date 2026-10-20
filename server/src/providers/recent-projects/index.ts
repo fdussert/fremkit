@@ -4,6 +4,7 @@ import type { InstanceView } from '../../config/instances.js'
 import { execCommand, type Exec } from '../exec.js'
 import type { CommandContext, Provider } from '../types.js'
 import { APP_IDS, installedApps, openWith, type AppId } from './apps.js'
+import { HERDR_TERMINALS } from './herdr.js'
 import { canonicalProject, projectName, shortParent } from './paths.js'
 import { createClaudeSource } from './sources/claude.js'
 import { createCliSources, resolveBinary as defaultResolveBinary, type ResolveBinary } from './sources/cli.js'
@@ -125,6 +126,8 @@ export interface RecentProjectsOptions {
 export const OpenSchema = z.object({
   path: z.string().min(1).max(4096),
   app: z.enum(APP_IDS),
+  /** The terminal to bring forward after Herdr has the folder: the tile's setting. */
+  terminal: z.enum(HERDR_TERMINALS).optional(),
 })
 
 export function defaultSources(exec: Exec, resolve: ResolveBinary, now: () => number): Source[] {
@@ -222,11 +225,11 @@ export function createRecentProjectsProvider(opts: RecentProjectsOptions): Provi
         if (ctx?.loopback !== true || ctx.paired) return { ok: false, error: 'local-only' }
         const parsed = OpenSchema.safeParse(payload)
         if (!parsed.success) return { ok: false, error: 'invalid-request' }
-        const { path, app } = parsed.data
+        const { path, app, terminal } = parsed.data
         if (!last?.projects.some((p) => p.path === path)) return { ok: false, error: 'unknown-project' }
         if ((await canonicalProject(path, home)) !== path) return { ok: false, error: 'unknown-project' }
         try {
-          return await openWith(app, path, appDeps)
+          return await openWith(app, path, appDeps, { terminal })
         } catch {
           return { ok: false, error: 'failed' }
         }

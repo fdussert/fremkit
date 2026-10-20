@@ -83,6 +83,8 @@
     finder: 'Finder', terminal: 'Terminal', iterm: 'iTerm', ghostty: 'Ghostty', vscode: 'VS Code',
     cursor: 'Cursor', zed: 'Zed', xcode: 'Xcode', herdr: 'Herdr', tmux: 'tmux'
   }
+  /** What the `herdrTerminal` setting may hold: the server refuses anything else. */
+  var TERMINALS = ['auto', 'terminal', 'iterm', 'ghostty']
   /** How long a row keeps its ✓ or ✗ colour after a tap. */
   var FEEDBACK_MS = 1400
   /** A mouse held this long opens the picker; the Edge's driver sends `contextmenu` instead. */
@@ -166,7 +168,9 @@
 
   function open(path, app) {
     mark(path, 'pressed')
-    Fremkit.sendCommand('recent-projects', 'open', { path: path, app: app })
+    var payload = { path: path, app: app }
+    if (app === 'herdr') payload.terminal = TERMINALS.indexOf(settings.herdrTerminal) >= 0 ? settings.herdrTerminal : 'auto'
+    Fremkit.sendCommand('recent-projects', 'open', payload)
       .then(function (r) { mark(path, r && r.ok ? 'ok' : 'failed') })
       .catch(function () { mark(path, 'failed') })
   }

@@ -14,6 +14,7 @@ import { createVscodeSource, parseRecentlyOpened } from '../src/providers/recent
 import { parseRecentProjects } from '../src/providers/recent-projects/sources/jetbrains.js'
 import { createCliSources, parseHerdrPanes, parseTmux, parseZoxide } from '../src/providers/recent-projects/sources/cli.js'
 import { openWith } from '../src/providers/recent-projects/apps.js'
+import { detectHerdrTerminal } from '../src/providers/recent-projects/herdr.js'
 import type { Source } from '../src/providers/recent-projects/types.js'
 import { BUILTIN_ONLY_CHANNELS } from '../src/widgets/manifest.js'
 import { LOCAL_ONLY_CHANNELS } from '../src/ws/hub.js'
@@ -340,10 +341,12 @@ describe('recent projects: provider', () => {
     it('opens a listed folder with /usr/bin/open -a and the bundle path, or Herdr by argv', async () => {
       const { exec, path, open } = await ready()
       expect(await open({ path, app: 'vscode' }, LOCAL)).toEqual({ ok: true })
-      expect(await open({ path, app: 'herdr' }, LOCAL)).toEqual({ ok: true })
+      expect(await open({ path, app: 'herdr' }, LOCAL)).toEqual({ ok: true, herdr: 'new-pane', front: null })
       expect(exec.mock.calls).toEqual([
         ['/usr/bin/open', ['-a', '/Applications/Visual Studio Code.app', path]],
+        ['/Users/demo/.local/bin/herdr', ['pane', 'list']],
         ['/Users/demo/.local/bin/herdr', ['pane', 'split', '--cwd', path, '--direction', 'right', '--no-focus']],
+        ['/bin/ps', ['-axo', 'pid=,ppid=,comm=']],
       ])
     })
 
@@ -355,6 +358,7 @@ describe('recent projects: provider', () => {
       expect(await open({ path: '/Applications/Calculator.app', app: 'finder' }, LOCAL)).toMatchObject({ ok: false, error: 'unknown-project' })
       expect(await open({ path: join(home, 'Dev'), app: 'finder' }, LOCAL)).toMatchObject({ ok: false, error: 'unknown-project' })
       expect(await open({ path, app: 'sh' }, LOCAL)).toMatchObject({ ok: false, error: 'invalid-request' })
+      expect(await open({ path, app: 'herdr', terminal: 'Calculator' }, LOCAL)).toMatchObject({ ok: false, error: 'invalid-request' })
       expect(await open({ path, app: 'finder', command: 'rm -rf ~' }, LOCAL)).toEqual({ ok: true })
       expect(await open({ path, app: 'cursor' }, LOCAL)).toMatchObject({ ok: false, error: 'not-installed' })
       expect(await open({ path, app: 'tmux' }, LOCAL)).toMatchObject({ ok: false, error: 'not-installed' })
@@ -372,6 +376,118 @@ describe('recent projects: provider', () => {
     const exec = vi.fn(async () => '')
     await openWith('tmux', '/Users/demo/Dev/api', { exec, resolveBinary: async () => '/opt/homebrew/bin/tmux' })
     expect(exec).toHaveBeenCalledWith('/opt/homebrew/bin/tmux', ['new-window', '-c', '/Users/demo/Dev/api'])
+  })
+})
+
+/**
+ * A Herdr with two workspaces: w1 holds one pane, w2 one tab of three panes side by side
+ * (p1 | p3 | p2), focused on p1. It answers `pane list`, `pane layout`, `pane neighbor` and
+ * moves its focus on `pane focus`, as Herdr 0.9.5 does; `stuck` makes focus moves do nothing.
+ */
+function fakeHerdr(opts: { zoomed?: boolean; stuck?: boolean; ps?: string } = {}) {
+  const BIN = '/Users/demo/.local/bin/herdr'
+  const panes = [
+    { pane_id: 'w1:p1', tab_id: 'w1:t1', workspace_id: 'w1', cwd: '/Users/demo', foreground_cwd: '/Users/demo' },
+    { pane_id: 'w2:p1', tab_id: 'w2:t1', workspace_id: 'w2', cwd: '/Users/demo/Dev/web' },
+    { pane_id: 'w2:p3', tab_id: 'w2:t1', workspace_id: 'w2', cwd: '/Users/demo/Dev/web' },
+    { pane_id: 'w2:p2', tab_id: 'w2:t1', workspace_id: 'w2', cwd: '/Users/demo', foreground_cwd: '/Users/demo/Dev/api' },
+  ]
+  const row = ['w2:p1', 'w2:p3', 'w2:p2']
+  let focused = 'w2:p1'
+  const neighbor = (from: string, direction: string) => {
+    const i = row.indexOf(from)
+    if (direction === 'right') return row[i + 1]
+    if (direction === 'left') return i > 0 ? row[i - 1] : undefined
+    return undefined
+  }
+  const layout = () => ({ focused_pane_id: focused, zoomed: !!opts.zoomed, panes: row.map((pane_id) => ({ pane_id })), tab_id: 'w2:t1' })
+  const exec = vi.fn(async (file: string, args: string[]) => {
+    if (file === '/bin/ps') return opts.ps ?? ''
+    if (file !== BIN) return ''
+    const [group, verb] = args
+    const flag = (name: string) => args[args.indexOf(name) + 1]
+    if (group === 'pane' && verb === 'list') return JSON.stringify({ id: 'cli:pane:list', result: { panes } })
+    if (group === 'pane' && verb === 'layout') return JSON.stringify({ result: { layout: layout() } })
+    if (group === 'pane' && verb === 'neighbor') {
+      const id = neighbor(flag('--pane'), flag('--direction'))
+      return JSON.stringify({ result: { neighbor: { layout: layout(), pane_id: flag('--pane'), ...(id ? { neighbor_pane_id: id } : {}) } } })
+    }
+    if (group === 'pane' && verb === 'focus') {
+      if (!opts.stuck) focused = neighbor(flag('--pane'), flag('--direction')) ?? focused
+      return '{}'
+    }
+    return '{}'
+  })
+  const deps = {
+    exec,
+    resolveBinary: async (name: string) => (name === 'herdr' ? BIN : null),
+    exists: async (p: string) => p === '/Applications/iTerm.app' || p === '/Applications/Ghostty.app',
+  }
+  const calls = () => exec.mock.calls.map(([f, a]) => (f === BIN ? 'herdr ' : f + ' ') + a.join(' '))
+  return { exec, deps, calls }
+}
+
+/** `ps -axo pid=,ppid=,comm=` with Herdr's client in a shell under iTerm, and its server below it. */
+const PS_ITERM = [
+  '    1     0 /sbin/launchd',
+  '  300     1 /Applications/iTerm.app/Contents/MacOS/iTerm2',
+  '  310   300 /Users/demo/Library/Application Support/iTerm2/iTermServer-3.7.6',
+  '  320   310 /usr/bin/login',
+  '  330   320 -zsh',
+  '  340   330 herdr',
+  '  350   340 /Users/demo/.local/bin/herdr',
+].join('\n')
+
+describe('recent projects: Herdr', () => {
+  it('goes to the pane already in the folder: its workspace, its tab, then the walk to it', async () => {
+    const h = fakeHerdr()
+    expect(await openWith('herdr', '/Users/demo/Dev/api', h.deps, { terminal: 'iterm' })).toEqual({ ok: true, herdr: 'pane', front: 'iterm' })
+    const calls = h.calls()
+    expect(calls.slice(0, 3)).toEqual(['herdr pane list', 'herdr workspace focus w2', 'herdr tab focus w2:t1'])
+    expect(calls.filter((c) => c.startsWith('herdr pane focus'))).toEqual([
+      'herdr pane focus --direction right --pane w2:p1',
+      'herdr pane focus --direction right --pane w2:p3',
+    ])
+    expect(calls.at(-1)).toBe('/usr/bin/open -a /Applications/iTerm.app')
+    expect(calls.some((c) => c.includes('split'))).toBe(false)
+  })
+
+  it('matches a pane by its shell’s folder too, and stays put when that pane is already focused', async () => {
+    const h = fakeHerdr()
+    expect(await openWith('herdr', '/Users/demo/Dev/web', h.deps, { terminal: 'ghostty' })).toEqual({ ok: true, herdr: 'pane', front: 'ghostty' })
+    expect(h.calls().some((c) => c.startsWith('herdr pane focus') || c.startsWith('herdr pane neighbor'))).toBe(false)
+  })
+
+  it('stops at the tab and says so when the focus does not reach the pane, or the tab is zoomed', async () => {
+    const stuck = fakeHerdr({ stuck: true })
+    expect(await openWith('herdr', '/Users/demo/Dev/api', stuck.deps, { terminal: 'iterm' })).toMatchObject({ ok: true, herdr: 'tab' })
+    const zoomed = fakeHerdr({ zoomed: true })
+    expect(await openWith('herdr', '/Users/demo/Dev/api', zoomed.deps, { terminal: 'iterm' })).toMatchObject({ ok: true, herdr: 'tab' })
+    expect(zoomed.calls().some((c) => c.startsWith('herdr pane neighbor') || c.startsWith('herdr pane focus'))).toBe(false)
+  })
+
+  it('splits a new pane when no pane is in the folder, and finds the terminal Herdr runs in', async () => {
+    const h = fakeHerdr({ ps: PS_ITERM })
+    expect(await openWith('herdr', '/Users/demo/Dev/new', h.deps)).toEqual({ ok: true, herdr: 'new-pane', front: 'iterm' })
+    expect(h.calls()).toEqual([
+      'herdr pane list',
+      'herdr pane split --cwd /Users/demo/Dev/new --direction right --no-focus',
+      '/bin/ps -axo pid=,ppid=,comm=',
+      '/usr/bin/open -a /Applications/iTerm.app',
+    ])
+  })
+
+  it('brings nothing forward when the terminal is not installed or cannot be told', async () => {
+    expect(await openWith('herdr', '/Users/demo/Dev/new', fakeHerdr().deps, { terminal: 'terminal' })).toMatchObject({ front: null })
+    expect(await openWith('herdr', '/Users/demo/Dev/new', fakeHerdr().deps)).toMatchObject({ ok: true, front: null })
+  })
+
+  it('detects one terminal only: none or two is no answer', async () => {
+    const ps = async (out: string) => detectHerdrTerminal(async () => out)
+    expect(await ps(PS_ITERM)).toBe('iterm')
+    expect(await ps(PS_ITERM + '\n  400     1 /Applications/Ghostty.app/Contents/MacOS/ghostty\n  410   400 herdr')).toBeNull()
+    expect(await ps('  340     1 herdr')).toBeNull()
+    expect(await ps('  300     1 /Applications/iTerm.app/Contents/MacOS/iTerm2')).toBeNull()
   })
 })
 

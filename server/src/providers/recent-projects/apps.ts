@@ -1,6 +1,7 @@
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import type { Exec } from '../exec.js'
+import { detectHerdrTerminal, openInHerdr, type HerdrReach, type HerdrTerminal } from './herdr.js'
 import type { ResolveBinary } from './sources/cli.js'
 import { exists } from './util.js'
 
@@ -52,23 +53,44 @@ export async function installedApps(deps: AppDeps): Promise<AppId[]> {
   return out
 }
 
+export type OpenResult = { ok: true; herdr?: HerdrReach; front?: AppId | null } | { ok: false; error: string }
+
 /**
  * Opens one folder with one application. `path` has been checked against the snapshot by the
  * caller; every program is run by its absolute path with an argument list, never a shell.
- * Herdr opens a pane beside the focused one without moving the focus; tmux a new window.
+ * Herdr goes to the pane already in the folder, or splits a new one beside the focused pane
+ * without moving the focus, then brings its terminal forward; tmux opens a new window.
  */
-export async function openWith(app: AppId, path: string, deps: AppDeps): Promise<{ ok: true } | { ok: false; error: string }> {
+export async function openWith(app: AppId, path: string, deps: AppDeps, opts: { terminal?: HerdrTerminal } = {}): Promise<OpenResult> {
   if (app === 'herdr' || app === 'tmux') {
     const bin = await deps.resolveBinary(app)
     if (!bin) return { ok: false, error: 'not-installed' }
-    const args = app === 'herdr'
-      ? ['pane', 'split', '--cwd', path, '--direction', 'right', '--no-focus']
-      : ['new-window', '-c', path]
-    await deps.exec(bin, args)
-    return { ok: true }
+    if (app === 'tmux') {
+      await deps.exec(bin, ['new-window', '-c', path])
+      return { ok: true }
+    }
+    const herdr = await openInHerdr(deps.exec, bin, path)
+    return { ok: true, herdr, front: await bringTerminalForward(opts.terminal ?? 'auto', deps) }
   }
   const bundle = await bundleOf(app, deps.exists ?? exists)
   if (!bundle) return { ok: false, error: 'not-installed' }
   await deps.exec(OPEN, ['-a', bundle, path])
   return { ok: true }
+}
+
+/**
+ * Activates the terminal Herdr runs in (`open -a` with no file only brings it forward): the one
+ * the tile chose, or the one found running Herdr's client. Null when none is known or installed;
+ * a terminal that will not come forward never fails the open, whose work in Herdr is done.
+ */
+async function bringTerminalForward(choice: HerdrTerminal, deps: AppDeps): Promise<AppId | null> {
+  try {
+    const app = choice === 'auto' ? await detectHerdrTerminal(deps.exec) : choice
+    const bundle = app && (await bundleOf(app, deps.exists ?? exists))
+    if (!app || !bundle) return null
+    await deps.exec(OPEN, ['-a', bundle])
+    return app
+  } catch {
+    return null
+  }
 }
