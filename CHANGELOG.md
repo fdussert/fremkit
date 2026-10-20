@@ -14,7 +14,8 @@ tagged `vX.Y.Z`.
 
 ### Added
 
-- **Fremdev has its own switch.** Settings → About → Experimental features now turns Fremdev on and off on its own; it still needs the browser companion.
+- **Fremdev has its own switch.** Settings → About → Experimental features now turns Fremdev on
+  and off on its own; it still needs the browser companion.
 
 ### Fixed
 
