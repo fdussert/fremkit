@@ -99,21 +99,21 @@
   .entry.resolved{opacity:.7}
   .actions{display:flex;flex-wrap:wrap;gap:8px}
   .actions[hidden]{display:none}
-  button.copy{box-sizing:border-box;min-height:56px;min-width:56px;padding:0 18px;border:1px solid color-mix(in srgb, var(--accent, #d9b36a) 55%, transparent);
+  button.act{box-sizing:border-box;min-height:56px;min-width:56px;padding:0 18px;border:1px solid color-mix(in srgb, var(--accent, #d9b36a) 55%, transparent);
     border-radius:14px;background:transparent;color:var(--accent, #d9b36a);cursor:pointer;
     font:inherit;font-size:calc(15px * var(--text-scale, 1));font-weight:600;white-space:nowrap}
-  button.copy:active{background:var(--accent, #d9b36a);color:var(--on-accent, #0b0d10)}
-  button.copy:disabled{cursor:default;opacity:.6}
-  button.copy.ok{border-color:var(--ok, #46c46e);color:var(--ok, #46c46e)}
-  button.copy.failed{border-color:var(--danger, #ff6b5e);color:var(--danger, #ff6b5e)}
+  button.act:active{background:var(--accent, #d9b36a);color:var(--on-accent, #0b0d10)}
+  button.act:disabled{cursor:default;opacity:.6}
+  button.act.ok{border-color:var(--ok, #46c46e);color:var(--ok, #46c46e)}
+  button.act.failed{border-color:var(--danger, #ff6b5e);color:var(--danger, #ff6b5e)}
 
   /* The host says which way round the tile is: on-light means dark text on a light body. */
   html.on-light body{color:var(--on-surface, #0b0d10)}
   html.on-light .row{background:rgba(0,0,0,.05)}
   html.on-light .top:active:not(:has(button:active)){background:rgba(0,0,0,.07)}
   html.on-light .browser,html.on-light .t,html.on-light button.clear{color:var(--on-surface, #0b0d10);opacity:.7}
-  html.on-light button.show,html.on-light button.copy{color:var(--on-surface, #0b0d10)}
-  html.on-light button.copy{border-color:color-mix(in srgb, var(--on-surface, #0b0d10) 35%, transparent)}
+  html.on-light button.show,html.on-light button.act{color:var(--on-surface, #0b0d10)}
+  html.on-light button.act{border-color:color-mix(in srgb, var(--on-surface, #0b0d10) 35%, transparent)}
   html.on-light .entry .time,html.on-light .entry .times,html.on-light .entry.limited .what,html.on-light .entry .origin{color:var(--on-surface, #0b0d10);opacity:.7}
   /* The warning orange reads too faint on a light body: darkened towards the text colour. */
   html.on-light .entry.request .what,html.on-light .fact.requests .n{color:color-mix(in srgb, var(--warn, #f0a020) 55%, var(--on-surface, #0b0d10))}
@@ -121,11 +121,11 @@
   html.on-light .fact.resolved,html.on-light .fact.resolved .n{color:var(--on-surface, #0b0d10);opacity:.5}
   html.on-light .fact.seen,html.on-light .fact.seen .n,html.on-light .fact.seen .t{color:var(--on-surface, #0b0d10);opacity:.5}
   /* An accent body: the accent of the clear button would vanish, so it takes the text colour. */
-  html.accent-fill button.clear:active,html.accent-fill button.show:active,html.accent-fill button.copy:active{background:var(--on-surface, #0b0d10);color:var(--accent, #d9b36a)}
+  html.accent-fill button.clear:active,html.accent-fill button.show:active,html.accent-fill button.act:active{background:var(--on-surface, #0b0d10);color:var(--accent, #d9b36a)}
   html.on-light .entry button.origin{color:var(--on-surface, #0b0d10)}
   html.accent-fill .entry button.origin:active{background:var(--on-surface, #0b0d10);color:var(--accent, #d9b36a)}
-  html.accent-fill button.show,html.accent-fill button.copy{color:var(--on-surface, #0b0d10)}
-  html.accent-fill button.copy{border-color:var(--on-surface, #0b0d10)}
+  html.accent-fill button.show,html.accent-fill button.act{color:var(--on-surface, #0b0d10)}
+  html.accent-fill button.act{border-color:var(--on-surface, #0b0d10)}
 
   /*
    * Compact: the worst light and the open errors, nothing to touch — a tap on a bar tile belongs to
@@ -303,7 +303,7 @@
     }
 
     function copyButton(entry, stack) {
-      var c = { btn: el('button', 'copy'), stack: stack, status: 'idle', timer: 0 }
+      var c = { btn: el('button', 'act copy'), stack: stack, status: 'idle', timer: 0 }
       c.btn.type = 'button'
       c.btn.addEventListener('click', function (ev) { ev.stopPropagation(); copy(entry, c) })
       return c
@@ -449,9 +449,9 @@
       entry.copyStack = copyButton(entry, true)
       entry.actions.appendChild(entry.copy.btn)
       entry.actions.appendChild(entry.copyStack.btn)
-      entry.reload = el('button', 'copy reload')
+      entry.reload = el('button', 'act reload')
       entry.reload.type = 'button'
-      entry.reloadHard = el('button', 'copy reload hard')
+      entry.reloadHard = el('button', 'act reload hard')
       entry.reloadHard.type = 'button'
       entry.actions.appendChild(entry.reload)
       entry.actions.appendChild(entry.reloadHard)

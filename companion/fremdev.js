@@ -568,8 +568,9 @@ export function createFremdev({
     },
 
     /**
-     * `dev.focus`, `dev.clear`, `dev.reload`, `dev.report.ask` and `dev.open.ask`: only for a tab this install has
-     * a row for. An ask for another tab gets no answer, and the server's wait times out.
+     * `dev.focus`, `dev.clear`, `dev.reload`, `dev.report.ask` and `dev.open.ask`: only for a tab
+     * this install has a row for. An ask for another tab gets no answer, and the server's wait
+     * times out.
      */
     async onServer(msg) {
       await loaded

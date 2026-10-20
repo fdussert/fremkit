@@ -154,7 +154,7 @@ describe('the Fremdev widget page', () => {
     // The actions show for reload alone, with no report, and the copy buttons stay away.
     w.publish(snapshot([tab(7)], false, ['fremdev.reload']))
     expect(rowOf('App 7').querySelector<HTMLElement>('.actions')!.hidden).toBe(false)
-    expect(rowOf('App 7').querySelector<HTMLButtonElement>('button.copy:not(.reload)')!.hidden).toBe(true)
+    expect(rowOf('App 7').querySelector<HTMLButtonElement>('button.copy')!.hidden).toBe(true)
     // A reload does not fold the row.
     expect(unfoldedApps()).toEqual(['App 7'])
   })
