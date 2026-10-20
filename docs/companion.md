@@ -339,4 +339,6 @@ Fremdev needs a newer Fremkit; an old extension with a newer Fremkit simply has 
 - *The Fremdev widget shows no tab* — Fremdev is off in the popup, the tab's host is not a dev host
   (add it on the options page), or Chrome has not granted its origin. Tabs already open are hooked
   when you turn Fremdev on, add their host, or reload or update the extension: no reload of the
-  tab is needed.
+  tab is needed. After an extension update, though, an open page keeps the previous version's hook until that
+  tab reloads (the new hook stands aside so no error is counted twice), so a changed hook reaches a
+  tab only after it reloads.
