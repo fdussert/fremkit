@@ -354,6 +354,17 @@ describe('Fremdev reports', () => {
     expect(await Promise.all(cut)).toEqual(Array(8).fill(null))
   })
 
+  it('gives null at once when the install switches Fremdev off, or stops reporting', async () => {
+    const t = two()
+    const off = t.dev.report(A, 7, false)
+    // Off with fremdev.report still listed (a buggy or newer extension): nothing will answer either.
+    t.dev.onMessage(A, { type: 'modules', modules: ['fremdev.report'] })
+    expect(await off).toBeNull()
+    const quiet = t.dev.report(B, 7, false)
+    t.dev.onMessage(B, { type: 'modules', modules: ['fremdev'] })
+    expect(await quiet).toBeNull()
+  })
+
   it('gives null and sends nothing for an install without fremdev.report, an unknown tab or install', async () => {
     const t = two()
     t.dev.connect(B, 'Brave', ['fremdev'])

@@ -179,7 +179,8 @@ export class CompanionDev {
         const report = msg.modules.includes(FREMDEV_REPORT_MODULE)
         if (on === install.on && report === install.report) return
         install.report = report
-        if (!report) abandon(install)
+        // Off, or no longer able to report: whatever was asked will not be answered.
+        if (!on || !report) abandon(install)
         if (on === install.on) return this.publish(install)
         install.on = on
         // Switched off, its rows are stale at once.
