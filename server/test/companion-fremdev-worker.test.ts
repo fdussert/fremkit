@@ -1054,6 +1054,31 @@ describe('performance and regressions', () => {
     expect(stored(f)).toEqual([{ key: 'http://localhost:5173/', samples: [{ load: 1000, lcp: 1500, doc: 'D1' }] }])
   })
 
+  it('neither wakes the socket nor sends again when a verdict comes back unchanged', async () => {
+    const f = await makeFremdev()
+    f.fremdev.onReady({ type: 'ready', protocol: 2, modules: { fremplay: true, fremdev: true } })
+    // A poor LCP: an entry on the bands alone.
+    await f.fremdev.onPageEvent({ kind: 'perf', load: 1000, lcp: 5000 }, devSender({ documentId: 'D1' }))
+    await f.later()
+    expect(perfOf(f)).toEqual([expect.objectContaining({ metric: 'lcp', value: 5000, ratio: null })])
+    const sends = f.sent.filter((m) => m.type === 'dev.tabs').length
+    f.wantSocket.mockClear()
+    // perf.js re-sends the whole set as the heap moves; the verdict is the same one.
+    for (const heapMb of [40, 41, 42]) {
+      await f.fremdev.onPageEvent({ kind: 'perf', load: 1000, lcp: 5000, heapMb }, devSender({ documentId: 'D1' }))
+      await f.later()
+    }
+    expect(f.wantSocket).not.toHaveBeenCalled()
+    expect(perfOf(f)).toEqual([expect.objectContaining({ metric: 'lcp', value: 5000 })])
+    // The heap still reaches the row, on the quiet path.
+    expect(f.sent.filter((m) => m.type === 'dev.tabs').length).toBeGreaterThan(sends)
+    // A worse value is a change: it is taken and told.
+    await f.fremdev.onPageEvent({ kind: 'perf', load: 1000, lcp: 6000, heapMb: 42 }, devSender({ documentId: 'D1' }))
+    await f.later()
+    expect(perfOf(f)).toEqual([expect.objectContaining({ metric: 'lcp', value: 6000 })])
+    expect(f.wantSocket).toHaveBeenCalled()
+  })
+
   it('drops a perf event over its bounds', async () => {
     const f = await makeFremdev()
     await f.fremdev.onPageEvent({ kind: 'perf', cls: 101 }, devSender())

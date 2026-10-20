@@ -261,7 +261,10 @@ export function createFremdev({
         delete tabs[oldest]
       }
     }
-    tabs = { ...tabs, [key]: reduce(tab, event, now()) }
+    const next = reduce(tab, event, now())
+    // An event that changed nothing (the reducer handed the row back) sends nothing and wakes nothing.
+    if (next === tabs[key]) return
+    tabs = { ...tabs, [key]: next }
     refresh(quiet ? { changed: true } : { changed: true, event: true })
   }
 

@@ -265,6 +265,8 @@ function perfRegression(tab, event, now) {
   const current = isId(tab.perfEntryId) ? ring.find((e) => e.kind === 'perf' && e.id === tab.perfEntryId) : undefined
   if (current && current.state !== 'resolved') {
     if (verdictRank(event.metric, ratio) > verdictRank(current.metric, current.ratio)) return tab
+    // The same verdict told again (perf.js re-sends its values as the heap moves): no change at all.
+    if (event.metric === current.metric && event.value === current.value && ratio === current.ratio) return tab
     const next = { ...current, metric: event.metric, value: event.value, ratio }
     return { ...tab, history: ring.map((e) => (e === current ? next : e)) }
   }
