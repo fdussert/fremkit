@@ -41,6 +41,16 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Restarts the app in a fresh process after a pin change (ProcessRestart): it runs in a
+             process of its own, so it can end the main one, and shows nothing. -->
+        <activity
+            android:name=".RestartActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:noHistory="true"
+            android:process=":restart"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
     </application>
 
 </manifest>

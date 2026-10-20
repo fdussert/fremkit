@@ -95,4 +95,11 @@ class ManifestTest {
         }
         assertNotNull(application.getAttributeNS(ns, "localeConfig").takeIf { it.isNotEmpty() })
     }
+
+    @Test
+    fun theRestartHelperRunsInItsOwnProcessAndIsNotExported() {
+        val activity = elements(manifest, "activity").single { it.getAttributeNS(ns, "name").endsWith(".RestartActivity") }
+        assertEquals(ProcessRestart.PROCESS_SUFFIX, activity.getAttributeNS(ns, "process"))
+        assertEquals("false", activity.getAttributeNS(ns, "exported"))
+    }
 }

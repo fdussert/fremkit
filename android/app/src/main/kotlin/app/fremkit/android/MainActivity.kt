@@ -28,7 +28,7 @@ class MainActivity : ComponentActivity() {
         // Before the first WebView exists: an outdated one never gets to show a half dashboard.
         app.webView.check()
         setContent {
-            Root(app.model, app.flow, app.meter, app.hygiene, app.webView, appVersion = BuildConfig.VERSION_NAME)
+            Root(app.model, app.flow, app.meter, app.hygiene, app.webView, app.restarting, appVersion = BuildConfig.VERSION_NAME)
         }
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) { app.model.run() }

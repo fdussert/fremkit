@@ -57,9 +57,15 @@ class WebViewSupport(private val context: Context) {
  * cookie lives in the process-wide [CookieManager], which may write to the app's data folder: it
  * is dropped at the same moments, and before each dashboard load sets it again.
  *
+ * Clearing is not the whole of it: connections opened under the old pin stay pooled, which is why
+ * a pin change after a load restarts the process ([PinChangeGuard]), told by [onLoad].
+ *
  * Called on the main thread.
  */
-class WebViewHygiene {
+class WebViewHygiene(
+    /** A WebView is about to load (called by every [prepare]): whether it may. */
+    private val onLoad: () -> Boolean = { true },
+) {
     private var sslClearPending = true
 
     /** The paired Mac changed identity. */
@@ -68,11 +74,17 @@ class WebViewHygiene {
         clearCookies()
     }
 
-    /** Called on a new WebView before it loads anything. */
-    fun prepare(web: WebView) {
-        if (!sslClearPending) return
-        web.clearSslPreferences()
-        sslClearPending = false
+    /**
+     * Called on a WebView before each load. Returns false when it must not load at all: the
+     * process is restarting after a pin change ([PinChangeGuard]).
+     */
+    fun prepare(web: WebView): Boolean {
+        if (!onLoad()) return false
+        if (sslClearPending) {
+            web.clearSslPreferences()
+            sslClearPending = false
+        }
+        return true
     }
 
     companion object {

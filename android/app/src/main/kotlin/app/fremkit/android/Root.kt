@@ -43,6 +43,7 @@ import app.fremkit.kit.PairingStep
 import app.fremkit.kit.ViewportMeter
 import app.fremkit.kit.VersionNudge
 import app.fremkit.kit.macName
+import kotlinx.coroutines.flow.StateFlow
 
 /**
  * One screen per [AppState], or the pairing screen while pairing runs (`RootView.swift`). An
@@ -59,6 +60,7 @@ fun Root(
     meter: ViewportMeter,
     hygiene: WebViewHygiene,
     webView: WebViewSupport,
+    restarting: StateFlow<Boolean>,
     appVersion: String,
 ) {
     val state by model.state.collectAsStateWithLifecycle()
@@ -68,6 +70,7 @@ fun Root(
     val serverVersion by model.serverVersion.collectAsStateWithLifecycle()
     val pairing by flow.state.collectAsStateWithLifecycle()
     val outdated by webView.outdated.collectAsStateWithLifecycle()
+    val isRestarting by restarting.collectAsStateWithLifecycle()
     val density = LocalDensity.current.density.toDouble()
     val nudge = VersionNudge.of(serverVersion, appVersion)
 
@@ -82,6 +85,8 @@ fun Root(
             val step = pairing.step
             val current = outdated
             when {
+                // The process ends in a moment (a pin change): nothing of the new pairing starts here.
+                isRestarting -> ConnectingScreen(mac?.name)
                 current != null -> OutdatedWebViewScreen(current, checkAgain = webView::check)
                 step is PairingStep.Link -> LinkPairingScreen(
                     link = step.link,

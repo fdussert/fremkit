@@ -10,6 +10,9 @@ import app.fremkit.kit.PairingFlow
 import app.fremkit.kit.ViewportMeter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.MainScope
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 /**
@@ -25,7 +28,21 @@ class FremkitApplication : Application() {
     lateinit var network: LocalNetwork
         private set
     val meter = ViewportMeter()
-    val hygiene = WebViewHygiene()
+
+    /** A pin change after a WebView loaded restarts the process; before, clearing in place is enough. */
+    private val pinChange: PinChangeGuard = PinChangeGuard(
+        restartProcess = {
+            _restarting.value = true
+            ProcessRestart.now(this)
+        },
+        clearInProcess = { hygiene.pinChanged() },
+    )
+    val hygiene: WebViewHygiene = WebViewHygiene(onLoad = { pinChange.webViewLoading() })
+
+    private val _restarting = MutableStateFlow(false)
+
+    /** True once this process is restarting after a pin change: the screens show nothing new. */
+    val restarting: StateFlow<Boolean> = _restarting.asStateFlow()
     lateinit var webView: WebViewSupport
         private set
 
@@ -33,6 +50,8 @@ class FremkitApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        // The restart helper's process only kills and relaunches this one: no model, no network.
+        if (ProcessRestart.isHelperProcess()) return
         try {
             WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG)
         } catch (_: RuntimeException) {
@@ -52,8 +71,9 @@ class FremkitApplication : Application() {
             deviceName = { deviceName() },
             viewport = { meter.viewport() },
         )
-        // A pin change clears the WebView's SSL decisions and cookies before the next WebView.
-        scope.launch { model.macIdentityChanged.collect { hygiene.pinChanged() } }
+        // A pin change clears the WebView's SSL decisions and cookies before the next WebView, or,
+        // once a WebView has loaded, restarts the process so no pooled connection survives it.
+        scope.launch { model.macIdentityChanged.collect { pinChange.pinChanged() } }
         // A network that comes back or changes is a reason to try now (the iPad's onChange).
         network = LocalNetwork(this) {
             when (model.state.value) {
