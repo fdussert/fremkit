@@ -17,13 +17,22 @@ const PATH_CHAR_RE = /[A-Za-z0-9._~@%+\-/]/
  * `s` with every home folder written `~`: `/Users/<name>/` becomes `~/`, whatever the name holds
  * but a slash or a line break (`/Users/Jane Example/` too), and a name cut by the end of `s` (a
  * clipped text ending `/Users/Jane Ex`) or by a line break becomes `~`. Inside a path the slash
- * before it stays: `/@fs/Users/<name>/a.js` becomes `/@fs/~/a.js`. What leaves the extension (the wire, the Edge,
- * the report, the popup) goes through this, before any clip; the extension keeps the full value.
+ * before it stays: `/@fs/Users/<name>/a.js` becomes `/@fs/~/a.js`, and so does an encoded one
+ * (`%2FUsers%2F<name>%2F` becomes `%2F~%2F`). What leaves the extension (the wire, the Edge, the
+ * report, the popup) goes through this, before any clip; the extension keeps the full value.
  */
 export function homePath(s) {
-  return String(s).replace(/\/Users\/[^/\n]+(\/|$|(?=\n))/g, (_, end, at, all) =>
-    (at > 0 && PATH_CHAR_RE.test(all[at - 1]) ? '/~' : '~') + end)
+  return String(s)
+    .replace(/\/Users\/[^/\n]+(\/|$|(?=\n))/g, (_, end, at, all) =>
+      (at > 0 && PATH_CHAR_RE.test(all[at - 1]) ? '/~' : '~') + end)
+    .replace(ENCODED_HOME_RE, '%2F~$1')
 }
+
+/**
+ * A home folder percent-encoded inside a URL (`/files/%2FUsers%2Fjane%2Fa.js`), either case of
+ * `%2F`: the encoded slash before it stays, like the plain one inside a path.
+ */
+const ENCODED_HOME_RE = /%2FUsers%2F(?:(?!%2F)[^/\n])+(%2F|\/|$|(?=\n))/gi
 
 // Taken once: errorText reads values with these alone, so a page that replaces them later runs no
 // code through it.

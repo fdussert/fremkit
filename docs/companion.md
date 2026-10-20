@@ -280,7 +280,8 @@ home folder `/Users/<name>/` as `~/`: in the page's title, an error's text, orig
 a request's path, and a build's text and file. Inside a path the slash before it stays
 (`/@fs/Users/<name>/a.js`, Vite's URL for a file outside its root, reads `/@fs/~/a.js`), a request
 path that starts with it reads `/~/…`, and a name cut by the 300-character clip or by a line break
-(`…/Users/Jane Ex`) reads `~`. This happens before anything is clipped for the wire. The extension
+(`…/Users/Jane Ex`) reads `~`. A percent-encoded one in a URL goes the same way
+(`%2FUsers%2F<name>%2F` reads `%2F~%2F`). This happens before anything is clipped for the wire. The extension
 keeps the full values for itself.
 
 ### The history and the bug report

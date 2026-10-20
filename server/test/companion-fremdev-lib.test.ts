@@ -923,6 +923,12 @@ describe('build entries', () => {
     expect(homePath('/@fs/Users/Jane Example/a.js')).toBe('/@fs/~/a.js')
     expect(homePath('http://localhost:5173/@fs/Users/jane/a.js:1:2')).toBe('http://localhost:5173/@fs/~/a.js:1:2')
     expect(homePath('at f (/Users/jane/a.js:1:2)')).toBe('at f (~/a.js:1:2)')
+    // Percent-encoded inside a URL, in either case of %2F.
+    expect(homePath('/files/%2FUsers%2Fjane%2Fa.js')).toBe('/files/%2F~%2Fa.js')
+    expect(homePath('/files/%2fUsers%2fJane%20Example%2fa.js')).toBe('/files/%2F~%2fa.js')
+    expect(homePath('GET /f/%2FUsers%2Fjane/a.js')).toBe('GET /f/%2F~/a.js')
+    expect(homePath('/f?p=%2FUsers%2FJane%20Ex')).toBe('/f?p=%2F~')
+    expect(homePath('/files/%2Fvar%2Ftmp%2Fa.js')).toBe('/files/%2Fvar%2Ftmp%2Fa.js')
   })
 
   it('never lets a name out when the text was cut inside it', () => {
