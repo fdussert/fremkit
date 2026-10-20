@@ -25,6 +25,7 @@ import type { PairingCodes } from './codes.js'
 import { lanAddresses as readLanAddresses, cachedPick, computerName, isPrivate, lanAppAddresses, localHostName, preferredAddress } from './host.js'
 import { REMOTE_PORT, RemoteListener } from './listener.js'
 import { deviceThemeView } from '../themes/schedule.js'
+import { FREMKIT_VERSION } from '../version.js'
 import type { DeviceStore, PublicDevice, PublicExtensionDevice, PublicTabletDevice, Platform, Viewport } from './store.js'
 
 /** How often the LAN addresses are re-read while listening, to follow a DHCP change. */
@@ -66,8 +67,11 @@ export type DeviceInfo = { id: string; name: string; screenId: string | null; br
 /** How many addresses `meForApp` lists at most. */
 export const MAX_APP_ADDRESSES = 8
 
-/** What `GET /api/devices/me` answers the device app: `DeviceInfo` and where else it may find the Mac. */
-export type DeviceAppInfo = DeviceInfo & { addresses: string[] }
+/**
+ * What `GET /api/devices/me` answers the device app: `DeviceInfo`, where else it may find the Mac,
+ * and which Fremkit the Mac runs, so the app can say when one of the two is behind.
+ */
+export type DeviceAppInfo = DeviceInfo & { addresses: string[]; serverVersion: string }
 
 export type PairCredential = { proof: string } | { secret: string }
 
@@ -422,7 +426,11 @@ export class DeviceService {
     if (me === null) return null
     const usable = this.certAddresses.filter(isPrivate)
     const listed = usable.length > 0 ? await this.listAppAddresses(usable) : []
-    return { ...me, addresses: listed.filter((a) => usable.includes(a)).slice(0, MAX_APP_ADDRESSES) }
+    return {
+      ...me,
+      addresses: listed.filter((a) => usable.includes(a)).slice(0, MAX_APP_ADDRESSES),
+      serverVersion: FREMKIT_VERSION,
+    }
   }
 
   /** The screen a device is bound to, only while it is a device screen: where its brightness goes. */

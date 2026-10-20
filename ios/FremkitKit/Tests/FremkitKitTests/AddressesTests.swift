@@ -19,6 +19,12 @@ final class AddressesTests: XCTestCase {
         XCTAssertEqual(info.addresses, ["10.20.30.40", "192.168.1.20"])
     }
 
+    /// A newer Mac also says which Fremkit it runs (`serverVersion`): this app ignores the key.
+    func testIgnoresTheServerVersionAndAnyOtherNewKey() throws {
+        let info = try decode(#"{"id":"d1","name":"iPad","screenId":"s1","brightness":null,"addresses":["192.168.1.20"],"serverVersion":"9.9.9","somethingNew":{"a":1}}"#)
+        XCTAssertEqual(info, DeviceInfo(id: "d1", name: "iPad", screenId: "s1", brightness: nil, addresses: ["192.168.1.20"]))
+    }
+
     func testAMacThatSendsNoAddressesGivesNone() throws {
         let info = try decode(#"{"id":"d1","name":"iPad","screenId":"s1","brightness":null}"#)
         XCTAssertEqual(info.addresses, [])

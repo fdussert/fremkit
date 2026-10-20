@@ -23,6 +23,7 @@ import { readKey, spkiHash, TLS_KEY_SECRET } from '../src/devices/certificate.js
 import { FileSecretStore } from '../src/secrets/file.js'
 import { MAX_WRONG_PER_MINUTE, PairingCodes } from '../src/devices/codes.js'
 import { codeProof } from '../src/devices/codeProof.js'
+import { FREMKIT_VERSION } from '../src/version.js'
 import { hasOpenssl, remote } from './helpers/remote.js'
 
 const ADDRESS = '192.0.2.10'
@@ -1007,6 +1008,8 @@ describe.skipIf(!hasOpenssl)('telling a paired device where else to find the Mac
     const sorted = [...PRIVATE].sort()
     expect(body.addresses).toEqual([DEFAULT_ROUTE, ...sorted.filter((a) => a !== DEFAULT_ROUTE && a !== VPN)].slice(0, 8))
     expect(body.addresses).toHaveLength(8)
+    // The app is told which Fremkit the Mac runs, to say when one of the two is behind.
+    expect(body.serverVersion).toBe(FREMKIT_VERSION)
     expect(body.addresses).not.toContain(VPN)
     expect(body.addresses).not.toContain(OUTSIDER)
     // The list is looked up among the private addresses only, and once for two
@@ -1027,12 +1030,14 @@ describe.skipIf(!hasOpenssl)('telling a paired device where else to find the Mac
       const plain = await remote(mport, { path, host: `example.local:${mport}`, headers: cookie(token) })
       expect(plain.status, path).toBe(200)
       expect(JSON.parse(plain.body), path).not.toHaveProperty('addresses')
+      expect(JSON.parse(plain.body), path).not.toHaveProperty('serverVersion')
       for (const address of PRIVATE) expect(plain.body, path).not.toContain(address)
     }
     // Nor is the `device` channel, which the page reads.
     const payload = devicePayload(deviceId)
     expect(payload).toMatchObject({ id: deviceId })
     expect(payload).not.toHaveProperty('addresses')
+    expect(payload).not.toHaveProperty('serverVersion')
     for (const address of PRIVATE) expect(JSON.stringify(payload)).not.toContain(address)
     // Without a token the gate refuses it; locally the route does not exist.
     expect((await remote(mport, { path: '/api/devices/me?addresses=1', host: `example.local:${mport}` })).status).toBe(401)
