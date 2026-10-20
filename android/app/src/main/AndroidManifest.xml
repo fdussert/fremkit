@@ -9,6 +9,7 @@
     <!-- No backup of any kind (cloud or device-to-device): the pairing holds the device token, and a
          restored tablet pairs again, as an iPad does. -->
     <application
+        android:name=".FremkitApplication"
         android:allowBackup="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"

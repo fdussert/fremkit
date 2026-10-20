@@ -1,4 +1,43 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Français. Les mêmes clés que values/strings.xml (StringsParityTest). « Appairer », jamais
+     « jumeler ». -->
 <resources>
     <string name="app_name">Fremkit</string>
+
+    <string name="welcome_tagline">Affichez sur cette tablette le tableau de bord Fremkit de votre Mac.</string>
+    <string name="welcome_credentials_unreadable">L’appairage enregistré n’a pas pu être lu. Appairer à nouveau le remplace.</string>
+
+    <string name="connecting">Connexion…</string>
+    <string name="connecting_to">Connexion à %1$s…</string>
+
+    <string name="unreachable_title">Le Mac n’est pas joignable</string>
+    <string name="unreachable_hint">Vérifiez qu’il est allumé, sur le même réseau, et que « Autoriser un iPad sur le réseau local » est activé dans Fremkit.</string>
+    <string name="try_again">Réessayer</string>
+
+    <string name="unauthorized_title">Cette tablette n’est plus autorisée</string>
+    <string name="unauthorized_body">Elle a été retirée sur le Mac. Appairez-la à nouveau pour afficher le tableau de bord.</string>
+    <string name="pair_again">Appairer à nouveau</string>
+
+    <string name="key_changed_title">La clé de ce Mac a changé</string>
+    <string name="key_changed_body">Si vous avez réinitialisé son certificat dans Fremkit, appairez à nouveau cette tablette. Sinon, vérifiez que vous êtes sur le bon réseau.</string>
+
+    <string name="webview_title">Mettez à jour Android System WebView</string>
+    <string name="webview_body">Fremkit a besoin d’Android System WebView 82 ou plus récent pour afficher le tableau de bord. Cette tablette a la version %1$s.</string>
+    <string name="webview_body_unknown">Fremkit a besoin d’Android System WebView 82 ou plus récent pour afficher le tableau de bord.</string>
+    <string name="webview_open">Ouvrir les réglages de WebView</string>
+    <string name="webview_check_again">Vérifier à nouveau</string>
+
+    <string name="nudge_update_mac">Fremkit sur le Mac est plus ancien que cette app : mettez-le à jour.</string>
+    <string name="nudge_update_app">Cette app est plus ancienne que Fremkit sur le Mac : mettez-la à jour depuis la page des versions de Fremkit.</string>
+
+    <string name="pairing_with">Appairage avec %1$s</string>
+    <string name="pairing_cancel">Annuler</string>
+    <string name="pairing_refused">Le Mac a refusé le code.</string>
+    <string name="pairing_wrong_mac">Ce n’est pas le Mac du code</string>
+    <string name="pairing_invalid_request">Le Mac n’a pas accepté la demande. Mettez Fremkit à jour sur le Mac.</string>
+    <string name="pairing_no_code">Le Mac n’affiche plus de code d’appairage. Créez-en un nouveau dans Fremkit et scannez-le.</string>
+    <string name="pairing_not_saved">L’appairage n’a pas pu être enregistré sur cette tablette.</string>
+    <string name="pairing_replace_title">Remplacer l’appairage avec %1$s ?</string>
+    <string name="pairing_replace_body">Cette tablette affichera à la place le tableau de bord de %1$s.</string>
+    <string name="pairing_replace">Remplacer</string>
 </resources>

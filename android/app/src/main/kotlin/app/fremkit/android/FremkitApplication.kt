@@ -1,0 +1,72 @@
+package app.fremkit.android
+
+import android.app.Application
+import android.os.Build
+import android.provider.Settings
+import android.webkit.WebView
+import app.fremkit.kit.AppModel
+import app.fremkit.kit.AppState
+import app.fremkit.kit.PairingFlow
+import app.fremkit.kit.ViewportMeter
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.MainScope
+import kotlinx.coroutines.launch
+
+/**
+ * The app's objects, built by hand (no DI framework) and kept for the life of the process, so the
+ * pairing state survives the activity: the Keystore store, the [AppModel] over the kit's
+ * `Connector`, [PairingFlow], the viewport meter, the WebView checks and the network watch.
+ */
+class FremkitApplication : Application() {
+    lateinit var model: AppModel
+        private set
+    lateinit var flow: PairingFlow
+        private set
+    lateinit var network: LocalNetwork
+        private set
+    val meter = ViewportMeter()
+    val hygiene = WebViewHygiene()
+    lateinit var webView: WebViewSupport
+        private set
+
+    private val scope = MainScope()
+
+    override fun onCreate() {
+        super.onCreate()
+        try {
+            WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG)
+        } catch (_: RuntimeException) {
+            // No WebView provider: WebViewSupport says so on screen.
+        }
+        // Whatever an earlier process left in the WebView's cookie jar goes: the device cookie is
+        // set again before each load. (The SSL decisions die with the process; the hygiene clears
+        // them anyway before the first WebView.)
+        WebViewHygiene.clearCookies()
+        webView = WebViewSupport(this)
+
+        val main = Dispatchers.Main.immediate
+        model = AppModel(store = KeystoreCredentialStore(this), dispatcher = main)
+        flow = PairingFlow(
+            model = model,
+            dispatcher = main,
+            deviceName = { deviceName() },
+            viewport = { meter.viewport() },
+        )
+        // A pin change clears the WebView's SSL decisions and cookies before the next WebView.
+        scope.launch { model.macIdentityChanged.collect { hygiene.pinChanged() } }
+        // A network that comes back or changes is a reason to try now (the iPad's onChange).
+        network = LocalNetwork(this) {
+            when (model.state.value) {
+                is AppState.Unreachable, is AppState.KeyChanged -> model.reconnect()
+                is AppState.Dashboard -> model.addressesChanged()
+                else -> Unit
+            }
+        }
+        model.start()
+    }
+
+    /** This tablet's name for the Mac: the one set in the system's settings, else its model. */
+    private fun deviceName(): String =
+        Settings.Global.getString(contentResolver, Settings.Global.DEVICE_NAME)?.trim()?.takeIf { it.isNotEmpty() }
+            ?: Build.MODEL
+}

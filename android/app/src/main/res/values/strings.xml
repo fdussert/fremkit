@@ -1,4 +1,43 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- English, the default. Every key is in values-fr/strings.xml too (StringsParityTest). Where the
+     iPad app says the same thing, the text is its own (Localizable.xcstrings), "tablet" for "iPad". -->
 <resources>
     <string name="app_name">Fremkit</string>
+
+    <string name="welcome_tagline">Show your Mac’s Fremkit dashboard on this tablet.</string>
+    <string name="welcome_credentials_unreadable">The saved pairing could not be read. Pairing again replaces it.</string>
+
+    <string name="connecting">Connecting…</string>
+    <string name="connecting_to">Connecting to %1$s…</string>
+
+    <string name="unreachable_title">Can’t reach the Mac</string>
+    <string name="unreachable_hint">Check that it is on, on the same network, and that “Allow an iPad on the local network” is turned on in Fremkit.</string>
+    <string name="try_again">Try again</string>
+
+    <string name="unauthorized_title">This tablet is no longer allowed</string>
+    <string name="unauthorized_body">It was removed on the Mac. Pair it again to show the dashboard.</string>
+    <string name="pair_again">Pair again</string>
+
+    <string name="key_changed_title">This Mac’s key has changed</string>
+    <string name="key_changed_body">If you reset its certificate in Fremkit, pair this tablet again. Otherwise, check you are on the right network.</string>
+
+    <string name="webview_title">Update Android System WebView</string>
+    <string name="webview_body">Fremkit needs Android System WebView 82 or later to show the dashboard. This tablet has version %1$s.</string>
+    <string name="webview_body_unknown">Fremkit needs Android System WebView 82 or later to show the dashboard.</string>
+    <string name="webview_open">Open WebView’s settings</string>
+    <string name="webview_check_again">Check again</string>
+
+    <string name="nudge_update_mac">Fremkit on the Mac is older than this app: update it.</string>
+    <string name="nudge_update_app">This app is older than Fremkit on the Mac: update it from Fremkit’s releases page.</string>
+
+    <string name="pairing_with">Pairing with %1$s</string>
+    <string name="pairing_cancel">Cancel</string>
+    <string name="pairing_refused">The Mac refused the code.</string>
+    <string name="pairing_wrong_mac">This is not the Mac that showed the code</string>
+    <string name="pairing_invalid_request">The Mac did not accept the request. Update Fremkit on the Mac.</string>
+    <string name="pairing_no_code">The Mac is not showing a pairing code any more. Make a new one in Fremkit and scan it.</string>
+    <string name="pairing_not_saved">The pairing could not be saved on this tablet.</string>
+    <string name="pairing_replace_title">Replace the pairing with %1$s?</string>
+    <string name="pairing_replace_body">This tablet will show the dashboard of %1$s instead.</string>
+    <string name="pairing_replace">Replace</string>
 </resources>
