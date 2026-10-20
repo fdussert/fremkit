@@ -46,6 +46,19 @@ button.switch[aria-checked="true"] { background: var(--accent); }
 button.switch[aria-checked="true"]::after { transform: translateX(16px); background: var(--bg); }
 button.switch:disabled { opacity: .4; }
 button.switch:focus-visible { outline: 2px solid var(--accent-hi); outline-offset: 2px; }
+/* Fremdev's dev tabs: the widget's light, the title, and a Copy report per tab. */
+.devtabs { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.devtabs li { display: flex; align-items: center; gap: 8px; background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 6px 6px 6px 10px; min-width: 0; }
+.devtabs .light { flex: none; width: 9px; height: 9px; border-radius: 50%; background: var(--ok); }
+.devtabs .light.red { background: var(--danger); } .devtabs .light.orange { background: #e08a2c; }
+.devtabs .light.seen { background: transparent; box-shadow: inset 0 0 0 2px var(--danger); }
+.devtabs .light.orange.seen { box-shadow: inset 0 0 0 2px #e08a2c; }
+.devtabs .dtitle { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.devtabs button { flex: none; height: 30px; padding: 0 10px; font-size: 12px; }
+.devtabs button.done { color: var(--ok); border-color: var(--ok); }
+.devtabs button.failed { color: var(--danger); border-color: var(--danger); }
+.check { display: flex; align-items: center; gap: 6px; color: var(--muted); cursor: pointer; }
+.check input { margin: 0; accent-color: var(--accent); }
 footer { display: flex; justify-content: space-between; padding: 10px 14px 12px; border-top: 1px solid var(--border); }
 footer a { color: var(--muted); text-decoration: none; font-size: 12px; } footer a:hover { color: var(--text); }
 .lead { margin: 0; }

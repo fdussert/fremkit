@@ -269,7 +269,7 @@ describe('companion/fremdev.js', () => {
     f.fremdev.onReady({ type: 'ready', protocol: 2, modules: { fremplay: true, fremdev: true } })
     await f.later()
     expect(f.sent.map((m) => m.type)).toEqual(['modules', 'dev.tabs'])
-    expect(f.sent[0]).toEqual({ type: 'modules', modules: ['fremplay', 'fremdev'] })
+    expect(f.sent[0]).toEqual({ type: 'modules', modules: ['fremplay', 'fremdev', 'fremdev.report'] })
     expect((f.sent[1].tabs as Array<{ tabId: number }>).map((t) => t.tabId)).toEqual([7])
     await f.fremdev.stop()
     expect(f.sent.at(-1)).toEqual({ type: 'modules', modules: ['fremplay'] })
@@ -319,6 +319,45 @@ describe('companion/fremdev.js', () => {
     await f.later()
     // Marked seen, not zeroed: the error is still open.
     expect(f.rows()['7'].errors).toMatchObject({ total: 1, open: 1, seen: 1 })
+  })
+
+  it('announces fremdev.report only while on', async () => {
+    const f = await makeFremdev({ on: false })
+    expect(f.fremdev.modules()).toEqual(['fremplay'])
+    await f.fremdev.start()
+    expect(f.fremdev.modules()).toEqual(['fremplay', 'fremdev', 'fremdev.report'])
+    await f.fremdev.stop()
+    expect(f.fremdev.modules()).not.toContain('fremdev.report')
+  })
+
+  it('answers dev.report.ask with the report of a tab it has a row for, and nothing for another', async () => {
+    const f = await makeFremdev()
+    f.fremdev.onReady({ type: 'ready', protocol: 2, modules: { fremplay: true, fremdev: true } })
+    await f.fremdev.onPageEvent({ kind: 'error', text: 'boom', origin: '/src/a.js:1:2', stack: ['f /src/a.js:1:2', 'g /src/b.js:3:4'] }, devSender())
+    await f.later()
+    f.sent.length = 0
+    const id = '6f1c2a5e-8f0b-4c1d-9a3e-2b7d4e5f6a7b'
+    await f.fremdev.onServer({ type: 'dev.report.ask', id, tabId: 8, stack: true })
+    await f.fremdev.onServer({ type: 'dev.report.ask', id: 'not-an-id', tabId: 7, stack: true })
+    expect(f.sent).toEqual([])
+    await f.fremdev.onServer({ type: 'dev.report.ask', id, tabId: 7, stack: true })
+    expect(f.sent).toEqual([{ type: 'dev.report', id, tabId: 7, text: expect.stringContaining('boom') }])
+    const text = f.sent[0].text as string
+    expect(text).toContain('/src/a.js:1:2')
+    expect(text).toContain('g /src/b.js:3:4')
+    await f.fremdev.onServer({ type: 'dev.report.ask', id, tabId: 7, stack: false })
+    expect(f.sent[1].text).not.toContain('g /src/b.js:3:4')
+    // The popup's copy: the same report, or nothing for a tab with no row.
+    expect(await f.fremdev.report(7, true)).toBe(text)
+    expect(await f.fremdev.report(8, true)).toBeNull()
+  })
+
+  it('worker.js relays dev.report.ask and answers the popup with the report', () => {
+    const worker = source('worker.js')
+    const relay = worker.slice(worker.indexOf("case 'dev.focus':"), worker.indexOf('return fremdev.onServer(msg)'))
+    expect(relay).toContain("case 'dev.report.ask':")
+    const popup = worker.slice(worker.indexOf("case 'fremdevReport':"))
+    expect(popup).toMatch(/^case 'fremdevReport':\n\s+return reply\(fremdev\.report\(msg\.tabId, msg\.stack === true\)/)
   })
 
   it('counts a failed request of a watched tab by its path, and leaves the noise and other tabs out', async () => {

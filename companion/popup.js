@@ -56,6 +56,9 @@ let codeError = null
 /** Fremdev is being turned on or off; the key of the message under its card, if any. */
 let fremdevBusy = false
 let fremdevError = null
+/** tabId → 'done' | 'failed': what the last Copy report of that tab gave, shown for COPY_SHOWN_MS. */
+const copied = new Map()
+const COPY_SHOWN_MS = 2_000
 
 const hostOf = (url) => {
   try {
@@ -180,6 +183,77 @@ const fremdevOn = () => local.fremdev?.on === true
 /** What Fremkit said of Fremdev (worker `fremdevSupport`): its line under the card, or none. */
 const FREMDEV_NOTES = { unsupported: 'fremdevUnsupported', disabled: 'fremdevDisabled' }
 
+/** A dev tab's light as the widget paints it (`stateOfTab` in widgets/fremdev/logic.js). */
+function lightOf(row) {
+  const open = (t) => (typeof t?.open === 'number' ? t.open : 0)
+  const unseen = (t) => Math.max(0, open(t) - (typeof t?.seen === 'number' ? t.seen : 0))
+  if (unseen(row.errors) > 0 || row.server === 'down') return 'red'
+  if (unseen(row.requests) > 0) return 'orange'
+  if (open(row.errors) > 0) return 'red seen'
+  if (open(row.requests) > 0) return 'orange seen'
+  return 'green'
+}
+
+/** The report comes from the worker; the clipboard is written here, still within the click. */
+async function copyReport(tabId) {
+  const res = await ask('fremdevReport', { tabId, stack: $('fremdevstack').checked })
+  let outcome = 'failed'
+  if (res?.ok && typeof res.text === 'string') {
+    try {
+      await navigator.clipboard.writeText(res.text)
+      outcome = 'done'
+    } catch { /* the popup lost focus */ }
+  }
+  copied.set(tabId, outcome)
+  render()
+  setTimeout(() => {
+    if (copied.get(tabId) !== outcome) return
+    copied.delete(tabId)
+    render()
+  }, COPY_SHOWN_MS)
+}
+
+/** tabId → its list item, kept across renders: the rows change every 500 ms under an error storm, and a button rebuilt mid-press loses the click. */
+const devItems = new Map()
+
+function devItem(tabId) {
+  let item = devItems.get(tabId)
+  if (item) return item
+  const li = document.createElement('li')
+  const light = document.createElement('span')
+  const title = document.createElement('span')
+  title.className = 'dtitle'
+  const button = document.createElement('button')
+  button.type = 'button'
+  button.addEventListener('click', () => void copyReport(tabId))
+  li.append(light, title, button)
+  item = { li, light, title, button }
+  devItems.set(tabId, item)
+  return item
+}
+
+function renderDevTabs(rows) {
+  const list = $('fremdevlist')
+  const ids = new Set(rows.map((r) => r.tabId))
+  for (const [id, item] of devItems) {
+    if (ids.has(id)) continue
+    item.li.remove()
+    devItems.delete(id)
+  }
+  rows.forEach((row, i) => {
+    const { li, light, title, button } = devItem(row.tabId)
+    light.className = `light ${lightOf(row)}`
+    title.textContent = row.title || row.host || ''
+    title.title = row.host || ''
+    const state = copied.get(row.tabId)
+    button.className = `ghost ${state ?? ''}`.trim()
+    button.textContent = state === 'done' ? t('fremdevCopied') : state === 'failed' ? t('fremdevCopyFailed') : t('fremdevCopy')
+    if (list.children[i] !== li) list.insertBefore(li, list.children[i] ?? null)
+  })
+  list.hidden = rows.length === 0
+  $('fremdevstackrow').hidden = rows.length === 0
+}
+
 function renderFremdev() {
   const on = fremdevOn()
   const note = FREMDEV_NOTES[session.fremdevSupport] ?? null
@@ -193,6 +267,9 @@ function renderFremdev() {
   const n = on && !note ? Object.keys(session.devTabs ?? {}).length : null
   $('fremdevtabs').hidden = n === null
   $('fremdevtabs').textContent = n === null ? '' : n === 0 ? t('fremdevTabsNone') : n === 1 ? t('fremdevTabsOne') : t('fremdevTabs', n)
+  // Latest first, as on the Edge.
+  const rows = n ? Object.values(session.devTabs).filter((r) => Number.isInteger(r?.tabId)).sort((a, b) => b.activity - a.activity) : []
+  renderDevTabs(rows)
   $('fremdevnote').hidden = !note
   $('fremdevnote').textContent = note ? t(note) : ''
   $('fremdeverror').hidden = !fremdevError

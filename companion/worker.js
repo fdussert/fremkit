@@ -582,6 +582,7 @@ async function onServerMessage(msg) {
       return onControl(msg)
     case 'dev.focus':
     case 'dev.clear':
+    case 'dev.report.ask':
       return fremdev.onServer(msg)
   }
 }
@@ -930,5 +931,8 @@ chrome.runtime.onMessage.addListener((msg, sender, respond) => {
       return reply(fremdev.stop().then(() => ({ ok: true })))
     case 'fremdevPatterns':
       return reply(fremdev.patternsChanged().then(() => ({ ok: true })))
+    // The popup's Copy report: the text comes back, the popup writes the clipboard within its click.
+    case 'fremdevReport':
+      return reply(fremdev.report(msg.tabId, msg.stack === true).then((text) => (text === null ? { ok: false } : { ok: true, text })))
   }
 })

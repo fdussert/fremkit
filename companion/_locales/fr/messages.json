@@ -134,6 +134,53 @@
   "fremdevFailed": {
     "message": "Fremdev n’a pas pu démarrer. Réessayez."
   },
+  "fremdevCopy": {
+    "message": "Copier le rapport"
+  },
+  "fremdevCopied": {
+    "message": "Copié"
+  },
+  "fremdevCopyFailed": {
+    "message": "Échec de la copie"
+  },
+  "fremdevWithStack": {
+    "message": "Avec la pile"
+  },
+  "reportTitle": {
+    "message": "Rapport de bug"
+  },
+  "reportServer": {
+    "message": "serveur de dev"
+  },
+  "reportLines": {
+    "message": "Les numéros de ligne sont ceux du code envoyé par le serveur de dev, pas des fichiers sources."
+  },
+  "reportErrors": {
+    "message": "Erreurs ($v1$ ouvertes, $v2$ au total)",
+    "placeholders": {
+      "v1": {
+        "content": "$1"
+      },
+      "v2": {
+        "content": "$2"
+      }
+    }
+  },
+  "reportRequests": {
+    "message": "Requêtes en échec"
+  },
+  "reportLimited": {
+    "message": "erreurs au-delà de la limite"
+  },
+  "stateSeen": {
+    "message": "vue"
+  },
+  "stateResolved": {
+    "message": "résolue"
+  },
+  "noAnswer": {
+    "message": "sans réponse"
+  },
   "settings": {
     "message": "Réglages"
   },

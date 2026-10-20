@@ -22,6 +22,7 @@
 
 import { BUILTIN_PERMISSION_ORIGINS, FREMKIT_EXCLUDES, inOrigins, isDevUrl, parsePattern } from './lib/devhosts.js'
 import { boundFrames, clip, isNoise, MAX_FRAME, MAX_TEXT, methodOf, pathOf } from './lib/devlog.js'
+import { buildReport, reportMessage } from './lib/devreport.js'
 import { emptyTab, fremdevSupport, reduce, Throttle, wireTabs } from './lib/devtabs.js'
 import * as protocol from './lib/protocol.js'
 
@@ -43,6 +44,10 @@ const SERVER_GONE = ['net::ERR_CONNECTION_REFUSED', 'net::ERR_CONNECTION_RESET',
 const REQUEST_FILTER = { urls: ['http://*/*', 'https://*/*'] }
 
 const validId = (id) => Number.isInteger(id) && id >= 0
+/** A `dev.report.ask`'s id, which the answer carries back: the server's UUID. */
+const REPORT_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+/** The module that says this install answers `dev.report.ask` (FREMDEV_REPORT_MODULE on the server). */
+const REPORT_MODULE = 'fremdev.report'
 const cleanPatterns = (list) =>
   Array.isArray(list) ? [...new Set(list.map((p) => parsePattern(p)?.pattern).filter(Boolean))] : []
 
@@ -92,6 +97,10 @@ export function createFremdev({
   setTimer = setTimeout,
   every = setInterval,
   stopEvery = clearInterval,
+  // The report's words, in the browser's UI language, and its local time and date.
+  t = (key, ...subs) => api.i18n?.getMessage(key, subs.map(String)) || key,
+  time = (ms) => new Date(ms).toLocaleTimeString(),
+  date = (ms) => new Date(ms).toLocaleString(),
 }) {
   let on = false
   let patterns = []
@@ -120,7 +129,7 @@ export function createFremdev({
 
   const supported = () => known === null || known === 'yes'
   const active = () => on && supported() && Object.keys(tabs).length > 0
-  const modules = () => (on ? ['fremplay', 'fremdev'] : ['fremplay'])
+  const modules = () => (on ? ['fremplay', 'fremdev', REPORT_MODULE] : ['fremplay'])
   const isDev = (url) => typeof url === 'string' && isDevUrl(url, patterns) && inOrigins(url, granted)
 
   function flush() {
@@ -472,11 +481,19 @@ export function createFremdev({
       support = null
     },
 
-    /** `dev.focus` and `dev.clear`: only for a tab this install has a row for. */
+    /**
+     * `dev.focus`, `dev.clear` and `dev.report.ask`: only for a tab this install has a row for. A
+     * report asked for another tab gets no answer, and the server's wait times out.
+     */
     async onServer(msg) {
       await loaded
       if (!on || !validId(msg?.tabId) || !tabs[String(msg.tabId)]) return
       if (msg.type === 'dev.clear') return apply(msg.tabId, { kind: 'clear' })
+      if (msg.type === 'dev.report.ask') {
+        if (support !== 'yes' || typeof msg.id !== 'string' || !REPORT_ID_RE.test(msg.id)) return
+        const fmt = { stack: msg.stack === true, now: now(), t, time, date }
+        return void send(reportMessage(msg.id, msg.tabId, tabs[String(msg.tabId)], fmt))
+      }
       if (msg.type !== 'dev.focus') return
       const tab = await api.tabs.get(msg.tabId).catch(() => null)
       if (!tab) return
@@ -496,6 +513,13 @@ export function createFremdev({
       if (sender.url !== undefined && !isDev(sender.url)) return
       const event = pageEvent(msg)
       if (event) apply(tab.id, event, { url: tab.url, title: tab.title })
+    },
+
+    /** The popup's copy: the report of a tab this install has a row for, or null. */
+    async report(tabId, stack) {
+      await loaded
+      const tab = on && validId(tabId) ? tabs[String(tabId)] : undefined
+      return tab ? buildReport(tab, { stack: stack === true, now: now(), t, time, date }) : null
     },
 
     active,

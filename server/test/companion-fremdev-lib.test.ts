@@ -8,6 +8,8 @@ import { boundFrames, errorText, framePlace, hotReloadSignal, isNoise, MAX_FRAME
 import { emptyTab, fremdevSupport, HISTORY_MAX, reduce, Throttle, validRow, wireTabs } from '../../companion/lib/devtabs.js'
 // @ts-expect-error plain JS module
 import { hello, devTabs, modulesMsg, ping } from '../../companion/lib/protocol.js'
+// @ts-expect-error plain JS module
+import { buildReport, REPORT_MAX, reportMessage } from '../../companion/lib/devreport.js'
 import { DevTabSchema } from '../src/companion/protocol.js'
 
 const both = (host: string) => [`http://${host}/*`, `https://${host}/*`]
@@ -640,5 +642,125 @@ describe('protocol builders', () => {
     expect(modulesMsg(['fremdev'])).toEqual({ type: 'modules', modules: ['fremdev'] })
     expect(devTabs([])).toEqual({ type: 'dev.tabs', tabs: [] })
     expect(ping()).toEqual({ type: 'ping' })
+  })
+})
+
+describe('devreport', () => {
+  const WORDS: Record<string, (...s: unknown[]) => string> = {
+    reportTitle: () => 'Bug report',
+    reportServer: () => 'dev server',
+    reportLines: () => 'Line numbers are those of the code the dev server sent.',
+    reportErrors: (open, total) => `Errors (${open} open, ${total} total)`,
+    reportRequests: () => 'Failed requests',
+    reportLimited: () => 'errors over the rate limit',
+    stateSeen: () => 'seen',
+    stateResolved: () => 'resolved',
+    noAnswer: () => 'no answer',
+  }
+  const fmt = (stack = false) => ({
+    stack,
+    now: 9_000,
+    t: (key: string, ...subs: unknown[]) => WORDS[key](...subs),
+    time: (ms: number) => `T${ms}`,
+    date: (ms: number) => `D${ms}`,
+  })
+  const err = (text: string, extra: Record<string, unknown> = {}) => ({ kind: 'error', text, ...extra })
+
+  function sample() {
+    let tab = emptyTab(7, 'http://localhost:5173/cart?token=x#y', 'Shop', 0)
+    tab = reduce(tab, err('TypeError: boom', { origin: '/src/Cart.vue:42:17', stack: ['setup /src/Cart.vue:42:17', 'run /src/main.js:3:1'] }), 1_000)
+    tab = reduce(tab, { kind: 'clear' }, 1_500)
+    tab = reduce(tab, err('ReferenceError: x', { origin: '/src/a.js:1:2' }), 2_000)
+    tab = reduce(tab, err('ReferenceError: x', { origin: '/src/a.js:1:2' }), 2_500)
+    tab = reduce(tab, { kind: 'request', method: 'POST', path: '/api/cart', status: 500 }, 3_000)
+    tab = reduce(tab, { kind: 'request', method: 'GET', path: '/api/me', status: 0 }, 3_200)
+    return reduce(tab, { kind: 'server', state: 'down' }, 3_500)
+  }
+
+  it('writes the report of a tab: its errors, its failed requests and its server', () => {
+    expect(REPORT_MAX).toBe(48_000)
+    expect(buildReport(sample(), fmt())).toBe(
+      [
+        '## Bug report: Shop (localhost:5173/cart)',
+        'D9000 · dev server: down',
+        'Line numbers are those of the code the dev server sent.',
+        '',
+        '### Errors (3 open, 3 total)',
+        '- T2500 ×2 ReferenceError: x',
+        '  at /src/a.js:1:2',
+        '- T1000 TypeError: boom (seen)',
+        '  at /src/Cart.vue:42:17',
+        '',
+        '### Failed requests',
+        '- T3200 GET /api/me no answer',
+        '- T3000 POST /api/cart 500',
+      ].join('\n'),
+    )
+  })
+
+  it('adds the frames after the first with the stack, and tags resolved entries and the overflow', () => {
+    let tab = sample()
+    tab = reduce(tab, { kind: 'navigated', url: 'http://localhost:5173/cart', title: 'Shop' }, 4_000)
+    tab = reduce(tab, { kind: 'count', n: 40 }, 5_000)
+    const text = buildReport(tab, fmt(true))
+    expect(text).toContain('- T1000 TypeError: boom (resolved)\n  at /src/Cart.vue:42:17\n    run /src/main.js:3:1\n')
+    expect(text).not.toContain('    setup ')
+    expect(text).toContain('- T5000 +40 errors over the rate limit\n')
+    expect(buildReport(tab, fmt(false))).not.toContain('run /src/main.js')
+  })
+
+  it('leaves out a section with no entry, and keeps text on one line', () => {
+    let tab = emptyTab(7, 'http://localhost:5173/', '', 0)
+    tab = reduce(tab, err('line one\nline two'), 1_000)
+    const text = buildReport(tab, fmt())
+    expect(text).not.toContain('Failed requests')
+    expect(text).toContain('## Bug report: localhost:5173 (localhost:5173/)')
+    expect(text).toContain('- T1000 line one line two')
+    expect(buildReport(emptyTab(7, 'http://localhost:5173/', 'App', 0), fmt())).not.toContain('###')
+  })
+
+  it('never shows the query or the fragment of the tab URL', () => {
+    const text = buildReport(sample(), fmt(true))
+    expect(text).not.toContain('token')
+    expect(text).not.toContain('#y')
+  })
+
+  it('stays within 48 000 characters, dropping the oldest entries first', () => {
+    let tab = emptyTab(7, 'http://localhost:5173/', 'App', 0)
+    const frames = (i: number) => Array.from({ length: 10 }, (_, f) => `f${f} /src/${String(i).padStart(2, '0')}.js:${'9'.repeat(270)}`)
+    for (let i = 0; i < 20; i++) tab = reduce(tab, err(`E${String(i).padStart(2, '0')} ${'x'.repeat(290)}`, { origin: `/src/${i}.js:1:1`, stack: frames(i) }), 1_000 + i)
+    const full = buildReport(tab, { ...fmt(true), max: Infinity })
+    expect(full.length).toBeGreaterThan(REPORT_MAX)
+    const text = buildReport(tab, fmt(true))
+    expect(text.length).toBeLessThanOrEqual(REPORT_MAX)
+    // The newest are kept, with their stacks; the oldest went.
+    expect(text).toContain('E19 ')
+    expect(text).toContain('f9 /src/19.js')
+    expect(text).not.toContain('E00 ')
+  })
+
+  it('drops the stacks once the oldest entries are gone', () => {
+    let tab = emptyTab(7, 'http://localhost:5173/', 'App', 0)
+    tab = reduce(tab, err('old one'), 1_000)
+    tab = reduce(tab, err('new one', { origin: '/src/a.js:1:1', stack: ['top /src/a.js:1:1', 'deep ' + 'y'.repeat(60_000)] }), 2_000)
+    const text = buildReport(tab, fmt(true))
+    expect(text.length).toBeLessThanOrEqual(REPORT_MAX)
+    expect(text).toContain('- T2000 new one\n  at /src/a.js:1:1')
+    expect(text).not.toContain('old one')
+    expect(text).not.toContain('deep ')
+  })
+
+  it('keeps the whole dev.report message within 60 000 bytes when the text is multibyte', () => {
+    let tab = emptyTab(7, 'http://localhost:5173/', '日本語のアプリ', 0)
+    const frames = Array.from({ length: 10 }, (_, f) => `f${f} /src/${'漢'.repeat(180)}.js:1:1`)
+    for (let i = 0; i < 20; i++) tab = reduce(tab, err(`E${i} ${'錯'.repeat(290)}`, { origin: `/src/${'字'.repeat(250)}.js:1:1`, stack: frames }), 1_000 + i)
+    for (const stack of [false, true]) {
+      const msg = reportMessage('6f1c2a5e-8f0b-4c1d-9a3e-2b7d4e5f6a7b', 7, tab, fmt(stack))
+      expect(Object.keys(msg).sort()).toEqual(['id', 'tabId', 'text', 'type'])
+      expect(msg.type).toBe('dev.report')
+      expect(msg.text.length).toBeLessThanOrEqual(REPORT_MAX)
+      expect(new TextEncoder().encode(JSON.stringify(msg)).length).toBeLessThanOrEqual(60_000)
+      expect(msg.text).toContain('E19 ')
+    }
   })
 })

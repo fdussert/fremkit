@@ -134,6 +134,53 @@
   "fremdevFailed": {
     "message": "Fremdev could not start. Try again."
   },
+  "fremdevCopy": {
+    "message": "Copy report"
+  },
+  "fremdevCopied": {
+    "message": "Copied"
+  },
+  "fremdevCopyFailed": {
+    "message": "Copy failed"
+  },
+  "fremdevWithStack": {
+    "message": "With stack"
+  },
+  "reportTitle": {
+    "message": "Bug report"
+  },
+  "reportServer": {
+    "message": "dev server"
+  },
+  "reportLines": {
+    "message": "Line numbers are those of the code the dev server sent, not of the source files."
+  },
+  "reportErrors": {
+    "message": "Errors ($v1$ open, $v2$ total)",
+    "placeholders": {
+      "v1": {
+        "content": "$1"
+      },
+      "v2": {
+        "content": "$2"
+      }
+    }
+  },
+  "reportRequests": {
+    "message": "Failed requests"
+  },
+  "reportLimited": {
+    "message": "errors over the rate limit"
+  },
+  "stateSeen": {
+    "message": "seen"
+  },
+  "stateResolved": {
+    "message": "resolved"
+  },
+  "noAnswer": {
+    "message": "no answer"
+  },
   "settings": {
     "message": "Settings"
   },
