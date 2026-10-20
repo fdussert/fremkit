@@ -40,4 +40,36 @@
     <string name="pairing_replace_title">Remplacer l’appairage avec %1$s ?</string>
     <string name="pairing_replace_body">Cette tablette affichera à la place le tableau de bord de %1$s.</string>
     <string name="pairing_replace">Remplacer</string>
+    <string name="pairing_confirm_title">Appairer avec %1$s ?</string>
+    <string name="pairing_confirm_body">Une autre app a ouvert un lien d’appairage pour %1$s (%2$s). N’appairez qu’avec votre propre Mac : c’est lui qui choisira ce qu’affiche cette tablette.</string>
+    <string name="pairing_pair">Appairer</string>
+
+    <string name="welcome_scan">Scanner le code</string>
+    <string name="scan_title">Scanner le code</string>
+    <string name="scan_hint">Visez le code affiché par le Mac.</string>
+    <string name="scan_allow_camera">Autoriser l’appareil photo dans les réglages</string>
+    <string name="scan_open_settings">Ouvrir les réglages</string>
+    <string name="scan_unavailable">L’appareil photo n’est pas disponible.</string>
+
+    <string name="welcome_enter_code">Saisir le code</string>
+    <string name="manual_choose">Choisissez votre Mac</string>
+    <string name="manual_none_yet">Aucun Mac trouvé pour l’instant. Dans Fremkit sur le Mac, activez « Autoriser un iPad sur le réseau local » (onglet Écran).</string>
+    <string name="manual_looking">Recherche de son adresse…</string>
+    <string name="manual_check_words">Vérifiez que le Mac affiche les mêmes mots.</string>
+    <string name="manual_code">Code</string>
+    <string name="manual_other_mac">Autre Mac</string>
+
+    <string name="settings_title">Réglages</string>
+    <string name="settings_open">Réglages</string>
+    <string name="settings_pin">Épingler cette app</string>
+    <string name="settings_unpin">Désépingler cette app</string>
+    <string name="settings_pin_hint">L’épinglage d’écran doit être activé dans les paramètres du système (Sécurité). Pour quitter une app épinglée, utilisez le geste du système : sur la plupart des tablettes, maintenez Retour et Aperçu.</string>
+    <string name="settings_forget">Oublier l’appairage enregistré</string>
+    <string name="settings_forget_mac">Oublier %1$s</string>
+    <string name="settings_forget_title">Oublier ce Mac ?</string>
+    <string name="settings_forget_body">Cette tablette n’affichera plus son tableau de bord et devra être appairée à nouveau.</string>
+    <string name="settings_forget_confirm">Oublier</string>
+    <string name="settings_app_version">Fremkit pour Android %1$s (build %2$d)</string>
+    <string name="settings_mac_version">Fremkit sur le Mac : %1$s</string>
+    <string name="settings_close">Fermer</string>
 </resources>

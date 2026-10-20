@@ -10,6 +10,9 @@ import app.fremkit.kit.PairingFlow
 import app.fremkit.kit.ViewportMeter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.MainScope
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 /**
@@ -24,8 +27,24 @@ class FremkitApplication : Application() {
         private set
     lateinit var network: LocalNetwork
         private set
+    lateinit var brightness: ScreenBrightness
+        private set
     val meter = ViewportMeter()
-    val hygiene = WebViewHygiene()
+
+    /** A pin change after a WebView loaded restarts the process; before, clearing in place is enough. */
+    private val pinChange: PinChangeGuard = PinChangeGuard(
+        restartProcess = {
+            _restarting.value = true
+            ProcessRestart.now(this)
+        },
+        clearInProcess = { hygiene.pinChanged() },
+    )
+    val hygiene: WebViewHygiene = WebViewHygiene(onLoad = { pinChange.webViewLoading() })
+
+    private val _restarting = MutableStateFlow(false)
+
+    /** True once this process is restarting after a pin change: the screens show nothing new. */
+    val restarting: StateFlow<Boolean> = _restarting.asStateFlow()
     lateinit var webView: WebViewSupport
         private set
 
@@ -33,6 +52,8 @@ class FremkitApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        // The restart helper's process only kills and relaunches this one: no model, no network.
+        if (ProcessRestart.isHelperProcess()) return
         try {
             WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG)
         } catch (_: RuntimeException) {
@@ -45,16 +66,19 @@ class FremkitApplication : Application() {
         webView = WebViewSupport(this)
 
         val main = Dispatchers.Main.immediate
-        model = AppModel(store = KeystoreCredentialStore(this), dispatcher = main)
+        // NSD's addresses are candidates too, read at the start of each attempt.
+        model = AppModel(store = KeystoreCredentialStore(this), discovered = { network.addresses }, dispatcher = main)
         flow = PairingFlow(
             model = model,
             dispatcher = main,
             deviceName = { deviceName() },
             viewport = { meter.viewport() },
         )
-        // A pin change clears the WebView's SSL decisions and cookies before the next WebView.
-        scope.launch { model.macIdentityChanged.collect { hygiene.pinChanged() } }
-        // A network that comes back or changes is a reason to try now (the iPad's onChange).
+        // A pin change clears the WebView's SSL decisions and cookies before the next WebView, or,
+        // once a WebView has loaded, restarts the process so no pooled connection survives it.
+        scope.launch { model.macIdentityChanged.collect { pinChange.pinChanged() } }
+        // A network that comes back or changes, or a Mac found at a new address, is a reason to try
+        // now (the iPad's onChange).
         network = LocalNetwork(this) {
             when (model.state.value) {
                 is AppState.Unreachable, is AppState.KeyChanged -> model.reconnect()
@@ -62,6 +86,8 @@ class FremkitApplication : Application() {
                 else -> Unit
             }
         }
+        // The screen's brightness hand: a 401 to a report is a revocation, as the page's message is.
+        brightness = ScreenBrightness(this, scope) { model.pageSaidUnauthorized() }
         model.start()
     }
 

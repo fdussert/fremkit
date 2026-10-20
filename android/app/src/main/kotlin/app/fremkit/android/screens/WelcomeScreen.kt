@@ -1,21 +1,35 @@
 package app.fremkit.android.screens
 
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.fremkit.android.R
 import app.fremkit.kit.VersionNudge
 
 /**
- * Not paired yet (`WelcomeView.swift`). The ways to pair (scan the code, enter it) come with the
- * pairing screens; until then a debug build is paired with a seeded link.
+ * Not paired yet: scan the Mac's QR code, or pick the Mac and type its code (`WelcomeView.swift`).
+ * The corner button opens the settings sheet.
  */
 @Composable
-fun WelcomeScreen(credentialsUnreadable: Boolean, nudge: VersionNudge?) {
+fun WelcomeScreen(
+    credentialsUnreadable: Boolean,
+    nudge: VersionNudge?,
+    scan: () -> Unit,
+    enterCode: () -> Unit,
+    openSettings: () -> Unit,
+) = Box(Modifier.fillMaxSize()) {
     ScreenColumn {
         Text("Fremkit", fontSize = 56.sp, fontWeight = FontWeight.Bold)
         Text(
@@ -24,7 +38,12 @@ fun WelcomeScreen(credentialsUnreadable: Boolean, nudge: VersionNudge?) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
         )
+        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            PrimaryButton(stringResource(R.string.welcome_scan), onClick = scan)
+            SecondaryButton(stringResource(R.string.welcome_enter_code), onClick = enterCode)
+        }
         if (credentialsUnreadable) Body(stringResource(R.string.welcome_credentials_unreadable))
         NudgeLine(nudge)
     }
+    SettingsButton(Modifier.align(Alignment.TopEnd).padding(8.dp), open = openSettings)
 }

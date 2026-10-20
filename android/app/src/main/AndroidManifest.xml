@@ -1,10 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- The Mac, over the LAN, and whether there is a network to find it on. Nothing else: the
-         camera and multicast come with pairing; no location, storage, boot or package access. -->
+    <!-- The Mac, over the LAN, whether there is a network to find it on, and multicast to browse for
+         it; the camera, for the Mac's QR code. Nothing else: no location, storage, boot or package
+         access. -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.CAMERA" />
+    <!-- Browsing for the Mac (NSD): some Wi-Fi drivers drop multicast unless a lock is held. -->
+    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
+
+    <!-- A tablet without a camera pairs by code. -->
+    <uses-feature
+        android:name="android.hardware.camera.any"
+        android:required="false" />
 
     <!-- No backup of any kind (cloud or device-to-device): the pairing holds the device token, and a
          restored tablet pairs again, as an iPad does. -->
@@ -40,7 +49,26 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- fremkit://pair?… from another app (a camera app, a browser): always confirmed. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:host="pair"
+                    android:scheme="fremkit" />
+            </intent-filter>
         </activity>
+
+        <!-- Restarts the app in a fresh process after a pin change (ProcessRestart): it runs in a
+             process of its own, so it can end the main one, and shows nothing. -->
+        <activity
+            android:name=".RestartActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:noHistory="true"
+            android:process=":restart"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
     </application>
 
 </manifest>

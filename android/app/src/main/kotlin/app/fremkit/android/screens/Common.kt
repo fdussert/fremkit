@@ -3,6 +3,8 @@ package app.fremkit.android.screens
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.heightIn
@@ -17,10 +19,15 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
+import android.view.WindowManager
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
@@ -61,8 +68,8 @@ fun ScreenColumn(content: @Composable ColumnScope.() -> Unit) {
 }
 
 @Composable
-fun Title(text: String) {
-    Text(text, style = MaterialTheme.typography.headlineMedium, textAlign = TextAlign.Center)
+fun Title(text: String, modifier: Modifier = Modifier) {
+    Text(text, style = MaterialTheme.typography.headlineMedium, textAlign = TextAlign.Center, modifier = modifier)
 }
 
 @Composable
@@ -90,11 +97,18 @@ fun SecondaryButton(text: String, enabled: Boolean = true, onClick: () -> Unit) 
     }
 }
 
-/** A spinner that keeps its place when hidden, so the screen does not jump while retrying. */
+/**
+ * A spinner that keeps its place when hidden, so the screen does not jump while retrying. Hidden,
+ * it is an empty box of its size: an invisible indeterminate indicator would still animate, and
+ * redraw the window at every frame for nothing.
+ */
 @Composable
 fun BusySpinner(visible: Boolean) {
-    CircularProgressIndicator(Modifier.alpha(if (visible) 1f else 0f))
+    if (visible) CircularProgressIndicator() else Spacer(Modifier.size(SPINNER_SIZE))
 }
+
+/** Material's indeterminate indicator's size. */
+private val SPINNER_SIZE = 40.dp
 
 /**
  * The one discreet line about the Mac's Fremkit version next to the app's: never over the
@@ -113,4 +127,26 @@ fun NudgeLine(nudge: VersionNudge?) {
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         textAlign = TextAlign.Center,
     )
+}
+
+/** The activity a composable runs in. */
+tailrec fun Context.findActivity(): Activity? = when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.findActivity()
+    else -> null
+}
+
+/**
+ * Keeps the window out of screenshots, screen recordings and the recent-apps thumbnail while this
+ * is on screen: the pairing screens show the code, the camera's view of it and the key's words.
+ * Never on the dashboard.
+ */
+@Composable
+fun SecureWindow() {
+    val activity = LocalContext.current.findActivity()
+    DisposableEffect(activity) {
+        val window = activity?.window
+        window?.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        onDispose { window?.clearFlags(WindowManager.LayoutParams.FLAG_SECURE) }
+    }
 }

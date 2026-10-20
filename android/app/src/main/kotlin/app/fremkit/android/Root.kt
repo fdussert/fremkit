@@ -4,14 +4,14 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -19,17 +19,23 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import app.fremkit.android.screens.ConfirmLinkDialog
 import app.fremkit.android.screens.ConnectingScreen
 import app.fremkit.android.screens.FremkitTheme
 import app.fremkit.android.screens.KeyChangedScreen
+import app.fremkit.android.screens.ManualPairScreen
 import app.fremkit.android.screens.LinkPairingScreen
 import app.fremkit.android.screens.OutdatedWebViewScreen
+import app.fremkit.android.screens.ScannerScreen
+import app.fremkit.android.screens.SettingsInfo
+import app.fremkit.android.screens.SettingsSheet
 import app.fremkit.android.screens.UnauthorizedScreen
 import app.fremkit.android.screens.UnreachableScreen
 import app.fremkit.android.screens.WelcomeScreen
@@ -42,7 +48,7 @@ import app.fremkit.kit.PairingFlow
 import app.fremkit.kit.PairingStep
 import app.fremkit.kit.ViewportMeter
 import app.fremkit.kit.VersionNudge
-import app.fremkit.kit.macName
+import kotlinx.coroutines.flow.StateFlow
 
 /**
  * One screen per [AppState], or the pairing screen while pairing runs (`RootView.swift`). An
@@ -50,7 +56,11 @@ import app.fremkit.kit.macName
  *
  * Every screen is laid out in the same region, the dashboard's WebView included; that region is
  * what pairing reports as the viewport ([ViewportMeter]), so it is measured here, on the container
- * itself, in dp (a CSS pixel in the WebView at text zoom 100 %).
+ * itself, in dp (a CSS pixel in the WebView at text zoom 100 %), after immersive mode has hidden
+ * the system bars ([Immersive]): the whole display but a notch. Bars that come back for a moment
+ * (a swipe, a dialog) overlay it rather than shrink it, and the keyboard is left out of it too
+ * (the window pans for the code field), so neither changes the page's size or the viewport
+ * reported while pairing.
  */
 @Composable
 fun Root(
@@ -59,7 +69,11 @@ fun Root(
     meter: ViewportMeter,
     hygiene: WebViewHygiene,
     webView: WebViewSupport,
+    restarting: StateFlow<Boolean>,
+    network: LocalNetwork,
+    brightness: ScreenBrightness,
     appVersion: String,
+    appBuild: Int,
 ) {
     val state by model.state.collectAsStateWithLifecycle()
     val mac by model.mac.collectAsStateWithLifecycle()
@@ -68,21 +82,44 @@ fun Root(
     val serverVersion by model.serverVersion.collectAsStateWithLifecycle()
     val pairing by flow.state.collectAsStateWithLifecycle()
     val outdated by webView.outdated.collectAsStateWithLifecycle()
+    val isRestarting by restarting.collectAsStateWithLifecycle()
+    val macs by network.macs.collectAsStateWithLifecycle()
     val density = LocalDensity.current.density.toDouble()
     val nudge = VersionNudge.of(serverVersion, appVersion)
+    var settingsOpen by remember { mutableStateOf(false) }
 
     FremkitTheme {
         Box(
             Modifier
                 .fillMaxSize()
                 .background(Color.Black)
-                .windowInsetsPadding(WindowInsets.safeDrawing)
+                .windowInsetsPadding(WindowInsets.displayCutout)
                 .onSizeChanged { meter.measured(MeasuredSize(it.width / density, it.height / density)) },
         ) {
             val step = pairing.step
             val current = outdated
             when {
+                // The process ends in a moment (a pin change): nothing of the new pairing starts here.
+                isRestarting -> ConnectingScreen(mac?.name)
                 current != null -> OutdatedWebViewScreen(current, checkAgain = webView::check)
+                step == PairingStep.Scanning -> ScannerScreen(
+                    scanned = { flow.scanned(it) },
+                    enterCode = flow::enterCode,
+                    cancel = flow::cancel,
+                )
+                step == PairingStep.ManualList || step is PairingStep.ManualKey || step is PairingStep.ManualCode ->
+                    ManualPairScreen(
+                        step = step,
+                        isWorking = pairing.isWorking,
+                        problem = pairing.problem,
+                        words = flow.words,
+                        macs = macs,
+                        refresh = network::refresh,
+                        choose = { flow.choose(it) },
+                        submit = { flow.submit(it) },
+                        otherMac = flow::enterCode,
+                        cancel = flow::cancel,
+                    )
                 step is PairingStep.Link -> LinkPairingScreen(
                     link = step.link,
                     isWorking = pairing.isWorking,
@@ -90,12 +127,19 @@ fun Root(
                     retry = { flow.retry() },
                     cancel = flow::cancel,
                 )
-                // The scanner and the manual path have no screens yet: nothing starts them.
                 else -> when (val s = state) {
-                    AppState.Welcome -> WelcomeScreen(credentialsUnreadable, nudge)
+                    AppState.Welcome -> WelcomeScreen(
+                        credentialsUnreadable,
+                        nudge,
+                        scan = flow::scan,
+                        enterCode = flow::enterCode,
+                        openSettings = { settingsOpen = true },
+                    )
                     AppState.Connecting -> ConnectingScreen(mac?.name)
-                    is AppState.Dashboard -> mac?.let { DashboardScreen(s.host, it, model, hygiene) }
-                    is AppState.Unreachable -> UnreachableScreen(s.name, isConnecting, nudge) { model.reconnect() }
+                    is AppState.Dashboard -> mac?.let { DashboardScreen(s.host, it, model, hygiene, brightness) }
+                    is AppState.Unreachable -> UnreachableScreen(s.name, isConnecting, nudge, openSettings = { settingsOpen = true }) {
+                        model.reconnect()
+                    }
                     is AppState.KeyChanged -> KeyChangedScreen(
                         s.name,
                         isConnecting,
@@ -107,25 +151,40 @@ fun Root(
             }
         }
 
-        // A link that would replace a working pairing waits for the user's word.
-        pairing.pendingLink?.let { link ->
-            AlertDialog(
-                onDismissRequest = flow::declineLink,
-                title = { Text(stringResource(R.string.pairing_replace_title, mac?.name.orEmpty())) },
-                text = { Text(stringResource(R.string.pairing_replace_body, link.macName)) },
-                confirmButton = { TextButton(onClick = flow::confirmLink) { Text(stringResource(R.string.pairing_replace)) } },
-                dismissButton = { TextButton(onClick = flow::declineLink) { Text(stringResource(R.string.pairing_cancel)) } },
+        // Never over the dashboard, which stays the page's: closed when it comes up.
+        LaunchedEffect(state is AppState.Dashboard) {
+            if (state is AppState.Dashboard) settingsOpen = false
+        }
+        if (settingsOpen && state !is AppState.Dashboard && !isRestarting) {
+            SettingsSheet(
+                SettingsInfo(
+                    macName = mac?.name,
+                    canForget = mac != null || credentialsUnreadable,
+                    appVersion = appVersion,
+                    appBuild = appBuild,
+                    serverVersion = serverVersion,
+                    nudge = nudge,
+                ),
+                forget = model::forget,
+                close = { settingsOpen = false },
             )
+        }
+
+        // A link from another app, or one that would replace a working pairing, waits for the user's word.
+        pairing.pendingLink?.let { link ->
+            if (!isRestarting) ConfirmLinkDialog(link, pairedName = mac?.name, confirm = flow::confirmLink, decline = flow::declineLink)
         }
     }
 }
 
 /**
  * The dashboard: one [DashboardWebView] per host (a new host, a new view), paused and resumed with
- * the activity, destroyed when the dashboard goes. What the page says goes to the model.
+ * the activity, destroyed when the dashboard goes. What the page says goes to the model, and its
+ * brightness targets to [brightness], which reports the screen's level to [host] while the
+ * dashboard is shown and the app started.
  */
 @Composable
-private fun DashboardScreen(host: String, mac: PairedMac, model: AppModel, hygiene: WebViewHygiene) {
+private fun DashboardScreen(host: String, mac: PairedMac, model: AppModel, hygiene: WebViewHygiene, brightness: ScreenBrightness) {
     val context = LocalContext.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     key(host) {
@@ -139,12 +198,24 @@ private fun DashboardScreen(host: String, mac: PairedMac, model: AppModel, hygie
                 onMessage = { message ->
                     when (message) {
                         PageMessage.Unauthorized -> model.pageSaidUnauthorized()
-                        // Brightness and the screen id are for the brightness hand, not here yet.
-                        is PageMessage.Brightness, is PageMessage.Screen -> Unit
+                        is PageMessage.Brightness -> brightness.receive(message.target, message.seq)
+                        // The screen the Mac shows here: the page's business.
+                        is PageMessage.Screen -> Unit
                     }
                 },
                 onFailure = { model.dashboardFailed() },
             ).also { it.load() }
+        }
+        LaunchedEffect(mac, host) {
+            brightness.show(mac, host)
+            // Reports every 10 s while started; stopped, the Mac marks the screen gone after 30 s.
+            lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) { brightness.run() }
+        }
+        // Awake while the dashboard is shown, and only then (the iPad's isIdleTimerDisabled).
+        val view = LocalView.current
+        DisposableEffect(view) {
+            view.keepScreenOn = true
+            onDispose { view.keepScreenOn = false }
         }
         DisposableEffect(lifecycle, dashboard) {
             val observer = LifecycleEventObserver { _, event ->

@@ -19,6 +19,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.Before
@@ -67,6 +68,7 @@ class DashboardWebViewTest {
         wrongPort = args.getString("fremkitTestWrongPort")!!.toInt()
         pinA = args.getString("fremkitTestPinA")!!
         pinB = args.getString("fremkitTestPinB")!!
+        assertNotNull("the app did not come to the front", appInFront())
         // Every test starts as a new process would: no SSL decision, no cookie.
         onMain {
             val hygiene = WebViewHygiene()

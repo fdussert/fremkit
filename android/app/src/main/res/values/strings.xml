@@ -40,4 +40,36 @@
     <string name="pairing_replace_title">Replace the pairing with %1$s?</string>
     <string name="pairing_replace_body">This tablet will show the dashboard of %1$s instead.</string>
     <string name="pairing_replace">Replace</string>
+    <string name="pairing_confirm_title">Pair with %1$s?</string>
+    <string name="pairing_confirm_body">Another app opened a pairing link for %1$s (%2$s). Pair only with your own Mac: it will choose what this tablet shows.</string>
+    <string name="pairing_pair">Pair</string>
+
+    <string name="welcome_scan">Scan the code</string>
+    <string name="scan_title">Scan the code</string>
+    <string name="scan_hint">Point the camera at the code the Mac shows.</string>
+    <string name="scan_allow_camera">Allow the camera in Settings</string>
+    <string name="scan_open_settings">Open Settings</string>
+    <string name="scan_unavailable">The camera is not available.</string>
+
+    <string name="welcome_enter_code">Enter the code</string>
+    <string name="manual_choose">Choose your Mac</string>
+    <string name="manual_none_yet">No Mac found yet. In Fremkit on the Mac, turn on “Allow an iPad on the local network” (Screen tab).</string>
+    <string name="manual_looking">Looking for its address…</string>
+    <string name="manual_check_words">Check that the Mac shows the same words.</string>
+    <string name="manual_code">Code</string>
+    <string name="manual_other_mac">Other Mac</string>
+
+    <string name="settings_title">Settings</string>
+    <string name="settings_open">Settings</string>
+    <string name="settings_pin">Pin this app</string>
+    <string name="settings_unpin">Unpin this app</string>
+    <string name="settings_pin_hint">Screen pinning must be turned on in the system settings (Security). To leave a pinned app, use the system’s gesture: on most tablets, touch and hold Back and Overview.</string>
+    <string name="settings_forget">Forget the saved pairing</string>
+    <string name="settings_forget_mac">Forget %1$s</string>
+    <string name="settings_forget_title">Forget this Mac?</string>
+    <string name="settings_forget_body">This tablet will stop showing its dashboard and will have to be paired again.</string>
+    <string name="settings_forget_confirm">Forget</string>
+    <string name="settings_app_version">Fremkit for Android %1$s (build %2$d)</string>
+    <string name="settings_mac_version">Fremkit on the Mac: %1$s</string>
+    <string name="settings_close">Close</string>
 </resources>

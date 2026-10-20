@@ -1,5 +1,6 @@
 package app.fremkit.android
 
+import android.content.Intent
 import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
@@ -25,14 +26,24 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Full screen from the first frame: the region pairing measures is the dashboard's.
+        Immersive.apply(window)
         // Before the first WebView exists: an outdated one never gets to show a half dashboard.
         app.webView.check()
+        // The window the Mac's brightness target is set on (re-applied to a new activity).
+        app.brightness.attach(window)
         setContent {
-            Root(app.model, app.flow, app.meter, app.hygiene, app.webView, appVersion = BuildConfig.VERSION_NAME)
+            Root(
+                app.model, app.flow, app.meter, app.hygiene, app.webView, app.restarting, app.network, app.brightness,
+                appVersion = BuildConfig.VERSION_NAME,
+                appBuild = BuildConfig.VERSION_CODE,
+            )
         }
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) { app.model.run() }
         }
+        // A link this activity was started with; not again when the system recreates it from history.
+        if (savedInstanceState == null && intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY == 0) openLink(intent)
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
                 when {
@@ -47,6 +58,31 @@ class MainActivity : ComponentActivity() {
         })
     }
 
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        // A dialog, the keyboard or a swipe from the edge may have brought the bars back.
+        if (hasFocus) Immersive.apply(window)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        openLink(intent)
+    }
+
+    /**
+     * A `fremkit://pair` link another app opened (a camera app that read the Mac's QR code, a
+     * browser). Any installed app can send one, so it always waits for the user's word, paired or
+     * not ([LinkSource.INTENT]); the app's own scanner does not ask. Read once.
+     */
+    private fun openLink(intent: Intent) {
+        if (intent.action != Intent.ACTION_VIEW) return
+        val url = intent.dataString ?: return
+        intent.data = null
+        // The link itself is never logged: it carries the code's secret.
+        if (!app.flow.handle(url, LinkSource.INTENT)) Log.w(TAG, "a link that is not a pairing link")
+    }
+
     override fun onStart() {
         super.onStart()
         app.webView.check()
@@ -57,6 +93,11 @@ class MainActivity : ComponentActivity() {
             // The link itself is never logged: it carries the code's secret.
             if (!app.flow.handle(link, LinkSource.SCANNER)) Log.w(TAG, "the seeded file is not a pairing link")
         }
+    }
+
+    override fun onDestroy() {
+        app.brightness.detach(window)
+        super.onDestroy()
     }
 
     override fun onStop() {

@@ -98,7 +98,7 @@ class DashboardWebView(
      */
     fun load() {
         if (destroyed) return
-        hygiene.prepare(view)
+        if (!hygiene.prepare(view)) return
         val cookies = CookieManager.getInstance()
         cookies.setAcceptCookie(true)
         cookies.setAcceptThirdPartyCookies(view, false)

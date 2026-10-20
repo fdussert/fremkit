@@ -82,7 +82,15 @@ class ManifestTest {
         val requested = elements(manifest, "uses-permission").map { it.getAttributeNS(ns, "name") }.toSet()
         // AndroidX core declares its own signature permission for unexported dynamic receivers.
         val own = requested.filter { it.endsWith(".DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION") }.toSet()
-        assertEquals(setOf("android.permission.INTERNET", "android.permission.ACCESS_NETWORK_STATE"), requested - own)
+        assertEquals(
+            setOf(
+                "android.permission.INTERNET",
+                "android.permission.ACCESS_NETWORK_STATE",
+                "android.permission.CAMERA",
+                "android.permission.CHANGE_WIFI_MULTICAST_STATE",
+            ),
+            requested - own,
+        )
     }
 
     @Test
@@ -94,5 +102,32 @@ class ManifestTest {
             assertTrue("configChanges lacks $c", c in changes)
         }
         assertNotNull(application.getAttributeNS(ns, "localeConfig").takeIf { it.isNotEmpty() })
+    }
+
+    @Test
+    fun theCameraIsOptional() {
+        val camera = elements(manifest, "uses-feature").single { it.getAttributeNS(ns, "name") == "android.hardware.camera.any" }
+        assertEquals("false", camera.getAttributeNS(ns, "required"))
+        // Nothing may make a camera required behind our back (a library's manifest).
+        assertTrue(elements(manifest, "uses-feature").none { it.getAttributeNS(ns, "required") != "false" })
+    }
+
+    @Test
+    fun pairingLinksOpenTheActivity() {
+        val activity = elements(manifest, "activity").single { it.getAttributeNS(ns, "name").endsWith(".MainActivity") }
+        val filter = elements(manifest, "intent-filter").single { f ->
+            f.parentNode == activity && elements(manifest, "data").any { it.parentNode == f }
+        }
+        val data = elements(manifest, "data").filter { it.parentNode == filter }
+        assertEquals(listOf("fremkit" to "pair"), data.map { it.getAttributeNS(ns, "scheme") to it.getAttributeNS(ns, "host") })
+        val actions = elements(manifest, "action").filter { it.parentNode == filter }.map { it.getAttributeNS(ns, "name") }
+        assertEquals(listOf("android.intent.action.VIEW"), actions)
+    }
+
+    @Test
+    fun theRestartHelperRunsInItsOwnProcessAndIsNotExported() {
+        val activity = elements(manifest, "activity").single { it.getAttributeNS(ns, "name").endsWith(".RestartActivity") }
+        assertEquals(ProcessRestart.PROCESS_SUFFIX, activity.getAttributeNS(ns, "process"))
+        assertEquals("false", activity.getAttributeNS(ns, "exported"))
     }
 }
