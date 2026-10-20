@@ -230,7 +230,10 @@ export const DevTabSchema = z.strictObject({
       at: Stamp,
     }),
   ),
-  /** An extension older than the history sends none: its rows read as an empty one. */
+  /**
+   * No published Companion sends a row without it: 0.1.x has no Fremdev at all. The default only
+   * lets a development build from before the history connect, its rows reading as an empty one.
+   */
   history: DevHistorySchema.default([]),
   server: z.enum(['up', 'down']),
   /** Milliseconds since the epoch of the tab's last event. */
