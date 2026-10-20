@@ -690,3 +690,80 @@ describe('Fremdev open in editor', () => {
     })
   })
 })
+
+describe('Fremdev reload', () => {
+  const config = { ...DEFAULT_CONFIG, labs: { devices: false, companion: true, fremdev: true } } as Config
+  const RELOAD = ['fremdev', 'fremdev.reload']
+  const sentReloads = (send: ReturnType<typeof setup>['send']) => send.mock.calls.filter(([, m]) => m.type === 'dev.reload')
+
+  function two(opts: { enabled?: () => boolean } = {}) {
+    const t = setup(opts)
+    t.dev.connect(A, 'Chrome', RELOAD)
+    t.dev.connect(B, 'Brave', RELOAD)
+    t.tabs(A, [row(7)])
+    t.tabs(B, [row(7)])
+    return t
+  }
+
+  it('is one of the features a control depends on', () => {
+    expect(FREMDEV_FEATURES).toContain('fremdev.reload')
+  })
+
+  it('sends the reload to the install named only', () => {
+    const t = two()
+    expect(t.dev.reload(A, 7, true)).toBe(true)
+    expect(sentReloads(t.send)).toEqual([[A, { type: 'dev.reload', tabId: 7, bypassCache: true }]])
+    expect(t.dev.reload(A, 7, false)).toBe(true)
+    expect(t.send).toHaveBeenLastCalledWith(A, { type: 'dev.reload', tabId: 7, bypassCache: false })
+  })
+
+  it('sends nothing without the module, for an unreported tab, or for an unknown install', () => {
+    const t = setup()
+    t.dev.connect(A, 'Chrome', ['fremdev'])
+    t.tabs(A, [row(7)])
+    expect(t.dev.reload(A, 7, false)).toBe(false)
+    t.dev.onMessage(A, { type: 'modules', modules: RELOAD })
+    t.tabs(A, [row(7)])
+    expect(t.dev.reload(A, 8, false)).toBe(false)
+    expect(t.dev.reload(B, 7, false)).toBe(false)
+    expect(sentReloads(t.send)).toEqual([])
+  })
+
+  describe('the reload command', () => {
+    const payload = { deviceId: A, tabId: 7, instanceId: 'dev-1', bypassCache: true }
+    function provider() {
+      const t = two()
+      return { ...t, provider: createDevProvider({ dev: t.dev, config: () => config }) }
+    }
+
+    it('refuses a caller that is not this Mac', async () => {
+      const t = provider()
+      await expect(t.provider.commands!.reload(payload, PAIRED)).rejects.toThrow(tr(config.locale, 'provider.localOnly'))
+      await expect(t.provider.commands!.reload(payload, undefined)).rejects.toThrow(tr(config.locale, 'provider.localOnly'))
+      expect(sentReloads(t.send)).toEqual([])
+    })
+
+    it('refuses a bypassCache that is not a boolean, a missing one or an extra key', async () => {
+      const t = provider()
+      for (const p of [{ ...payload, bypassCache: 'yes' }, { deviceId: A, tabId: 7, instanceId: 'dev-1' }, { ...payload, url: 'x' }]) {
+        await expect(t.provider.commands!.reload(p, LOCAL)).rejects.toThrow(tr(config.locale, 'provider.invalidPayload'))
+      }
+      expect(sentReloads(t.send)).toEqual([])
+    })
+
+    it('answers ok, and fails on an unknown tab', async () => {
+      const t = provider()
+      expect(await t.provider.commands!.reload(payload, LOCAL)).toEqual({ ok: true })
+      expect(sentReloads(t.send)).toHaveLength(1)
+      expect(await t.provider.commands!.reload({ ...payload, tabId: 9 }, LOCAL)).toEqual({ ok: false, error: tr(config.locale, 'companion.devUnknownTab') })
+    })
+
+    it('fails while Fremdev is off, sending nothing', async () => {
+      const off = { ...config, labs: { ...config.labs, fremdev: false } } as Config
+      const t = two({ enabled: () => false })
+      const p = createDevProvider({ dev: t.dev, config: () => off })
+      expect(await p.commands!.reload(payload, LOCAL)).toEqual({ ok: false, error: tr(off.locale, 'companion.devDisabled') })
+      expect(sentReloads(t.send)).toEqual([])
+    })
+  })
+})

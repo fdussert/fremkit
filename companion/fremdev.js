@@ -61,7 +61,7 @@ const OPEN_INIT = { method: 'GET', credentials: 'omit', cache: 'no-store', redir
  * The modules of the features a control on the Edge depends on (FREMDEV_FEATURES on the server),
  * announced after the report's while Fremdev is on. Each feature appends its own.
  */
-export const FEATURE_MODULES = ['fremdev.build', 'fremdev.open']
+export const FEATURE_MODULES = ['fremdev.build', 'fremdev.open', 'fremdev.reload']
 const cleanPatterns = (list) =>
   Array.isArray(list) ? [...new Set(list.map((p) => parsePattern(p)?.pattern).filter(Boolean))] : []
 
@@ -568,13 +568,16 @@ export function createFremdev({
     },
 
     /**
-     * `dev.focus`, `dev.clear`, `dev.report.ask` and `dev.open.ask`: only for a tab this install has
+     * `dev.focus`, `dev.clear`, `dev.reload`, `dev.report.ask` and `dev.open.ask`: only for a tab this install has
      * a row for. An ask for another tab gets no answer, and the server's wait times out.
      */
     async onServer(msg) {
       await loaded
       if (!on || !validId(msg?.tabId) || !tabs[String(msg.tabId)]) return
       if (msg.type === 'dev.clear') return apply(msg.tabId, { kind: 'clear' })
+      if (msg.type === 'dev.reload') {
+        return void (await api.tabs.reload(msg.tabId, { bypassCache: msg.bypassCache === true }).catch(() => undefined))
+      }
       if (msg.type === 'dev.report.ask') {
         if (support !== 'yes' || typeof msg.id !== 'string' || !REPORT_ID_RE.test(msg.id)) return
         const fmt = { stack: msg.stack === true, now: now(), t, time, date }

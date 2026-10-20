@@ -17,7 +17,7 @@ import { INSTANCE_ID_MAX, type Config } from '../config/schema.js'
 import { tr, type MessageKey } from '../i18n.js'
 import { pbPasteboard, type Pasteboard } from '../providers/clipboard.js'
 import type { CommandContext, Provider } from '../providers/types.js'
-import { FREMDEV_FEATURES, FREMDEV_MODULE, FREMDEV_OPEN_MODULE, FREMDEV_REPORT_MODULE, type DevTab, type ExtensionMessage, type ServerMessage } from './protocol.js'
+import { FREMDEV_FEATURES, FREMDEV_MODULE, FREMDEV_OPEN_MODULE, FREMDEV_RELOAD_MODULE, FREMDEV_REPORT_MODULE, type DevTab, type ExtensionMessage, type ServerMessage } from './protocol.js'
 
 export const COMPANION_DEV_CHANNEL = 'companion:dev'
 
@@ -226,6 +226,16 @@ export class CompanionDev {
   }
 
   /**
+   * Reloads the tab. False, sending nothing, for an unknown install or tab (the rule of `focus`) or an
+   * install that did not list `fremdev.reload`.
+   */
+  reload(deviceId: string, tabId: number, bypassCache: boolean): boolean {
+    if (!this.reachableWith(deviceId, tabId, FREMDEV_RELOAD_MODULE)) return false
+    this.send(deviceId, { type: 'dev.reload', tabId, bypassCache })
+    return true
+  }
+
+  /**
    * Asks the install for the tab's bug report. Null for an unknown install or tab (the rule of
    * `focus`), an install that cannot report, too many asks already waiting, no answer within
    * `REPORT_TIMEOUT_MS`, or a socket that goes away first.
@@ -400,6 +410,8 @@ const DevCommandSchema = z.strictObject({
 
 const ReportCommandSchema = DevCommandSchema.extend({ stack: z.boolean() })
 
+const ReloadCommandSchema = DevCommandSchema.extend({ bypassCache: z.boolean() })
+
 const OpenCommandSchema = DevCommandSchema.extend({ entryId: z.number().int().min(1).max(2_147_483_647) })
 
 type Result = { ok: true } | { ok: false; error: string }
@@ -465,6 +477,13 @@ export function createDevProvider(opts: DevProviderOptions): Provider<DevSnapsho
           return failed('companion.devReportFailed')
         }
         return { ok: true }
+      },
+      /** Reloads the tab, with or without the browser's cache. */
+      async reload(payload: unknown, ctx?: CommandContext): Promise<Result> {
+        guard(ctx)
+        const { deviceId, tabId, bypassCache } = parse(payload, ReloadCommandSchema)
+        if (!dev.snapshot().enabled) return failed('companion.devDisabled')
+        return dev.reload(deviceId, tabId, bypassCache) ? { ok: true } : failed('companion.devUnknownTab')
       },
       /** Asks the browser to open the entry's file in the editor, through the tab's dev server. */
       async open(payload: unknown, ctx?: CommandContext): Promise<Result> {

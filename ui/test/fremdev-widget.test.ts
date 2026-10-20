@@ -137,6 +137,28 @@ describe('the Fremdev widget page', () => {
     expect(rowOf('App 7').querySelector<HTMLElement>('.actions')!.hidden).toBe(false)
   })
 
+  it('shows the reload buttons only for an install that lists fremdev.reload, and sends the cache choice', () => {
+    const w = load()
+    w.publish(snapshot([tab(7)], true, []))
+    rowOf('App 7').querySelector<HTMLElement>('.top')!.click()
+    const buttons = () => [...rowOf('App 7').querySelectorAll<HTMLButtonElement>('button.reload')]
+    expect(buttons().every((b) => b.hidden)).toBe(true)
+    w.publish(snapshot([tab(7)], true, ['fremdev.reload']))
+    const [plain, hard] = buttons()
+    expect([plain.hidden, hard.hidden]).toEqual([false, false])
+    expect([plain.textContent, hard.textContent]).toEqual(['Reload', 'Reload without cache'])
+    plain.click()
+    expect(w.F.sendCommand).toHaveBeenLastCalledWith('companion:dev', 'reload', { deviceId: DEVICE, tabId: 7, bypassCache: false })
+    hard.click()
+    expect(w.F.sendCommand).toHaveBeenLastCalledWith('companion:dev', 'reload', { deviceId: DEVICE, tabId: 7, bypassCache: true })
+    // The actions show for reload alone, with no report, and the copy buttons stay away.
+    w.publish(snapshot([tab(7)], false, ['fremdev.reload']))
+    expect(rowOf('App 7').querySelector<HTMLElement>('.actions')!.hidden).toBe(false)
+    expect(rowOf('App 7').querySelector<HTMLButtonElement>('button.copy:not(.reload)')!.hidden).toBe(true)
+    // A reload does not fold the row.
+    expect(unfoldedApps()).toEqual(['App 7'])
+  })
+
   it('a copy button is busy while asked, says the answer for 2 s, then reads its label again', async () => {
     vi.useFakeTimers()
     const w = load()

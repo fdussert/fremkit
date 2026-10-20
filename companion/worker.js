@@ -582,6 +582,7 @@ async function onServerMessage(msg) {
       return onControl(msg)
     case 'dev.focus':
     case 'dev.clear':
+    case 'dev.reload':
     case 'dev.report.ask':
     case 'dev.open.ask':
       return fremdev.onServer(msg)

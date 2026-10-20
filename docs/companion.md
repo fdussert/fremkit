@@ -328,6 +328,15 @@ the only thing that carries a home folder in full, and it goes only to the tab's
 entry that left the 20-entry history, or a tab that went to another origin since (its history starts
 over), opens nothing.
 
+### Reload
+
+In an unfolded row, two 56 px buttons reload the tab: *Recharger* / *Reload*, and *Recharger sans
+cache* / *Reload without cache* (the browser's hard reload). They show only for an install that lists
+`fremdev.reload`. The widget sends a `reload` command naming the tab and `bypassCache`; the server
+relays `dev.reload` to that install only when it reported the tab, and the extension calls
+`tabs.reload(tabId, { bypassCache })` for a tab it has a row for. Nothing runs in the page. The reload's
+own navigation resolves the row's open entries as any navigation does.
+
 ### The hook in the page
 
 To see a page's errors, Fremdev registers a small script that runs in the page's own world, before

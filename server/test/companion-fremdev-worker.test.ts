@@ -148,6 +148,7 @@ function fakeChrome({ on = true, granted = ['http://localhost/*'], webRequest = 
       query: async () => [{ id: 7, url: 'http://localhost:5173/', title: 'App', windowId: 1 }],
       get: async (id: number) => ({ id, url: 'http://localhost:5173/', title: 'App', windowId: 1 }),
       update: vi.fn(async () => undefined),
+      reload: vi.fn(async () => undefined),
       onRemoved: event(),
       onUpdated: event(),
     },
@@ -311,7 +312,7 @@ describe('companion/fremdev.js', () => {
     f.fremdev.onReady({ type: 'ready', protocol: 2, modules: { fremplay: true, fremdev: true } })
     await f.later()
     expect(f.sent.map((m) => m.type)).toEqual(['modules', 'dev.tabs'])
-    expect(f.sent[0]).toEqual({ type: 'modules', modules: ['fremplay', 'fremdev', 'fremdev.report', 'fremdev.build', 'fremdev.open'] })
+    expect(f.sent[0]).toEqual({ type: 'modules', modules: ['fremplay', 'fremdev', 'fremdev.report', 'fremdev.build', 'fremdev.open', 'fremdev.reload'] })
     expect((f.sent[1].tabs as Array<{ tabId: number }>).map((t) => t.tabId)).toEqual([7])
     await f.fremdev.stop()
     expect(f.sent.at(-1)).toEqual({ type: 'modules', modules: ['fremplay'] })
@@ -363,17 +364,31 @@ describe('companion/fremdev.js', () => {
     expect(f.rows()['7'].errors).toMatchObject({ total: 1, open: 1, seen: 1 })
   })
 
+  it('reloads only a tab it has a row for, skipping the cache only when told to', async () => {
+    const f = await makeFremdev()
+    await f.fremdev.onPageEvent({ kind: 'error', text: 'x' }, devSender())
+    await f.fremdev.onServer({ type: 'dev.reload', tabId: 8, bypassCache: true })
+    expect(f.api.tabs.reload).not.toHaveBeenCalled()
+    await f.fremdev.onServer({ type: 'dev.reload', tabId: 7, bypassCache: true })
+    expect(f.api.tabs.reload).toHaveBeenLastCalledWith(7, { bypassCache: true })
+    await f.fremdev.onServer({ type: 'dev.reload', tabId: 7, bypassCache: 'yes' })
+    expect(f.api.tabs.reload).toHaveBeenLastCalledWith(7, { bypassCache: false })
+    // A tab that went away between the ask and the reload is no error.
+    f.api.tabs.reload.mockRejectedValueOnce(new Error('No tab with id: 7'))
+    await expect(f.fremdev.onServer({ type: 'dev.reload', tabId: 7, bypassCache: false })).resolves.toBeUndefined()
+  })
+
   it('announces its feature modules after fremdev.report, only while on', async () => {
     FEATURE_MODULES.push('fremdev.test')
     try {
       const f = await makeFremdev({ on: false })
       expect(f.fremdev.modules()).toEqual(['fremplay'])
       await f.fremdev.start()
-      expect(f.fremdev.modules()).toEqual(['fremplay', 'fremdev', 'fremdev.report', 'fremdev.build', 'fremdev.open', 'fremdev.test'])
+      expect(f.fremdev.modules()).toEqual(['fremplay', 'fremdev', 'fremdev.report', 'fremdev.build', 'fremdev.open', 'fremdev.reload', 'fremdev.test'])
     } finally {
       FEATURE_MODULES.pop()
     }
-    expect(FEATURE_MODULES).toEqual(['fremdev.build', 'fremdev.open'])
+    expect(FEATURE_MODULES).toEqual(['fremdev.build', 'fremdev.open', 'fremdev.reload'])
   })
 
   it('records the dev server a page reports, the latest replacing the last', async () => {
@@ -410,7 +425,7 @@ describe('companion/fremdev.js', () => {
     const f = await makeFremdev({ on: false })
     expect(f.fremdev.modules()).toEqual(['fremplay'])
     await f.fremdev.start()
-    expect(f.fremdev.modules()).toEqual(['fremplay', 'fremdev', 'fremdev.report', 'fremdev.build', 'fremdev.open'])
+    expect(f.fremdev.modules()).toEqual(['fremplay', 'fremdev', 'fremdev.report', 'fremdev.build', 'fremdev.open', 'fremdev.reload'])
     await f.fremdev.stop()
     expect(f.fremdev.modules()).not.toContain('fremdev.report')
     expect(f.fremdev.modules()).not.toContain('fremdev.build')

@@ -161,6 +161,8 @@
     down: { fr: 'serveur arrêté', en: 'server down' },
     noAnswer: { fr: 'sans réponse', en: 'no answer' },
     clear: { fr: 'Effacer', en: 'Clear' },
+    reload: { fr: 'Recharger', en: 'Reload' },
+    reloadHard: { fr: 'Recharger sans cache', en: 'Reload without cache' },
     showTab: { fr: 'Afficher l’onglet', en: 'Show tab' },
     copy: { fr: 'Copier le rapport', en: 'Copy report' },
     copyStack: { fr: 'Copier avec la pile', en: 'Copy with stack' },
@@ -213,6 +215,10 @@
     function setText(e, text) { if (e.textContent !== text) e.textContent = text }
     function send(name, row) {
       Fremkit.sendCommand(CHANNEL, name, { deviceId: row.deviceId, tabId: row.tabId }).catch(function () {})
+    }
+    /** Reloads the row's tab; the page's own loading state tells the Edge it happened. */
+    function reload(row, bypassCache) {
+      Fremkit.sendCommand(CHANNEL, 'reload', { deviceId: row.deviceId, tabId: row.tabId, bypassCache: bypassCache }).catch(function () {})
     }
     function pad(n) { return (n < 10 ? '0' : '') + n }
     /** An entry's time, local, as HH:MM:SS. */
@@ -443,6 +449,14 @@
       entry.copyStack = copyButton(entry, true)
       entry.actions.appendChild(entry.copy.btn)
       entry.actions.appendChild(entry.copyStack.btn)
+      entry.reload = el('button', 'copy reload')
+      entry.reload.type = 'button'
+      entry.reloadHard = el('button', 'copy reload hard')
+      entry.reloadHard.type = 'button'
+      entry.actions.appendChild(entry.reload)
+      entry.actions.appendChild(entry.reloadHard)
+      entry.reload.addEventListener('click', function (ev) { ev.stopPropagation(); reload(entry.row, false) })
+      entry.reloadHard.addEventListener('click', function (ev) { ev.stopPropagation(); reload(entry.row, true) })
       detail.appendChild(entry.history)
       detail.appendChild(entry.actions)
       r.appendChild(top)
@@ -485,7 +499,14 @@
       entry.clear.setAttribute('aria-label', Fremkit.t(L.clear))
       entry.clear.hidden = !FD.hasUnseen(row)
       // Copy only for an install that can build the report.
-      entry.actions.hidden = !row.report
+      var canReload = FD.hasFeature(row, 'fremdev.reload')
+      entry.actions.hidden = !row.report && !canReload
+      entry.copy.btn.hidden = !row.report
+      entry.copyStack.btn.hidden = !row.report
+      entry.reload.hidden = !canReload
+      entry.reloadHard.hidden = !canReload
+      setText(entry.reload, Fremkit.t(L.reload))
+      setText(entry.reloadHard, Fremkit.t(L.reloadHard))
       paintCopy(entry.copy)
       paintCopy(entry.copyStack)
       paintFold(entry)

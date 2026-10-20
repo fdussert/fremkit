@@ -151,11 +151,14 @@ export const FREMDEV_BUILD_MODULE = 'fremdev.build'
 /** Fremdev opens an entry's file in the editor through the dev server's own endpoint (`dev.open.ask`). */
 export const FREMDEV_OPEN_MODULE = 'fremdev.open'
 
+/** Fremdev reloads a tab, with or without its cache (`dev.reload`). */
+export const FREMDEV_RELOAD_MODULE = 'fremdev.reload'
+
 /**
  * The Fremdev modules a control on the Edge depends on (`features` in the snapshot): an install
  * that lists one is shown that control. Each feature's task appends its module name here.
  */
-export const FREMDEV_FEATURES: readonly string[] = [FREMDEV_BUILD_MODULE, FREMDEV_OPEN_MODULE]
+export const FREMDEV_FEATURES: readonly string[] = [FREMDEV_BUILD_MODULE, FREMDEV_OPEN_MODULE, FREMDEV_RELOAD_MODULE]
 
 /**
  * The names of the modules an extension runs. Unknown names pass, so a newer extension with a module
@@ -349,6 +352,8 @@ export type ServerMessage =
   | { type: 'dev.focus'; tabId: number }
   /** The Edge marks the tab's open errors and requests seen. */
   | { type: 'dev.clear'; tabId: number }
+  /** The Edge reloads the tab, skipping the browser's cache when `bypassCache`. */
+  | { type: 'dev.reload'; tabId: number; bypassCache: boolean }
   /** The Edge asks for the tab's bug report (with stacks or not), answered by a `dev.report` with this `id`. */
   | { type: 'dev.report.ask'; id: string; tabId: number; stack: boolean }
   /**
