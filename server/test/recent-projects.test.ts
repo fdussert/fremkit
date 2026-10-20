@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mkdir, mkdtemp, readFile, readdir, realpath, rm, stat, symlink, utimes, writeFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
+import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
   createRecentProjectsProvider, mergeEntries, mergedWants, tileWants, MAX_PROJECTS,
@@ -492,6 +492,45 @@ describe('recent projects: Herdr', () => {
     expect(await ps(PS_ITERM + '\n  400     1 /Applications/Ghostty.app/Contents/MacOS/ghostty\n  410   400 herdr')).toBeNull()
     expect(await ps('  340     1 herdr')).toBeNull()
     expect(await ps('  300     1 /Applications/iTerm.app/Contents/MacOS/iTerm2')).toBeNull()
+  })
+})
+
+describe('recent projects: JetBrains IDEs', () => {
+  const exec = vi.fn(async () => '')
+  const deps = (bundles: string[]) => ({ exec, resolveBinary: async () => null, exists: async (p: string) => bundles.includes(p) })
+
+  it('offers one choice per IDE installed, under a fixed id, wherever the Toolbox put it', async () => {
+    const home = homedir()
+    const apps = await installedApps(deps([
+      '/System/Library/CoreServices/Finder.app',
+      '/Applications/Rider.app',
+      join(home, 'Applications', 'IntelliJ IDEA.app'),
+      join(home, 'Applications', 'JetBrains Toolbox', 'PyCharm Community Edition.app'),
+      '/Applications/Android Studio.app',
+      '/Applications/Rider Notes.app',
+    ]))
+    expect(apps).toEqual(['finder', 'jetbrains-idea', 'jetbrains-pycharm-ce', 'jetbrains-rider', 'jetbrains-android-studio'])
+  })
+
+  it('opens the folder with /usr/bin/open -a and the bundle path, and refuses one not installed', async () => {
+    exec.mockClear()
+    const d = deps(['/Applications/Rider.app'])
+    expect(await openWith('jetbrains-rider', '/Users/demo/Dev/api', d)).toEqual({ ok: true })
+    expect(await openWith('jetbrains-goland', '/Users/demo/Dev/api', d)).toEqual({ ok: false, error: 'not-installed' })
+    expect(exec.mock.calls).toEqual([['/usr/bin/open', ['-a', '/Applications/Rider.app', '/Users/demo/Dev/api']]])
+  })
+
+  it('takes no IDE name from the request', async () => {
+    await mkdir(join(home, 'Dev', 'api'), { recursive: true })
+    const provider = createRecentProjectsProvider({
+      instances: () => [{ widgetId: 'recent-projects', settings: {} }],
+      home, sources: [fakeSource('git', async () => [{ path: join(home, 'Dev', 'api'), seenAt: 1 }])],
+      exec, resolveBinary: async () => null, appExists: async () => true,
+    })
+    await provider.poll!()
+    const open = provider.commands!.open
+    expect(await open({ path: join(home, 'Dev', 'api'), app: 'jetbrains-Rider Notes' }, LOCAL)).toMatchObject({ ok: false, error: 'invalid-request' })
+    expect(await open({ path: join(home, 'Dev', 'api'), app: 'Rider' }, LOCAL)).toMatchObject({ ok: false, error: 'invalid-request' })
   })
 })
 

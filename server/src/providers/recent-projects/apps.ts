@@ -9,6 +9,9 @@ import { exists } from './util.js'
 export const APP_IDS = [
   'finder', 'terminal', 'iterm', 'ghostty', 'vscode', 'cursor', 'zed', 'xcode', 'herdr', 'tmux',
   'herdr-claude', 'herdr-codex', 'tmux-claude', 'tmux-codex',
+  'jetbrains-idea', 'jetbrains-idea-ce', 'jetbrains-webstorm', 'jetbrains-pycharm', 'jetbrains-pycharm-ce',
+  'jetbrains-phpstorm', 'jetbrains-goland', 'jetbrains-rider', 'jetbrains-clion', 'jetbrains-rustrover',
+  'jetbrains-rubymine', 'jetbrains-datagrip', 'jetbrains-android-studio',
 ] as const
 export type AppId = (typeof APP_IDS)[number]
 
@@ -28,7 +31,10 @@ const SHELL_INERT = /^\/[\w./-]+$/
 
 const OPEN = '/usr/bin/open'
 
-/** The bundle each Mac application is found as, in the places applications are installed. */
+/**
+ * The bundle each Mac application is found as, in the places applications are installed. Fixed
+ * names checked for existence: nothing found on disk ever becomes an id or a label.
+ */
 const BUNDLES: Partial<Record<AppId, string[]>> = {
   finder: ['/System/Library/CoreServices/Finder.app'],
   terminal: ['/System/Applications/Utilities/Terminal.app', '/Applications/Utilities/Terminal.app'],
@@ -38,6 +44,20 @@ const BUNDLES: Partial<Record<AppId, string[]>> = {
   cursor: ['Cursor.app'],
   zed: ['Zed.app'],
   xcode: ['Xcode.app'],
+  // JetBrains IDEs under the names their installers and the Toolbox give the bundle.
+  'jetbrains-idea': ['IntelliJ IDEA.app', 'IntelliJ IDEA Ultimate.app'],
+  'jetbrains-idea-ce': ['IntelliJ IDEA CE.app', 'IntelliJ IDEA Community Edition.app'],
+  'jetbrains-webstorm': ['WebStorm.app'],
+  'jetbrains-pycharm': ['PyCharm.app', 'PyCharm Professional Edition.app', 'PyCharm Professional.app'],
+  'jetbrains-pycharm-ce': ['PyCharm CE.app', 'PyCharm Community Edition.app'],
+  'jetbrains-phpstorm': ['PhpStorm.app'],
+  'jetbrains-goland': ['GoLand.app'],
+  'jetbrains-rider': ['Rider.app', 'JetBrains Rider.app'],
+  'jetbrains-clion': ['CLion.app'],
+  'jetbrains-rustrover': ['RustRover.app'],
+  'jetbrains-rubymine': ['RubyMine.app'],
+  'jetbrains-datagrip': ['DataGrip.app'],
+  'jetbrains-android-studio': ['Android Studio.app', 'Android Studio Preview.app'],
 }
 
 export interface AppDeps {
@@ -50,7 +70,10 @@ export interface AppDeps {
 /** The bundle path of an application, or null when it is not installed. */
 async function bundleOf(app: AppId, has: (p: string) => Promise<boolean>): Promise<string | null> {
   for (const name of BUNDLES[app] ?? []) {
-    const candidates = name.startsWith('/') ? [name] : [join('/Applications', name), join(homedir(), 'Applications', name)]
+    const candidates = name.startsWith('/')
+      ? [name]
+      // The JetBrains Toolbox installs into ~/Applications, or into a folder of its own there.
+      : [join('/Applications', name), join(homedir(), 'Applications', name), join(homedir(), 'Applications', 'JetBrains Toolbox', name)]
     for (const c of candidates) if (await has(c)) return c
   }
   return null
