@@ -9,8 +9,13 @@
 #   scripts/build-android.sh build     a debug APK, lint, and the check that no Google Play services
 #                                      library reached the app
 #   scripts/build-android.sh install [--seed]
-#                                      not yet: a debug build onto the tablet named by
-#                                      FREMKIT_ANDROID_DEVICE, the pairing link read from stdin
+#                                      a debug build onto the tablet named by FREMKIT_ANDROID_DEVICE,
+#                                      then launched. --seed reads a fremkit://pair?… link from stdin
+#                                      (`pbpaste | … install --seed`) and writes it into the debug
+#                                      app's private files through `adb shell -T run-as`, where the app reads,
+#                                      deletes and pairs with it at launch: the link carries the
+#                                      code's secret, so it is never an argument, on the Mac or the
+#                                      tablet, and never a file on either's shared storage
 #   scripts/build-android.sh device-test
 #                                      the instrumented tests on that tablet. Starts a throwaway TLS
 #                                      server (scripts/android-test-server.mjs, two fresh keys) on
@@ -34,7 +39,7 @@
 #   FREMKIT_JAVA_HOME     the JDK Gradle runs on (default: the newest arm64 JDK 17+ that
 #                         /usr/libexec/java_home knows). An x86_64 JDK is refused: under Rosetta,
 #                         Gradle is several times slower.
-#   FREMKIT_ANDROID_DEVICE  the tablet's adb serial, for device-test (set it in your
+#   FREMKIT_ANDROID_DEVICE  the tablet's adb serial, for install and device-test (set it in your
 #                           shell; it is never written in a file)
 #   FREMKIT_ANDROID_TEST_HOST  the Mac's address the tablet reaches (default: the address of the
 #                           interface of the default route)
@@ -184,6 +189,9 @@ release() {
     echo "        $out.sha256"
 }
 
+DEBUG_PACKAGE=app.fremkit.android.debug
+DEBUG_APK=android/app/build/outputs/apk/debug/app-debug.apk
+
 # The tablet adb talks to, by its serial, or a stop.
 device() {
     [[ -n "${FREMKIT_ANDROID_DEVICE:-}" ]] || die "set FREMKIT_ANDROID_DEVICE to the tablet's serial ($ADB devices -l)"
@@ -202,6 +210,35 @@ lan_address() {
     address="$(/usr/sbin/ipconfig getifaddr "$iface" 2>/dev/null || true)"
     [[ -n "$address" ]] || die "no IPv4 address on $iface (set FREMKIT_ANDROID_TEST_HOST)"
     echo "$address"
+}
+
+install_app() {
+    local serial seed=0 link=""
+    case "${1:-}" in
+        "") ;;
+        --seed) seed=1 ;;
+        *) die "usage: scripts/build-android.sh install [--seed]" ;;
+    esac
+    serial="$(device)"
+    if [[ $seed -eq 1 ]]; then
+        # Read before the build, so a missing link fails fast. Kept in a shell variable and handed
+        # to adb on its stdin by printf, a builtin: no process ever has it in its arguments.
+        IFS= read -r link || true
+        [[ "$link" == fremkit://pair\?* ]] || die "--seed reads a fremkit://pair?… link from stdin"
+    fi
+    gradle :app:assembleDebug
+    "$ADB" -s "$serial" install -r "$DEBUG_APK"
+    if [[ $seed -eq 1 ]]; then
+        # Into the debug app's own files (Seed.kt), as the app's user: `run-as` works for a
+        # debuggable build only, and its shell starts in the app's data folder. `adb shell -T`
+        # (no tty) forwards stdin; `adb exec-in` drops it on Android 9 while still exiting 0. The
+        # command is one argument because the tablet's shell parses it again.
+        printf '%s\n' "$link" | "$ADB" -s "$serial" shell -T \
+            "run-as $DEBUG_PACKAGE sh -c 'umask 077 && mkdir -p files && cat > files/seed-link'"
+        unset link
+    fi
+    "$ADB" -s "$serial" shell am start -n "$DEBUG_PACKAGE/app.fremkit.android.MainActivity" >/dev/null
+    echo "installed and launched $DEBUG_PACKAGE"
 }
 
 device_test() {
@@ -314,7 +351,8 @@ case "$cmd" in
         verify_apk "$1"
         ;;
     install)
-        die "$cmd: not yet (a later stage of the Android plan adds it)"
+        use_toolchain
+        install_app "$@"
         ;;
     device-test)
         use_toolchain

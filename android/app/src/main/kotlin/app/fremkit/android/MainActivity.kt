@@ -1,6 +1,7 @@
 package app.fremkit.android
 
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.setContent
@@ -8,6 +9,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import app.fremkit.kit.AppState
+import app.fremkit.kit.LinkSource
 import app.fremkit.kit.PairingStep
 import kotlinx.coroutines.launch
 
@@ -51,10 +53,18 @@ class MainActivity : ComponentActivity() {
         app.network.start()
         if (started) app.model.resume()
         started = true
+        Seed.take(this)?.let { link ->
+            // The link itself is never logged: it carries the code's secret.
+            if (!app.flow.handle(link, LinkSource.SCANNER)) Log.w(TAG, "the seeded file is not a pairing link")
+        }
     }
 
     override fun onStop() {
         app.network.stop()
         super.onStop()
+    }
+
+    private companion object {
+        const val TAG = "Fremkit"
     }
 }
