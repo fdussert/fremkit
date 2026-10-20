@@ -118,7 +118,8 @@ const isId = (v) => Number.isInteger(v) && v >= 1 && v <= MAX_ID
 /**
  * `{ history, nextId, errors, requests }` after `entry` (n 1 or more, open): put on top of the ring
  * with the tab's `nextId`, the next one counting on (1 again after MAX_ID), or folded into the
- * newest entry, whose id it keeps, when it is the same and open. `errors` is the tab's, less the
+ * newest entry, whose id it keeps, when it is the same and open. A full ring makes room with its
+ * oldest slow entry, else its oldest resolved one, else its oldest. `errors` is the tab's, less the
  * open or seen build entries the ring pushed out: nothing could resolve them any more
  * (`build-clear` finds none), and the light would stay red. `requests` is the tab's, less the open
  * or seen perf entries it pushed out: the tally counts each one once, and a regression told again
@@ -133,10 +134,19 @@ function record(tab, entry) {
     return { history: [merged, ...ring.slice(1)], nextId: tab.nextId, errors: tab.errors, requests: tab.requests }
   }
   const id = isId(tab.nextId) ? tab.nextId : 1
-  const all = [{ ...entry, id }, ...ring]
-  const out = all.slice(HISTORY_MAX)
+  // Room for the new entry: the oldest slow entry goes first, then the oldest resolved one, and only
+  // then the oldest of all, so slow entries never crowd out the faults.
+  let kept = ring
+  const out = []
+  while (kept.length >= HISTORY_MAX) {
+    let at = lastIndex(kept, (e) => e.kind === 'slow')
+    if (at === -1) at = lastIndex(kept, (e) => e.state === 'resolved')
+    if (at === -1) at = kept.length - 1
+    out.push(kept[at])
+    kept = kept.filter((_, i) => i !== at)
+  }
   return {
-    history: all.slice(0, HISTORY_MAX),
+    history: [{ ...entry, id }, ...kept],
     nextId: id === MAX_ID ? 1 : id + 1,
     errors: uncount(tab.errors, out.filter(isLive)),
     requests: uncount(tab.requests, out.filter(isLivePerf)),

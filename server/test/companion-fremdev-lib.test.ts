@@ -1330,6 +1330,30 @@ describe('slow requests and requests in flight', () => {
     expect(tab.history).toHaveLength(HISTORY_MAX)
   })
 
+  it('makes room for a fault with a slow entry first, then a resolved one: slow entries never crowd out the faults', () => {
+    let tab = base()
+    for (let i = 0; i < 15; i++) tab = reduce(tab, { kind: 'error', text: `e${i}` }, 100 + i)
+    for (let i = 0; i < SLOW_MAX; i++) tab = reduce(tab, slow(1500, `/api/${i}`), 200 + i)
+    expect(tab.history).toHaveLength(HISTORY_MAX)
+    tab = reduce(tab, { kind: 'error', text: 'e15' }, 300)
+    const texts = tab.history.filter((e: { kind: string }) => e.kind === 'error').map((e: { text: string }) => e.text)
+    expect(texts).toHaveLength(16)
+    expect(texts.at(-1)).toBe('e0')
+    // The oldest slow entry made the room.
+    expect(tab.history.filter((e: { kind: string }) => e.kind === 'slow').map((e: { path: string }) => e.path))
+      .toEqual(['/api/4', '/api/3', '/api/2', '/api/1'])
+    // No slow entry left: a resolved one goes before an open one.
+    let mixed = base()
+    for (let i = 0; i < 10; i++) mixed = reduce(mixed, { kind: 'error', text: `old${i}` }, 100 + i)
+    mixed = reduce(mixed, { kind: 'navigated', url: 'http://localhost:5173/', title: 'App' }, 150)
+    for (let i = 0; i < 10; i++) mixed = reduce(mixed, { kind: 'error', text: `new${i}` }, 200 + i)
+    mixed = reduce(mixed, { kind: 'error', text: 'new10' }, 300)
+    const kept = mixed.history.map((e: { text: string }) => e.text)
+    expect(kept).not.toContain('old0')
+    expect(kept).toContain('new0')
+    expect(mixed.errors.open).toBe(11)
+  })
+
   it('drops a slow entry when the ring is full of open entries, and takes the oldest resolved slot otherwise', () => {
     let tab = base()
     for (let i = 0; i < HISTORY_MAX; i++) tab = reduce(tab, { kind: 'error', text: `e${i}` }, 100 + i)
