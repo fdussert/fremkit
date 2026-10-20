@@ -16,6 +16,9 @@
 // row, as a kind and a bounded text: the worker takes the tab from Chrome, not from the event.
 
 ;(() => {
+// Once per page, whichever extension run injects it. After an extension reload or update, or
+// Fremdev turned off and on, the earlier hook still runs and dispatches to whichever relay is alive
+// (fremdev/relay.js), so a second one would tell every error twice.
 const FLAG = '__fremdevHooked'
 try {
   if (Object.getOwnPropertyDescriptor(window, FLAG)) return

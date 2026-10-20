@@ -483,6 +483,103 @@ function runRelay() {
   return { window, document, sent, timers, post, raw, at: (t: number) => { clock = t } }
 }
 
+/**
+ * A page with both scripts injected as Chrome does: the hook in the page's world, the relay in the
+ * extension's isolated world, one document between them. `inject(runtime)` is one extension run's
+ * injection; `reload(runtime)` orphans that run as an extension reload does.
+ */
+function runPage({ sharedIsolatedWorld }: { sharedIsolatedWorld: boolean }) {
+  const listeners: Record<string, Listener[]> = {}
+  const on = (type: string, fn: Listener) => void (listeners[type] ??= []).push(fn)
+  const fire = (type: string, e: unknown) => {
+    for (const fn of listeners[type] ?? []) fn(e)
+  }
+  const document = { addEventListener: on }
+  const EventTarget = {
+    prototype: {
+      dispatchEvent(this: unknown, e: FakeCustomEvent) {
+        if (this !== document) throw new Error('dispatched elsewhere')
+        fire(e.type, { detail: e.detail })
+        return true
+      },
+    },
+  }
+  const pageWindow = { addEventListener: (type: string, fn: Listener) => on(`window:${type}`, fn) }
+  const console: Record<string, (...args: unknown[]) => unknown> = {
+    error: function error() {},
+    log: function log() {},
+    info: function info() {},
+    debug: function debug() {},
+  }
+  // The relay's window: its world, which a reload may or may not hand over to the next run.
+  let isolated: Record<string, unknown> = {}
+  const sent: Array<{ run: number; [k: string]: unknown }> = []
+  const runs: Array<{ id?: string }> = []
+  const inject = () => {
+    const run = runs.length
+    const runtime: { id?: string; sendMessage: (m: Record<string, unknown>) => Promise<void> } = {
+      id: 'ext',
+      sendMessage: (m) => {
+        if (runtime.id === undefined) throw new Error('Extension context invalidated.')
+        sent.push({ run, ...m })
+        return Promise.resolve()
+      },
+    }
+    runs.push(runtime)
+    new Function('window', 'document', 'chrome', 'Date', 'setTimeout', source('fremdev/relay.js'))(
+      isolated, document, { runtime }, { now: () => 1_000_000 + run }, () => undefined,
+    )
+    new Function('window', 'console', 'document', 'location', 'EventTarget', 'CustomEvent', 'ErrorEvent', 'PromiseRejectionEvent', source('fremdev/hook.js'))(
+      pageWindow, console, document, { origin: PAGE }, EventTarget, FakeCustomEvent, FakeErrorEvent, FakeRejectionEvent,
+    )
+  }
+  const reload = () => {
+    delete runs.at(-1)!.id
+    if (!sharedIsolatedWorld) isolated = {}
+  }
+  const page = {
+    error: (text: string) => console.error(text),
+    uncaught: (message: string) => fire('window:error', new FakeErrorEvent(null, message)),
+    rejected: (reason: string) => fire('window:unhandledrejection', new FakeRejectionEvent(reason)),
+  }
+  return { inject, reload, page, sent }
+}
+
+describe('a page injected again', () => {
+  for (const sharedIsolatedWorld of [true, false]) {
+    it(`reports each error once after an extension reload (${sharedIsolatedWorld ? 'same' : 'new'} isolated world)`, () => {
+      const p = runPage({ sharedIsolatedWorld })
+      p.inject()
+      p.page.error('before')
+      p.reload()
+      // The reloaded worker's onInstalled injects both scripts again over the orphaned ones.
+      p.inject()
+      p.page.error('after')
+      p.page.uncaught('thrown')
+      p.page.rejected('why')
+      expect(p.sent.map(({ run, text }) => [run, text])).toEqual([
+        [0, 'before'],
+        [1, 'after'],
+        [1, 'Uncaught thrown'],
+        [1, 'Uncaught (in promise) why'],
+      ])
+    })
+  }
+
+  it('reports each error once after Fremdev is turned off and on in one page load', () => {
+    const p = runPage({ sharedIsolatedWorld: true })
+    p.inject()
+    // Turning on again injects into the open tabs, whose scripts from the first turn-on still run.
+    p.inject()
+    p.page.error('again')
+    p.page.uncaught('thrown')
+    expect(p.sent.map(({ run, text }) => [run, text])).toEqual([
+      [0, 'again'],
+      [0, 'Uncaught thrown'],
+    ])
+  })
+})
+
 describe('fremdev/relay.js', () => {
   it('forwards 10 events a second and counts every error over that', () => {
     const r = runRelay()
