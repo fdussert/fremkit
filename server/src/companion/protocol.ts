@@ -189,9 +189,9 @@ const entry = {
   state: z.enum(['open', 'seen', 'resolved']),
 }
 
-/** A tab's last errors and failed requests, without stacks; `limited` the errors the relay only counted. */
 const TabId = z.number().int().min(0).max(2_147_483_647)
 
+/** A tab's last errors and failed requests, without stacks; `limited` the errors the relay only counted. */
 const DevHistorySchema = z
   .array(
     z.discriminatedUnion('kind', [
