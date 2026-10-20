@@ -283,7 +283,6 @@ export class CompanionDev {
   }
 }
 
-/** Resolves every report the install still owes with null, and forgets them. */
 /** Resolves to null the reports asked for a tab the install no longer lists. */
 function abandonGone(install: Install): void {
   for (const [id, pending] of install.pending) {
@@ -294,6 +293,7 @@ function abandonGone(install: Install): void {
   }
 }
 
+/** Resolves every report the install still owes with null, and forgets them. */
 function abandon(install: Install): void {
   for (const pending of install.pending.values()) {
     clearTimeout(pending.timer)
