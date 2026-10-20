@@ -1468,6 +1468,13 @@ describe('performance and regressions', () => {
     expect(await memory.samples('http://localhost:5173/p2')).toEqual([{ load: 2 }])
     expect((await memory.samples('http://localhost:5173/')).at(-1)).toEqual({ load: 800 })
     expect(await memory.samples('http://localhost:5173/p50')).toEqual([{ load: 50 }])
+    // A document's sample follows its LCP as it grows: replaced where it is, never a second one.
+    await memory.push('http://localhost:5173/a', { load: 900, lcp: 500 }, 'DA')
+    await memory.push('http://localhost:5173/a', { load: 950, lcp: 520 }, 'DB')
+    await memory.update('DA', { load: 900, lcp: 1300 })
+    expect(await memory.samples('http://localhost:5173/a')).toEqual([{ load: 900, lcp: 1300 }, { load: 950, lcp: 520 }])
+    await memory.update('DZ', { load: 1, lcp: 1 })
+    expect(await memory.samples('http://localhost:5173/a')).toEqual([{ load: 900, lcp: 1300 }, { load: 950, lcp: 520 }])
     // A stored value that is not ours reads as nothing.
     storage.data.fremdevPerf = { evil: 1 }
     expect(await memory.samples('http://localhost:5173/')).toEqual([])
@@ -1501,12 +1508,13 @@ describe('performance and regressions', () => {
   it('two regressions in one load give one perf entry, one tally bump, and requests.last untouched', () => {
     let tab = reduce(base(), { kind: 'request', method: 'GET', path: '/api', status: 500 }, 150)
     const last = tab.requests.last
-    tab = reduce(tab, perf({ load: 2600, lcp: 1800 }), 200)
-    tab = reduce(tab, regression('lcp', 1800, 1.6), 210)
+    tab = reduce(tab, perf({ load: 2600, lcp: 4100, cls: 0.3 }), 200)
+    tab = reduce(tab, regression('cls', 0.3, null), 210)
     expect(tab.requests).toEqual({ total: 2, open: 2, seen: 0, last })
-    tab = reduce(tab, regression('cls', 0.3, null), 220)
+    // A stronger verdict (LCP poor over CLS poor) replaces it.
+    tab = reduce(tab, regression('lcp', 4100, null), 220)
     expect(tab.history.filter((e: { kind: string }) => e.kind === 'perf')).toEqual([
-      { kind: 'perf', id: tab.perfEntryId, metric: 'cls', value: 0.3, ratio: null, n: 1, at: 210, state: 'open' },
+      { kind: 'perf', id: tab.perfEntryId, metric: 'lcp', value: 4100, ratio: null, n: 1, at: 210, state: 'open' },
     ])
     expect(tab.requests).toEqual({ total: 2, open: 2, seen: 0, last })
     // Marked seen: the values still follow, nothing is counted again.
@@ -1514,6 +1522,46 @@ describe('performance and regressions', () => {
     tab = reduce(tab, regression('lcp', 4200, null), 240)
     expect(tab.history.filter((e: { kind: string }) => e.kind === 'perf')).toEqual([expect.objectContaining({ metric: 'lcp', value: 4200, state: 'seen' })])
     expect(tab.requests).toEqual({ total: 2, open: 2, seen: 2, last })
+  })
+
+  it('within one load, a verdict replaces the entry only when its priority is equal or higher: LCP ratio, load ratio, LCP poor, CLS poor', () => {
+    const metricOf = (t: { history: Array<{ kind: string; metric: string; value: number; ratio: number | null }> }) =>
+      t.history.filter((e) => e.kind === 'perf').map((e) => [e.metric, e.value, e.ratio])
+    let tab = reduce(base(), perf({ load: 2600, lcp: 1800 }), 200)
+    tab = reduce(tab, regression('lcp', 1800, 1.6), 210)
+    // Weaker: a load ratio, a poor LCP, a poor CLS are all ignored.
+    for (const weaker of [regression('load', 2600, 2.6), regression('lcp', 4100, null), regression('cls', 0.4, null)]) {
+      tab = reduce(tab, weaker, 220)
+      expect(metricOf(tab)).toEqual([['lcp', 1800, 1.6]])
+    }
+    // Equal: the newer LCP ratio replaces it.
+    tab = reduce(tab, regression('lcp', 2000, 1.8), 230)
+    expect(metricOf(tab)).toEqual([['lcp', 2000, 1.8]])
+    // From the bottom up, each stronger one replaces the last.
+    let up = reduce(base(), perf({ cls: 0.4 }), 200)
+    up = reduce(up, regression('cls', 0.4, null), 210)
+    up = reduce(up, regression('lcp', 4100, null), 220)
+    expect(metricOf(up)).toEqual([['lcp', 4100, null]])
+    up = reduce(up, regression('load', 2600, 2.6), 230)
+    expect(metricOf(up)).toEqual([['load', 2600, 2.6]])
+    up = reduce(up, regression('cls', 0.5, null), 240)
+    expect(metricOf(up)).toEqual([['load', 2600, 2.6]])
+    expect(up.requests).toMatchObject({ total: 1, open: 1 })
+  })
+
+  it('flags a document at most once, even after its resolved entry left the ring', () => {
+    let tab = reduce(base(), perf({ lcp: 4100 }), 200)
+    tab = reduce(tab, regression('lcp', 4100, null), 210)
+    tab = reduce(tab, { kind: 'hot' }, 220)
+    for (let i = 0; i < HISTORY_MAX; i++) tab = reduce(tab, { kind: 'error', text: `e${i}` }, 300 + i)
+    expect(tab.history.some((e: { kind: string }) => e.kind === 'perf')).toBe(false)
+    const before = tab.requests
+    tab = reduce(tab, regression('lcp', 4300, null), 400)
+    expect(tab.history.some((e: { kind: string }) => e.kind === 'perf')).toBe(false)
+    expect(tab.requests).toEqual(before)
+    // The next document may be flagged.
+    tab = reduce(reduce(tab, perf({ lcp: 4400 }, 'D2'), 500), regression('lcp', 4400, null), 510)
+    expect(tab.history[0]).toMatchObject({ kind: 'perf', value: 4400, state: 'open' })
   })
 
   it('a reload (a new document) after a navigation adds a second entry; the same load is not flagged again once resolved', () => {
@@ -1548,10 +1596,10 @@ describe('performance and regressions', () => {
     expect(tab.requests).toMatchObject({ total: 2, open: 1, seen: 1 })
     const [row] = wireTabs([tab])
     expect(validRow(row)).toBe(true)
-    // Pushed out, the load's regression may be told again, and is counted once more.
+    // Pushed out, the document stays flagged: its regression is not told again.
     tab = reduce(tab, regression('lcp', 4200, null), 310)
-    expect(tab.history[0]).toMatchObject({ kind: 'perf', value: 4200, state: 'open' })
-    expect(tab.requests).toMatchObject({ total: 3, open: 2 })
+    expect(tab.history.some((e: { kind: string }) => e.kind === 'perf')).toBe(false)
+    expect(tab.requests).toMatchObject({ total: 2, open: 1, seen: 1 })
   })
 
   it('wireRow carries the perf entry and the values, never trimmed, and the light is orange, never red', () => {
@@ -1601,10 +1649,10 @@ describe('performance and regressions', () => {
     let tab = reduce(base(), perf({ load: 1234, lcp: 4100 }), 200)
     tab = reduce(tab, regression('lcp', 4100, null), 210)
     const restored = restoredTabs({ 1: tab })['1']
-    expect(restored).toMatchObject({ perf: { load: 1234, lcp: 4100 }, perfEntryId: 1, perfDoc: 'D1' })
+    expect(restored).toMatchObject({ perf: { load: 1234, lcp: 4100 }, perfEntryId: 1, perfDoc: 'D1', perfFlaggedDoc: 'D1' })
     // A row from before this feature comes back with none.
-    const { perf: _p, perfEntryId: _e, perfDoc: _d, ...old } = base()
-    expect(restoredTabs({ 1: old })['1']).toMatchObject({ perf: {}, perfEntryId: null, perfDoc: null })
+    const { perf: _p, perfEntryId: _e, perfDoc: _d, perfFlaggedDoc: _f, ...old } = base()
+    expect(restoredTabs({ 1: old })['1']).toMatchObject({ perf: {}, perfEntryId: null, perfDoc: null, perfFlaggedDoc: null })
     expect(restoredTabs({ 1: { ...tab, perf: { lcp: -5 } } })).toEqual({})
   })
 
@@ -1621,5 +1669,25 @@ describe('performance and regressions', () => {
     expect(lines[2]).toBe('Performance: Load 1.2 s · LCP 0.8 s · CLS 0.02 · 3 long tasks · 45 MB')
     expect(buildReport(reduce(base(), perf({ cls: 0.3 }), 200), fmt).split('\n')[2]).toBe('Performance: CLS 0.30')
     expect(buildReport(base(), fmt)).not.toContain('Performance')
+  })
+
+  it('lists the perf entries in a Performance section, each with its time, text and state', () => {
+    const WORDS: Record<string, (...s: unknown[]) => string> = {
+      reportTitle: () => 'Bug report',
+      reportServer: () => 'dev server',
+      reportLines: () => 'Line numbers are those of the code the dev server sent.',
+      reportPerf: () => 'Performance',
+      reportPerfSlower: (m, v, r) => `${m} ${v}, ×${r} slower`,
+      reportPerfPoor: (m, v) => `${m} ${v}, poor`,
+      stateSeen: () => 'seen',
+      stateResolved: () => 'resolved',
+    }
+    const fmt = { stack: false, now: 9_000, t: (key: string, ...subs: unknown[]) => WORDS[key](...subs), time: (ms: number) => `T${ms}`, date: (ms: number) => `D${ms}` }
+    let tab = reduce(base(), perf({ cls: 0.31 }), 200)
+    tab = reduce(tab, regression('cls', 0.31, null), 210)
+    tab = reduce(tab, { kind: 'navigated', url: 'http://localhost:5173/', title: 'App' }, 300)
+    tab = reduce(tab, perf({ lcp: 1800, load: 900 }, 'D2'), 400)
+    tab = reduce(tab, regression('lcp', 1800, 1.6), 410)
+    expect(buildReport(tab, fmt)).toContain('\n\n### Performance\n- T410 LCP 1.8 s, ×1.6 slower\n- T210 CLS 0.31, poor (resolved)')
   })
 })

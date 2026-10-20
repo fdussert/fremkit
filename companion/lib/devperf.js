@@ -103,11 +103,21 @@ function sampleOf(s) {
 
 const STORE_KEY = 'fremdevPerf'
 const MAX_KEY = 2048
+const MAX_DOC = 128
+const isDoc = (d) => typeof d === 'string' && d !== '' && d.length <= MAX_DOC
+/** A sample as it is stored: its load and LCP, and the document it came from when known. */
+function storedOf(s) {
+  const out = sampleOf(s)
+  if (isDoc(s?.doc)) out.doc = s.doc
+  return out
+}
 
 /**
  * The previous loads' samples, per key (origin + pathname), in `storage.fremdevPerf` as a list
  * `[{ key, samples }]`, the most recently used last: the last PERF_SAMPLES samples per key, at most
- * PERF_KEYS keys. What is read back is checked: anything else reads as nothing.
+ * PERF_KEYS keys. Each stored sample names the document it came from (Chrome's documentId, never on
+ * the wire), so that document's sample can follow its LCP as it grows after the load (`update`).
+ * What is read back is checked: anything else reads as nothing.
  */
 export class PerfMemory {
   constructor(storage) {
@@ -127,25 +137,54 @@ export class PerfMemory {
     return raw
       .filter((e) => e && typeof e.key === 'string' && e.key.length <= MAX_KEY && Array.isArray(e.samples))
       .slice(-PERF_KEYS)
-      .map((e) => ({ key: e.key, samples: e.samples.slice(-PERF_SAMPLES).map(sampleOf) }))
+      .map((e) => ({ key: e.key, samples: e.samples.slice(-PERF_SAMPLES).map(storedOf) }))
   }
 
   async samples(key) {
     await this.queue
-    return (await this.read()).find((e) => e.key === key)?.samples ?? []
+    return ((await this.read()).find((e) => e.key === key)?.samples ?? []).map(sampleOf)
   }
 
-  push(key, sample) {
+  /** One serialised step: `fn` maps the list read to the list written, or to null for no write. */
+  edit(fn) {
     const run = this.queue.then(async () => {
-      if (typeof key !== 'string' || key.length > MAX_KEY) return
-      const list = await this.read()
-      const old = list.find((e) => e.key === key)
-      const samples = [...(old?.samples ?? []), sampleOf(sample)].slice(-PERF_SAMPLES)
-      const next = [...list.filter((e) => e !== old), { key, samples }].slice(-PERF_KEYS)
-      await this.storage.set({ [STORE_KEY]: next }).catch(() => undefined)
+      const next = fn(await this.read())
+      if (next !== null) await this.storage.set({ [STORE_KEY]: next }).catch(() => undefined)
     })
     this.queue = run.catch(() => undefined)
     return run
+  }
+
+  /** A load's sample under `key`, from the document `doc` when known; the key becomes the most recent. */
+  push(key, sample, doc = null) {
+    if (typeof key !== 'string' || key.length > MAX_KEY) return this.queue
+    return this.edit((list) => {
+      const old = list.find((e) => e.key === key)
+      const samples = [...(old?.samples ?? []), storedOf({ ...sample, doc })].slice(-PERF_SAMPLES)
+      return [...list.filter((e) => e !== old), { key, samples }].slice(-PERF_KEYS)
+    })
+  }
+
+  /**
+   * The sample the document `doc` pushed, wherever it is, takes `sample`'s load and LCP: it is
+   * replaced where it is, never added again. Nothing when no sample is that document's, or when it
+   * already says the same.
+   */
+  update(doc, sample) {
+    if (!isDoc(doc)) return this.queue
+    const values = sampleOf(sample)
+    return this.edit((list) => {
+      let changed = false
+      const next = list.map((e) => ({
+        key: e.key,
+        samples: e.samples.map((x) => {
+          if (x.doc !== doc || (x.load === values.load && x.lcp === values.lcp)) return x
+          changed = true
+          return { ...values, doc }
+        }),
+      }))
+      return changed ? next : null
+    })
   }
 
   /** Forgets every load (Fremdev turned off). */

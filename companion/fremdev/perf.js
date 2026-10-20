@@ -5,7 +5,7 @@
 // - load: the navigation entry's `loadEventEnd`, once it is above 0;
 // - lcp: the latest `largest-contentful-paint` entry's `startTime`;
 // - cls: the sum of the `layout-shift` entries' values, those right after an input left out;
-// - longTasks: the `longtask` entries (50 ms or more) seen since the document loaded;
+// - longTasks: the `longtask` entries (50 ms or more) since the page started (buffered: those before the load count);
 // - heapMb: `performance.memory.usedJSHeapSize` in MB, where Chrome has it (coarse, and refreshed
 //   rarely: read again every HEAP_MS).
 // The observers are `buffered`, so what happened before this script ran counts too. Every value is

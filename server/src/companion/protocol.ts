@@ -234,7 +234,7 @@ const PerfMs = z.number().int().min(0).max(600_000)
 /**
  * A tab's performance values, from its current document (companion/fremdev/perf.js): each one
  * optional. `cls` is the cumulative layout shift, `longTasks` the tasks of 50 ms or more since the
- * load, `heapMb` the JS heap where Chrome tells it (coarse, shown dimmed, never judged).
+ * page started, `heapMb` the JS heap where Chrome tells it (coarse, shown dimmed, never judged).
  */
 const DevPerfSchema = z.strictObject({
   load: PerfMs.optional(),

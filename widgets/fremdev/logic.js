@@ -247,7 +247,28 @@
     return out
   }
 
+  /**
+   * What the folded row's requests fact writes beside its count, as `{ perf, neutral }`. A load's
+   * regression (`perf` entry) is counted in the requests tally but is no failed request: `perf` is
+   * the newest open or seen perf entry's view when the tally has no failed request to show (`last`
+   * null), for the widget to write its text; `neutral`: the history holds a perf entry, so the
+   * counted items are not all failed requests and the resolved label must not say so.
+   */
+  function requestsFact(row) {
+    var hist = row && Array.isArray(row.history) ? row.history : []
+    var perfs = hist.filter(function (e) { return e && e.kind === 'perf' })
+    var last = row && row.requests ? row.requests.last : null
+    var live = null
+    if (!last) {
+      for (var i = 0; i < perfs.length && live === null; i++) {
+        if (perfs[i].state === 'open' || perfs[i].state === 'seen') live = entryView(perfs[i])
+      }
+    }
+    return { perf: live, neutral: perfs.length > 0 }
+  }
+
   root.FremkitFremdev = {
+    requestsFact: requestsFact,
     entryView: entryView,
     perfView: perfView,
     stateOf: stateOf,

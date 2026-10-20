@@ -292,7 +292,8 @@ export function createFremdev({
   /**
    * A `perf` event from the tab's document `doc` (Chrome's documentId): its values applied quietly,
    * then judged. The first event of a load that carries `load` is judged against the previous loads
-   * of the same origin and path, then remembered; every other event on the poor bands alone.
+   * of the same origin and path, then remembered; every other event on the poor bands alone, and
+   * the remembered sample follows that document's LCP as it grows (never a second sample).
    */
   async function onPerf(tabId, values, doc, seed) {
     const key = String(tabId)
@@ -306,8 +307,11 @@ export function createFremdev({
     const storeKey = first ? perfKey(tab.url) : null
     if (storeKey !== null) {
       verdict = perfVerdict(await perfMemory.samples(storeKey), tab.perf)
-      await perfMemory.push(storeKey, tab.perf)
-    } else verdict = perfVerdict([], tab.perf)
+      await perfMemory.push(storeKey, tab.perf, doc)
+    } else {
+      verdict = perfVerdict([], tab.perf)
+      if (doc !== null && (values.lcp !== undefined || values.load !== undefined)) await perfMemory.update(doc, tab.perf)
+    }
     // The tab may have gone, or loaded another document, while the samples were read.
     const latest = tabs[key]
     if (!verdict || !on || !latest || (doc !== null && latest.perfDoc !== doc)) return

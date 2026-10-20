@@ -39,6 +39,15 @@ function entryLines(e, { stack, t, time }) {
       return [`- ${at} +${e.n} ${t('reportLimited')}${state}`]
     case 'slow':
       return [`- ${at} ${count}${line(e.method)} ${homeLine(e.path)} ${Math.round(Number(e.ms) || 0)} ms${state}`]
+    case 'perf': {
+      const name = METRIC_NAMES[e.metric]
+      const value = Number(e.value)
+      if (name === undefined || !Number.isFinite(value)) return []
+      const v = e.metric === 'cls' ? value.toFixed(2) : seconds(value)
+      const ratio = Number(e.ratio)
+      const text = e.ratio !== null && Number.isFinite(ratio) ? t('reportPerfSlower', name, v, ratio.toFixed(1)) : t('reportPerfPoor', name, v)
+      return [`- ${at} ${count}${line(text)}${state}`]
+    }
     case 'build': {
       const out = [`- ${at} ${count}${homeLine(e.text)}${state}`]
       if (typeof e.path === 'string' && e.path !== '') {
@@ -53,6 +62,8 @@ function entryLines(e, { stack, t, time }) {
 }
 
 const seconds = (ms) => `${(ms / 1000).toFixed(1)} s`
+/** The metrics' own names, the same in every language. */
+const METRIC_NAMES = { load: 'Load', lcp: 'LCP', cls: 'CLS' }
 
 /**
  * The current document's values on one line, in the order perf.js reads them, or null when there
@@ -85,6 +96,7 @@ function render(tab, entries, opts) {
   const errors = entries.filter((e) => e.kind === 'error' || e.kind === 'limited')
   const requests = entries.filter((e) => e.kind === 'request')
   const slow = entries.filter((e) => e.kind === 'slow')
+  const perfs = entries.filter((e) => e.kind === 'perf')
   // The compile error first: while it shows, nothing else on the page is current.
   if (builds.length > 0) {
     out.push('', `### ${t('reportBuild')}`)
@@ -97,6 +109,11 @@ function render(tab, entries, opts) {
   if (requests.length > 0) {
     out.push('', `### ${t('reportRequests')}`)
     for (const e of requests) out.push(...entryLines(e, opts))
+  }
+  // A load's regression: what lit the row orange, beside the failed requests it is counted with.
+  if (perfs.length > 0) {
+    out.push('', `### ${t('reportPerf')}`)
+    for (const e of perfs) out.push(...entryLines(e, opts))
   }
   // Last: a slow request is no fault, only a lead.
   if (slow.length > 0) {

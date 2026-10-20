@@ -30,6 +30,7 @@ interface Logic {
   onMac(loc: unknown): boolean
   entryView(entry: unknown): EntryView | null
   perfView(perf: unknown): Array<{ key: string; value: number; poor: boolean; dim: boolean }>
+  requestsFact(row: unknown): { perf: EntryView | null; neutral: boolean }
 }
 
 async function loadLogic(): Promise<Logic> {
@@ -358,6 +359,23 @@ describe('fremdev/logic.js', () => {
     expect(perfView({})).toEqual([])
     expect(perfView(undefined)).toEqual([])
     expect(perfView({ lcp: 'x', fps: 60 })).toEqual([])
+  })
+
+  it('requestsFact: with no failed request to show, the newest open perf entry stands in, and a perf entry makes the wording neutral', async () => {
+    const { requestsFact } = await loadLogic()
+    const perf = (id: number, metric: string, value: number, ratio: number | null, state: string) => ({ kind: 'perf', id, metric, value, ratio, n: 1, at: id, state })
+    const request = { kind: 'request', id: 1, method: 'GET', path: '/api', status: 404, n: 1, at: 1, state: 'open' }
+    const tally = (open: number, last: unknown) => ({ total: 2, open, seen: 0, last })
+    expect(requestsFact({ requests: tally(1, null), history: [perf(3, 'lcp', 1800, 1.6, 'open'), perf(2, 'cls', 0.3, null, 'resolved')] }))
+      .toEqual({ perf: expect.objectContaining({ kind: 'perf', metric: 'lcp', value: 1800, ratio: 1.6 }), neutral: true })
+    expect(requestsFact({ requests: tally(1, null), history: [perf(3, 'cls', 0.3, null, 'seen')] }).perf).toMatchObject({ metric: 'cls' })
+    // A failed request's last stays what is shown.
+    expect(requestsFact({ requests: tally(2, { path: '/api', status: 404, at: 1 }), history: [perf(3, 'lcp', 1800, 1.6, 'open'), request] }))
+      .toEqual({ perf: null, neutral: true })
+    // Resolved: no entry stands in, the resolved label is neutral.
+    expect(requestsFact({ requests: tally(0, null), history: [perf(3, 'lcp', 1800, 1.6, 'resolved')] })).toEqual({ perf: null, neutral: true })
+    expect(requestsFact({ requests: tally(1, { path: '/api', status: 404, at: 1 }), history: [request] })).toEqual({ perf: null, neutral: false })
+    expect(requestsFact(null)).toEqual({ perf: null, neutral: false })
   })
 
   it('entryView: anything else is null', async () => {

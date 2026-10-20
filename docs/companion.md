@@ -378,7 +378,7 @@ performance timeline, which that world sees as the page does, and calls no page 
 - **load**: the navigation entry's `loadEventEnd`, in ms, once the load event has ended;
 - **LCP**: the latest `largest-contentful-paint` entry, in ms;
 - **CLS**: the sum of the `layout-shift` values, leaving out the shifts right after an input;
-- **long tasks**: the `longtask` entries (50 ms or more) since the document loaded;
+- **long tasks**: the `longtask` entries (50 ms or more) since the page started;
 - **heap**: `performance.memory.usedJSHeapSize` in MB, where Chrome has it. Chrome rounds it off and
   refreshes it rarely: it is shown dimmed and never judged.
 
@@ -396,7 +396,8 @@ the danger colour. The report has a *Performance* line under its header.
 last 5 loads, in `chrome.storage.session.fremdevPerf`: at most 50 origins and paths, the least
 recently used dropped, gone when the browser closes or Fremdev is turned off. The first event of a
 load that carries its load time is judged against them, then added to them; every later event of
-that load is judged on the poor bands alone. A load is a regression when:
+that load is judged on the poor bands alone, and the load's own sample follows its LCP as it grows
+after the load (it is replaced where it is, never added twice). A load is a regression when:
 
 - its LCP, then its load, is at least **1.5 ×** the median of the previous loads *and* at least
   **500 ms** slower (each needs at least one previous value of its own); or
@@ -404,11 +405,15 @@ that load is judged on the poor bands alone. A load is a regression when:
 
 A regression adds one `perf` entry to the history (*LCP 1,8 s, ×1,6 plus lent* / *LCP 1.8 s, ×1.6
 slower*; *CLS 0,30, mauvais* / *CLS 0.30, poor*), counted in the **requests tally**: the light turns
-**orange, never red**, and the tally's last failed request stays as it was. A later regression of
-the same load updates that entry rather than adding another, so a load counts once; it is marked
-seen and resolves like the others (a reload, a hot update), and a load whose entry was resolved is
-not flagged again. An entry the 20-entry history pushes out while open or seen is taken off the
-tally.
+**orange, never red**, and the tally's last failed request stays as it was. A later verdict of the
+same load updates that entry, rather than adding another, only when it ranks as high or higher (LCP
+slower, then load slower, then LCP poor, then CLS poor): a poor CLS never hides an LCP twice as
+slow. The entry is marked seen and resolves like the others (a reload, a hot update), and a page
+(one document) is flagged at most once, even once its entry has left the history. An entry the
+20-entry history pushes out while open or seen is taken off the tally. With no failed request to
+show, the folded row writes the regression beside the requests count, and the count's resolved
+label reads *n signalés, résolus* / *n flagged, resolved* rather than calling it a failed request.
+The report lists the regressions under *Performance*.
 
 An install that reads performance lists `fremdev.perf`; an older one sends no values, and its rows
 read none.

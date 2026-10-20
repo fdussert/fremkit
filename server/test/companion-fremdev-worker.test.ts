@@ -1014,7 +1014,8 @@ describe('performance and regressions', () => {
     await f.later()
     expect(perfOf(f)).toEqual([])
     expect(f.rows()['7'].requests.open).toBe(0)
-    expect(stored(f)).toEqual([{ key: 'http://localhost:5173/', samples: [{ load: 1000, lcp: 1000 }, { load: 1000, lcp: 1100 }, { load: 1000, lcp: 1200 }] }])
+    // Each sample with the document it came from (Chrome's documentId), so that document's can follow its LCP.
+    expect(stored(f)).toEqual([{ key: 'http://localhost:5173/', samples: [{ load: 1000, lcp: 1000, doc: 'D0' }, { load: 1000, lcp: 1100, doc: 'D1' }, { load: 1000, lcp: 1200, doc: 'D2' }] }])
     // The next load: LCP first, judged on the bands alone; then load, judged against the three before it.
     await f.fremdev.onPageEvent({ kind: 'perf', lcp: 1800 }, devSender({ documentId: 'D9' }))
     await f.later()
@@ -1024,14 +1025,21 @@ describe('performance and regressions', () => {
     expect(perfOf(f)).toEqual([expect.objectContaining({ metric: 'lcp', value: 1800, ratio: 1.6, state: 'open' })])
     expect(f.rows()['7'].requests).toMatchObject({ total: 1, open: 1, last: null })
     expect(stored(f)[0].samples).toHaveLength(4)
-    // A later event of that load: the bands only, and never pushed again.
+    // A later event of that load: the bands only, and never pushed again. A poor CLS is weaker than
+    // the LCP ratio: the entry stays as it is.
     await f.fremdev.onPageEvent({ kind: 'perf', lcp: 1800, load: 1100, cls: 0.4 }, devSender({ documentId: 'D9' }))
     await f.later()
-    expect(perfOf(f)).toEqual([expect.objectContaining({ metric: 'cls', value: 0.4, ratio: null })])
+    expect(perfOf(f)).toEqual([expect.objectContaining({ metric: 'lcp', value: 1800, ratio: 1.6 })])
     expect(f.rows()['7'].requests.open).toBe(1)
     expect(stored(f)[0].samples).toHaveLength(4)
     const wire = (f.sent.filter((m) => m.type === 'dev.tabs').at(-1)!.tabs as Array<Record<string, any>>)[0]
     expect(wire.perf).toEqual({ lcp: 1800, load: 1100, cls: 0.4 })
+    // The LCP grows after the load: this document's sample follows it, still one sample.
+    await f.fremdev.onPageEvent({ kind: 'perf', lcp: 2500, load: 1100, cls: 0.4 }, devSender({ documentId: 'D9' }))
+    await f.later()
+    expect(stored(f)[0].samples).toHaveLength(4)
+    expect(stored(f)[0].samples.at(-1)).toEqual({ load: 1100, lcp: 2500, doc: 'D9' })
+    expect(stored(f)[0].samples.slice(0, 3).map((x) => (x as { lcp: number }).lcp)).toEqual([1000, 1100, 1200])
     // Turned off, the samples go too.
     await f.fremdev.stop()
     expect(f.store.session.fremdevPerf).toEqual([])

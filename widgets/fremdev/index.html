@@ -172,6 +172,7 @@
     empty: { fr: 'Aucun onglet de développement ouvert', en: 'No development tab open' },
     resolved: { fr: '{n} erreurs, résolues', en: '{n} errors, resolved' },
     resolvedRequests: { fr: '{n} requêtes en échec, résolues', en: '{n} failed requests, resolved' },
+    resolvedFlagged: { fr: '{n} signalés, résolus', en: '{n} flagged, resolved' },
     down: { fr: 'serveur arrêté', en: 'server down' },
     noAnswer: { fr: 'sans réponse', en: 'no answer' },
     clear: { fr: 'Effacer', en: 'Clear' },
@@ -192,6 +193,7 @@
     load: { fr: 'Chargement', en: 'Load' },
     lcp: { fr: 'LCP', en: 'LCP' },
     cls: { fr: 'CLS', en: 'CLS' },
+    longTask: { fr: '{n} tâche longue', en: '{n} long task' },
     longTasks: { fr: '{n} tâches longues', en: '{n} long tasks' },
     heap: { fr: '{n} Mo', en: '{n} MB' },
     perfSlower: { fr: '{m} {v}, ×{r} plus lent', en: '{m} {v}, ×{r} slower' },
@@ -263,7 +265,7 @@
     }
     /** One of the row's values, as the perf line writes it. */
     function perfPart(p) {
-      if (p.key === 'longTasks') return Fremkit.t(L.longTasks, { n: p.value })
+      if (p.key === 'longTasks') return Fremkit.t(p.value === 1 ? L.longTask : L.longTasks, { n: p.value })
       if (p.key === 'heapMb') return Fremkit.t(L.heap, { n: p.value })
       return Fremkit.t(L[p.key]) + ' ' + metricValue(p.key, p.value)
     }
@@ -571,7 +573,12 @@
       entry.flight.hidden = flying === 0
       updateFact(entry.errors, e, e && e.last ? e.last.text : '', L.resolved)
       var last = q && q.last
-      updateFact(entry.requests, q, last ? (last.status === 0 ? Fremkit.t(L.noAnswer) : String(last.status)) + ' ' + last.path : '', L.resolvedRequests)
+      // A load's regression counts here too: with no failed request to show, its text stands in, and
+      // the resolved label does not call it a failed request.
+      var rf = FD.requestsFact(row)
+      var lastText = last ? (last.status === 0 ? Fremkit.t(L.noAnswer) : String(last.status)) + ' ' + last.path
+        : rf.perf ? perfText(rf.perf) : ''
+      updateFact(entry.requests, q, lastText, rf.neutral ? L.resolvedFlagged : L.resolvedRequests)
       entry.facts.hidden = entry.errors.hidden && entry.requests.hidden
       setText(entry.showLabel, Fremkit.t(L.showTab))
       entry.show.setAttribute('aria-label', Fremkit.t(L.showTab))

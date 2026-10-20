@@ -84,6 +84,8 @@ export function emptyTab(tabId, url, title, now) {
     perf: {},
     perfDoc: null,
     perfEntryId: null,
+    /** The document whose load was flagged (`perfDoc` then, '' for none told): flagged at most once. */
+    perfFlaggedDoc: null,
     activity: now,
   }
 }
@@ -234,23 +236,30 @@ function perfValuesOf(tab, event) {
   return { ...tab, perf: values, perfDoc: doc, perfEntryId: null }
 }
 
+/** A verdict's priority, 0 the strongest: LCP slower, load slower, LCP poor, CLS poor (lib/devperf.js). */
+const verdictRank = (metric, ratio) => (ratio !== null ? (metric === 'lcp' ? 0 : 1) : metric === 'lcp' ? 2 : 3)
+
 /**
  * A load's regression (`{ kind: 'perf-regression', metric, value, ratio }`, from lib/devperf.js's
- * verdict): at most one entry and one tally bump per load. While this load's entry is in the ring
- * and open or seen, it takes the new metric, value and ratio; once resolved (a route change or a hot
- * update since), the load is not flagged again. Otherwise (none yet, or pushed out of the ring and
- * un-counted) a new open entry, counted in the requests tally with `requests.last` left as it is.
+ * verdict): at most one entry and one tally bump per document. While this load's entry is in the
+ * ring and open or seen, a verdict of equal or higher priority takes its metric, value and ratio (a
+ * weaker one is ignored: a poor CLS never hides an LCP twice as slow). Once the document was flagged,
+ * it is not flagged again, whether its entry resolved (a route change, a hot update) or left the
+ * ring (un-counted then). Otherwise a new open entry, counted in the requests tally with
+ * `requests.last` left as it is.
  */
 function perfRegression(tab, event, now) {
   if (!PERF_METRICS.includes(event.metric) || !isPerfValue(event.metric, event.value)) return tab
   const ratio = isRatio(event.ratio) ? event.ratio : null
   const ring = tab.history ?? []
   const current = isId(tab.perfEntryId) ? ring.find((e) => e.kind === 'perf' && e.id === tab.perfEntryId) : undefined
-  if (current) {
-    if (current.state === 'resolved') return tab
+  if (current && current.state !== 'resolved') {
+    if (verdictRank(event.metric, ratio) > verdictRank(current.metric, current.ratio)) return tab
     const next = { ...current, metric: event.metric, value: event.value, ratio }
     return { ...tab, history: ring.map((e) => (e === current ? next : e)) }
   }
+  const doc = tab.perfDoc ?? ''
+  if (tab.perfFlaggedDoc === doc) return tab
   const r = tab.requests
   const requests = { total: Math.min(MAX_COUNT, r.total + 1), open: Math.min(MAX_COUNT, r.open + 1), seen: r.seen ?? 0, last: r.last }
   const id = isId(tab.nextId) ? tab.nextId : 1
@@ -258,6 +267,7 @@ function perfRegression(tab, event, now) {
     ...tab,
     ...record({ ...tab, requests }, { kind: 'perf', metric: event.metric, value: event.value, ratio, n: 1, at: now, state: 'open' }),
     perfEntryId: id,
+    perfFlaggedDoc: doc,
     activity: now,
   }
 }
@@ -350,7 +360,7 @@ export function reduce(tab, event, now) {
       if (originOf(event.url) !== originOf(tab.url)) {
         return {
           ...next, inFlight: 0, errors: tally(), requests: tally(), history: [], server: 'up', devServer: null, serverBase: '/',
-          perf: {}, perfDoc: null, perfEntryId: null,
+          perf: {}, perfDoc: null, perfEntryId: null, perfFlaggedDoc: null,
         }
       }
       return { ...next, errors: resolved(tab.errors), requests: resolved(tab.requests), history: restate(tab.history, ['open', 'seen'], 'resolved') }
@@ -643,6 +653,7 @@ export function restoredTabs(raw) {
         perf: t.perf ?? {},
         perfDoc: typeof t.perfDoc === 'string' && t.perfDoc.length <= 128 ? t.perfDoc : null,
         perfEntryId: isId(t.perfEntryId) ? t.perfEntryId : null,
+        perfFlaggedDoc: typeof t.perfFlaggedDoc === 'string' && t.perfFlaggedDoc.length <= 128 ? t.perfFlaggedDoc : null,
       }
     } catch {
       // a shape wireRow cannot read: dropped
