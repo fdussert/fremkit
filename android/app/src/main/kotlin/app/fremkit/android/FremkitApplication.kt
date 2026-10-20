@@ -27,6 +27,8 @@ class FremkitApplication : Application() {
         private set
     lateinit var network: LocalNetwork
         private set
+    lateinit var brightness: ScreenBrightness
+        private set
     val meter = ViewportMeter()
 
     /** A pin change after a WebView loaded restarts the process; before, clearing in place is enough. */
@@ -84,6 +86,8 @@ class FremkitApplication : Application() {
                 else -> Unit
             }
         }
+        // The screen's brightness hand: a 401 to a report is a revocation, as the page's message is.
+        brightness = ScreenBrightness(this, scope) { model.pageSaidUnauthorized() }
         model.start()
     }
 

@@ -28,8 +28,10 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         // Before the first WebView exists: an outdated one never gets to show a half dashboard.
         app.webView.check()
+        // The window the Mac's brightness target is set on (re-applied to a new activity).
+        app.brightness.attach(window)
         setContent {
-            Root(app.model, app.flow, app.meter, app.hygiene, app.webView, app.restarting, app.network, appVersion = BuildConfig.VERSION_NAME)
+            Root(app.model, app.flow, app.meter, app.hygiene, app.webView, app.restarting, app.network, app.brightness, appVersion = BuildConfig.VERSION_NAME)
         }
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) { app.model.run() }
@@ -79,6 +81,11 @@ class MainActivity : ComponentActivity() {
             // The link itself is never logged: it carries the code's secret.
             if (!app.flow.handle(link, LinkSource.SCANNER)) Log.w(TAG, "the seeded file is not a pairing link")
         }
+    }
+
+    override fun onDestroy() {
+        app.brightness.detach(window)
+        super.onDestroy()
     }
 
     override fun onStop() {

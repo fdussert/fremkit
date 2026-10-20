@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
@@ -19,6 +20,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.fremkit.android.screens.ConfirmLinkDialog
@@ -60,6 +62,7 @@ fun Root(
     webView: WebViewSupport,
     restarting: StateFlow<Boolean>,
     network: LocalNetwork,
+    brightness: ScreenBrightness,
     appVersion: String,
 ) {
     val state by model.state.collectAsStateWithLifecycle()
@@ -116,7 +119,7 @@ fun Root(
                 else -> when (val s = state) {
                     AppState.Welcome -> WelcomeScreen(credentialsUnreadable, nudge, scan = flow::scan, enterCode = flow::enterCode)
                     AppState.Connecting -> ConnectingScreen(mac?.name)
-                    is AppState.Dashboard -> mac?.let { DashboardScreen(s.host, it, model, hygiene) }
+                    is AppState.Dashboard -> mac?.let { DashboardScreen(s.host, it, model, hygiene, brightness) }
                     is AppState.Unreachable -> UnreachableScreen(s.name, isConnecting, nudge) { model.reconnect() }
                     is AppState.KeyChanged -> KeyChangedScreen(
                         s.name,
@@ -138,10 +141,12 @@ fun Root(
 
 /**
  * The dashboard: one [DashboardWebView] per host (a new host, a new view), paused and resumed with
- * the activity, destroyed when the dashboard goes. What the page says goes to the model.
+ * the activity, destroyed when the dashboard goes. What the page says goes to the model, and its
+ * brightness targets to [brightness], which reports the screen's level to [host] while the
+ * dashboard is shown and the app started.
  */
 @Composable
-private fun DashboardScreen(host: String, mac: PairedMac, model: AppModel, hygiene: WebViewHygiene) {
+private fun DashboardScreen(host: String, mac: PairedMac, model: AppModel, hygiene: WebViewHygiene, brightness: ScreenBrightness) {
     val context = LocalContext.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     key(host) {
@@ -155,12 +160,18 @@ private fun DashboardScreen(host: String, mac: PairedMac, model: AppModel, hygie
                 onMessage = { message ->
                     when (message) {
                         PageMessage.Unauthorized -> model.pageSaidUnauthorized()
-                        // Brightness and the screen id are for the brightness hand, not here yet.
-                        is PageMessage.Brightness, is PageMessage.Screen -> Unit
+                        is PageMessage.Brightness -> brightness.receive(message.target, message.seq)
+                        // The screen the Mac shows here: the page's business.
+                        is PageMessage.Screen -> Unit
                     }
                 },
                 onFailure = { model.dashboardFailed() },
             ).also { it.load() }
+        }
+        LaunchedEffect(mac, host) {
+            brightness.show(mac, host)
+            // Reports every 10 s while started; stopped, the Mac marks the screen gone after 30 s.
+            lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) { brightness.run() }
         }
         DisposableEffect(lifecycle, dashboard) {
             val observer = LifecycleEventObserver { _, event ->
