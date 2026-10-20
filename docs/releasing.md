@@ -69,6 +69,8 @@ Still to do:
    and the site link to `releases/latest/download/Fremkit-Android.apk`, which only the newest
    release answers: a release without the APK breaks both links until the next one. See
    [The Android app](#the-android-app).
+   For 0.5.1 itself, the release commit also removes the `hidden` attribute from the site's
+   Android card (`site/index.html`, `id="android"`), which waits for the first APK.
 3. Run the commands it prints, in order: commit the cask, tag and push, `gh release create` with
    the DMG (also as `Fremkit.dmg`, the name the site's download buttons link to through
    `releases/latest/download/`), the zip and `appcast.xml` (which also posts the release in the Announcements
