@@ -6,6 +6,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
@@ -85,6 +86,100 @@ class BrightnessSendTest {
         assertEquals(sampleMac.keyHash, seen?.keyHash)
         assertEquals(setOf("192.0.2.10", "studio.local"), seen?.pinnedHosts)
         assertEquals("POST", seen?.method)
+    }
+}
+
+/**
+ * A report through the kit's pinned transport: the request and the pin it is handed, what each
+ * exchange becomes, and the real thing against a local TLS server.
+ */
+class BrightnessTransportTest {
+    private val reporter = BrightnessReporter(sampleMac.updating(addresses = listOf("192.168.1.20")), "192.0.2.10")
+
+    @Test
+    fun handsTheTransportTheRequestUnderThePinOfTheMac() = runTest {
+        val requests = Recorder<Request>()
+        val policies = Recorder<PinPolicy>()
+        val status = reporter.request(0.426, 7).send { request, policy ->
+            requests.add(request)
+            policies.add(policy)
+            Exchange.Response(204, ByteArray(0))
+        }
+        assertEquals(204, status)
+        val request = requests.items.single()
+        assertEquals("POST", request.method)
+        assertEquals("https://192.0.2.10:4243/api/devices/me/brightness", request.uri.toString())
+        assertEquals("fremkit_device=device-token", request.header("cookie"))
+        assertEquals("application/json", request.header("Content-Type"))
+        assertEquals("""{"value":43,"applied":7}""", request.body!!.decodeToString())
+        val policy = policies.items.single()
+        assertEquals(sampleMac.keyHash, policy.keyHash)
+        // The host in use, the Mac's name and its last address; never its other addresses.
+        assertEquals(setOf("192.0.2.10", "studio.local"), policy.hosts)
+    }
+
+    @Test
+    fun aRefusedPinOrANetworkFailureHasNoStatus() = runTest {
+        val request = reporter.request(0.5, null)
+        assertNull(request.send { _, _ -> Exchange.PinRejected })
+        assertNull(request.send { _, _ -> Exchange.Failed })
+        assertEquals(401, request.send { _, _ -> Exchange.Response(401, ByteArray(0)) })
+    }
+
+    @Test
+    fun theSenderReportsThroughTheTransport() = runTest {
+        val bodies = Recorder<String>()
+        var answer: Exchange = Exchange.Response(204, ByteArray(0))
+        val send = reporter.sender { request, _ ->
+            bodies.add(request.body!!.decodeToString())
+            answer
+        }
+        assertEquals(ReportOutcome.SENT, send(0.3, 2))
+        answer = Exchange.Response(401, ByteArray(0))
+        assertEquals(ReportOutcome.UNAUTHORIZED, send(0.3, null))
+        answer = Exchange.PinRejected
+        assertEquals(ReportOutcome.FAILED, send(0.3, null))
+        assertEquals(listOf("""{"value":30,"applied":2}""", """{"value":30}""", """{"value":30}"""), bodies.items)
+    }
+
+    @Test
+    fun brightnessSyncSendsThroughTheSender() = runTest {
+        val bodies = Recorder<String>()
+        var screen = 0.5
+        val sync = BrightnessSync(
+            scope = backgroundScope,
+            read = { screen },
+            write = { screen = it },
+            send = reporter.sender { request, _ ->
+                bodies.add(request.body!!.decodeToString())
+                Exchange.Response(204, ByteArray(0))
+            },
+            unauthorized = {},
+        )
+        sync.receive(40.0, 3)?.join()
+        assertEquals(listOf("""{"value":40,"applied":3}"""), bodies.items)
+    }
+
+    @Test
+    fun reachesThePairedMacAndNoOtherKey() = runBlocking {
+        LocalTlsServer().use { server ->
+            server.answer("/api/devices/me/brightness", LocalTlsServer.Answer.Status(204, ""))
+            val mac = PairedMac(host = "studio.local", address = server.host, port = server.port, keyHash = server.keyHash,
+                token = "device-token", deviceId = "d1", name = "studio")
+            val outcome = BrightnessReporter(mac, server.host).sender()(0.5, 3)
+            assertEquals(ReportOutcome.SENT, outcome)
+            val seen = server.requests.single()
+            assertEquals("POST", seen.method)
+            assertEquals("/api/devices/me/brightness", seen.path)
+            assertEquals("fremkit_device=device-token", seen.header("Cookie"))
+            assertEquals("""{"value":50,"applied":3}""", seen.body.decodeToString())
+
+            // Another key at the same address: refused before anything is sent, the cookie included.
+            val stranger = PairedMac(host = "studio.local", address = server.host, port = server.port,
+                keyHash = SpkiFixture.keyHash, token = "device-token", deviceId = "d1", name = "studio")
+            assertEquals(ReportOutcome.FAILED, BrightnessReporter(stranger, server.host).sender()(0.5, 3))
+            assertEquals(1, server.requests.size)
+        }
     }
 }
 
