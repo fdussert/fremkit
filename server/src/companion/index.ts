@@ -7,7 +7,7 @@
 import type { FastifyInstance } from 'fastify'
 import type { ConfigStore } from '../config/store.js'
 import type { DeviceStore } from '../devices/store.js'
-import { pbPasteboard, type Pasteboard } from '../providers/clipboard.js'
+import type { Pasteboard } from '../providers/clipboard.js'
 import type { ProviderRegistry } from '../providers/registry.js'
 import { COMPANION_DEV_CHANNEL, CompanionDev, createDevProvider } from './dev.js'
 import { CompanionPairing } from './pairing.js'
@@ -83,7 +83,7 @@ export async function createCompanion(opts: CompanionOptions): Promise<Companion
   })
   provider = createCompanionProvider({ session, pairing, config: () => config.get() })
   registry.register(provider)
-  registry.register(createDevProvider({ dev, config: () => config.get(), pasteboard: opts.pasteboard ?? pbPasteboard }))
+  registry.register(createDevProvider({ dev, config: () => config.get(), pasteboard: opts.pasteboard }))
 
   let companionOn = config.get().labs?.companion === true
   const unsubscribeConfig = config.onChange?.((next) => {
