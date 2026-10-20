@@ -17,7 +17,7 @@ import { INSTANCE_ID_MAX, type Config } from '../config/schema.js'
 import { tr, type MessageKey } from '../i18n.js'
 import { pbPasteboard, type Pasteboard } from '../providers/clipboard.js'
 import type { CommandContext, Provider } from '../providers/types.js'
-import { FREMDEV_MODULE, FREMDEV_REPORT_MODULE, type DevTab, type ExtensionMessage, type ServerMessage } from './protocol.js'
+import { FREMDEV_FEATURES, FREMDEV_MODULE, FREMDEV_REPORT_MODULE, type DevTab, type ExtensionMessage, type ServerMessage } from './protocol.js'
 
 export const COMPANION_DEV_CHANNEL = 'companion:dev'
 
@@ -31,8 +31,8 @@ export const DEV_PUBLISH_MS = 250
 /** How long a report is waited for before the command gives up. */
 export const REPORT_TIMEOUT_MS = 5_000
 
-/** At most this many reports waited for per install: one more is refused rather than queued. */
-export const MAX_PENDING_REPORTS = 8
+/** At most this many asks (reports and the like) waited for per install: one more is refused rather than queued. */
+export const MAX_PENDING_ASKS = 8
 
 /** A safety net only: every change is pushed through a refresh. */
 export const COMPANION_DEV_INTERVAL_MS = 30_000
@@ -49,12 +49,14 @@ export type DevSnapshot = {
   paired: number
   /**
    * `report`: the install can answer a report command (`fremdev.report` in its modules).
+   * `features`: the modules of `FREMDEV_FEATURES` it listed, sorted: the Edge shows a control only
+   * for an install that has its feature.
    *
    * Every install that announced Fremdev since this server started, whether or not the user
    * switched it on. `connected` false: its socket is closed (the extension closes it while no dev
    * tab is open, the normal idle state), it has no rows, and its `on` is the last it said.
    */
-  installs: Array<{ deviceId: string; name: string; on: boolean; connected: boolean; report: boolean; tabs: DevTab[] }>
+  installs: Array<{ deviceId: string; name: string; on: boolean; connected: boolean; report: boolean; features: string[]; tabs: DevTab[] }>
 }
 
 export interface CompanionDevOptions {
@@ -67,9 +69,17 @@ export interface CompanionDevOptions {
 
 export type DevMessage = Extract<ExtensionMessage, { type: 'modules' | 'dev.tabs' | 'ping' | 'dev.report' }>
 
-interface PendingReport {
+/** The messages that answer an ask, matched to it by their `id` and `tabId`. */
+export type DevAnswerType = 'dev.report'
+export type DevAnswer = Extract<DevMessage, { type: DevAnswerType }>
+
+interface PendingAsk {
   tabId: number
-  resolve: (text: string | null) => void
+  /** The module the ask needs: withdrawn by `modules`, the ask gives up. */
+  feature: string
+  /** The type of the message that answers it; another type with the same id is not its answer. */
+  answer: DevAnswerType
+  resolve: (msg: DevAnswer | null) => void
   timer: ReturnType<typeof setTimeout>
 }
 
@@ -78,10 +88,12 @@ interface Install {
   on: boolean
   /** `fremdev.report` in its modules: it answers `dev.report.ask`. */
   report: boolean
+  /** Its modules that are in `FREMDEV_FEATURES`. */
+  features: Set<string>
   connected: boolean
   tabs: DevTab[]
-  /** The reports asked of this install and not answered yet, by id. */
-  pending: Map<string, PendingReport>
+  /** The asks made of this install and not answered yet, by id. */
+  pending: Map<string, PendingAsk>
   /** When this install's rows were last published. */
   publishedAt?: number
   /** The trailing publish of rows that came too soon after the last one. */
@@ -120,7 +132,7 @@ export class CompanionDev {
     const known = this.installs.get(deviceId)
     if (known) {
       if (known.timer) clearTimeout(known.timer)
-      // A new socket: the old one's reports will never come.
+      // A new socket: the old one's answers will never come.
       abandon(known)
     }
     // A known install keeps its place in the list.
@@ -128,6 +140,7 @@ export class CompanionDev {
       name,
       on: modules.includes(FREMDEV_MODULE),
       report: modules.includes(FREMDEV_REPORT_MODULE),
+      features: featuresOf(modules),
       connected: true,
       tabs: [],
       pending: new Map(),
@@ -173,19 +186,23 @@ export class CompanionDev {
         return
       case 'dev.report': {
         const pending = install.pending.get(msg.id)
-        // Only the install asked, for the tab asked: another browser's tab 7 is not this one.
-        if (!pending || pending.tabId !== msg.tabId) return
+        // Only the install asked, for the tab asked, with the answer asked for: another browser's
+        // tab 7 is not this one.
+        if (!pending || pending.tabId !== msg.tabId || pending.answer !== msg.type) return
         install.pending.delete(msg.id)
         clearTimeout(pending.timer)
-        return pending.resolve(msg.text)
+        return pending.resolve(msg)
       }
       case 'modules': {
         const on = msg.modules.includes(FREMDEV_MODULE)
         const report = msg.modules.includes(FREMDEV_REPORT_MODULE)
-        if (on === install.on && report === install.report) return
+        const features = featuresOf(msg.modules)
+        if (on === install.on && report === install.report && sameSet(features, install.features)) return
         install.report = report
-        // Off, or no longer able to report: whatever was asked will not be answered.
-        if (!on || !report) abandon(install)
+        install.features = features
+        // Off: nothing asked will be answered. On: what needs a feature withdrawn will not either.
+        if (!on) abandon(install)
+        else abandonWhere(install, (p) => !holds(install, p.feature))
         if (on === install.on) return this.publish(install)
         install.on = on
         // Switched off, its rows are stale at once.
@@ -195,8 +212,8 @@ export class CompanionDev {
       case 'dev.tabs':
         if (!install.on) return
         install.tabs = msg.tabs
-        // A tab that left the list is closed or no longer a dev tab: its report will not come.
-        abandonGone(install)
+        // A tab that left the list is closed or no longer a dev tab: its answers will not come.
+        abandonWhere(install, (p) => !install.tabs.some((t) => t.tabId === p.tabId))
         return this.publish(install)
     }
   }
@@ -217,18 +234,8 @@ export class CompanionDev {
    * `REPORT_TIMEOUT_MS`, or a socket that goes away first.
    */
   report(deviceId: string, tabId: number, stack: boolean): Promise<string | null> {
-    const install = this.reachable(deviceId, tabId)
-    if (!install?.report || install.pending.size >= MAX_PENDING_REPORTS) return Promise.resolve(null)
-    const id = randomUUID()
-    return new Promise((resolve) => {
-      const timer = setTimeout(() => {
-        install.pending.delete(id)
-        resolve(null)
-      }, REPORT_TIMEOUT_MS)
-      timer.unref?.()
-      install.pending.set(id, { tabId, resolve, timer })
-      this.send(deviceId, { type: 'dev.report.ask', id, tabId, stack })
-    })
+    return this.ask(deviceId, tabId, FREMDEV_REPORT_MODULE, 'dev.report', (id) => ({ type: 'dev.report.ask', id, tabId, stack }), REPORT_TIMEOUT_MS)
+      .then((msg) => (msg?.type === 'dev.report' ? msg.text : null))
   }
 
   /** `labs.companion` or `labs.fremdev` may have changed: the snapshot says so. */
@@ -242,9 +249,46 @@ export class CompanionDev {
       enabled,
       paired: this.pairedCount(),
       installs: enabled
-        ? [...this.installs].map(([deviceId, i]) => ({ deviceId, name: i.name, on: i.on, connected: i.connected, report: i.report, tabs: i.tabs }))
+        ? [...this.installs].map(([deviceId, i]) => ({
+            deviceId,
+            name: i.name,
+            on: i.on,
+            connected: i.connected,
+            report: i.report,
+            features: [...i.features].sort(),
+            tabs: i.tabs,
+          }))
         : [],
     }
+  }
+
+  /**
+   * Sends the install the message `build` makes with a fresh id, and resolves with the `answer`
+   * that comes back with that id for that tab. Null, at once, when the install is not reachable
+   * (`reachableWith`: connected, Fremdev on, the tab reported, the feature listed) or already owes
+   * `MAX_PENDING_ASKS`; null later when `timeoutMs` passes, the socket goes, the tab leaves its rows
+   * or `modules` withdraws the feature. An answer with another id, tab or type is not this one's.
+   */
+  private ask(
+    deviceId: string,
+    tabId: number,
+    feature: string,
+    answer: DevAnswerType,
+    build: (id: string) => ServerMessage,
+    timeoutMs: number,
+  ): Promise<DevAnswer | null> {
+    const install = this.reachableWith(deviceId, tabId, feature)
+    if (!install || install.pending.size >= MAX_PENDING_ASKS) return Promise.resolve(null)
+    const id = randomUUID()
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        install.pending.delete(id)
+        resolve(null)
+      }, timeoutMs)
+      timer.unref?.()
+      install.pending.set(id, { tabId, feature, answer, resolve, timer })
+      this.send(deviceId, build(id))
+    })
   }
 
   private relay(deviceId: string, msg: Extract<ServerMessage, { type: 'dev.focus' | 'dev.clear' }>): boolean {
@@ -259,6 +303,12 @@ export class CompanionDev {
     const install = this.installs.get(deviceId)
     if (!install?.on || !install.connected || !install.tabs.some((t) => t.tabId === tabId)) return null
     return install
+  }
+
+  /** `reachable`, and the install listed `feature` (`fremdev.report` counts as the report's). */
+  private reachableWith(deviceId: string, tabId: number, feature: string): Install | null {
+    const install = this.reachable(deviceId, tabId)
+    return install && holds(install, feature) ? install : null
   }
 
   /** Publishes now, or on the trailing edge of `DEV_PUBLISH_MS` for this install. */
@@ -288,17 +338,29 @@ export class CompanionDev {
   }
 }
 
-/** Resolves to null the reports asked for a tab the install no longer lists. */
-function abandonGone(install: Install): void {
+/** The modules of `FREMDEV_FEATURES` in a list: an unknown `fremdev.*` name is not one. */
+function featuresOf(modules: readonly string[]): Set<string> {
+  return new Set(modules.filter((m) => FREMDEV_FEATURES.includes(m)))
+}
+
+const sameSet = (a: ReadonlySet<string>, b: ReadonlySet<string>) => a.size === b.size && [...a].every((x) => b.has(x))
+
+/** Whether the install listed `feature`; the report's own module is its `report` flag. */
+function holds(install: Install, feature: string): boolean {
+  return feature === FREMDEV_REPORT_MODULE ? install.report : install.features.has(feature)
+}
+
+/** Resolves to null, and forgets, the asks `gone` picks. */
+function abandonWhere(install: Install, gone: (pending: PendingAsk) => boolean): void {
   for (const [id, pending] of install.pending) {
-    if (install.tabs.some((t) => t.tabId === pending.tabId)) continue
+    if (!gone(pending)) continue
     clearTimeout(pending.timer)
     install.pending.delete(id)
     pending.resolve(null)
   }
 }
 
-/** Resolves every report the install still owes with null, and forgets them. */
+/** Resolves every ask the install still owes with null, and forgets them. */
 function abandon(install: Install): void {
   for (const pending of install.pending.values()) {
     clearTimeout(pending.timer)

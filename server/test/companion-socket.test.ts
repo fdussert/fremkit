@@ -370,7 +370,7 @@ describe('companion socket', () => {
 
   it('a hello whose modules it cannot read still connects, just not for Fremdev', async () => {
     const { token } = await paired()
-    for (const modules of [Array.from({ length: 9 }, (_, i) => `m${i}`), ['x'.repeat(33)]]) {
+    for (const modules of [Array.from({ length: 17 }, (_, i) => `m${i}`), ['x'.repeat(33)]]) {
       const client = await proven(token)
       client.send({ type: 'hello', token, installId: INSTALL, protocol: PROTOCOL, modules })
       expect(await client.next()).toEqual({ type: 'ready', protocol: PROTOCOL, modules: { fremplay: true, fremdev: true } })
@@ -422,6 +422,7 @@ describe('companion socket', () => {
       errors: { total: 1, open: 1, seen: 0, last: { text: 'TypeError: x is undefined', at: 1_000 } },
       requests: { total: 0, open: 0, seen: 0, last: null },
       history: [],
+      devServer: null,
       server: 'up',
       activity: 1_000,
       ...over,

@@ -11,6 +11,22 @@ const MAX_COUNT = 1_000_000
 const MAX_BYTES = 60_000
 /** The entries a tab's history keeps, newest first. */
 export const HISTORY_MAX = 20
+/** The highest entry id; the next one is 1 again. */
+const MAX_ID = 2_147_483_647
+/** The dev servers told apart (DEV_SERVERS on the server). */
+export const DEV_SERVERS = ['vite', 'next', 'webpack']
+const BASE_RE = /^\/[A-Za-z0-9._~\-/]{0,99}$/
+
+/**
+ * Whether `base` may be the dev server's base path: a bounded absolute path ending in `/`, with no
+ * empty or dot segment (`//evil/` would read as another host once joined to an origin), and `/`
+ * for anything but Vite, the only one whose base the page tells.
+ */
+export function validBase(base, server) {
+  if (typeof base !== 'string' || !BASE_RE.test(base) || !base.endsWith('/')) return false
+  if (base.includes('//') || base.split('/').some((seg) => seg === '.' || seg === '..')) return false
+  return server === 'vite' || base === '/'
+}
 
 /** `seen`: the open ones the user marked seen on the Edge (×); 0 <= seen <= open <= total. */
 const tally = () => ({ total: 0, open: 0, seen: 0, last: null })
@@ -39,6 +55,11 @@ export function emptyTab(tabId, url, title, now) {
     errors: tally(),
     requests: tally(),
     history: [],
+    /** The id the next history entry gets. */
+    nextId: 1,
+    /** The dev server's kind and, for Vite, its base path: the first told in a load, reset by the next. */
+    devServer: null,
+    serverBase: '/',
     server: 'up',
     activity: now,
   }
@@ -56,16 +77,23 @@ const sameEntry = (a, b) =>
       ? a.method === b.method && a.path === b.path && a.status === b.status
       : true)
 
-/** `entry` (n 1 or more, open) put on top of the ring, or folded into the newest one when it is the same and open. */
-function record(history, entry) {
-  const ring = history ?? []
+const isId = (v) => Number.isInteger(v) && v >= 1 && v <= MAX_ID
+
+/**
+ * `{ history, nextId }` after `entry` (n 1 or more, open): put on top of the ring with the tab's
+ * `nextId`, the next one counting on (1 again after MAX_ID), or folded into the newest entry, whose
+ * id it keeps, when it is the same and open.
+ */
+function record(tab, entry) {
+  const ring = tab.history ?? []
   const top = ring[0]
   if (top && top.state === 'open' && sameEntry(top, entry)) {
     const merged = { ...top, n: Math.min(MAX_COUNT, top.n + entry.n), at: entry.at }
     if (entry.kind === 'error') merged.stack = entry.stack
-    return [merged, ...ring.slice(1)]
+    return { history: [merged, ...ring.slice(1)], nextId: tab.nextId }
   }
-  return [entry, ...ring].slice(0, HISTORY_MAX)
+  const id = isId(tab.nextId) ? tab.nextId : 1
+  return { history: [{ ...entry, id }, ...ring].slice(0, HISTORY_MAX), nextId: id === MAX_ID ? 1 : id + 1 }
 }
 const restate = (history, from, to) => (history ?? []).map((e) => (from.includes(e.state) ? { ...e, state: to } : e))
 
@@ -79,14 +107,14 @@ const resolved = (t) => ({ ...t, open: 0, seen: 0 })
 /** Marked seen: still open, no longer new. */
 const seenAll = (t) => ({ ...t, seen: t.open })
 
-/** The next state of a tab after an event. Every event but `title` stamps `activity`. */
+/** The next state of a tab after an event. Every event but `title` and `devserver` stamps `activity`. */
 export function reduce(tab, event, now) {
   switch (event.kind) {
     case 'error':
       return {
         ...tab,
         errors: bump(tab.errors, { text: event.text, at: now }),
-        history: record(tab.history, {
+        ...record(tab, {
           kind: 'error',
           text: event.text,
           origin: typeof event.origin === 'string' ? event.origin : null,
@@ -101,7 +129,7 @@ export function reduce(tab, event, now) {
       return {
         ...tab,
         requests: bump(tab.requests, { path: event.path, status: event.status, at: now }),
-        history: record(tab.history, {
+        ...record(tab, {
           kind: 'request',
           method: methodOf(event.method),
           path: event.path,
@@ -113,7 +141,8 @@ export function reduce(tab, event, now) {
         activity: now,
       }
     case 'navigated': {
-      const next = { ...tab, url: event.url, host: hostOf(event.url), title: event.title ?? '', activity: now }
+      // A new load says again which dev server it comes from; the entry ids keep counting.
+      const next = { ...tab, url: event.url, host: hostOf(event.url), title: event.title ?? '', activity: now, devServer: null, serverBase: '/' }
       if (originOf(event.url) !== originOf(tab.url)) {
         return { ...next, errors: tally(), requests: tally(), history: [], server: 'up' }
       }
@@ -131,6 +160,10 @@ export function reduce(tab, event, now) {
       return { ...tab, server: event.state === 'down' ? 'down' : 'up', activity: now }
     case 'title':
       return { ...tab, title: event.title ?? '' }
+    case 'devserver':
+      // The first told in a load wins; a later one (another script tag) changes nothing.
+      if ((tab.devServer ?? null) !== null || !DEV_SERVERS.includes(event.server) || !validBase(event.base, event.server)) return tab
+      return { ...tab, devServer: event.server, serverBase: event.base }
     case 'count': {
       // Errors the relay counted over its rate limit: they add up, the last text stays.
       const n = count(event.n)
@@ -140,7 +173,7 @@ export function reduce(tab, event, now) {
       return {
         ...tab,
         errors: { total: add(e.total), open: add(e.open), seen: e.seen ?? 0, last: e.last },
-        history: record(tab.history, { kind: 'limited', n, at: now, state: 'open' }),
+        ...record(tab, { kind: 'limited', n, at: now, state: 'open' }),
         activity: now,
       }
     }
@@ -192,19 +225,21 @@ export function sessionTabs(tabs) {
 /** One history entry as `dev.tabs` carries it: bounded, and never its stack. Null for what cannot travel. */
 function wireEntry(e) {
   const common = { n: count(e?.n), at: Math.max(0, e?.at), state: e?.state }
-  if (common.n < 1 || !Number.isFinite(common.at) || !STATES.includes(common.state)) return null
+  if (!isId(e?.id) || common.n < 1 || !Number.isFinite(common.at) || !STATES.includes(common.state)) return null
+  const id = e.id
   switch (e.kind) {
     case 'error':
       return {
         kind: 'error',
+        id,
         text: clip(String(e.text ?? ''), MAX_TEXT),
         origin: typeof e.origin === 'string' ? clip(e.origin, MAX_TEXT) : null,
         ...common,
       }
     case 'request':
-      return { kind: 'request', method: methodOf(e.method), path: pathOnly(e.path), status: statusOf(e.status), ...common }
+      return { kind: 'request', id, method: methodOf(e.method), path: pathOnly(e.path), status: statusOf(e.status), ...common }
     case 'limited':
-      return { kind: 'limited', ...common }
+      return { kind: 'limited', id, ...common }
     default:
       return null
   }
@@ -222,12 +257,14 @@ function wireRow(t) {
       at: Math.max(0, l.at),
     })),
     history: (Array.isArray(t.history) ? t.history : []).slice(0, HISTORY_MAX).map(wireEntry).filter(Boolean),
+    // The kind alone: the base path is for the extension's own use and never leaves it.
+    devServer: DEV_SERVERS.includes(t.devServer) ? t.devServer : null,
     server: t.server,
     activity: Math.max(0, t.activity),
   }
 }
 
-const MAX_TAB_ID = 2_147_483_647
+const MAX_TAB_ID = MAX_ID
 /** DevTabSchema's host: host:port as the URL gives it, `_` included. */
 const HOST_RE = /^[a-z0-9._\-[\]:]{1,260}$/i
 const PATH_RE = /^\/[^?#]*$/
@@ -239,18 +276,18 @@ const okTally = (t, last) =>
   (t.last === null || last(t.last))
 
 const okEntry = (e) => {
-  if (!e || typeof e !== 'object' || !Number.isInteger(e.n) || e.n < 1 || e.n > MAX_COUNT || !isStamp(e.at) || !STATES.includes(e.state)) {
+  if (!e || typeof e !== 'object' || !isId(e.id) || !Number.isInteger(e.n) || e.n < 1 || e.n > MAX_COUNT || !isStamp(e.at) || !STATES.includes(e.state)) {
     return false
   }
   const keys = Object.keys(e).sort().join()
   switch (e.kind) {
     case 'error':
-      return keys === 'at,kind,n,origin,state,text' && isText(e.text, MAX_TEXT) && (e.origin === null || isText(e.origin, MAX_TEXT))
+      return keys === 'at,id,kind,n,origin,state,text' && isText(e.text, MAX_TEXT) && (e.origin === null || isText(e.origin, MAX_TEXT))
     case 'request':
-      return keys === 'at,kind,method,n,path,state,status' && (METHODS.includes(e.method) || e.method === 'OTHER') &&
+      return keys === 'at,id,kind,method,n,path,state,status' && (METHODS.includes(e.method) || e.method === 'OTHER') &&
         isText(e.path, MAX_TEXT) && PATH_RE.test(e.path) && Number.isInteger(e.status) && e.status >= 0 && e.status <= 599
     case 'limited':
-      return keys === 'at,kind,n,state'
+      return keys === 'at,id,kind,n,state'
     default:
       return false
   }
@@ -269,6 +306,7 @@ export function validRow(r) {
     okTally(r.requests, (l) => isText(l?.path, MAX_TEXT) && PATH_RE.test(l.path) &&
       Number.isInteger(l.status) && l.status >= 0 && l.status <= 599 && isStamp(l.at)) &&
     Array.isArray(r.history) && r.history.length <= HISTORY_MAX && r.history.every(okEntry) &&
+    (r.devServer === null || DEV_SERVERS.includes(r.devServer)) &&
     (r.server === 'up' || r.server === 'down') &&
     isStamp(r.activity)
   )
@@ -338,6 +376,10 @@ export function restoredTabs(raw) {
       if (typeof t.url !== 'string' || typeof t.host !== 'string' || typeof t.title !== 'string') continue
       if ((t.server !== 'up' && t.server !== 'down') || !Array.isArray(t.history) || t.history.length > HISTORY_MAX) continue
       if (!t.history.every((e) => wireEntry(e) !== null && (e.kind !== 'error' || isFrames(e.stack)))) continue
+      // An id at or above the next one would come round again while its entry is still listed.
+      if (!isId(t.nextId) || !t.history.every((e) => e.id < t.nextId)) continue
+      if (!(t.devServer === null || DEV_SERVERS.includes(t.devServer))) continue
+      if (!validBase(t.serverBase, t.devServer)) continue
       if (!validRow(wireRow(t))) continue
       out[key] = t
     } catch {

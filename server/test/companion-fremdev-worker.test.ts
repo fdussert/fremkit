@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 // @ts-expect-error plain JS module outside server/, no declarations
 import { linkAlarm, onlyFremdev, PROBE_MISSES, PROBE_SLOW_MS, ProbeBackoff, ReconnectGate } from '../../companion/lib/presence.js'
 // @ts-expect-error plain JS module
-import { createFremdev, pageEvent } from '../../companion/fremdev.js'
+import { createFremdev, FEATURE_MODULES, ISOLATED_JS, pageEvent } from '../../companion/fremdev.js'
 // @ts-expect-error plain JS module
 import { BUILTIN_PERMISSION_ORIGINS } from '../../companion/lib/devhosts.js'
 
@@ -204,6 +204,26 @@ describe('companion/fremdev.js', () => {
     expect(pageEvent({ kind: 'clear' })).toBeNull()
   })
 
+  it('rebuilds a devserver event from a known kind and a bounded base', () => {
+    expect(pageEvent({ kind: 'devserver', server: 'vite', base: '/app/', tabId: 3 })).toEqual({ kind: 'devserver', server: 'vite', base: '/app/' })
+    expect(pageEvent({ kind: 'devserver', server: 'next', base: '/' })).toEqual({ kind: 'devserver', server: 'next', base: '/' })
+    expect(pageEvent({ kind: 'devserver', server: 'webpack', base: '/' })).toEqual({ kind: 'devserver', server: 'webpack', base: '/' })
+    for (const bad of [
+      { server: 'vite', base: '//evil' },
+      { server: 'vite', base: '//evil/' },
+      { server: 'vite', base: '/a//b/' },
+      { server: 'vite', base: '/../' },
+      { server: 'vite', base: '/app' },
+      { server: 'vite', base: 'app/' },
+      { server: 'vite', base: '/a?b/' },
+      { server: 'vite', base: `/${'a'.repeat(100)}/` },
+      { server: 'vite' },
+      { server: 'next', base: '/app/' },
+      { server: 'webpack', base: '/x/' },
+      { server: 'parcel', base: '/' },
+    ]) expect(pageEvent({ kind: 'devserver', ...bad }), JSON.stringify(bad)).toBeNull()
+  })
+
   it("keeps an error's origin and stack within bounds, and drops what is not one", () => {
     expect(pageEvent({ kind: 'error', text: 't', origin: 'o', stack: ['a'] })).toEqual({ kind: 'error', text: 't', origin: 'o', stack: ['a'] })
     expect(pageEvent({ kind: 'error', text: 't', origin: 7, stack: 'a' })).toEqual({ kind: 'error', text: 't' })
@@ -321,6 +341,30 @@ describe('companion/fremdev.js', () => {
     expect(f.rows()['7'].errors).toMatchObject({ total: 1, open: 1, seen: 1 })
   })
 
+  it('announces its feature modules after fremdev.report, only while on', async () => {
+    FEATURE_MODULES.push('fremdev.test')
+    try {
+      const f = await makeFremdev({ on: false })
+      expect(f.fremdev.modules()).toEqual(['fremplay'])
+      await f.fremdev.start()
+      expect(f.fremdev.modules()).toEqual(['fremplay', 'fremdev', 'fremdev.report', 'fremdev.test'])
+    } finally {
+      FEATURE_MODULES.pop()
+    }
+    expect(FEATURE_MODULES).toEqual([])
+  })
+
+  it('records the dev server a page reports, the first in a load only', async () => {
+    const f = await makeFremdev()
+    await f.fremdev.onPageEvent({ kind: 'devserver', server: 'vite', base: '//evil/' }, devSender())
+    await f.later()
+    expect(f.rows()).toEqual({})
+    await f.fremdev.onPageEvent({ kind: 'devserver', server: 'vite', base: '/app/' }, devSender())
+    await f.fremdev.onPageEvent({ kind: 'devserver', server: 'next', base: '/' }, devSender())
+    await f.later()
+    expect(f.rows()['7']).toMatchObject({ devServer: 'vite', serverBase: '/app/' })
+  })
+
   it('announces fremdev.report only while on', async () => {
     const f = await makeFremdev({ on: false })
     expect(f.fremdev.modules()).toEqual(['fremplay'])
@@ -387,7 +431,8 @@ describe('companion/fremdev.js', () => {
       tabId: 7, url: 'http://localhost:5173/', host: 'localhost:5173', title: 'App',
       errors: { total: 1, open: 1, seen: 0, last: { text: 'boom', at: 900 } },
       requests: { total: 0, open: 0, seen: 0, last: null },
-      history: [{ kind: 'error', text: 'boom', origin: '/src/a.js:1:2', stack: null, n: 1, at: 900, state: 'open' }],
+      history: [{ kind: 'error', id: 1, text: 'boom', origin: '/src/a.js:1:2', stack: null, n: 1, at: 900, state: 'open' }],
+      nextId: 2, devServer: null, serverBase: '/',
       server: 'up', activity: 900,
     }
     store.session.devTabs = {
@@ -397,7 +442,7 @@ describe('companion/fremdev.js', () => {
       // no tallies: wireRow would throw on it
       9: { ...good, tabId: 9, errors: undefined },
       // a history entry that cannot travel
-      10: { ...good, tabId: 10, history: [{ kind: 'error', text: 'x', origin: null, stack: 'not frames', n: 1, at: 1, state: 'open' }] },
+      10: { ...good, tabId: 10, history: [{ kind: 'error', id: 1, text: 'x', origin: null, stack: 'not frames', n: 1, at: 1, state: 'open' }] },
       // not even an object
       11: 'junk',
     }
@@ -457,8 +502,8 @@ describe('companion/fremdev.js', () => {
     onFailed({ tabId: 7, url: 'http://localhost:5173/api/y', method: 'PROPFIND', error: 'net::ERR_FAILED', type: 'fetch' })
     await f.later()
     expect(f.rows()['7'].history).toEqual([
-      { kind: 'request', method: 'OTHER', path: '/api/y', status: 0, n: 1, at: expect.any(Number), state: 'open' },
-      { kind: 'request', method: 'POST', path: '/api/x', status: 500, n: 1, at: expect.any(Number), state: 'open' },
+      { kind: 'request', id: 2, method: 'OTHER', path: '/api/y', status: 0, n: 1, at: expect.any(Number), state: 'open' },
+      { kind: 'request', id: 1, method: 'POST', path: '/api/x', status: 500, n: 1, at: expect.any(Number), state: 'open' },
     ])
   })
 
@@ -560,7 +605,7 @@ describe('companion/fremdev.js', () => {
     await onInstalled({ reason: 'update', previousVersion: '0.0.1' })
     const calls = f.api.scripting.executeScript.mock.calls as Array<[{ target: { tabId: number }; files: string[]; world?: string }]>
     expect(calls.map(([c]) => [c.target.tabId, c.files, c.world])).toEqual([
-      [7, ['fremdev/relay.js'], undefined],
+      [7, ['fremdev/relay.js', 'fremdev/kind.js'], undefined],
       [7, ['fremdev/hook.js'], 'MAIN'],
     ])
     await f.later()
@@ -597,11 +642,12 @@ describe('companion/fremdev.js', () => {
     expect(f.fremdev.modules()).toEqual(['fremplay'])
     expect(f.api.webRequest.onCompleted.removeListener).toHaveBeenCalled()
     await f.fremdev.start()
-    const scripts = f.api.scripting.registerContentScripts.mock.calls[0][0] as Array<{ id: string; world?: string; matches: string[] }>
-    expect(scripts.map((s) => [s.id, s.world, s.matches])).toEqual([
-      ['fremdev-relay', undefined, ['http://localhost/*']],
-      ['fremdev-hook', 'MAIN', ['http://localhost/*']],
+    const scripts = f.api.scripting.registerContentScripts.mock.calls[0][0] as Array<{ id: string; world?: string; matches: string[]; js: string[] }>
+    expect(scripts.map((s) => [s.id, s.world, s.matches, s.js])).toEqual([
+      ['fremdev-relay', undefined, ['http://localhost/*'], ['fremdev/relay.js', 'fremdev/kind.js']],
+      ['fremdev-hook', 'MAIN', ['http://localhost/*'], ['fremdev/hook.js']],
     ])
+    expect(ISOLATED_JS).toEqual(['fremdev/relay.js', 'fremdev/kind.js'])
     expect(f.api.scripting.executeScript).toHaveBeenCalledTimes(2)
     expect(f.store.local.fremdev).toMatchObject({ on: true })
   })

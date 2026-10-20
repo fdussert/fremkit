@@ -11,7 +11,8 @@
 // A dev tab is one whose URL is a dev URL (lib/devhosts.js) *and* inside an origin the user granted:
 // a dev URL alone is not a permission. Where the events come from:
 // - the page: fremdev/hook.js (page world) → fremdev/relay.js (isolated world) → `dev.event`,
-//   taken only from this extension's own content script in the top frame of a dev tab;
+//   taken only from this extension's own content script in the top frame of a dev tab; beside the
+//   relay, fremdev/kind.js tells the dev server's kind from the page's script tags (`devserver`);
 // - the requests: chrome.webRequest, for a tab that has a row; the top frame's own load tells the
 //   dev server's state (answered: up; refused: down);
 // - navigations and titles: chrome.tabs.onUpdated.
@@ -23,13 +24,16 @@
 import { BUILTIN_PERMISSION_ORIGINS, FREMKIT_EXCLUDES, inOrigins, isDevUrl, parsePattern } from './lib/devhosts.js'
 import { boundFrames, clip, isNoise, MAX_FRAME, MAX_TEXT, methodOf, pathOf } from './lib/devlog.js'
 import { buildReport, reportMessage } from './lib/devreport.js'
-import { emptyTab, fremdevSupport, reduce, restoredTabs, sessionTabs, Throttle, wireTabs } from './lib/devtabs.js'
+import { DEV_SERVERS, emptyTab, fremdevSupport, reduce, restoredTabs, sessionTabs, Throttle, validBase, wireTabs } from './lib/devtabs.js'
 import * as protocol from './lib/protocol.js'
 
 const RELAY_ID = 'fremdev-relay'
 const HOOK_ID = 'fremdev-hook'
 const RELAY_JS = 'fremdev/relay.js'
+const KIND_JS = 'fremdev/kind.js'
 const HOOK_JS = 'fremdev/hook.js'
+/** The isolated-world scripts, registered as one and injected together; later features append theirs. */
+export const ISOLATED_JS = [RELAY_JS, KIND_JS]
 /** `dev.tabs` at most this often. */
 const SEND_MS = 500
 /** Keeps the worker, and so the socket, alive while a dev tab is open; also the cue to reconnect. */
@@ -48,6 +52,11 @@ const validId = (id) => Number.isInteger(id) && id >= 0
 const REPORT_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 /** The module that says this install answers `dev.report.ask` (FREMDEV_REPORT_MODULE on the server). */
 const REPORT_MODULE = 'fremdev.report'
+/**
+ * The modules of the features a control on the Edge depends on (FREMDEV_FEATURES on the server),
+ * announced after the report's while Fremdev is on. Each feature appends its own.
+ */
+export const FEATURE_MODULES = []
 const cleanPatterns = (list) =>
   Array.isArray(list) ? [...new Set(list.map((p) => parsePattern(p)?.pattern).filter(Boolean))] : []
 
@@ -77,6 +86,10 @@ export function pageEvent(msg) {
       return { kind: 'server', state: msg.kind }
     case 'hot':
       return { kind: 'hot' }
+    case 'devserver':
+      // A kind from the list, and a base that can only name a path on the tab's own origin.
+      if (!DEV_SERVERS.includes(msg.server) || !validBase(msg.base, msg.server)) return null
+      return { kind: 'devserver', server: msg.server, base: msg.base }
     default:
       return null
   }
@@ -129,7 +142,7 @@ export function createFremdev({
 
   const supported = () => known === null || known === 'yes'
   const active = () => on && supported() && Object.keys(tabs).length > 0
-  const modules = () => (on ? ['fremplay', 'fremdev', REPORT_MODULE] : ['fremplay'])
+  const modules = () => (on ? ['fremplay', 'fremdev', REPORT_MODULE, ...FEATURE_MODULES] : ['fremplay'])
   const isDev = (url) => typeof url === 'string' && isDevUrl(url, patterns) && inOrigins(url, granted)
 
   function flush() {
@@ -215,7 +228,7 @@ export function createFremdev({
     } catch { /* none registered */ }
   }
 
-  /** Registers the relay and the hook on the granted dev origins. */
+  /** Registers the isolated-world scripts (the relay first) and the hook on the granted dev origins. */
   async function register() {
     await unregister()
     if (granted.length === 0) return
@@ -227,7 +240,7 @@ export function createFremdev({
       persistAcrossSessions: true,
     }
     await api.scripting.registerContentScripts([
-      { id: RELAY_ID, js: [RELAY_JS], ...common },
+      { id: RELAY_ID, js: ISOLATED_JS, ...common },
       { id: HOOK_ID, js: [HOOK_JS], world: 'MAIN', ...common },
     ])
   }
@@ -244,7 +257,7 @@ export function createFremdev({
     for (const t of open) {
       if (!validId(t.id) || !isDev(t.url)) continue
       try {
-        await api.scripting.executeScript({ target: { tabId: t.id }, files: [RELAY_JS] })
+        await api.scripting.executeScript({ target: { tabId: t.id }, files: ISOLATED_JS })
         await api.scripting.executeScript({ target: { tabId: t.id }, files: [HOOK_JS], world: 'MAIN' })
       } catch {
         continue

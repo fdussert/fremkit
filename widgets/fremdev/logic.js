@@ -71,7 +71,8 @@
 
   /**
    * Every dev tab of every install that has Fremdev on, as `{ ...tab, deviceId, browser, report,
-   * light, seen }` (`report`: the install can copy a bug report): unseen red first, then unseen orange, then the seen rows (red before orange), then
+   * features, light, seen }` (`report`: the install can copy a bug report; `features`: the modules
+   * its controls depend on, `[]` when it lists none): unseen red first, then unseen orange, then the seen rows (red before orange), then
    * green; the latest activity first within a group, then by tab id.
    */
   function rowsOf(snap) {
@@ -85,6 +86,7 @@
         row.deviceId = install.deviceId
         row.browser = install.name
         row.report = install.report === true
+        row.features = Array.isArray(install.features) ? install.features.slice() : []
         var st = stateOfTab(tab)
         row.light = st.light
         row.seen = st.seen
@@ -95,6 +97,11 @@
       return groupOf(a) - groupOf(b) || (b.activity || 0) - (a.activity || 0) || a.tabId - b.tabId
     })
     return rows
+  }
+
+  /** Whether the row's install listed the feature `name`: a control that needs it shows only then. */
+  function hasFeature(row, name) {
+    return !!row && Array.isArray(row.features) && row.features.indexOf(name) !== -1
   }
 
   /**
@@ -165,6 +172,7 @@
     entryView: entryView,
     stateOf: stateOf,
     rowsOf: rowsOf,
+    hasFeature: hasFeature,
     lightOf: lightOf,
     stateOfTab: stateOfTab,
     hasUnseen: hasUnseen,

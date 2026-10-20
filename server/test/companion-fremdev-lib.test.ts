@@ -5,7 +5,7 @@ import { BUILTIN_PERMISSION_ORIGINS, FREMKIT_EXCLUDES, inOrigins, isDevUrl, pars
 // @ts-expect-error plain JS module
 import { boundFrames, errorText, framePlace, hotReloadSignal, isNoise, MAX_FRAME, MAX_FRAMES, MAX_STACK, MAX_TEXT, METHODS, methodOf, parseStack, pathOf, RateLimiter } from '../../companion/lib/devlog.js'
 // @ts-expect-error plain JS module
-import { emptyTab, fremdevSupport, HISTORY_MAX, reduce, Throttle, validRow, wireTabs } from '../../companion/lib/devtabs.js'
+import { emptyTab, fremdevSupport, HISTORY_MAX, reduce, restoredTabs, Throttle, validRow, wireTabs } from '../../companion/lib/devtabs.js'
 // @ts-expect-error plain JS module
 import { hello, devTabs, modulesMsg, ping } from '../../companion/lib/protocol.js'
 // @ts-expect-error plain JS module
@@ -316,7 +316,7 @@ describe('devtabs', () => {
     expect(rows).toHaveLength(32)
     expect(rows[0].tabId).toBe(39)
     expect(rows[31].tabId).toBe(8)
-    expect(Object.keys(rows[0]).sort()).toEqual(['activity', 'app', 'errors', 'history', 'host', 'requests', 'server', 'tabId'])
+    expect(Object.keys(rows[0]).sort()).toEqual(['activity', 'app', 'devServer', 'errors', 'history', 'host', 'requests', 'server', 'tabId'])
     for (const r of rows) expect(DevTabSchema.safeParse(r).success).toBe(true)
   })
 
@@ -337,7 +337,7 @@ describe('devtabs', () => {
     expect(rows.map((r: { tabId: number }) => r.tabId)).toEqual([1])
     // validRow and DevTabSchema agree on each of them.
     for (const t of [good, badId, badStamp, badHost]) {
-      const shaped = { tabId: t.tabId, app: t.title, host: t.host, errors: t.errors, requests: t.requests, history: [], server: t.server, activity: t.activity }
+      const shaped = { tabId: t.tabId, app: t.title, host: t.host, errors: t.errors, requests: t.requests, history: [], devServer: null, server: t.server, activity: t.activity }
       expect(validRow(shaped), String(t.tabId)).toBe(DevTabSchema.safeParse(shaped).success)
     }
     expect(validRow(null)).toBe(false)
@@ -479,7 +479,7 @@ describe('devtabs history', () => {
     let tab = reduce(base(), err('boom', { origin: '/src/a.js:1:2', stack: ['f /src/a.js:1:2'] }), 200)
     tab = reduce(tab, err('boom', { origin: '/src/a.js:1:2', stack: ['g /src/a.js:1:2'] }), 300)
     expect(tab.history).toEqual([
-      { kind: 'error', text: 'boom', origin: '/src/a.js:1:2', stack: ['g /src/a.js:1:2'], n: 2, at: 300, state: 'open' },
+      { kind: 'error', id: 1, text: 'boom', origin: '/src/a.js:1:2', stack: ['g /src/a.js:1:2'], n: 2, at: 300, state: 'open' },
     ])
     // Another origin is another entry; no origin or stack reads null.
     tab = reduce(tab, err('boom', { origin: '/src/b.js:3:4' }), 400)
@@ -499,7 +499,7 @@ describe('devtabs history', () => {
   it('folds the relay overflow into one limited entry, and keeps the totals', () => {
     let tab = reduce(base(), { kind: 'count', n: 40 }, 200)
     tab = reduce(tab, { kind: 'count', n: 40 }, 300)
-    expect(tab.history).toEqual([{ kind: 'limited', n: 80, at: 300, state: 'open' }])
+    expect(tab.history).toEqual([{ kind: 'limited', id: 1, n: 80, at: 300, state: 'open' }])
     expect(tab.errors.total).toBe(80)
     expect(reduce(tab, { kind: 'count', n: 0 }, 400)).toBe(tab)
   })
@@ -541,8 +541,8 @@ describe('devtabs history', () => {
     tab = reduce(tab, { kind: 'request', method: 'POST', path: '/api', status: 500 }, 300)
     tab = reduce(tab, { kind: 'request', method: 'GET', path: '/api', status: 500 }, 400)
     expect(tab.history).toEqual([
-      { kind: 'request', method: 'GET', path: '/api', status: 500, n: 1, at: 400, state: 'open' },
-      { kind: 'request', method: 'POST', path: '/api', status: 500, n: 2, at: 300, state: 'open' },
+      { kind: 'request', id: 2, method: 'GET', path: '/api', status: 500, n: 1, at: 400, state: 'open' },
+      { kind: 'request', id: 1, method: 'POST', path: '/api', status: 500, n: 2, at: 300, state: 'open' },
     ])
   })
 
@@ -553,8 +553,8 @@ describe('devtabs history', () => {
     const [row] = wireTabs([tab])
     expect(row.history).toHaveLength(3)
     for (const e of row.history) expect(e).not.toHaveProperty('stack')
-    expect(row.history[0]).toEqual({ kind: 'limited', n: 3, at: 400, state: 'open' })
-    expect(row.history[1]).toEqual({ kind: 'request', method: 'OTHER', path: '/api', status: 502, n: 1, at: 300, state: 'open' })
+    expect(row.history[0]).toEqual({ kind: 'limited', id: 3, n: 3, at: 400, state: 'open' })
+    expect(row.history[1]).toEqual({ kind: 'request', id: 2, method: 'OTHER', path: '/api', status: 502, n: 1, at: 300, state: 'open' })
     expect(row.history[2].text).toHaveLength(300)
     expect(row.history[2].origin).toHaveLength(300)
     expect(tab.history[2].stack).toEqual(['f /a.js:1:2'])
@@ -565,7 +565,7 @@ describe('devtabs history', () => {
   it('validRow and DevTabSchema refuse a bad history alike', () => {
     const tab = reduce(reduce(base(), err('x', { origin: '/a.js:1:2' }), 200), { kind: 'request', method: 'GET', path: '/a', status: 404 }, 300)
     const [row] = wireTabs([tab])
-    const entry = { kind: 'error', text: 'x', origin: null, n: 1, at: 1, state: 'open' }
+    const entry = { kind: 'error', id: 1, text: 'x', origin: null, n: 1, at: 1, state: 'open' }
     const cases: Array<[string, unknown, boolean]> = [
       ['ok', row.history, true],
       ['empty', [], true],
@@ -581,8 +581,10 @@ describe('devtabs history', () => {
       ['long origin', [{ ...entry, origin: 'x'.repeat(301) }], false],
       ['path with a query', [{ ...row.history[0], path: '/a?b' }], false],
       ['status 600', [{ ...row.history[0], status: 600 }], false],
-      ['limited with text', [{ kind: 'limited', n: 2, at: 1, state: 'open', text: 'x' }], false],
-      ['limited', [{ kind: 'limited', n: 2, at: 1, state: 'seen' }], true],
+      ['limited with text', [{ kind: 'limited', id: 1, n: 2, at: 1, state: 'open', text: 'x' }], false],
+      ['limited', [{ kind: 'limited', id: 1, n: 2, at: 1, state: 'seen' }], true],
+      ['no id', [{ kind: 'limited', n: 2, at: 1, state: 'seen' }], false],
+      ['id 0', [{ ...entry, id: 0 }], false],
       ['not an array', 'all', false],
     ]
     expect(row.history[0].kind).toBe('request')
@@ -648,6 +650,98 @@ describe('devtabs history', () => {
     // Small enough, nothing is trimmed.
     const small = wireTabs([reduce(reduce(base(), err('x'), 2), { kind: 'navigated', url: 'http://localhost:5173/', title: 'A' }, 3)])
     expect(small[0].history).toHaveLength(1)
+  })
+})
+
+describe('devtabs entry ids and the dev server kind', () => {
+  const base = () => emptyTab(1, 'http://localhost:5173/', 'App', 100)
+  const err = (text: string) => ({ kind: 'error', text })
+  const ids = (tab: { history: Array<{ id: number }> }) => tab.history.map((e) => e.id)
+
+  it('gives two distinct errors ids 1 and 2, and a merge keeps the id', () => {
+    expect(base()).toMatchObject({ nextId: 1, devServer: null, serverBase: '/' })
+    let tab = reduce(base(), err('a'), 200)
+    tab = reduce(tab, err('b'), 300)
+    expect(ids(tab)).toEqual([2, 1])
+    expect(tab.nextId).toBe(3)
+    const merged = reduce(reduce(base(), err('a'), 200), err('a'), 300)
+    expect(merged.history).toHaveLength(1)
+    expect(merged.history[0]).toMatchObject({ id: 1, n: 2 })
+    expect(merged.nextId).toBe(2)
+    // A request and a limited entry are stamped too.
+    tab = reduce(tab, { kind: 'request', path: '/a', status: 500 }, 400)
+    tab = reduce(tab, { kind: 'count', n: 3 }, 500)
+    expect(ids(tab)).toEqual([4, 3, 2, 1])
+  })
+
+  it('wraps to 1 after 2 147 483 647', () => {
+    let tab = { ...base(), nextId: 2_147_483_647 }
+    tab = reduce(tab, err('a'), 200)
+    expect(tab.history[0].id).toBe(2_147_483_647)
+    expect(tab.nextId).toBe(1)
+    tab = reduce(tab, err('b'), 300)
+    expect(tab.history[0].id).toBe(1)
+  })
+
+  it('a cross-origin navigation empties the ring and keeps counting', () => {
+    let tab = reduce(reduce(base(), err('a'), 200), err('b'), 300)
+    tab = reduce(tab, { kind: 'navigated', url: 'http://localhost:3000/', title: 'Other' }, 400)
+    expect(tab.history).toEqual([])
+    expect(tab.nextId).toBe(3)
+    tab = reduce(tab, err('c'), 500)
+    expect(ids(tab)).toEqual([3])
+  })
+
+  it('takes the first dev server detected in a load, and a navigation forgets it', () => {
+    let tab = reduce(base(), { kind: 'devserver', server: 'vite', base: '/app/' }, 200)
+    expect(tab).toMatchObject({ devServer: 'vite', serverBase: '/app/' })
+    tab = reduce(tab, { kind: 'devserver', server: 'next', base: '/' }, 300)
+    expect(tab).toMatchObject({ devServer: 'vite', serverBase: '/app/' })
+    for (const url of ['http://localhost:5173/x', 'http://localhost:3000/']) {
+      expect(reduce(tab, { kind: 'navigated', url, title: 'A' }, 400)).toMatchObject({ devServer: null, serverBase: '/' })
+    }
+  })
+
+  it('sends devServer and each entry id, never serverBase nor nextId', () => {
+    let tab = reduce(base(), { kind: 'devserver', server: 'vite', base: '/app/' }, 200)
+    tab = reduce(tab, err('a'), 300)
+    const [row] = wireTabs([tab])
+    expect(row.devServer).toBe('vite')
+    expect(row.history[0].id).toBe(1)
+    expect(row).not.toHaveProperty('serverBase')
+    expect(row).not.toHaveProperty('nextId')
+    expect(JSON.stringify(row)).not.toContain('/app/')
+    expect(validRow(row)).toBe(true)
+    expect(DevTabSchema.safeParse(row).success).toBe(true)
+    expect(wireTabs([base()])[0].devServer).toBeNull()
+  })
+
+  it('validRow refuses an entry without an id or with id 0, and a dev server outside the list', () => {
+    const [row] = wireTabs([reduce(base(), err('a'), 200)])
+    const { id: _, ...noId } = row.history[0]
+    for (const [name, r] of [
+      ['no id', { ...row, history: [noId] }],
+      ['id 0', { ...row, history: [{ ...row.history[0], id: 0 }] }],
+      ['id 1.5', { ...row, history: [{ ...row.history[0], id: 1.5 }] }],
+      ['id too big', { ...row, history: [{ ...row.history[0], id: 2_147_483_648 }] }],
+      ['parcel', { ...row, devServer: 'parcel' }],
+      ['no devServer', (({ devServer: _d, ...rest }) => rest)(row)],
+    ] as Array<[string, unknown]>) expect(validRow(r), name).toBe(false)
+    expect(validRow({ ...row, devServer: 'webpack' })).toBe(true)
+  })
+
+  it('restoredTabs drops a tab whose nextId is not above every id in its history', () => {
+    const good = reduce(reduce(base(), err('a'), 200), err('b'), 300)
+    const raw = {
+      1: good,
+      2: { ...good, tabId: 2, nextId: 1, history: [{ ...good.history[0], id: 3 }] },
+      3: { ...good, tabId: 3, nextId: 1.5 },
+      4: { ...good, tabId: 4, nextId: undefined },
+      5: { ...good, tabId: 5, devServer: 'parcel' },
+      6: { ...good, tabId: 6, serverBase: '//evil/' },
+      7: { ...good, tabId: 7, history: [{ ...good.history[0], id: undefined }] },
+    }
+    expect(Object.keys(restoredTabs(raw))).toEqual(['1'])
   })
 })
 

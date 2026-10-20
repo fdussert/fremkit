@@ -12,7 +12,7 @@ import { WidgetCatalog } from '../src/widgets/catalog.js'
 const SHIPPED = fileURLToPath(new URL('../../widgets', import.meta.url))
 
 type Light = 'red' | 'orange' | 'green'
-interface Row { tabId: number; deviceId: string; browser: string; light: Light; seen: boolean; app: string; activity: number; report: boolean }
+interface Row { tabId: number; deviceId: string; browser: string; light: Light; seen: boolean; app: string; activity: number; report: boolean; features: string[] }
 type EntryState = 'open' | 'seen' | 'resolved'
 interface EntryView {
   kind: 'error' | 'request' | 'limited'; time: number; text: string; origin: string | null; n: number; state: EntryState; noAnswer: boolean
@@ -23,6 +23,7 @@ interface Logic {
   stateOfTab(tab: unknown): { light: Light; seen: boolean }
   hasUnseen(tab: unknown): boolean
   rowsOf(snapshot: unknown): Row[]
+  hasFeature(row: unknown, name: string): boolean
   summaryOf(snapshot: unknown): { light: Light; seen: boolean; errors: number }
   onMac(loc: unknown): boolean
   entryView(entry: unknown): EntryView | null
@@ -222,6 +223,21 @@ describe('fremdev/logic.js', () => {
     // Two new errors on top of three seen: red, and the count says two.
     expect(summaryOf(snap([install(DEV_A, [tab(1, { errors: [5, 5, 3] }), tab(2, { errors: [1, 1, 1] })])])))
       .toEqual({ light: 'red', seen: false, errors: 2 })
+  })
+
+  it('rowsOf copies the install\'s features onto each of its rows, [] when absent, and hasFeature reads them', async () => {
+    const { rowsOf, hasFeature } = await loadLogic()
+    const rows = rowsOf(snap([
+      { ...install(DEV_A, [tab(1, { activity: 3 })]), features: ['fremdev.open', 'fremdev.reload'] },
+      install(DEV_B, [tab(2, { activity: 2 })]),
+      { ...install(DEV_C, [tab(3, { activity: 1 })]), features: 'fremdev.open' },
+    ]))
+    expect(rows.map((r) => [r.tabId, r.features])).toEqual([[1, ['fremdev.open', 'fremdev.reload']], [2, []], [3, []]])
+    expect(hasFeature(rows[0], 'fremdev.open')).toBe(true)
+    expect(hasFeature(rows[0], 'fremdev.shot')).toBe(false)
+    expect(hasFeature(rows[1], 'fremdev.open')).toBe(false)
+    expect(hasFeature(null, 'fremdev.open')).toBe(false)
+    expect(hasFeature({ features: 'fremdev.open' }, 'fremdev.open')).toBe(false)
   })
 
   it('rowsOf carries the install\'s report flag onto each of its rows, false when absent', async () => {

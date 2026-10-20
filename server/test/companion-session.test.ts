@@ -581,13 +581,13 @@ describe('CompanionSession with Fremdev', () => {
     const t = withDev()
     t.hello('a', { modules: ['fremdev'] })
     t.session.onMessage('a', { type: 'dev.tabs', tabs: [] })
-    expect(t.dev.snapshot().installs).toEqual([{ deviceId: 'a', name: 'Browser a', on: true, connected: true, report: false, tabs: [] }])
+    expect(t.dev.snapshot().installs).toEqual([{ deviceId: 'a', name: 'Browser a', on: true, connected: true, report: false, features: [], tabs: [] }])
     t.session.onMessage('a', { type: 'modules', modules: [] })
     expect(t.dev.snapshot().installs[0].on).toBe(false)
     t.session.onMessage('a', { type: 'ping' })
     t.session.disconnect('a')
     // Still listed, idle: the extension closes its socket while no dev tab is open.
-    expect(t.dev.snapshot().installs).toEqual([{ deviceId: 'a', name: 'Browser a', on: false, connected: false, report: false, tabs: [] }])
+    expect(t.dev.snapshot().installs).toEqual([{ deviceId: 'a', name: 'Browser a', on: false, connected: false, report: false, features: [], tabs: [] }])
   })
 
   it('hands a dev.report to Fremdev, which resolves the report it asked for', async () => {
@@ -596,7 +596,7 @@ describe('CompanionSession with Fremdev', () => {
     t.session.onMessage('a', { type: 'dev.tabs', tabs: [{
       tabId: 7, app: 'App', host: 'localhost:5173',
       errors: { total: 0, open: 0, seen: 0, last: null }, requests: { total: 0, open: 0, seen: 0, last: null },
-      history: [], server: 'up', activity: 1,
+      history: [], devServer: null, server: 'up', activity: 1,
     }] })
     t.sent.length = 0
     const pending = t.dev.report('a', 7, false)

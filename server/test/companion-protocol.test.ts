@@ -6,6 +6,7 @@ import {
   COMPANION_EXTENSION_ID,
   shortExtensionId,
   ControlSchema,
+  DevTabSchema,
   EXTENSION_ORIGIN_RE,
   MAX_MESSAGE_BYTES,
   MAX_SDP,
@@ -201,10 +202,17 @@ describe('parseExtensionMessage', () => {
       .toEqual({ type: 'hello', token, installId, protocol: PROTOCOL, modules })
   })
 
+  it('keeps a hello with the cockpit\'s nine modules, and up to sixteen', () => {
+    const nine = ['fremplay', 'fremdev', 'fremdev.report', 'fremdev.build', 'fremdev.open', 'fremdev.reload', 'fremdev.slow', 'fremdev.perf', 'fremdev.shot']
+    expect(parse({ type: 'hello', token, installId, protocol: PROTOCOL, modules: nine })).toEqual({ type: 'hello', token, installId, protocol: PROTOCOL, modules: nine })
+    const sixteen = Array.from({ length: 16 }, (_, i) => `m${i}`)
+    expect(parse({ type: 'modules', modules: sixteen })).toEqual({ type: 'modules', modules: sixteen })
+  })
+
   it('still reads a hello whose modules it cannot read, as one without modules', () => {
-    // A newer extension's ninth module, or a longer name: it connects, just not Fremdev-capable.
-    const nine = Array.from({ length: 9 }, (_, i) => `m${i}`)
-    expect(parse({ type: 'hello', token, installId, protocol: PROTOCOL, modules: nine })).toEqual({ type: 'hello', token, installId, protocol: PROTOCOL })
+    // A newer extension's seventeenth module, or a longer name: it connects, just not Fremdev-capable.
+    const seventeen = Array.from({ length: 17 }, (_, i) => `m${i}`)
+    expect(parse({ type: 'hello', token, installId, protocol: PROTOCOL, modules: seventeen })).toEqual({ type: 'hello', token, installId, protocol: PROTOCOL })
     expect(parse({ type: 'hello', token, installId, protocol: PROTOCOL, modules: ['x'.repeat(33)] })).toEqual({ type: 'hello', token, installId, protocol: PROTOCOL })
     expect(parse({ type: 'hello', token, installId, protocol: PROTOCOL, modules: 'fremdev' })).toEqual({ type: 'hello', token, installId, protocol: PROTOCOL })
   })
@@ -212,7 +220,7 @@ describe('parseExtensionMessage', () => {
   it('parses modules and ping', () => {
     expect(parse({ type: 'modules', modules: ['fremplay', 'fremdev'] })).toEqual({ type: 'modules', modules: ['fremplay', 'fremdev'] })
     expect(parse({ type: 'ping' })).toEqual({ type: 'ping' })
-    expect(parse({ type: 'modules', modules: Array.from({ length: 9 }, (_, i) => `m${i}`) })).toBeNull()
+    expect(parse({ type: 'modules', modules: Array.from({ length: 17 }, (_, i) => `m${i}`) })).toBeNull()
     expect(parse({ type: 'modules', modules: ['x'.repeat(33)] })).toBeNull()
   })
 
@@ -224,10 +232,11 @@ describe('parseExtensionMessage', () => {
       errors: { total: 3, open: 1, seen: 0, last: { text: 'TypeError: x is undefined', at: 1_760_000_000_000 } },
       requests: { total: 10, open: 0, seen: 0, last: { path: '/api/items', status: 500, at: 1_760_000_000_000 } },
       history: [
-        { kind: 'error', text: 'TypeError: x is undefined', origin: '/src/app.js:12:5', n: 2, at: 1_760_000_000_000, state: 'open' },
-        { kind: 'request', method: 'POST', path: '/api/items', status: 500, n: 1, at: 1_759_999_999_000, state: 'seen' },
-        { kind: 'limited', n: 40, at: 1_759_999_998_000, state: 'resolved' },
+        { kind: 'error', id: 3, text: 'TypeError: x is undefined', origin: '/src/app.js:12:5', n: 2, at: 1_760_000_000_000, state: 'open' },
+        { kind: 'request', id: 2, method: 'POST', path: '/api/items', status: 500, n: 1, at: 1_759_999_999_000, state: 'seen' },
+        { kind: 'limited', id: 1, n: 40, at: 1_759_999_998_000, state: 'resolved' },
       ],
+      devServer: null,
       server: 'up',
       activity: 1_760_000_000_000,
       ...over,
@@ -256,8 +265,8 @@ describe('parseExtensionMessage', () => {
     })
 
     it('refuses a bad history: 21 entries, an unknown kind or state, a method outside the list, n of 0, a stack', () => {
-      const entry = { kind: 'error', text: 'x', origin: null, n: 1, at: 1, state: 'open' }
-      const request = { kind: 'request', method: 'GET', path: '/a', status: 404, n: 1, at: 1, state: 'open' }
+      const entry = { kind: 'error', id: 1, text: 'x', origin: null, n: 1, at: 1, state: 'open' }
+      const request = { kind: 'request', id: 1, method: 'GET', path: '/a', status: 404, n: 1, at: 1, state: 'open' }
       expect(tabs([row({ history: Array.from({ length: 20 }, () => entry) })])).not.toBeNull()
       expect(tabs([row({ history: Array.from({ length: 21 }, () => entry) })])).toBeNull()
       expect(tabs([row({ history: [{ ...entry, kind: 'warning' }] })])).toBeNull()
@@ -268,7 +277,24 @@ describe('parseExtensionMessage', () => {
       expect(tabs([row({ history: [{ ...entry, n: 0 }] })])).toBeNull()
       expect(tabs([row({ history: [{ ...entry, stack: ['f /a.js:1:2'] }] })])).toBeNull()
       expect(tabs([row({ history: [{ ...entry, text: 'x'.repeat(301) }] })])).toBeNull()
-      expect(tabs([row({ history: [{ kind: 'limited', n: 1, at: 1, state: 'open', text: 'x' }] })])).toBeNull()
+      expect(tabs([row({ history: [{ kind: 'limited', id: 1, n: 1, at: 1, state: 'open', text: 'x' }] })])).toBeNull()
+    })
+
+    it('needs an entry id from 1 to 2 147 483 647', () => {
+      const entry = { kind: 'error', id: 1, text: 'x', origin: null, n: 1, at: 1, state: 'open' }
+      const { id: _, ...noId } = entry
+      expect(tabs([row({ history: [{ ...entry, id: 2_147_483_647 }] })])).not.toBeNull()
+      for (const bad of [noId, { ...entry, id: 0 }, { ...entry, id: 1.5 }, { ...entry, id: 2_147_483_648 }, { kind: 'limited', n: 1, at: 1, state: 'open' }]) {
+        expect(tabs([row({ history: [bad] })]), JSON.stringify(bad)).toBeNull()
+      }
+    })
+
+    it('reads a row without devServer as null, and refuses a kind outside the list', () => {
+      const { devServer: _, ...without } = row()
+      expect(DevTabSchema.parse(without).devServer).toBeNull()
+      for (const kind of ['vite', 'next', 'webpack', null]) expect(DevTabSchema.parse(row({ devServer: kind })).devServer).toBe(kind)
+      expect(DevTabSchema.safeParse(row({ devServer: 'parcel' })).success).toBe(false)
+      expect(DevTabSchema.safeParse(row({ serverBase: '/' })).success).toBe(false)
     })
 
     it('reads a row from an extension that sends no history as an empty one', () => {

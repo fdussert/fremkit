@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DEFAULT_CONFIG, type Config } from '../src/config/schema.js'
-import { CompanionDev, COMPANION_DEV_CHANNEL, createDevProvider, DEV_PUBLISH_MS, fremdevEnabled } from '../src/companion/dev.js'
-import type { DevTab, ServerMessage } from '../src/companion/protocol.js'
+import { CompanionDev, COMPANION_DEV_CHANNEL, createDevProvider, DEV_PUBLISH_MS, fremdevEnabled, MAX_PENDING_ASKS } from '../src/companion/dev.js'
+import { FREMDEV_FEATURES, type DevTab, type ServerMessage } from '../src/companion/protocol.js'
 import { tr } from '../src/i18n.js'
 import type { CommandContext } from '../src/providers/types.js'
 
@@ -18,6 +18,7 @@ function row(tabId: number, total = 1): DevTab {
     errors: { total, open: total, seen: 0, last: { text: `TypeError #${total}`, at: 1_000 } },
     requests: { total: 0, open: 0, seen: 0, last: null },
     history: [],
+    devServer: null,
     server: 'up',
     activity: 1_000,
   }
@@ -47,7 +48,7 @@ describe('CompanionDev', () => {
     expect(t.dev.snapshot()).toEqual({
       enabled: true,
       paired: 2,
-      installs: [{ deviceId: A, name: 'Chrome', on: true, connected: true, report: false, tabs: [row(7)] }],
+      installs: [{ deviceId: A, name: 'Chrome', on: true, connected: true, report: false, features: [], tabs: [row(7)] }],
     })
   })
 
@@ -63,13 +64,13 @@ describe('CompanionDev', () => {
     const t = setup()
     t.dev.connect(A, 'Chrome', ['fremplay'])
     t.tabs(A, [row(7)])
-    expect(t.dev.snapshot().installs).toEqual([{ deviceId: A, name: 'Chrome', on: false, connected: true, report: false, tabs: [] }])
+    expect(t.dev.snapshot().installs).toEqual([{ deviceId: A, name: 'Chrome', on: false, connected: true, report: false, features: [], tabs: [] }])
     // Turned on, it reports; turned off again, its rows go.
     t.dev.onMessage(A, { type: 'modules', modules: ['fremplay', 'fremdev'] })
     t.tabs(A, [row(7)])
     expect(t.dev.snapshot().installs[0]).toMatchObject({ on: true, tabs: [row(7)] })
     t.dev.onMessage(A, { type: 'modules', modules: ['fremplay'] })
-    expect(t.dev.snapshot().installs).toEqual([{ deviceId: A, name: 'Chrome', on: false, connected: true, report: false, tabs: [] }])
+    expect(t.dev.snapshot().installs).toEqual([{ deviceId: A, name: 'Chrome', on: false, connected: true, report: false, features: [], tabs: [] }])
   })
 
   it('keeps an install listed when it disconnects, with no rows: the extension\'s idle state', () => {
@@ -78,7 +79,7 @@ describe('CompanionDev', () => {
     t.tabs(A, [row(7)])
     t.changed.mockClear()
     t.dev.disconnect(A)
-    const idle = { deviceId: A, name: 'Chrome', on: true, connected: false, report: false, tabs: [] }
+    const idle = { deviceId: A, name: 'Chrome', on: true, connected: false, report: false, features: [], tabs: [] }
     expect(t.dev.snapshot().installs).toEqual([idle])
     expect(t.changed).toHaveBeenCalled()
     // A message from it afterwards is not heard.
@@ -122,8 +123,8 @@ describe('CompanionDev', () => {
     t.tabs(A, [row(7)])
     t.tabs(B, [row(9), row(10)])
     expect(t.dev.snapshot().installs).toEqual([
-      { deviceId: A, name: 'Chrome', on: true, connected: true, report: false, tabs: [row(7)] },
-      { deviceId: B, name: 'Brave', on: true, connected: true, report: false, tabs: [row(9), row(10)] },
+      { deviceId: A, name: 'Chrome', on: true, connected: true, report: false, features: [], tabs: [row(7)] },
+      { deviceId: B, name: 'Brave', on: true, connected: true, report: false, features: [], tabs: [row(9), row(10)] },
     ])
   })
 
@@ -414,6 +415,7 @@ describe('Fremdev reports', () => {
   })
 
   it('keeps at most 8 asks waiting per install: a 9th gives null', async () => {
+    expect(MAX_PENDING_ASKS).toBe(8)
     const t = two()
     for (let i = 0; i < 8; i++) void t.dev.report(A, 7, false)
     expect(await t.dev.report(A, 7, false)).toBeNull()
@@ -464,5 +466,91 @@ describe('Fremdev reports', () => {
       t.dev.onMessage(A, { type: 'dev.report', id: asked(t.send)[1][1].id, tabId: 7, text: 'Report' })
       expect(await thrown).toEqual({ ok: false, error })
     })
+  })
+})
+
+describe('Fremdev features', () => {
+  const TEST_FEATURE = 'fremdev.test'
+  beforeEach(() => { (FREMDEV_FEATURES as string[]).push(TEST_FEATURE) })
+  afterEach(() => { (FREMDEV_FEATURES as string[]).splice((FREMDEV_FEATURES as string[]).indexOf(TEST_FEATURE), 1) })
+
+  it('starts with no feature of its own: each later task adds its module', () => {
+    expect(FREMDEV_FEATURES).toEqual([TEST_FEATURE])
+  })
+
+  it('lists the features an install announced, sorted, and never an unknown fremdev name', () => {
+    const t = setup()
+    t.dev.connect(A, 'Chrome', ['fremdev', 'fremdev.unknown', TEST_FEATURE, 'fremdev.report'])
+    t.dev.connect(B, 'Brave', ['fremdev'])
+    expect(t.dev.snapshot().installs.map((i) => [i.deviceId, i.features, i.report])).toEqual([[A, [TEST_FEATURE], true], [B, [], false]])
+  })
+
+  it('republishes when a modules message only adds or removes a feature', () => {
+    const t = setup()
+    t.dev.connect(A, 'Chrome', ['fremdev'])
+    t.changed.mockClear()
+    t.dev.onMessage(A, { type: 'modules', modules: ['fremdev', TEST_FEATURE] })
+    expect(t.changed).toHaveBeenCalledTimes(1)
+    expect(t.dev.snapshot().installs[0].features).toEqual([TEST_FEATURE])
+    // The same list again changes nothing.
+    vi.advanceTimersByTime(DEV_PUBLISH_MS)
+    t.changed.mockClear()
+    t.dev.onMessage(A, { type: 'modules', modules: [TEST_FEATURE, 'fremdev'] })
+    vi.advanceTimersByTime(DEV_PUBLISH_MS)
+    expect(t.changed).not.toHaveBeenCalled()
+    t.dev.onMessage(A, { type: 'modules', modules: ['fremdev'] })
+    vi.advanceTimersByTime(DEV_PUBLISH_MS)
+    expect(t.changed).toHaveBeenCalledTimes(1)
+    expect(t.dev.snapshot().installs[0].features).toEqual([])
+  })
+
+  it('shows no features in the snapshot while Fremdev is off in Fremkit', () => {
+    let on = true
+    const t = setup({ enabled: () => on })
+    t.dev.connect(A, 'Chrome', ['fremdev', TEST_FEATURE])
+    on = false
+    expect(t.dev.snapshot().installs).toEqual([])
+  })
+
+  /** The private generic ask, reached for the test: Tasks 4, 5 and 9 build their commands on it. */
+  type Ask = (deviceId: string, tabId: number, feature: string, answer: 'dev.report', build: (id: string) => ServerMessage, timeoutMs: number) => Promise<unknown>
+  const askOf = (dev: CompanionDev) => (dev as unknown as { ask: Ask }).ask.bind(dev)
+  const build = (id: string): ServerMessage => ({ type: 'dev.report.ask', id, tabId: 7, stack: false })
+  const lastId = (send: ReturnType<typeof setup>['send']) => (send.mock.calls.at(-1)![1] as { id: string }).id
+
+  it('a generic ask needs its feature, resolves to the matching answer, and to null once the feature is withdrawn', async () => {
+    const t = setup()
+    t.dev.connect(A, 'Chrome', ['fremdev'])
+    t.tabs(A, [row(7)])
+    const ask = askOf(t.dev)
+    expect(await ask(A, 7, TEST_FEATURE, 'dev.report', build, 1_000)).toBeNull()
+    expect(t.send).not.toHaveBeenCalled()
+
+    t.dev.onMessage(A, { type: 'modules', modules: ['fremdev', TEST_FEATURE] })
+    const answered = ask(A, 7, TEST_FEATURE, 'dev.report', build, 1_000)
+    const id = lastId(t.send)
+    t.dev.onMessage(A, { type: 'dev.report', id, tabId: 8, text: 'other tab' })
+    t.dev.onMessage(A, { type: 'dev.report', id, tabId: 7, text: 'mine' })
+    expect(await answered).toEqual({ type: 'dev.report', id, tabId: 7, text: 'mine' })
+
+    const withdrawn = ask(A, 7, TEST_FEATURE, 'dev.report', build, 1_000)
+    t.dev.onMessage(A, { type: 'modules', modules: ['fremdev'] })
+    expect(await withdrawn).toBeNull()
+
+    t.dev.onMessage(A, { type: 'modules', modules: ['fremdev', TEST_FEATURE] })
+    const timed = ask(A, 7, TEST_FEATURE, 'dev.report', build, 1_000)
+    await vi.advanceTimersByTimeAsync(1_000)
+    expect(await timed).toBeNull()
+  })
+
+  it('withdrawing one feature leaves the asks of another waiting', async () => {
+    const t = setup()
+    t.dev.connect(A, 'Chrome', ['fremdev', 'fremdev.report', TEST_FEATURE])
+    t.tabs(A, [row(7)])
+    const report = t.dev.report(A, 7, false)
+    const id = lastId(t.send)
+    t.dev.onMessage(A, { type: 'modules', modules: ['fremdev', 'fremdev.report'] })
+    t.dev.onMessage(A, { type: 'dev.report', id, tabId: 7, text: 'still here' })
+    expect(await report).toBe('still here')
   })
 })

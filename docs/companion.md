@@ -231,6 +231,17 @@ would show it on the Edge. Error events are forwarded at most ten per second per
 keeps counting) and the tab list at most twice a second. Nothing leaves your Mac, and nothing is
 sent while Fremdev is off.
 
+Each entry carries a number of its own (`id`), counted up within the tab for as long as the tab is
+open, so the Edge can name one entry. A row also says which **dev server** served the page:
+`vite`, `next`, `webpack` or none known. A small script beside the relay, in the extension's own
+isolated world, reads the page's script tags once the document has loaded (and the nodes added
+during the next 30 seconds): a module script ending in `/@vite/client` is Vite, a script under
+`/_next/` is Next, a script whose path names `webpack-dev-server`, or that server's overlay
+element, is webpack-dev-server. It reads attributes only and runs none of the page's code. The
+first kind found in a load counts, and each new load looks again. **Only the kind leaves the
+extension**: for Vite, the base path the client script is served under (`/app/`) is kept in the
+extension to build that dev server's own URLs, and is never sent.
+
 ### The history and the bug report
 
 Tap a row's top line on the Edge and it unfolds to that tab's last 20 errors and failed requests

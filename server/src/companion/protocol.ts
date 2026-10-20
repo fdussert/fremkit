@@ -146,10 +146,17 @@ export const FREMDEV_MODULE = 'fremdev'
 export const FREMDEV_REPORT_MODULE = 'fremdev.report'
 
 /**
- * The names of the modules an extension runs. Unknown names pass, so a newer extension with a module
- * this server has never heard of still connects.
+ * The Fremdev modules a control on the Edge depends on (`features` in the snapshot): an install
+ * that lists one is shown that control. Each feature's task appends its module name here.
  */
-const ModulesSchema = z.array(z.string().min(1).max(32)).max(8)
+export const FREMDEV_FEATURES: readonly string[] = []
+
+/**
+ * The names of the modules an extension runs. Unknown names pass, so a newer extension with a module
+ * this server has never heard of still connects. 16: the cockpit lists 9, and room is left so a
+ * newer extension's list does not cost the install its whole list through hello's `.catch`.
+ */
+const ModulesSchema = z.array(z.string().min(1).max(32)).max(16)
 
 /** At most this many dev tabs in one `dev.tabs`. */
 export const MAX_DEV_TABS = 32
@@ -180,16 +187,22 @@ export const MAX_DEV_HISTORY = 20
 export const DEV_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS', 'OTHER'] as const
 
 /**
- * Common to every history entry: `n` the times it came back to back, `at` the last of them, `state`
- * `open`, `seen` (marked on the Edge) or `resolved` (the page reloaded or updated since).
+ * Common to every history entry: `id` its own, unique within the tab for the tab's life (the
+ * extension counts up, wrapping to 1 after the last; a merge keeps it), `n` the times it came back
+ * to back, `at` the last of them, `state` `open`, `seen` (marked on the Edge) or `resolved` (the
+ * page reloaded or updated since).
  */
 const entry = {
+  id: z.number().int().min(1).max(2_147_483_647),
   n: z.number().int().min(1).max(MAX_COUNT),
   at: Stamp,
   state: z.enum(['open', 'seen', 'resolved']),
 }
 
 const TabId = z.number().int().min(0).max(2_147_483_647)
+
+/** The dev servers Fremdev tells apart. */
+export const DEV_SERVERS = ['vite', 'next', 'webpack'] as const
 
 /** A tab's last errors and failed requests, without stacks; `limited` the errors the relay only counted. */
 const DevHistorySchema = z
@@ -235,6 +248,11 @@ export const DevTabSchema = z.strictObject({
    * lets a development build from before the history connect, its rows reading as an empty one.
    */
   history: DevHistorySchema.default([]),
+  /**
+   * The dev server that served the page, told by its script tags (companion/fremdev/kind.js); null
+   * until it is known, or for another one. The kind alone: the base path stays in the extension.
+   */
+  devServer: z.enum(DEV_SERVERS).nullable().default(null),
   server: z.enum(['up', 'down']),
   /** Milliseconds since the epoch of the tab's last event. */
   activity: Stamp,
