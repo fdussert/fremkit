@@ -1,6 +1,7 @@
 package app.fremkit.kit
 
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -9,7 +10,7 @@ import org.junit.Test
 /**
  * The Mac's other LAN addresses: what `/api/devices/me` lists, what the app keeps of it, and how
  * it looks for the Mac there when the address in use goes away. The Swift file's `PairedMac` and
- * `ipv4` cases are in CredentialsTest and HostsTest; its `AppModel` cases go with AppModelTest.
+ * `ipv4` cases are in CredentialsTest and HostsTest.
  */
 class AddressesTest {
     /** The paired Mac with two other addresses it listed earlier (RFC 1918, generic values). */
@@ -117,4 +118,160 @@ class AddressesTest {
         // The token only ever travels in a request handed to the pinned transport.
         assertEquals(listOf("fremkit_device=device-token"), cookies.items)
     }
+
+    // AppModel
+
+    private val infoWithAddresses = DeviceInfo(id = "d1", name = "iPad", screenId = "s1",
+        brightness = DeviceBrightness(target = 40.0, seq = 3), addresses = listOf("192.168.1.20", "172.16.4.2"))
+
+    @Test
+    fun aConnectionStoresTheAddressesTheMacListed() = runTest {
+        val store = MemoryCredentialStore(sampleMac)
+        val model = appModel(store, ScriptedProber(mapOf("192.0.2.10" to ProbeOutcome.Ok(infoWithAddresses))))
+        model.start()?.join()
+        assertEquals(AppState.Dashboard("192.0.2.10", infoWithAddresses), model.state.value)
+        assertEquals(listOf("192.168.1.20", "172.16.4.2"), model.mac.value?.addresses)
+        assertEquals(listOf("192.168.1.20", "172.16.4.2"), store.load()?.addresses)
+    }
+
+    @Test
+    fun aCheckStoresTheAddressesTheMacNowLists() = runTest {
+        val store = MemoryCredentialStore(sampleMac)
+        val prober = ScriptedProber(mapOf("192.0.2.10" to ProbeOutcome.Ok(sampleInfo)))
+        val model = appModel(store, prober)
+        model.start()?.join()
+        assertEquals(emptyList<String>(), store.load()?.addresses)
+
+        prober.set("192.0.2.10", ProbeOutcome.Ok(infoWithAddresses))
+        model.checkAuthorization()?.join()
+        assertEquals(AppState.Dashboard("192.0.2.10", infoWithAddresses), model.state.value)
+        assertEquals(listOf("192.168.1.20", "172.16.4.2"), store.load()?.addresses)
+
+        // Gone from the Mac's list, gone from the app's.
+        val fewer = DeviceInfo(id = "d1", name = "iPad", screenId = "s1", brightness = DeviceBrightness(target = 40.0, seq = 3),
+            addresses = listOf("172.16.4.2"))
+        prober.set("192.0.2.10", ProbeOutcome.Ok(fewer))
+        model.resume()?.join()
+        assertEquals(listOf("172.16.4.2"), model.mac.value?.addresses)
+        assertEquals(listOf("172.16.4.2"), store.load()?.addresses)
+    }
+
+    @Test
+    fun anUnchangedListWritesNothingToTheStore() = runTest {
+        val store = CountingStore(sampleMac)
+        val model = appModel(store, ScriptedProber(mapOf("192.0.2.10" to ProbeOutcome.Ok(infoWithAddresses))))
+        model.start()?.join()
+        assertEquals("the first answer stores the addresses", 1, store.saves)
+        repeat(2) {
+            model.checkAuthorization()?.join()
+            settle()
+        }
+        model.resume()?.join()
+        assertEquals("the same list again writes nothing", 1, store.saves)
+        assertEquals(listOf("192.168.1.20", "172.16.4.2"), store.load()?.addresses)
+    }
+
+    @Test
+    fun theDashboardMovesToAStoredAddressWhenNothingElseAnswers() = runTest {
+        // Connected over the Mac's Ethernet address, which also told the app the Mac's Wi-Fi one.
+        val store = MemoryCredentialStore(sampleMac)
+        val prober = ScriptedProber(mapOf("192.0.2.10" to ProbeOutcome.Ok(infoWithAddresses)))
+        val model = appModel(store, prober)
+        model.start()?.join()
+        assertEquals(AppState.Dashboard("192.0.2.10", infoWithAddresses), model.state.value)
+
+        // Ethernet unplugged: the host in use is gone, the `.local` name does not resolve, NSD
+        // finds nothing, and only the Wi-Fi address answers, with the paired key.
+        prober.set("192.0.2.10", ProbeOutcome.Unreachable)
+        prober.set("studio.local", ProbeOutcome.Unreachable)
+        prober.set("172.16.4.2", ProbeOutcome.Ok(infoWithAddresses))
+
+        model.checkAuthorization()?.join()
+        settle()
+        model.checkAuthorization()?.join()
+        settle()
+        assertEquals(AppState.Dashboard("172.16.4.2", infoWithAddresses), model.state.value)
+        assertEquals(listOf("192.0.2.10", "studio.local", "192.168.1.20", "172.16.4.2"), prober.hosts.takeLast(4))
+        assertEquals("172.16.4.2", model.mac.value?.address)
+        assertEquals("172.16.4.2", store.load()?.address)
+        assertEquals("the pin is the one it always was", SpkiFixture.keyHash, store.load()?.keyHash)
+    }
+
+    @Test
+    fun aStoredAddressPresentingAnotherKeyNeverMovesTheDashboardNorForgetsThePin() = runTest {
+        val store = MemoryCredentialStore(sampleMac)
+        val prober = ScriptedProber(mapOf("192.0.2.10" to ProbeOutcome.Ok(infoWithAddresses)))
+        val model = appModel(store, prober)
+        model.start()?.join()
+
+        prober.set("192.0.2.10", ProbeOutcome.Unreachable)
+        prober.set("192.168.1.20", ProbeOutcome.PinMismatch)
+        prober.set("172.16.4.2", ProbeOutcome.PinMismatch)
+        repeat(2) {
+            model.checkAuthorization()?.join()
+            settle()
+        }
+        assertEquals(AppState.Dashboard("192.0.2.10", infoWithAddresses), model.state.value)
+        assertTrue(prober.hosts.contains("192.168.1.20"))
+        assertEquals(SpkiFixture.keyHash, store.load()?.keyHash)
+        assertEquals("device-token", store.load()?.token)
+    }
+
+    @Test
+    fun theAddressesAreTriedAtTheNextLaunch() = runTest {
+        val store = MemoryCredentialStore(sampleMac)
+        appModel(store, ScriptedProber(mapOf("192.0.2.10" to ProbeOutcome.Ok(infoWithAddresses)))).start()?.join()
+
+        // The next launch, on the Mac's Wi-Fi only: found at an address the last session learned.
+        val prober = ScriptedProber(mapOf("172.16.4.2" to ProbeOutcome.Ok(infoWithAddresses)))
+        val model = appModel(store, prober)
+        model.start()?.join()
+        assertEquals(AppState.Dashboard("172.16.4.2", infoWithAddresses), model.state.value)
+        assertEquals(listOf("studio.local", "192.0.2.10", "192.168.1.20", "172.16.4.2"), prober.hosts)
+    }
+
+    @Test
+    fun aStoreThatRefusesTheAddressesLeavesThemToThisSession() = runTest {
+        val store = RefusingStore(sampleMac)
+        val prober = ScriptedProber(mapOf("192.0.2.10" to ProbeOutcome.Ok(infoWithAddresses)))
+        val model = appModel(store, prober)
+        model.start()?.join()
+        assertEquals(listOf("192.168.1.20", "172.16.4.2"), model.mac.value?.addresses)
+        assertEquals("nothing reached the store", sampleMac, store.load())
+
+        prober.set("192.0.2.10", ProbeOutcome.Unreachable)
+        prober.set("172.16.4.2", ProbeOutcome.Ok(infoWithAddresses))
+        repeat(2) {
+            model.checkAuthorization()?.join()
+            settle()
+        }
+        assertEquals("this session still looks there", AppState.Dashboard("172.16.4.2", infoWithAddresses), model.state.value)
+    }
+}
+
+/** A store in memory that counts its saves. */
+class CountingStore(mac: PairedMac?) : CredentialStore {
+    private val lock = Any()
+    private var stored: PairedMac? = mac
+    private var count = 0
+
+    val saves: Int get() = synchronized(lock) { count }
+
+    override fun load(): PairedMac? = synchronized(lock) { stored }
+
+    override fun save(mac: PairedMac) = synchronized(lock) {
+        stored = mac
+        count += 1
+    }
+
+    override fun clear() = synchronized(lock) { stored = null }
+}
+
+/** A store that reads its pairing and refuses every write. */
+class RefusingStore(private val mac: PairedMac) : CredentialStore {
+    override fun load(): PairedMac = mac
+
+    override fun save(mac: PairedMac): Unit = throw java.io.IOException("the store refused the write")
+
+    override fun clear() = Unit
 }
