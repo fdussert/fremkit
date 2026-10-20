@@ -46,6 +46,13 @@ The extension speaks to `127.0.0.1:4242` only, and its manifest asks for that or
 port (`FREMKIT_PORT=4301`, say), edit your local copy: `PORT` in `companion/worker.js` and the port
 in `host_permissions` in `companion/manifest.json`, then reload the extension.
 
+### Publishing a new version
+
+Bump `version` in `companion/manifest.json`, then `bash scripts/package-companion.sh` writes
+`dist/fremkit-companion-<version>.zip`: the folder as it is, without the manifest's `key`, which
+the store refuses (it keeps the listing's ID, the same one). Upload it from the listing's
+**Package** tab in the Chrome Web Store developer dashboard and submit it for review.
+
 ## Link it to Fremkit
 
 1. Click the Fremkit icon and press **Connecter à Fremkit** (*Connect to Fremkit*).
