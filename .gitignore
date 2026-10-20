@@ -38,3 +38,11 @@ ios/build/
 # Playwright: what a run leaves behind (e2e/)
 test-results/
 playwright-report/
+
+# The Android app: build output, the SDK path Android Studio writes, and never a signing key
+android/.gradle/
+android/.kotlin/
+android/**/build/
+android/local.properties
+android/**/*.jks
+android/**/*.keystore

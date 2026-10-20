@@ -1,0 +1,51 @@
+# Every version, pinned exactly. Chosen 2026-10-20 from the current stable releases: AGP 9.4.1
+# needs Gradle 9.6+ and build-tools 36+; Kotlin 2.4.21 is tested up to Gradle 9.7, hence the
+# wrapper's 9.7.1. compileSdk and buildTools are also read by scripts/build-android.sh.
+# compileSdk 36 holds three libraries back from their newest release, which require 37: the
+# Compose BOM (2026.08.00 and later carry Compose 1.12), core 1.19 and lifecycle 2.11. Moving
+# them means installing platform 37 and raising compileSdk with them, in one commit.
+[versions]
+compileSdk = "36"
+targetSdk = "36"
+minSdk = "28"
+buildTools = "36.1.0"
+agp = "9.4.1"
+kotlin = "2.4.21"
+composeBom = "2026.06.01"
+activity = "1.13.0"
+core = "1.18.0"
+lifecycle = "2.10.0"
+webkit = "1.17.1"
+camerax = "1.6.2"
+zxing = "3.5.4"
+coroutines = "1.11.0"
+serialization = "1.12.0"
+junit = "4.13.2"
+bouncycastle = "1.86"
+
+[libraries]
+androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "activity" }
+androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "core" }
+androidx-lifecycle-runtime-compose = { module = "androidx.lifecycle:lifecycle-runtime-compose", version.ref = "lifecycle" }
+androidx-webkit = { module = "androidx.webkit:webkit", version.ref = "webkit" }
+compose-bom = { module = "androidx.compose:compose-bom", version.ref = "composeBom" }
+compose-ui = { module = "androidx.compose.ui:ui" }
+compose-foundation = { module = "androidx.compose.foundation:foundation" }
+compose-material3 = { module = "androidx.compose.material3:material3" }
+camerax-core = { module = "androidx.camera:camera-core", version.ref = "camerax" }
+camerax-camera2 = { module = "androidx.camera:camera-camera2", version.ref = "camerax" }
+camerax-lifecycle = { module = "androidx.camera:camera-lifecycle", version.ref = "camerax" }
+camerax-view = { module = "androidx.camera:camera-view", version.ref = "camerax" }
+zxing-core = { module = "com.google.zxing:core", version.ref = "zxing" }
+kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
+kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "coroutines" }
+kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "coroutines" }
+kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "serialization" }
+junit = { module = "junit:junit", version.ref = "junit" }
+bouncycastle-pkix = { module = "org.bouncycastle:bcpkix-jdk18on", version.ref = "bouncycastle" }
+
+[plugins]
+android-application = { id = "com.android.application", version.ref = "agp" }
+kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
+kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
+kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
