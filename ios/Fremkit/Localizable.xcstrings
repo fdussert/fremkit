@@ -1,12 +1,32 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Address" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Adresse"
+          }
+        }
+      }
+    },
     "Allow the camera in Settings" : {
       "localizations" : {
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Autoriser l’appareil photo dans Réglages"
+          }
+        }
+      }
+    },
+    "Back to the list" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Retour à la liste"
           }
         }
       }
@@ -71,6 +91,16 @@
         }
       }
     },
+    "Connect" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Se connecter"
+          }
+        }
+      }
+    },
     "Connecting to %@…" : {
       "localizations" : {
         "fr" : {
@@ -91,12 +121,32 @@
         }
       }
     },
+    "Enter the Mac’s address" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Saisir l’adresse du Mac"
+          }
+        }
+      }
+    },
     "Enter the code" : {
       "localizations" : {
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Saisir le code"
+          }
+        }
+      }
+    },
+    "Fremkit shows it on the Mac in Settings → Devices, beside the code: a name ending in .local, or four numbers separated by dots." : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fremkit l’affiche sur le Mac dans Réglages → Appareils, à côté du code : un nom qui finit par .local, ou quatre nombres séparés par des points."
           }
         }
       }
@@ -131,12 +181,12 @@
         }
       }
     },
-    "No Mac found yet. In Fremkit on the Mac, turn on “Allow a tablet on the local network” (Screen tab)." : {
+    "No Mac found yet. In Fremkit on the Mac, turn on “Allow a tablet on the local network” (Settings → Devices), or enter its address." : {
       "localizations" : {
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Aucun Mac trouvé pour l’instant. Dans Fremkit sur le Mac, activez « Autoriser une tablette sur le réseau local » (onglet Écran)."
+            "value" : "Aucun Mac trouvé pour l’instant. Dans Fremkit sur le Mac, activez « Autoriser une tablette sur le réseau local » (Réglages → Appareils), ou saisissez son adresse."
           }
         }
       }
@@ -251,12 +301,12 @@
         }
       }
     },
-    "The Mac is not showing a pairing code any more. Make a new one in Fremkit and scan it." : {
+    "The Mac is not showing a pairing code any more. Make a new one in Fremkit." : {
       "localizations" : {
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Le Mac n’affiche plus de code d’appairage. Créez-en un nouveau dans Fremkit et scannez-le."
+            "value" : "Le Mac n’affiche plus de code d’appairage. Créez-en un nouveau dans Fremkit."
           }
         }
       }
