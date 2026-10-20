@@ -192,8 +192,6 @@ export function createFremdev({
   const flight = new InFlight()
   /** Whether a timer waits for the oldest pending request to go stale. */
   let staleArmed = false
-  /** The stale time that timer last fired for: never armed twice for the same one. */
-  let staleFired = null
 
   const supported = () => known === null || known === 'yes'
   const active = () => on && supported() && Object.keys(tabs).length > 0
@@ -396,19 +394,22 @@ export function createFremdev({
     for (const tab of Object.values(tabs)) if (tab.inFlight > 0) recount(tab.tabId, at)
   }
 
-  /** A timer for when the oldest pending request goes stale, then the next one's. */
+  /**
+   * A timer for when the oldest pending request goes stale (more than STALE_MS old: 1 ms past it),
+   * then the next one's. It forgets every stale request whatever tab it is in (its row may read 0),
+   * and a timer that fired early just waits the rest.
+   */
   function armStale() {
     if (staleArmed) return
     const at = flight.nextStale()
-    if (at === null || at === staleFired) return
+    if (at === null) return
     staleArmed = true
-    // Stale once more than STALE_MS old: 1 ms past it.
     setTimer(() => {
       staleArmed = false
-      staleFired = at
+      flight.prune(now())
       sweep()
       armStale()
-    }, Math.max(0, at - now()) + 1)
+    }, Math.max(1, at - now() + 1))
   }
 
   /**
@@ -421,7 +422,8 @@ export function createFremdev({
     if (!on || id === null || !validId(d.tabId) || !tabs[String(d.tabId)]) return
     if (d.type === 'websocket' || !isDev(d.url) || isNoise(d.url)) return
     const at = stampOf(d)
-    flight.start(id, d.tabId, at)
+    const evicted = flight.start(id, d.tabId, at)
+    if (evicted !== null && evicted !== d.tabId) recount(evicted, at)
     recount(d.tabId, at)
     armStale()
   }
@@ -433,13 +435,15 @@ export function createFremdev({
   async function finished(d, status, error) {
     await loaded
     const id = requestKey(d)
-    const done = on && id !== null ? flight.finish(id, stampOf(d)) : null
-    if (done) {
-      if (error === undefined && status < 400 && done.ms >= SLOW_MS && tabs[String(done.tabId)]) {
+    if (on && id !== null) {
+      const done = flight.finish(id, stampOf(d))
+      if (done && error === undefined && status < 400 && done.ms >= SLOW_MS && tabs[String(done.tabId)]) {
         const ms = Math.min(MAX_SLOW_MS, Math.round(done.ms))
         apply(done.tabId, { kind: 'slow', method: methodOf(d.method), path: pathOf(d.url), ms })
       }
-      recount(done.tabId, stampOf(d))
+      // Refused too (gone stale, or dropped for room): the row may still count it.
+      const tabId = done ? done.tabId : d.tabId
+      if (validId(tabId)) recount(tabId, stampOf(d))
     }
     return request(d, status, error)
   }

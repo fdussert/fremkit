@@ -5,7 +5,7 @@ import { BUILTIN_PERMISSION_ORIGINS, FREMKIT_EXCLUDES, inOrigins, isDevUrl, pars
 // @ts-expect-error plain JS module
 import { boundFrames, errorText, framePlace, homePath, hotReloadSignal, isNoise, MAX_FRAME, MAX_FRAMES, MAX_STACK, MAX_TEXT, METHODS, methodOf, parseStack, pathOf, RateLimiter } from '../../companion/lib/devlog.js'
 // @ts-expect-error plain JS module
-import { emptyTab, fremdevSupport, HISTORY_MAX, reduce, restoredTabs, Throttle, validRow, wireTabs } from '../../companion/lib/devtabs.js'
+import { emptyTab, fremdevSupport, HISTORY_MAX, reduce, SLOW_MAX, restoredTabs, Throttle, validRow, wireTabs } from '../../companion/lib/devtabs.js'
 // @ts-expect-error plain JS module
 import { hello, devTabs, modulesMsg, ping } from '../../companion/lib/protocol.js'
 // @ts-expect-error plain JS module
@@ -1236,6 +1236,12 @@ describe('slow requests and requests in flight', () => {
     expect(f.finish('a', 40_000)).toBeNull()
     // A long poll that finishes past 30 s without a count in between is not timed either.
     expect(f.finish('c', 31_002)).toBeNull()
+    // prune forgets every stale request, whatever its tab.
+    f.start('d', 7, 40_000)
+    f.start('e', 8, 50_000)
+    f.prune(70_001)
+    expect(f.size).toBe(1)
+    expect(f.nextStale()).toBe(80_000)
   })
 
   it('InFlight caps the count at 999 and keeps at most 4096 requests, dropping the oldest', () => {
@@ -1243,7 +1249,10 @@ describe('slow requests and requests in flight', () => {
     for (let i = 0; i < 1000; i++) f.start(`r${i}`, 7, 1_000)
     expect(f.count(7, 1_000)).toBe(999)
     const g = new InFlight()
-    for (let i = 0; i < 4097; i++) g.start(`r${i}`, i % 2, 1_000 + i)
+    // start says whose request it dropped for room, for that tab's count.
+    const evicted = Array.from({ length: 4097 }, (_, i) => g.start(`r${i}`, i % 2, 1_000 + i))
+    expect(evicted.slice(0, 4096).every((e) => e === null)).toBe(true)
+    expect(evicted[4096]).toBe(0)
     expect(g.size).toBe(4096)
     expect(g.finish('r0', 5_000)).toBeNull()
     expect(g.finish('r1', 5_000)).toEqual({ tabId: 1, ms: 5_000 - 1_001 })
@@ -1275,21 +1284,53 @@ describe('slow requests and requests in flight', () => {
     expect(next.errors).toEqual(tab.errors)
     expect(next.requests).toEqual(tab.requests)
     expect(next.activity).toBe(160)
-    // A slow entry pushed out of the ring un-counts nothing.
+    // Slow entries make room among themselves: at most SLOW_MAX, the counted entries kept.
+    expect(SLOW_MAX).toBe(5)
     let full = tab
     for (let i = 0; i < HISTORY_MAX + 3; i++) full = reduce(full, slow(1500, `/api/${i}`), 1_000 + i)
-    expect(full.history).toHaveLength(HISTORY_MAX)
+    expect(full.history).toHaveLength(SLOW_MAX + 2)
+    expect(full.history.filter((e: { kind: string }) => e.kind === 'slow').map((e: { path: string }) => e.path))
+      .toEqual(['/api/22', '/api/21', '/api/20', '/api/19', '/api/18'])
     expect(full.errors).toEqual(tab.errors)
     expect(full.requests).toEqual(tab.requests)
   })
 
-  it('reduce sets inFlight without stamping the activity, and a navigation sets it to 0', () => {
+  it('never lets slow entries push a live build entry out: A/B/A/B keeps the light red', () => {
+    let tab = reduce(base(), { kind: 'build', text: 'Invalid end tag.', file: '/Users/example/app/src/App.vue', line: 1, col: 1 }, 150)
+    for (let i = 0; i < 18; i++) tab = reduce(tab, { kind: 'error', text: `e${i}` }, 160 + i)
+    const before = tab.errors
+    expect(tab.history).toHaveLength(19)
+    for (let i = 0; i < 40; i++) tab = reduce(tab, slow(1500, i % 2 === 0 ? '/api/a' : '/api/b'), 200 + i)
+    expect(tab.errors).toEqual(before)
+    expect(tab.errors.open).toBe(19)
+    expect(tab.history.some((e: { kind: string; state: string }) => e.kind === 'build' && e.state === 'open')).toBe(true)
+    // The ring was full but for one slot: one slow entry, the latest, has it.
+    expect(tab.history.filter((e: { kind: string }) => e.kind === 'slow')).toEqual([expect.objectContaining({ path: '/api/b', at: 239 })])
+    expect(tab.history).toHaveLength(HISTORY_MAX)
+  })
+
+  it('drops a slow entry when the ring is full of open entries, and takes the oldest resolved slot otherwise', () => {
+    let tab = base()
+    for (let i = 0; i < HISTORY_MAX; i++) tab = reduce(tab, { kind: 'error', text: `e${i}` }, 100 + i)
+    const full = tab
+    expect(reduce(full, slow(1500), 500)).toBe(full)
+    // A reload resolves them all: the slow entry takes the oldest one's place.
+    tab = reduce(full, { kind: 'navigated', url: 'http://localhost:5173/', title: 'App' }, 600)
+    tab = reduce(tab, slow(1500), 700)
+    expect(tab.history).toHaveLength(HISTORY_MAX)
+    expect(tab.history[0]).toMatchObject({ kind: 'slow', state: 'open' })
+    expect(tab.history.map((e: { text?: string }) => e.text)).not.toContain('e0')
+    expect(tab.history.at(-1)).toMatchObject({ text: 'e1' })
+  })
+
+  it('reduce sets inFlight without stamping the activity, and a navigation to another origin sets it to 0', () => {
     expect(base().inFlight).toBe(0)
     const tab = reduce(base(), { kind: 'inflight', n: 3 }, 900)
     expect(tab.inFlight).toBe(3)
     expect(tab.activity).toBe(100)
     expect(reduce(tab, { kind: 'inflight', n: 5000 }, 900).inFlight).toBe(999)
-    expect(reduce(tab, { kind: 'navigated', url: 'http://localhost:5173/x', title: '' }, 950).inFlight).toBe(0)
+    // The same origin keeps it (the worker still times those requests); another starts at 0.
+    expect(reduce(tab, { kind: 'navigated', url: 'http://localhost:5173/x', title: '' }, 950).inFlight).toBe(3)
     expect(reduce(tab, { kind: 'navigated', url: 'http://localhost:3000/', title: '' }, 950).inFlight).toBe(0)
   })
 
@@ -1304,7 +1345,8 @@ describe('slow requests and requests in flight', () => {
     // Over the size cap: the history goes, inFlight stays.
     const big = Array.from({ length: 32 }, (_, i) => {
       let t = reduce(emptyTab(i, `http://localhost:${3000 + i}/`, 'A', i), { kind: 'inflight', n: 7 }, 1)
-      for (let j = 0; j < HISTORY_MAX; j++) t = reduce(t, slow(1500, `/${'p'.repeat(250)}/${j}`), 10 + j)
+      for (let j = 0; j < HISTORY_MAX - SLOW_MAX; j++) t = reduce(t, { kind: 'error', text: `${'e'.repeat(290)}${j}` }, 5 + j)
+      for (let j = 0; j < SLOW_MAX; j++) t = reduce(t, slow(1500, `/${'p'.repeat(250)}/${j}`), 30 + j)
       return t
     })
     const rows = wireTabs(big)

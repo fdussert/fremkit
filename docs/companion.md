@@ -351,14 +351,18 @@ Nothing in the page runs for this, and nothing is read from bodies, headers or c
   took, in milliseconds up to an hour. The same method and path again, while that entry is open,
   folds into it: its count goes up, it takes the latest duration and comes back to the top. A slow
   request counts in **no tally and never changes the light**; it resolves and is marked seen like the
-  others. A request that failed is a failed request, never a slow one. The Edge writes the duration
+  others. The history keeps at most 5 slow entries, and a new one never pushes out an open or seen
+  error, failed request or build entry: it takes the place of the oldest slow entry, else of the
+  oldest resolved one, else it is not kept. A long poll or an EventSource that answers within 1 to
+  30 seconds is a request that took that long, and shows as slow each time it does. A request that failed is a failed request, never a slow one. The Edge writes the duration
   in seconds with one decimal; the report lists them under *Requêtes lentes* / *Slow requests*.
 - The row carries `inFlight`, the requests started and not finished, at most 999, sent on the same
   twice-a-second throttle as the rest (a change in it alone does not wake the socket). The widget
   shows *n en cours* / *n in flight* beside the tab's name while it is above zero. **A request still
   pending after 30 seconds stops counting** and is forgotten, so a long poll or an EventSource that
-  never finishes stays neither in flight nor slow. A navigation sets the count to 0; a navigation to
-  another origin, and the tab closing, forget its timings. At most 4 096 requests are timed at once,
+  never finishes stays neither in flight nor slow. A navigation within the same origin (a reload, a
+  client-side route change) keeps the count, as the requests still pending are still timed; a
+  navigation to another origin sets it to 0 and forgets the tab's timings, as the tab closing does. At most 4 096 requests are timed at once,
   all tabs together, the oldest dropped first. The timings live in the extension's memory only.
 
 An install that times requests lists `fremdev.slow`; an older one sends neither, and its rows read

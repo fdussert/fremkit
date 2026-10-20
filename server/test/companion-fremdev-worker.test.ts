@@ -796,7 +796,7 @@ describe('companion/fremdev.js', () => {
 
 describe('slow requests and requests in flight', () => {
   /** createFremdev on a clock the test moves, with timers that run when their time comes. */
-  async function timed() {
+  async function timed({ early = false } = {}) {
     const { api, store } = fakeChrome()
     const sent: Array<{ type: string; [k: string]: unknown }> = []
     const wantSocket = vi.fn()
@@ -807,7 +807,8 @@ describe('slow requests and requests in flight', () => {
       wantSocket,
       api,
       now: () => clock,
-      setTimer: (fn: () => void, ms = 0) => void timers.push({ at: clock + ms, fn }),
+      // `early`: a timer of more than 1 ms fires 1 ms before its time, as a real one may.
+      setTimer: (fn: () => void, ms = 0) => void timers.push({ at: clock + ms - (early && ms > 1 ? 1 : 0), fn }),
       every: () => 1,
       stopEvery: () => undefined,
     })
@@ -939,17 +940,40 @@ describe('slow requests and requests in flight', () => {
     t.done(t.req('1', { statusCode: 200, timeStamp: t.now() }))
     await t.advance(10)
     expect(t.rows()['7'].history).toEqual([])
-    // Same origin: the navigation reads 0, the requests still pending are still timed.
+    // Same origin: the requests still pending are still timed, and still counted.
     t.before(t.req('2', { url: 'http://localhost:3000/api' }))
     await t.advance(10)
     await onUpdated(7, { status: 'loading', url: 'http://localhost:3000/x' }, { id: 7, url: 'http://localhost:3000/x', title: '' })
     // The throttle's next send.
     await t.advance(500)
-    expect(t.rows()['7'].inFlight).toBe(0)
+    expect(t.rows()['7'].inFlight).toBe(1)
     await t.advance(1_000)
     t.done(t.req('2', { url: 'http://localhost:3000/api', statusCode: 200, timeStamp: t.now() }))
     await t.advance(10)
     expect(t.rows()['7'].history[0]).toMatchObject({ kind: 'slow', path: '/api' })
+  })
+
+  it('still drops a pending request at 30 s when the stale timer fires early', async () => {
+    const t = await timed({ early: true })
+    t.before(t.req('poll', { url: 'http://localhost:5173/api/poll' }))
+    await t.advance(10)
+    expect(t.rows()['7'].inFlight).toBe(1)
+    await t.advance(29_985)
+    expect(t.rows()['7'].inFlight).toBe(1)
+    await t.advance(600)
+    expect(t.rows()['7'].inFlight).toBe(0)
+  })
+
+  it('drops a pending request a finish refuses (gone stale) from the count at once', async () => {
+    const t = await timed()
+    const start = t.now()
+    t.before(t.req('1', { timeStamp: start }))
+    await t.advance(10)
+    expect(t.rows()['7'].inFlight).toBe(1)
+    t.done(t.req('1', { statusCode: 200, timeStamp: start + 31_000 }))
+    await t.advance(600)
+    expect(t.rows()['7'].inFlight).toBe(0)
+    expect(t.rows()['7'].history).toEqual([])
   })
 
   it('announces fremdev.slow only while on', async () => {

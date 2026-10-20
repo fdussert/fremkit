@@ -26,12 +26,19 @@ export class InFlight {
 
   /**
    * A request starting. A redirect starts the same request id again: it keeps its first start, so
-   * the time is the whole request's.
+   * the time is the whole request's. Returns the tab of the request dropped to make room (its
+   * count changed), or null.
    */
   start(requestId, tabId, at) {
-    if (this.pending.has(requestId)) return
-    if (this.pending.size >= MAX_TRACKED) this.pending.delete(this.pending.keys().next().value)
+    if (this.pending.has(requestId)) return null
+    let evicted = null
+    if (this.pending.size >= MAX_TRACKED) {
+      const [oldest, p] = this.pending.entries().next().value
+      this.pending.delete(oldest)
+      evicted = p.tabId
+    }
     this.pending.set(requestId, { tabId, at })
+    return evicted
   }
 
   /** `{ tabId, ms }` for a request this started and has not forgotten; null for any other. */
@@ -44,13 +51,16 @@ export class InFlight {
     return { tabId: p.tabId, ms: Math.max(0, ms) }
   }
 
+  /** Forgets every request started more than STALE_MS before `at`. */
+  prune(at) {
+    for (const [id, p] of this.pending) if (at - p.at > STALE_MS) this.pending.delete(id)
+  }
+
   /** The tab's pending requests at `at`, at most MAX_IN_FLIGHT; the stale ones are forgotten. */
   count(tabId, at) {
+    this.prune(at)
     let n = 0
-    for (const [id, p] of this.pending) {
-      if (at - p.at > STALE_MS) this.pending.delete(id)
-      else if (p.tabId === tabId) n++
-    }
+    for (const p of this.pending.values()) if (p.tabId === tabId) n++
     return Math.min(MAX_IN_FLIGHT, n)
   }
 
@@ -59,11 +69,6 @@ export class InFlight {
     let first = null
     for (const p of this.pending.values()) if (first === null || p.at < first) first = p.at
     return first === null ? null : first + STALE_MS
-  }
-
-  /** The tabs with a pending request. */
-  tabs() {
-    return [...new Set([...this.pending.values()].map((p) => p.tabId))]
   }
 
   forgetTab(tabId) {

@@ -12,6 +12,8 @@ const MAX_COUNT = 1_000_000
 const MAX_BYTES = 60_000
 /** The entries a tab's history keeps, newest first. */
 export const HISTORY_MAX = 20
+/** The slow entries a tab's history keeps at most: they never crowd out the faults. */
+export const SLOW_MAX = 5
 /** The highest entry id; the next one is 1 again. */
 const MAX_ID = 2_147_483_647
 /** The highest line or column a build entry carries. */
@@ -162,7 +164,8 @@ const seenAll = (t) => ({ ...t, seen: t.open })
 /**
  * A slow request: folded into the newest open slow entry when it is the same method and path (it
  * takes the latest `ms`, keeps its id, and comes to the top so the ring stays newest first),
- * otherwise a new entry. The tallies and `activity` are left as they are.
+ * otherwise a new entry. The tallies and `activity` are left as they are, on eviction too: a new
+ * slow entry never pushes a counted entry out (`addSlow`).
  */
 function slowEntry(tab, event, now) {
   const method = methodOf(event.method)
@@ -174,7 +177,31 @@ function slowEntry(tab, event, now) {
     const merged = { ...newest, ms, n: Math.min(MAX_COUNT, newest.n + 1), at: now }
     return { ...tab, history: [merged, ...ring.filter((e) => e !== newest)] }
   }
-  return { ...tab, ...record(tab, { kind: 'slow', method, path, ms, n: 1, at: now, state: 'open' }) }
+  return addSlow(tab, { kind: 'slow', method, path, ms, n: 1, at: now, state: 'open' })
+}
+
+/** The index of the last (oldest) entry of `ring` that `test` takes, or -1. */
+const lastIndex = (ring, test) => {
+  for (let i = ring.length - 1; i >= 0; i--) if (test(ring[i])) return i
+  return -1
+}
+
+/**
+ * A new slow entry on top of the ring. It needs a slot when the ring is full or already holds
+ * SLOW_MAX slow entries: it takes the oldest slow entry's, else the oldest resolved entry's, else it
+ * is dropped. An open or seen entry, which a tally counts or the light shows, never makes room for it.
+ */
+function addSlow(tab, entry) {
+  let ring = tab.history ?? []
+  const slowCount = ring.filter((e) => e.kind === 'slow').length
+  if (ring.length >= HISTORY_MAX || slowCount >= SLOW_MAX) {
+    let at = lastIndex(ring, (e) => e.kind === 'slow')
+    if (at === -1 && slowCount < SLOW_MAX) at = lastIndex(ring, (e) => e.state === 'resolved')
+    if (at === -1) return tab
+    ring = ring.filter((_, i) => i !== at)
+  }
+  const id = isId(tab.nextId) ? tab.nextId : 1
+  return { ...tab, history: [{ ...entry, id }, ...ring].slice(0, HISTORY_MAX), nextId: id === MAX_ID ? 1 : id + 1 }
 }
 
 /**
@@ -253,10 +280,11 @@ export function reduce(tab, event, now) {
     case 'navigated': {
       // The entry ids keep counting either way. The dev server's kind belongs to the origin: a
       // reload or a pushState route change keeps it, another origin forgets it and looks again.
-      // The count in flight starts again at 0; the worker forgets another origin's timings.
-      const next = { ...tab, url: event.url, host: hostOf(event.url), title: event.title ?? '', inFlight: 0, activity: now }
+      // The count in flight stays for the same origin (the worker still times those requests) and
+      // starts again at 0 for another, whose timings the worker forgets.
+      const next = { ...tab, url: event.url, host: hostOf(event.url), title: event.title ?? '', activity: now }
       if (originOf(event.url) !== originOf(tab.url)) {
-        return { ...next, errors: tally(), requests: tally(), history: [], server: 'up', devServer: null, serverBase: '/' }
+        return { ...next, inFlight: 0, errors: tally(), requests: tally(), history: [], server: 'up', devServer: null, serverBase: '/' }
       }
       return { ...next, errors: resolved(tab.errors), requests: resolved(tab.requests), history: restate(tab.history, ['open', 'seen'], 'resolved') }
     }
