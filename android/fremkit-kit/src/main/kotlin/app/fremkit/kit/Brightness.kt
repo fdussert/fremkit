@@ -9,6 +9,8 @@ import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import java.net.URI
+import java.net.URISyntaxException
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
@@ -83,6 +85,31 @@ class BrightnessRequest internal constructor(
 ) {
     val method: String get() = "POST"
 
+    /** The pin to send it under, as [PinnedTransport] takes it. */
+    val policy: PinPolicy get() = PinPolicy(keyHash, pinnedHosts)
+
+    /** The request as [PinnedTransport] sends it, or null when [url] is not one (it always is). */
+    fun toRequest(): Request? {
+        val uri = try {
+            URI(url).takeIf { it.host != null }
+        } catch (_: URISyntaxException) {
+            null
+        } ?: return null
+        return Request(uri, method, headers, body.encodeToByteArray())
+    }
+
+    /**
+     * Sends it through [transport] under [policy]: the HTTP status, or null for a pin refusal or
+     * a network failure. What [BrightnessReporter.send] takes.
+     */
+    suspend fun send(transport: Transport = PinnedTransport.default): Int? {
+        val request = toRequest() ?: return null
+        return when (val exchange = transport(request, policy)) {
+            is Exchange.Response -> exchange.status
+            Exchange.PinRejected, Exchange.Failed -> null
+        }
+    }
+
     override fun toString(): String = "BrightnessRequest($method $url)"
 }
 
@@ -113,6 +140,13 @@ class BrightnessReporter(val mac: PairedMac, /** The candidate the app is connec
     suspend fun send(brightness: Double, applied: Int?, post: suspend (BrightnessRequest) -> Int?): ReportOutcome =
         ReportOutcome.of(post(request(brightness, applied)))
 
+    /**
+     * [BrightnessSync]'s `send`: each report goes to [host] through [transport], under the Mac's
+     * pin. A new host or a new pairing is a new reporter, and a new sender.
+     */
+    fun sender(transport: Transport = PinnedTransport.default): suspend (Double, Int?) -> ReportOutcome =
+        { brightness, applied -> send(brightness, applied) { it.send(transport) } }
+
     override fun toString(): String = "BrightnessReporter($host)"
 
     companion object {
@@ -135,7 +169,8 @@ class BrightnessReporter(val mac: PairedMac, /** The candidate the app is connec
  *
  * @param read the screen's brightness, 0–1.
  * @param write sets the screen's brightness, 0–1.
- * @param send reports a brightness (0–1) and the `seq` applied, if any.
+ * @param send reports a brightness (0–1) and the `seq` applied, if any: in the app,
+ *   [BrightnessReporter.sender] for the host the dashboard is using.
  * @param unauthorized called when a report is answered 401.
  */
 class BrightnessSync(
