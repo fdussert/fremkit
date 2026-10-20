@@ -304,6 +304,21 @@ describe('a paired socket', () => {
     registry.stop()
   })
 
+  it('refuses recent-projects to a paired socket even when its screen holds the widget', async () => {
+    const { hub, paired, registry, setPolicy } = pairedSetup()
+    const opened: unknown[] = []
+    registry.register({ channel: 'recent-projects', intervalMs: 1000, commands: { open: async (p) => { opened.push(p); return { ok: true } } } })
+    hub.broadcast('recent-projects', { projects: [{ path: '/Users/demo/Dev/example-api' }] })
+    setPolicy({ 'dev-a': { subscriptions: ['recent-projects'], commands: ['recent-projects'] } })
+    const socket = paired('dev-a')
+    socket.receive({ type: 'subscribe', channel: 'recent-projects' })
+    socket.receive({ type: 'command', id: 'c1', channel: 'recent-projects', name: 'open', payload: { path: '/Users/demo/Dev/example-api', app: 'finder' } })
+    await new Promise((r) => setTimeout(r, 0))
+    expect(socket.sent).toEqual([REFUSED, { ...REFUSED, id: 'c1' }])
+    expect(opened).toEqual([])
+    registry.stop()
+  })
+
   it('is not heard once closed, even before the close handshake ends', async () => {
     const { hub, count, focused, attach, registry } = pairedSetup()
     const socket = attach(new LingeringSocket(), 'dev-a')
