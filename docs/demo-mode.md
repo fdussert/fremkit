@@ -53,7 +53,8 @@ In demo mode **no real provider is constructed**, and a test (`server/test/demo.
 sure of it. In particular:
 
 - nothing runs a program, reads `/Applications`, the Dock, the clipboard, `pmset`, `ioreg` or the
-  disk, and no AppleScript is sent;
+  disk, and no AppleScript is sent; the clipboard is not written either: Fremdev's report and its
+  ⌃⇧S screenshot go nowhere (`demo/clipboard.ts`);
 - secrets go to a file in the demo folder — the **keychain is never asked**, whatever the config
   says;
 - connections (ICS, GitHub, Azure DevOps, Bambu Lab, Synology) keep their forms, but **Test**

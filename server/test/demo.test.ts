@@ -16,6 +16,18 @@ function spy(name: string): ReturnType<typeof vi.fn> {
   spies[name] ??= boom(name)
   return spies[name]
 }
+/** What each build handed the companion: a demo's clipboards must be the demo's own. */
+const companionOpts = vi.hoisted(() => [] as Array<Record<string, unknown>>)
+vi.mock('../src/companion/index.js', async (orig) => {
+  const real = await orig<typeof import('../src/companion/index.js')>()
+  return {
+    ...real,
+    createCompanion: (opts: Parameters<typeof real.createCompanion>[0]) => {
+      companionOpts.push(opts as unknown as Record<string, unknown>)
+      return real.createCompanion(opts)
+    },
+  }
+})
 vi.mock('../src/providers/system.js', async (orig) => ({ ...(await orig<object>()), createSystemProvider: spy('system') }))
 vi.mock('../src/claude/providers.js', async (orig) => ({
   ...(await orig<object>()),
@@ -74,6 +86,18 @@ describe('demo mode', () => {
     app = await demoApp()
     for (const [name, fn] of Object.entries(spies)) expect(fn, name).not.toHaveBeenCalled()
     expect((await app.inject({ url: '/api/demo' })).json()).toEqual({ demo: true })
+  })
+
+  it('keeps Fremdev\'s report and shot off the Mac\'s clipboard', async () => {
+    const { demoImageClipboard, demoPasteboard } = await import('../src/demo/clipboard.js')
+    app = await demoApp()
+    const opts = companionOpts.at(-1)!
+    expect(opts.pasteboard).toBe(demoPasteboard)
+    expect(opts.imageClipboard).toBe(demoImageClipboard)
+    // They take what they are given and do nothing with it.
+    await expect(demoPasteboard.write('report')).resolves.toBeUndefined()
+    await expect(demoPasteboard.read()).resolves.toBe('')
+    await expect(demoImageClipboard.writeJpeg(Buffer.from([0xff, 0xd8, 0xff]))).resolves.toBeUndefined()
   })
 
   it('the spies are live: a normal build trips them', async () => {
