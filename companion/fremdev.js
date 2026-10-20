@@ -24,6 +24,7 @@
 
 import { BUILTIN_PERMISSION_ORIGINS, FREMKIT_EXCLUDES, inOrigins, isDevUrl, parsePattern } from './lib/devhosts.js'
 import { boundFrames, clip, isNoise, MAX_FRAME, MAX_TEXT, methodOf, pathOf } from './lib/devlog.js'
+import { InFlight, SLOW_MS } from './lib/devflight.js'
 import { editorUrl } from './lib/devopen.js'
 import { buildReport, reportMessage } from './lib/devreport.js'
 import { DEV_SERVERS, emptyTab, fremdevSupport, reduce, restoredTabs, sessionTabs, Throttle, validBase, wireTabs } from './lib/devtabs.js'
@@ -49,8 +50,17 @@ const MAX_COUNT = 1_000_000
 /** A top-frame load that failed this way: nothing listens where the dev server was. */
 const SERVER_GONE = ['net::ERR_CONNECTION_REFUSED', 'net::ERR_CONNECTION_RESET', 'net::ERR_EMPTY_RESPONSE']
 const REQUEST_FILTER = { urls: ['http://*/*', 'https://*/*'] }
+/** The longest a slow entry says a request took. */
+const MAX_SLOW_MS = 3_600_000
 
 const validId = (id) => Number.isInteger(id) && id >= 0
+const originOf = (url) => {
+  try {
+    return new URL(url).origin
+  } catch {
+    return url
+  }
+}
 /** A `dev.report.ask`'s or `dev.open.ask`'s id, which the answer carries back: the server's UUID. */
 const REPORT_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 /** The module that says this install answers `dev.report.ask` (FREMDEV_REPORT_MODULE on the server). */
@@ -61,7 +71,7 @@ const OPEN_INIT = { method: 'GET', credentials: 'omit', cache: 'no-store', redir
  * The modules of the features a control on the Edge depends on (FREMDEV_FEATURES on the server),
  * announced after the report's while Fremdev is on. Each feature appends its own.
  */
-export const FEATURE_MODULES = ['fremdev.build', 'fremdev.open', 'fremdev.reload']
+export const FEATURE_MODULES = ['fremdev.build', 'fremdev.open', 'fremdev.reload', 'fremdev.slow']
 const cleanPatterns = (list) =>
   Array.isArray(list) ? [...new Set(list.map((p) => parsePattern(p)?.pattern).filter(Boolean))] : []
 
@@ -178,6 +188,12 @@ export function createFremdev({
   /** The start under way, so a second one (the popup and the grant both) joins it. */
   let starting = null
   const throttle = new Throttle(SEND_MS, now, setTimer)
+  /** The dev tabs' requests started and not finished (lib/devflight.js), in memory only. */
+  const flight = new InFlight()
+  /** Whether a timer waits for the oldest pending request to go stale. */
+  let staleArmed = false
+  /** The stale time that timer last fired for: never armed twice for the same one. */
+  let staleFired = null
 
   const supported = () => known === null || known === 'yes'
   const active = () => on && supported() && Object.keys(tabs).length > 0
@@ -193,6 +209,7 @@ export function createFremdev({
   /** Every 20 s while active: the keep-alive, and a chance for the socket to come back. */
   function tick() {
     if (support === 'yes') send(protocol.ping())
+    sweep()
     wantSocket()
   }
 
@@ -214,26 +231,34 @@ export function createFremdev({
     }
   }
 
-  /** Applies an event to a tab's row; `seed` creates the row when there is none. */
-  function apply(tabId, event, seed = null) {
+  /**
+   * Applies an event to a tab's row; `seed` creates the row when there is none. `quiet`: a change
+   * that only updates the row (the count in flight), sent on the usual throttle but no event, so it
+   * neither wakes the socket nor asks to look again (`refresh`).
+   */
+  function apply(tabId, event, seed = null, { quiet = false } = {}) {
     const key = String(tabId)
     let tab = tabs[key]
+    // Another origin's requests are none of this one's: their timings go with the history.
+    if (tab && event.kind === 'navigated' && originOf(event.url) !== originOf(tab.url)) flight.forgetTab(tabId)
     if (!tab) {
       if (!seed || !isDev(seed.url)) return
       tab = emptyTab(tabId, seed.url, seed.title, now())
       const keys = Object.keys(tabs)
       if (keys.length >= MAX_ROWS) {
         const oldest = keys.reduce((a, b) => (tabs[a].activity <= tabs[b].activity ? a : b))
+        flight.forgetTab(tabs[oldest].tabId)
         tabs = { ...tabs }
         delete tabs[oldest]
       }
     }
     tabs = { ...tabs, [key]: reduce(tab, event, now()) }
-    refresh({ changed: true, event: true })
+    refresh(quiet ? { changed: true } : { changed: true, event: true })
   }
 
   function drop(tabId) {
     const key = String(tabId)
+    flight.forgetTab(tabId)
     if (!tabs[key]) return
     tabs = { ...tabs }
     delete tabs[key]
@@ -350,8 +375,74 @@ export function createFremdev({
 
   // --- requests (optional permission) ------------------------------------------------------------
 
-  const onRequestDone = (d) => void request(d, d.statusCode)
-  const onRequestFailed = (d) => void request(d, 0, d.error)
+  const onRequestStart = (d) => void started(d)
+  const onRequestDone = (d) => void finished(d, d.statusCode)
+  const onRequestFailed = (d) => void finished(d, 0, d.error)
+
+  /** When Chrome saw the request's event (`timeStamp`, ms since the epoch), or now. */
+  const stampOf = (d) => (typeof d.timeStamp === 'number' && Number.isFinite(d.timeStamp) ? d.timeStamp : now())
+  const requestKey = (d) => (typeof d.requestId === 'string' || Number.isInteger(d.requestId) ? String(d.requestId) : null)
+
+  /** The tab's count in flight at `at`, onto its row when it changed: quietly. */
+  function recount(tabId, at) {
+    const row = tabs[String(tabId)]
+    const n = flight.count(tabId, at)
+    if (row && row.inFlight !== n) apply(tabId, { kind: 'inflight', n }, null, { quiet: true })
+  }
+
+  /** Every row's count again: a request pending past STALE_MS stops counting with nothing else happening. */
+  function sweep() {
+    const at = now()
+    for (const tab of Object.values(tabs)) if (tab.inFlight > 0) recount(tab.tabId, at)
+  }
+
+  /** A timer for when the oldest pending request goes stale, then the next one's. */
+  function armStale() {
+    if (staleArmed) return
+    const at = flight.nextStale()
+    if (at === null || at === staleFired) return
+    staleArmed = true
+    // Stale once more than STALE_MS old: 1 ms past it.
+    setTimer(() => {
+      staleArmed = false
+      staleFired = at
+      sweep()
+      armStale()
+    }, Math.max(0, at - now()) + 1)
+  }
+
+  /**
+   * A request starting: timed for a tab with a row, to a dev host, and not the noise. A websocket
+   * (Vite's HMR) is open for the page's life and is never timed.
+   */
+  async function started(d) {
+    await loaded
+    const id = requestKey(d)
+    if (!on || id === null || !validId(d.tabId) || !tabs[String(d.tabId)]) return
+    if (d.type === 'websocket' || !isDev(d.url) || isNoise(d.url)) return
+    const at = stampOf(d)
+    flight.start(id, d.tabId, at)
+    recount(d.tabId, at)
+    armStale()
+  }
+
+  /**
+   * A request done or failed: its timing finished, a `slow` entry when it succeeded in SLOW_MS or
+   * more, the count again; then what a failed one says (`request`).
+   */
+  async function finished(d, status, error) {
+    await loaded
+    const id = requestKey(d)
+    const done = on && id !== null ? flight.finish(id, stampOf(d)) : null
+    if (done) {
+      if (error === undefined && status < 400 && done.ms >= SLOW_MS && tabs[String(done.tabId)]) {
+        const ms = Math.min(MAX_SLOW_MS, Math.round(done.ms))
+        apply(done.tabId, { kind: 'slow', method: methodOf(d.method), path: pathOf(d.url), ms })
+      }
+      recount(done.tabId, stampOf(d))
+    }
+    return request(d, status, error)
+  }
 
   async function request(d, status, error) {
     await loaded
@@ -388,9 +479,12 @@ export function createFremdev({
         // Only the hosts the extension holds a permission for reach these, whatever the filter says.
         web.onCompleted.addListener(onRequestDone, REQUEST_FILTER)
         web.onErrorOccurred.addListener(onRequestFailed, REQUEST_FILTER)
+        web.onBeforeRequest.addListener(onRequestStart, REQUEST_FILTER)
       } else {
         web.onCompleted.removeListener(onRequestDone)
         web.onErrorOccurred.removeListener(onRequestFailed)
+        web.onBeforeRequest.removeListener(onRequestStart)
+        flight.clear()
       }
       listening = want
     } catch {
@@ -531,6 +625,7 @@ export function createFremdev({
       listen(false)
       await sync({ inject: false })
       tabs = {}
+      flight.clear()
       await storage.session.set({ devTabs: {} })
       if (support === 'yes') send(protocol.modulesMsg(modules()))
       refresh()

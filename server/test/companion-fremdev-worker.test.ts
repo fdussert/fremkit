@@ -154,7 +154,7 @@ function fakeChrome({ on = true, granted = ['http://localhost/*'], webRequest = 
     },
     windows: { update: vi.fn(async () => undefined) },
   }
-  if (webRequest) api.webRequest = { onCompleted: event(), onErrorOccurred: event() }
+  if (webRequest) api.webRequest = { onBeforeRequest: event(), onCompleted: event(), onErrorOccurred: event() }
   return { api, store, grants, event }
 }
 
@@ -312,7 +312,7 @@ describe('companion/fremdev.js', () => {
     f.fremdev.onReady({ type: 'ready', protocol: 2, modules: { fremplay: true, fremdev: true } })
     await f.later()
     expect(f.sent.map((m) => m.type)).toEqual(['modules', 'dev.tabs'])
-    expect(f.sent[0]).toEqual({ type: 'modules', modules: ['fremplay', 'fremdev', 'fremdev.report', 'fremdev.build', 'fremdev.open', 'fremdev.reload'] })
+    expect(f.sent[0]).toEqual({ type: 'modules', modules: ['fremplay', 'fremdev', 'fremdev.report', 'fremdev.build', 'fremdev.open', 'fremdev.reload', 'fremdev.slow'] })
     expect((f.sent[1].tabs as Array<{ tabId: number }>).map((t) => t.tabId)).toEqual([7])
     await f.fremdev.stop()
     expect(f.sent.at(-1)).toEqual({ type: 'modules', modules: ['fremplay'] })
@@ -384,11 +384,11 @@ describe('companion/fremdev.js', () => {
       const f = await makeFremdev({ on: false })
       expect(f.fremdev.modules()).toEqual(['fremplay'])
       await f.fremdev.start()
-      expect(f.fremdev.modules()).toEqual(['fremplay', 'fremdev', 'fremdev.report', 'fremdev.build', 'fremdev.open', 'fremdev.reload', 'fremdev.test'])
+      expect(f.fremdev.modules()).toEqual(['fremplay', 'fremdev', 'fremdev.report', 'fremdev.build', 'fremdev.open', 'fremdev.reload', 'fremdev.slow', 'fremdev.test'])
     } finally {
       FEATURE_MODULES.pop()
     }
-    expect(FEATURE_MODULES).toEqual(['fremdev.build', 'fremdev.open', 'fremdev.reload'])
+    expect(FEATURE_MODULES).toEqual(['fremdev.build', 'fremdev.open', 'fremdev.reload', 'fremdev.slow'])
   })
 
   it('records the dev server a page reports, the latest replacing the last', async () => {
@@ -425,7 +425,7 @@ describe('companion/fremdev.js', () => {
     const f = await makeFremdev({ on: false })
     expect(f.fremdev.modules()).toEqual(['fremplay'])
     await f.fremdev.start()
-    expect(f.fremdev.modules()).toEqual(['fremplay', 'fremdev', 'fremdev.report', 'fremdev.build', 'fremdev.open', 'fremdev.reload'])
+    expect(f.fremdev.modules()).toEqual(['fremplay', 'fremdev', 'fremdev.report', 'fremdev.build', 'fremdev.open', 'fremdev.reload', 'fremdev.slow'])
     await f.fremdev.stop()
     expect(f.fremdev.modules()).not.toContain('fremdev.report')
     expect(f.fremdev.modules()).not.toContain('fremdev.build')
@@ -691,7 +691,7 @@ describe('companion/fremdev.js', () => {
 
   it('adds the request listeners when webRequest is granted after the start', async () => {
     const f = await makeFremdev({ webRequest: false })
-    f.api.webRequest = { onCompleted: f.event(), onErrorOccurred: f.event() }
+    f.api.webRequest = { onBeforeRequest: f.event(), onCompleted: f.event(), onErrorOccurred: f.event() }
     const [onAdded] = f.api.permissions.onAdded.addListener.mock.calls[0]
     await onAdded({ permissions: ['webRequest'] })
     expect(f.api.webRequest.onCompleted.addListener).toHaveBeenCalledTimes(1)
@@ -791,5 +791,174 @@ describe('companion/fremdev.js', () => {
     expect(ISOLATED_JS).toEqual(['fremdev/relay.js', 'fremdev/kind.js', 'fremdev/build.js'])
     expect(f.api.scripting.executeScript).toHaveBeenCalledTimes(2)
     expect(f.store.local.fremdev).toMatchObject({ on: true })
+  })
+})
+
+describe('slow requests and requests in flight', () => {
+  /** createFremdev on a clock the test moves, with timers that run when their time comes. */
+  async function timed() {
+    const { api, store } = fakeChrome()
+    const sent: Array<{ type: string; [k: string]: unknown }> = []
+    const wantSocket = vi.fn()
+    let clock = 1_000_000
+    let timers: Array<{ at: number; fn: () => void }> = []
+    const fremdev = createFremdev({
+      send: (m: { type: string }) => (sent.push(m), true),
+      wantSocket,
+      api,
+      now: () => clock,
+      setTimer: (fn: () => void, ms = 0) => void timers.push({ at: clock + ms, fn }),
+      every: () => 1,
+      stopEvery: () => undefined,
+    })
+    await fremdev.onServer({ type: 'none' })
+    const settle = () => new Promise((r) => setTimeout(r, 0))
+    /** Moves the clock by `ms`, running every timer due on the way. */
+    const advance = async (ms: number) => {
+      const end = clock + ms
+      await settle()
+      for (;;) {
+        const due = timers.filter((t) => t.at <= end).sort((a, b) => a.at - b.at)[0]
+        if (!due) break
+        timers = timers.filter((t) => t !== due)
+        clock = Math.max(clock, due.at)
+        due.fn()
+        await settle()
+      }
+      clock = end
+      await settle()
+    }
+    const listener = (name: string) => api.webRequest[name].addListener.mock.calls.at(-1)[0]
+    const rows = () => (store.session.devTabs ?? {}) as Record<string, any>
+    // A row for tab 7, and a server that speaks Fremdev.
+    await fremdev.onPageEvent({ kind: 'hot' }, devSender())
+    fremdev.onReady({ type: 'ready', protocol: 2, modules: { fremplay: true, fremdev: true } })
+    await advance(1_000)
+    const req = (id: string, over: Record<string, unknown> = {}) => ({
+      requestId: id, tabId: 7, frameId: 0, method: 'GET', url: 'http://localhost:5173/api/items?token=x', type: 'xmlhttprequest', timeStamp: clock, ...over,
+    })
+    return {
+      fremdev, api, store, sent, wantSocket, rows, advance, req,
+      now: () => clock,
+      before: listener('onBeforeRequest'),
+      done: listener('onCompleted'),
+      failed: listener('onErrorOccurred'),
+    }
+  }
+
+  it('listens to onBeforeRequest beside the others, and lets go of it when turned off', async () => {
+    const t = await timed()
+    expect(t.api.webRequest.onBeforeRequest.addListener).toHaveBeenCalledWith(t.before, { urls: ['http://*/*', 'https://*/*'] })
+    await t.fremdev.stop()
+    expect(t.api.webRequest.onBeforeRequest.removeListener).toHaveBeenCalledWith(t.before)
+  })
+
+  it('adds a slow entry for a request that succeeded after 1.5 s, and the light stays green', async () => {
+    const t = await timed()
+    t.before(t.req('1'))
+    await t.advance(10)
+    expect(t.rows()['7'].inFlight).toBe(1)
+    await t.advance(1_490)
+    t.done(t.req('1', { statusCode: 200, timeStamp: t.now() }))
+    await t.advance(1_000)
+    const row = t.rows()['7']
+    expect(row.history).toEqual([{ kind: 'slow', id: 1, method: 'GET', path: '/api/items', ms: 1500, n: 1, at: expect.any(Number), state: 'open' }])
+    expect(row).toMatchObject({ inFlight: 0, errors: { open: 0 }, requests: { total: 0, open: 0 } })
+    const wire = (t.sent.filter((m) => m.type === 'dev.tabs').at(-1)!.tabs as Array<Record<string, any>>)[0]
+    expect(wire.inFlight).toBe(0)
+    expect(wire.history[0]).toMatchObject({ kind: 'slow', ms: 1500, path: '/api/items' })
+  })
+
+  it('adds a request entry and no slow one for a request that failed after 1.5 s', async () => {
+    const t = await timed()
+    t.before(t.req('1'))
+    await t.advance(1_500)
+    t.done(t.req('1', { statusCode: 500, timeStamp: t.now() }))
+    t.before(t.req('2'))
+    await t.advance(1_500)
+    t.failed(t.req('2', { error: 'net::ERR_FAILED', timeStamp: t.now() }))
+    await t.advance(1_000)
+    const row = t.rows()['7']
+    expect(row.history.map((e: { kind: string; status: number }) => [e.kind, e.status])).toEqual([['request', 0], ['request', 500]])
+    expect(row.inFlight).toBe(0)
+  })
+
+  it('never times a websocket (Vite HMR), and stops counting a request pending past 30 s; neither is ever slow', async () => {
+    const t = await timed()
+    t.before(t.req('ws', { url: 'http://localhost:5173/', type: 'websocket' }))
+    t.before(t.req('poll', { url: 'http://localhost:5173/api/poll' }))
+    await t.advance(10)
+    expect(t.rows()['7'].inFlight).toBe(1)
+    await t.advance(29_980)
+    expect(t.rows()['7'].inFlight).toBe(1)
+    // Nothing else happens in the tab: the count still drops once 30 s are past.
+    await t.advance(1_000)
+    expect(t.rows()['7'].inFlight).toBe(0)
+    // Both finish at last, a minute in: neither is slow.
+    t.done(t.req('ws', { url: 'http://localhost:5173/', type: 'websocket', statusCode: 101, timeStamp: t.now() + 30_000 }))
+    t.done(t.req('poll', { url: 'http://localhost:5173/api/poll', statusCode: 200, timeStamp: t.now() + 30_000 }))
+    await t.advance(31_000)
+    expect(t.rows()['7'].history).toEqual([])
+    expect(t.rows()['7'].inFlight).toBe(0)
+  })
+
+  it('times only the requests of a tab with a row, to a dev host, and not the noise', async () => {
+    const t = await timed()
+    t.before(t.req('other-tab', { tabId: 8 }))
+    t.before(t.req('fremkit', { url: 'http://127.0.0.1:4242/api' }))
+    t.before(t.req('cdn', { url: 'https://cdn.example.org/x' }))
+    t.before(t.req('noise', { url: 'http://localhost:5173/favicon.ico', type: 'image' }))
+    await t.advance(10)
+    expect(t.rows()['7'].inFlight).toBe(0)
+    expect(Object.keys(t.rows())).toEqual(['7'])
+  })
+
+  it('applies the in-flight count quietly: 100 starts within 500 ms send at most 2 dev.tabs and never wake the socket', async () => {
+    const t = await timed()
+    t.sent.length = 0
+    t.wantSocket.mockClear()
+    for (let i = 0; i < 100; i++) {
+      t.before(t.req(`r${i}`, { timeStamp: t.now() }))
+      await t.advance(4)
+    }
+    expect(t.wantSocket).not.toHaveBeenCalled()
+    await t.advance(500)
+    expect(t.sent.filter((m) => m.type === 'dev.tabs').length).toBeLessThanOrEqual(2)
+    expect(t.rows()['7'].inFlight).toBe(100)
+    expect(t.wantSocket).not.toHaveBeenCalled()
+  })
+
+  it('forgets the timings of a tab that closes or goes to another origin', async () => {
+    const t = await timed()
+    const [onUpdated] = t.api.tabs.onUpdated.addListener.mock.calls.at(-1)
+    t.before(t.req('1'))
+    await t.advance(10)
+    await onUpdated(7, { status: 'loading', url: 'http://localhost:3000/' }, { id: 7, url: 'http://localhost:3000/', title: '' })
+    await t.advance(1_500)
+    expect(t.rows()['7'].inFlight).toBe(0)
+    t.done(t.req('1', { statusCode: 200, timeStamp: t.now() }))
+    await t.advance(10)
+    expect(t.rows()['7'].history).toEqual([])
+    // Same origin: the navigation reads 0, the requests still pending are still timed.
+    t.before(t.req('2', { url: 'http://localhost:3000/api' }))
+    await t.advance(10)
+    await onUpdated(7, { status: 'loading', url: 'http://localhost:3000/x' }, { id: 7, url: 'http://localhost:3000/x', title: '' })
+    // The throttle's next send.
+    await t.advance(500)
+    expect(t.rows()['7'].inFlight).toBe(0)
+    await t.advance(1_000)
+    t.done(t.req('2', { url: 'http://localhost:3000/api', statusCode: 200, timeStamp: t.now() }))
+    await t.advance(10)
+    expect(t.rows()['7'].history[0]).toMatchObject({ kind: 'slow', path: '/api' })
+  })
+
+  it('announces fremdev.slow only while on', async () => {
+    expect(FEATURE_MODULES).toContain('fremdev.slow')
+    const f = await makeFremdev({ on: false })
+    expect(f.fremdev.modules()).not.toContain('fremdev.slow')
+    await f.fremdev.start()
+    expect(f.fremdev.modules()).toContain('fremdev.slow')
+    await f.fremdev.stop()
+    expect(f.fremdev.modules()).not.toContain('fremdev.slow')
   })
 })

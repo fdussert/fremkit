@@ -36,7 +36,8 @@
   .body{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
   .head,.facts{display:flex;align-items:baseline;gap:10px;min-width:0;white-space:nowrap}
   .app{font-size:calc(17px * var(--text-scale, 1));font-weight:600;overflow:hidden;text-overflow:ellipsis;min-width:0}
-  .browser,.down{flex:none;font-size:calc(13px * var(--text-scale, 1));color:var(--text-muted, #8b93a0)}
+  .browser,.down,.flight{flex:none;font-size:calc(13px * var(--text-scale, 1));color:var(--text-muted, #8b93a0)}
+  .flight{font-variant-numeric:tabular-nums}
   .down{color:var(--danger, #ff6b5e);font-weight:600}
   .facts{font-size:calc(14px * var(--text-scale, 1))}
   .fact{display:flex;align-items:baseline;gap:6px;min-width:0;overflow:hidden}
@@ -64,7 +65,7 @@
   button.clear svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
   button.clear:active{background:var(--accent, #d9b36a);color:var(--on-accent, #0b0d10)}
   button.clear[hidden]{display:inline-flex;visibility:hidden}
-  .facts[hidden],.fact[hidden],.n[hidden],.browser[hidden],.down[hidden]{display:none}
+  .facts[hidden],.fact[hidden],.n[hidden],.browser[hidden],.down[hidden],.flight[hidden]{display:none}
   .body:focus-visible{outline:2px solid var(--accent, #d9b36a);outline-offset:2px;border-radius:6px}
   button:focus-visible{outline:2px solid var(--accent, #d9b36a);outline-offset:-2px}
 
@@ -83,6 +84,9 @@
   .entry.build .what{color:var(--danger, #ff6b5e)}
   .entry .kind{flex:none;font-weight:700;color:var(--danger, #ff6b5e)}
   .entry.limited .what{font-family:inherit;color:var(--text-muted, #8b93a0);font-style:italic}
+  /* A slow request is no fault: muted, its duration beside it. */
+  .entry.slow .what{color:var(--text-muted, #8b93a0)}
+  .entry .dur{flex:none;font-variant-numeric:tabular-nums;font-weight:600;color:var(--text-muted, #8b93a0)}
   .entry .origin{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-left:calc(8ch + 8px);
     font-family:var(--font-mono, ui-monospace, Menlo, monospace);font-size:calc(12px * var(--text-scale, 1));color:var(--text-dim, #6b737c)}
   .entry .origin:empty{display:none}
@@ -94,7 +98,7 @@
   .entry button.origin.failed{color:var(--danger, #ff6b5e);text-decoration:none}
   /* Seen: dimmed. Resolved: greyed and struck through. */
   .entry.seen{opacity:.55}
-  .entry.resolved .what,.entry.resolved .time,.entry.resolved .times,.entry.resolved .kind{color:var(--text-dim, #6b737c)}
+  .entry.resolved .what,.entry.resolved .time,.entry.resolved .times,.entry.resolved .kind,.entry.resolved .dur{color:var(--text-dim, #6b737c)}
   .entry.resolved .what{text-decoration:line-through}
   .entry.resolved{opacity:.7}
   .actions{display:flex;flex-wrap:wrap;gap:8px}
@@ -114,10 +118,10 @@
   html.on-light .browser,html.on-light .t,html.on-light button.clear{color:var(--on-surface, #0b0d10);opacity:.7}
   html.on-light button.show,html.on-light button.act{color:var(--on-surface, #0b0d10)}
   html.on-light button.act{border-color:color-mix(in srgb, var(--on-surface, #0b0d10) 35%, transparent)}
-  html.on-light .entry .time,html.on-light .entry .times,html.on-light .entry.limited .what,html.on-light .entry .origin{color:var(--on-surface, #0b0d10);opacity:.7}
+  html.on-light .entry .time,html.on-light .entry .times,html.on-light .entry.limited .what,html.on-light .entry.slow .what,html.on-light .entry .dur,html.on-light .flight,html.on-light .entry .origin{color:var(--on-surface, #0b0d10);opacity:.7}
   /* The warning orange reads too faint on a light body: darkened towards the text colour. */
   html.on-light .entry.request .what,html.on-light .fact.requests .n{color:color-mix(in srgb, var(--warn, #f0a020) 55%, var(--on-surface, #0b0d10))}
-  html.on-light .entry.resolved .what,html.on-light .entry.resolved .time,html.on-light .entry.resolved .times,html.on-light .entry.resolved .kind{color:var(--on-surface, #0b0d10)}
+  html.on-light .entry.resolved .what,html.on-light .entry.resolved .time,html.on-light .entry.resolved .times,html.on-light .entry.resolved .kind,html.on-light .entry.resolved .dur{color:var(--on-surface, #0b0d10)}
   html.on-light .fact.resolved,html.on-light .fact.resolved .n{color:var(--on-surface, #0b0d10);opacity:.5}
   html.on-light .fact.seen,html.on-light .fact.seen .n,html.on-light .fact.seen .t{color:var(--on-surface, #0b0d10);opacity:.5}
   /* An accent body: the accent of the clear button would vanish, so it takes the text colour. */
@@ -173,6 +177,8 @@
     openSent: { fr: 'Envoyé à l’éditeur', en: 'Sent to the editor' },
     openFailed: { fr: 'Impossible d’ouvrir ici', en: 'Can\'t open here' },
     openFile: { fr: 'Ouvrir dans l’éditeur', en: 'Open in the editor' },
+    inFlight: { fr: '{n} en cours', en: '{n} in flight' },
+    seconds: { fr: '{n} s', en: '{n} s' },
     elsewhere: { fr: 'Fremdev ne s\'affiche que sur l\'Edge du Mac.', en: 'Fremdev only shows on the Mac\'s Edge.' }
   }
 
@@ -221,6 +227,11 @@
       Fremkit.sendCommand(CHANNEL, 'reload', { deviceId: row.deviceId, tabId: row.tabId, bypassCache: bypassCache }).catch(function () {})
     }
     function pad(n) { return (n < 10 ? '0' : '') + n }
+    /** A slow entry's duration, in seconds with one decimal, in the user's language. */
+    function seconds(ms) {
+      var n = (ms / 1000).toLocaleString(Fremkit.locale === 'fr' ? 'fr' : 'en', { minimumFractionDigits: 1, maximumFractionDigits: 1 })
+      return Fremkit.t(L.seconds, { n: n })
+    }
     /** An entry's time, local, as HH:MM:SS. */
     function clock(ms) {
       if (!(ms > 0)) return ''
@@ -347,7 +358,7 @@
         v.answer = st && st.status !== 'busy' ? st.status : null
         views.push(v)
       })
-      var sig = JSON.stringify(views) + '|' + Fremkit.t(L.noAnswer) + '|' + Fremkit.t(L.limited, { n: 0 }) + '|' + Fremkit.t(L.build) +
+      var sig = JSON.stringify(views) + '|' + Fremkit.locale + '|' + Fremkit.t(L.noAnswer) + '|' + Fremkit.t(L.limited, { n: 0 }) + '|' + Fremkit.t(L.build) +
         '|' + Fremkit.t(L.openSent) + '|' + Fremkit.t(L.openFailed)
       if (sig === entry.historySig) return
       entry.historySig = sig
@@ -373,6 +384,11 @@
         what.textContent = v.kind === 'limited' ? Fremkit.t(L.limited, { n: v.n })
           : v.noAnswer ? v.text + ' ' + Fremkit.t(L.noAnswer) : v.text
         line.appendChild(what)
+        if (v.kind === 'slow' && v.ms !== null) {
+          var dur = el('span', 'dur')
+          dur.textContent = seconds(v.ms)
+          line.appendChild(dur)
+        }
         li.appendChild(line)
         var origin
         if (v.open) {
@@ -420,9 +436,11 @@
       entry.app = el('span', 'app')
       entry.browser = el('span', 'browser')
       entry.down = el('span', 'down')
+      entry.flight = el('span', 'flight')
       head.appendChild(entry.app)
       head.appendChild(entry.browser)
       head.appendChild(entry.down)
+      head.appendChild(entry.flight)
       entry.errors = factEl('errors')
       entry.requests = factEl('requests')
       facts.appendChild(entry.errors)
@@ -490,6 +508,10 @@
       entry.browser.hidden = !(several && row.browser)
       setText(entry.down, Fremkit.t(L.down))
       entry.down.hidden = row.server !== 'down'
+      // The requests in flight, while there are any: live, so it never flashes the row.
+      var flying = typeof row.inFlight === 'number' && row.inFlight > 0 ? row.inFlight : 0
+      setText(entry.flight, flying > 0 ? Fremkit.t(L.inFlight, { n: flying }) : '')
+      entry.flight.hidden = flying === 0
       updateFact(entry.errors, e, e && e.last ? e.last.text : '', L.resolved)
       var last = q && q.last
       updateFact(entry.requests, q, last ? (last.status === 0 ? Fremkit.t(L.noAnswer) : String(last.status)) + ' ' + last.path : '', L.resolvedRequests)

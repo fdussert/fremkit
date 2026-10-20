@@ -154,11 +154,14 @@ export const FREMDEV_OPEN_MODULE = 'fremdev.open'
 /** Fremdev reloads a tab, with or without its cache (`dev.reload`). */
 export const FREMDEV_RELOAD_MODULE = 'fremdev.reload'
 
+/** Fremdev reports a tab's slow requests (`slow` entries) and its requests in flight (`inFlight`). */
+export const FREMDEV_SLOW_MODULE = 'fremdev.slow'
+
 /**
  * The Fremdev modules a control on the Edge depends on (`features` in the snapshot): an install
  * that lists one is shown that control. Each feature's task appends its module name here.
  */
-export const FREMDEV_FEATURES: readonly string[] = [FREMDEV_BUILD_MODULE, FREMDEV_OPEN_MODULE, FREMDEV_RELOAD_MODULE]
+export const FREMDEV_FEATURES: readonly string[] = [FREMDEV_BUILD_MODULE, FREMDEV_OPEN_MODULE, FREMDEV_RELOAD_MODULE, FREMDEV_SLOW_MODULE]
 
 /**
  * The names of the modules an extension runs. Unknown names pass, so a newer extension with a module
@@ -218,7 +221,8 @@ export const DEV_SERVERS = ['vite', 'next', 'webpack'] as const
 
 /**
  * A tab's last errors and failed requests, without stacks; `limited` the errors the relay only
- * counted; `build` the dev server's compile errors (fremdev/build.js), counted among the errors.
+ * counted; `build` the dev server's compile errors (fremdev/build.js), counted among the errors;
+ * `slow` the requests that succeeded in a second or more, counted in no tally.
  */
 const DevHistorySchema = z
   .array(
@@ -246,6 +250,15 @@ const DevHistorySchema = z
         file: z.string().max(MAX_DEV_TEXT).nullable(),
         line: Pos.nullable(),
         col: Pos.nullable(),
+        ...entry,
+      }),
+      z.strictObject({
+        kind: z.literal('slow'),
+        method: z.enum(DEV_METHODS),
+        // A path alone, as a request entry's.
+        path: z.string().max(MAX_DEV_TEXT).regex(/^\/[^?#]*$/),
+        /** How long it took, the latest when folded: 1 s (slow) to an hour. */
+        ms: z.number().int().min(1000).max(3_600_000),
         ...entry,
       }),
     ]),
@@ -278,6 +291,8 @@ export const DevTabSchema = z.strictObject({
    * until it is known, or for another one. The kind alone: the base path stays in the extension.
    */
   devServer: z.enum(DEV_SERVERS).nullable().default(null),
+  /** The tab's requests started and not finished (one pending over 30 s no longer counts), capped. */
+  inFlight: z.number().int().min(0).max(999).default(0),
   server: z.enum(['up', 'down']),
   /** Milliseconds since the epoch of the tab's last event. */
   activity: Stamp,

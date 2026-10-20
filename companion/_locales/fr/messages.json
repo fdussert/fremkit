@@ -169,6 +169,9 @@
   "reportRequests": {
     "message": "Requêtes en échec"
   },
+  "reportSlow": {
+    "message": "Requêtes lentes"
+  },
   "reportBuild": {
     "message": "Compilation"
   },

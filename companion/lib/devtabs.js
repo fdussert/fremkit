@@ -1,3 +1,4 @@
+import { MAX_IN_FLIGHT, SLOW_MS } from './devflight.js'
 import { clip, homePath, METHODS, methodOf } from './devlog.js'
 
 // One dev tab's state as a pure reducer, and the rows `dev.tabs` carries. The wire shape mirrors
@@ -15,6 +16,9 @@ export const HISTORY_MAX = 20
 const MAX_ID = 2_147_483_647
 /** The highest line or column a build entry carries. */
 const MAX_POS = 10_000_000
+/** A slow entry's duration: SLOW_MS (lib/devflight.js) to an hour. */
+const MIN_SLOW_MS = SLOW_MS
+const MAX_SLOW_MS = 3_600_000
 /** The dev servers told apart (DEV_SERVERS on the server). */
 export const DEV_SERVERS = ['vite', 'next', 'webpack']
 const BASE_RE = /^\/[A-Za-z0-9._~\-/]{0,99}$/
@@ -66,12 +70,16 @@ export function emptyTab(tabId, url, title, now) {
     devServer: null,
     serverBase: '/',
     server: 'up',
+    /** The requests started and not finished (lib/devflight.js counts them; the worker sets it). */
+    inFlight: 0,
     activity: now,
   }
 }
 
-// The history ring: errors, failed requests, the relay's overflow (`limited`) and the dev server's
-// compile errors (`build`), newest first, an entry repeated back to back folded into its `n`.
+// The history ring: errors, failed requests, the relay's overflow (`limited`), the dev server's
+// compile errors (`build`) and the requests that succeeded slowly (`slow`), newest first, an entry
+// repeated back to back folded into its `n`. A slow entry counts in no tally and never colours the
+// light: it is information, not a fault.
 // Entries keep their stack here; the wire drops it. A build entry keeps the file's full `path` here;
 // the wire carries it as `file`, its home folder written `~/` (homePath).
 // state: `open` until the user marks it seen (`clear`), `resolved` once the page reloads or updates
@@ -85,7 +93,9 @@ const sameEntry = (a, b) =>
       ? a.method === b.method && a.path === b.path && a.status === b.status
       : a.kind === 'build'
         ? a.text === b.text && a.path === b.path
-        : true)
+        : a.kind === 'slow'
+          ? a.method === b.method && a.path === b.path
+          : true)
 
 const isId = (v) => Number.isInteger(v) && v >= 1 && v <= MAX_ID
 
@@ -149,7 +159,28 @@ function resolveBuilds(tab) {
 /** Marked seen: still open, no longer new. */
 const seenAll = (t) => ({ ...t, seen: t.open })
 
-/** The next state of a tab after an event. Every event but `title` and `devserver` stamps `activity`. */
+/**
+ * A slow request: folded into the newest open slow entry when it is the same method and path (it
+ * takes the latest `ms`, keeps its id, and comes to the top so the ring stays newest first),
+ * otherwise a new entry. The tallies and `activity` are left as they are.
+ */
+function slowEntry(tab, event, now) {
+  const method = methodOf(event.method)
+  const path = typeof event.path === 'string' ? event.path : '/'
+  const ms = Math.max(MIN_SLOW_MS, Math.min(MAX_SLOW_MS, Math.round(Number.isFinite(event.ms) ? event.ms : 0)))
+  const ring = tab.history ?? []
+  const newest = ring.find((e) => e.kind === 'slow' && e.state === 'open')
+  if (newest && newest.method === method && newest.path === path) {
+    const merged = { ...newest, ms, n: Math.min(MAX_COUNT, newest.n + 1), at: now }
+    return { ...tab, history: [merged, ...ring.filter((e) => e !== newest)] }
+  }
+  return { ...tab, ...record(tab, { kind: 'slow', method, path, ms, n: 1, at: now, state: 'open' }) }
+}
+
+/**
+ * The next state of a tab after an event. Every event but `title`, `devserver`, `slow` and
+ * `inflight` stamps `activity`.
+ */
 export function reduce(tab, event, now) {
   switch (event.kind) {
     case 'error':
@@ -215,10 +246,15 @@ export function reduce(tab, event, now) {
       if (!(tab.history ?? []).some(isLive)) return tab
       return { ...tab, ...resolveBuilds(tab), activity: now }
     }
+    case 'slow':
+      return slowEntry(tab, event, now)
+    case 'inflight':
+      return { ...tab, inFlight: Math.min(MAX_IN_FLIGHT, count(event.n)) }
     case 'navigated': {
       // The entry ids keep counting either way. The dev server's kind belongs to the origin: a
       // reload or a pushState route change keeps it, another origin forgets it and looks again.
-      const next = { ...tab, url: event.url, host: hostOf(event.url), title: event.title ?? '', activity: now }
+      // The count in flight starts again at 0; the worker forgets another origin's timings.
+      const next = { ...tab, url: event.url, host: hostOf(event.url), title: event.title ?? '', inFlight: 0, activity: now }
       if (originOf(event.url) !== originOf(tab.url)) {
         return { ...next, errors: tally(), requests: tally(), history: [], server: 'up', devServer: null, serverBase: '/' }
       }
@@ -332,6 +368,9 @@ function wireEntry(e) {
       return { kind: 'request', id, method: methodOf(e.method), path: pathOnly(e.path), status: statusOf(e.status), ...common }
     case 'limited':
       return { kind: 'limited', id, ...common }
+    case 'slow':
+      if (!isSlowMs(e.ms)) return null
+      return { kind: 'slow', id, method: methodOf(e.method), path: pathOnly(e.path), ms: e.ms, ...common }
     default:
       return null
   }
@@ -351,6 +390,8 @@ function wireRow(t) {
     history: (Array.isArray(t.history) ? t.history : []).slice(0, HISTORY_MAX).map(wireEntry).filter(Boolean),
     // The kind alone: the base path is for the extension's own use and never leaves it.
     devServer: DEV_SERVERS.includes(t.devServer) ? t.devServer : null,
+    // Never trimmed: it is one number, and the live part of the row.
+    inFlight: Math.min(MAX_IN_FLIGHT, count(t.inFlight)),
     server: t.server,
     activity: Math.max(0, t.activity),
   }
@@ -362,6 +403,8 @@ const HOST_RE = /^[a-z0-9._\-[\]:]{1,260}$/i
 const PATH_RE = /^\/[^?#]*$/
 const isStamp = (v) => typeof v === 'number' && Number.isFinite(v) && v >= 0
 const isCount = (v) => Number.isInteger(v) && v >= 0 && v <= MAX_COUNT
+const isSlowMs = (v) => Number.isInteger(v) && v >= MIN_SLOW_MS && v <= MAX_SLOW_MS
+const isMethod = (m) => METHODS.includes(m) || m === 'OTHER'
 const isText = (v, max) => typeof v === 'string' && v.length <= max
 const okTally = (t, last) =>
   isCount(t?.total) && isCount(t?.open) && isCount(t?.seen) && t.seen <= t.open && t.open <= t.total &&
@@ -376,10 +419,13 @@ const okEntry = (e) => {
     case 'error':
       return keys === 'at,id,kind,n,origin,state,text' && isText(e.text, MAX_TEXT) && (e.origin === null || isText(e.origin, MAX_TEXT))
     case 'request':
-      return keys === 'at,id,kind,method,n,path,state,status' && (METHODS.includes(e.method) || e.method === 'OTHER') &&
+      return keys === 'at,id,kind,method,n,path,state,status' && isMethod(e.method) &&
         isText(e.path, MAX_TEXT) && PATH_RE.test(e.path) && Number.isInteger(e.status) && e.status >= 0 && e.status <= 599
     case 'limited':
       return keys === 'at,id,kind,n,state'
+    case 'slow':
+      return keys === 'at,id,kind,method,ms,n,path,state' && isMethod(e.method) && isText(e.path, MAX_TEXT) && PATH_RE.test(e.path) &&
+        isSlowMs(e.ms)
     case 'build':
       return keys === 'at,col,file,id,kind,line,n,state,text' && isText(e.text, MAX_TEXT) &&
         (e.file === null || isText(e.file, MAX_TEXT)) && (e.line === null || isPos(e.line)) && (e.col === null || isPos(e.col))
@@ -402,6 +448,7 @@ export function validRow(r) {
       Number.isInteger(l.status) && l.status >= 0 && l.status <= 599 && isStamp(l.at)) &&
     Array.isArray(r.history) && r.history.length <= HISTORY_MAX && r.history.every(okEntry) &&
     (r.devServer === null || DEV_SERVERS.includes(r.devServer)) &&
+    (r.inFlight === undefined || (Number.isInteger(r.inFlight) && r.inFlight >= 0 && r.inFlight <= MAX_IN_FLIGHT)) &&
     (r.server === 'up' || r.server === 'down') &&
     isStamp(r.activity)
   )
@@ -476,7 +523,8 @@ export function restoredTabs(raw) {
       if (!(t.devServer === null || DEV_SERVERS.includes(t.devServer))) continue
       if (!validBase(t.serverBase, t.devServer)) continue
       if (!validRow(wireRow(t))) continue
-      out[key] = t
+      // The timings behind the count lived in the stopped worker's memory: none is pending now.
+      out[key] = { ...t, inFlight: 0 }
     } catch {
       // a shape wireRow cannot read: dropped
     }

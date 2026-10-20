@@ -163,12 +163,14 @@
    * status 0 (no answer) the status is left out and `noAnswer` set for the widget to say it in the
    * user's language; a `limited` entry has no text, the widget writes its label around `n`; a
    * `build` entry (the dev server's compile error) keeps its text, its origin its `file:line:col`
-   * (`file:line`, or the bare file, when the overlay gave less). Null for anything else.
+   * (`file:line`, or the bare file, when the overlay gave less); a `slow` entry (a request that
+   * succeeded in a second or more) reads `METHOD path` and carries its `ms` (null when it is not a
+   * number), for the widget to write in seconds. Null for anything else.
    */
   function entryView(entry) {
     if (!entry || typeof entry !== 'object') return null
     var kind = entry.kind
-    if (kind !== 'error' && kind !== 'request' && kind !== 'limited' && kind !== 'build') return null
+    if (kind !== 'error' && kind !== 'request' && kind !== 'limited' && kind !== 'build' && kind !== 'slow') return null
     var view = {
       kind: kind,
       time: typeof entry.at === 'number' ? entry.at : 0,
@@ -197,6 +199,9 @@
       // A status only when it is one: nothing else is written after the path.
       else if (typeof entry.status === 'number' && isFinite(entry.status)) parts.push(String(entry.status))
       view.text = parts.join(' ')
+    } else if (kind === 'slow') {
+      view.text = String(entry.method || 'OTHER') + ' ' + String(entry.path || '')
+      view.ms = typeof entry.ms === 'number' && isFinite(entry.ms) && entry.ms >= 0 ? entry.ms : null
     }
     return view
   }

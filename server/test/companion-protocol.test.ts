@@ -10,6 +10,7 @@ import {
   EXTENSION_ORIGIN_RE,
   FREMDEV_BUILD_MODULE,
   FREMDEV_FEATURES,
+  FREMDEV_SLOW_MODULE,
   MAX_MESSAGE_BYTES,
   MAX_SDP,
   MetaSchema,
@@ -239,6 +240,7 @@ describe('parseExtensionMessage', () => {
         { kind: 'limited', id: 1, n: 40, at: 1_759_999_998_000, state: 'resolved' },
       ],
       devServer: null,
+      inFlight: 0,
       server: 'up',
       activity: 1_760_000_000_000,
       ...over,
@@ -302,6 +304,36 @@ describe('parseExtensionMessage', () => {
     it('lists fremdev.build among the Fremdev features', () => {
       expect(FREMDEV_BUILD_MODULE).toBe('fremdev.build')
       expect(FREMDEV_FEATURES).toContain(FREMDEV_BUILD_MODULE)
+    })
+
+    it('lists fremdev.slow among the Fremdev features', () => {
+      expect(FREMDEV_SLOW_MODULE).toBe('fremdev.slow')
+      expect(FREMDEV_FEATURES).toContain(FREMDEV_SLOW_MODULE)
+    })
+
+    it('takes a slow entry from 1 s to an hour, and refuses one outside it, with a query or an extra key', () => {
+      const slow = { kind: 'slow', id: 5, method: 'GET', path: '/api/items', ms: 1200, n: 2, at: 1, state: 'open' }
+      expect(tabs([row({ history: [slow] })])).not.toBeNull()
+      expect(tabs([row({ history: [{ ...slow, ms: 1000 }] })])).not.toBeNull()
+      expect(tabs([row({ history: [{ ...slow, ms: 3_600_000, method: 'OTHER' }] })])).not.toBeNull()
+      for (const bad of [
+        { ...slow, ms: 999 },
+        { ...slow, ms: 3_600_001 },
+        { ...slow, ms: 1200.5 },
+        { ...slow, method: 'FOO' },
+        { ...slow, path: '/api/items?token=1' },
+        { ...slow, path: 'api' },
+        { ...slow, path: `/${'p'.repeat(300)}` },
+        { ...slow, status: 200 },
+        (({ ms: _, ...rest }) => rest)(slow),
+      ]) expect(tabs([row({ history: [bad] })]), JSON.stringify(bad)).toBeNull()
+    })
+
+    it('reads a row without inFlight as 0, and takes 0 to 999', () => {
+      const { inFlight: _, ...without } = row({ inFlight: 1 })
+      expect(DevTabSchema.parse(without).inFlight).toBe(0)
+      for (const n of [0, 1, 999]) expect(DevTabSchema.parse(row({ inFlight: n })).inFlight).toBe(n)
+      for (const n of [-1, 1000, 1.5, '3']) expect(DevTabSchema.safeParse(row({ inFlight: n })).success, String(n)).toBe(false)
     })
 
     it('needs an entry id from 1 to 2 147 483 647', () => {

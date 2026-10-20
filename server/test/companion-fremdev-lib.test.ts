@@ -12,6 +12,8 @@ import { hello, devTabs, modulesMsg, ping } from '../../companion/lib/protocol.j
 import { buildReport, REPORT_MAX, reportMessage } from '../../companion/lib/devreport.js'
 // @ts-expect-error plain JS module
 import { editorUrl, parsePlace } from '../../companion/lib/devopen.js'
+// @ts-expect-error plain JS module
+import { InFlight, MAX_IN_FLIGHT, MAX_TRACKED, SLOW_MS, STALE_MS } from '../../companion/lib/devflight.js'
 import { DEV_METHODS, DevTabSchema } from '../src/companion/protocol.js'
 
 const both = (host: string) => [`http://${host}/*`, `https://${host}/*`]
@@ -318,7 +320,7 @@ describe('devtabs', () => {
     expect(rows).toHaveLength(32)
     expect(rows[0].tabId).toBe(39)
     expect(rows[31].tabId).toBe(8)
-    expect(Object.keys(rows[0]).sort()).toEqual(['activity', 'app', 'devServer', 'errors', 'history', 'host', 'requests', 'server', 'tabId'])
+    expect(Object.keys(rows[0]).sort()).toEqual(['activity', 'app', 'devServer', 'errors', 'history', 'host', 'inFlight', 'requests', 'server', 'tabId'])
     for (const r of rows) expect(DevTabSchema.safeParse(r).success).toBe(true)
   })
 
@@ -1202,5 +1204,152 @@ describe('devopen', () => {
       expect(url, JSON.stringify(entry)).not.toBeNull()
       expect(new URL(url!).origin).toBe(new URL(tab.url).origin)
     }
+  })
+})
+
+describe('slow requests and requests in flight', () => {
+  const base = () => emptyTab(1, 'http://localhost:5173/', 'App', 100)
+  const slow = (ms: number, path = '/api/items', method = 'GET') => ({ kind: 'slow', method, path, ms })
+
+  it('InFlight times a request from its start to its finish', () => {
+    expect(SLOW_MS).toBe(1000)
+    expect(STALE_MS).toBe(30_000)
+    expect(MAX_IN_FLIGHT).toBe(999)
+    expect(MAX_TRACKED).toBe(4096)
+    const f = new InFlight()
+    f.start('r1', 7, 10_000)
+    expect(f.finish('r1', 11_200)).toEqual({ tabId: 7, ms: 1200 })
+    // Finished once: a second finish (onErrorOccurred after onCompleted) finds nothing.
+    expect(f.finish('r1', 11_300)).toBeNull()
+    expect(f.finish('never', 11_300)).toBeNull()
+  })
+
+  it('InFlight counts the pending requests of a tab, forgetting those started over 30 s ago', () => {
+    const f = new InFlight()
+    f.start('a', 7, 1_000)
+    f.start('b', 7, 1_000)
+    f.start('c', 8, 1_000)
+    expect(f.count(7, 2_000)).toBe(2)
+    expect(f.count(7, 31_000)).toBe(2)
+    expect(f.count(7, 31_001)).toBe(0)
+    // Forgotten: finishing it later times nothing.
+    expect(f.finish('a', 40_000)).toBeNull()
+    // A long poll that finishes past 30 s without a count in between is not timed either.
+    expect(f.finish('c', 31_002)).toBeNull()
+  })
+
+  it('InFlight caps the count at 999 and keeps at most 4096 requests, dropping the oldest', () => {
+    const f = new InFlight()
+    for (let i = 0; i < 1000; i++) f.start(`r${i}`, 7, 1_000)
+    expect(f.count(7, 1_000)).toBe(999)
+    const g = new InFlight()
+    for (let i = 0; i < 4097; i++) g.start(`r${i}`, i % 2, 1_000 + i)
+    expect(g.size).toBe(4096)
+    expect(g.finish('r0', 5_000)).toBeNull()
+    expect(g.finish('r1', 5_000)).toEqual({ tabId: 1, ms: 5_000 - 1_001 })
+    g.forgetTab(0)
+    expect(g.count(0, 5_000)).toBe(0)
+    expect(g.size).toBe(2047)
+    expect(g.count(1, 5_000)).toBe(999)
+  })
+
+  it('reduce folds two slow requests for the same method and path into one, with the latest ms', () => {
+    let tab = reduce(base(), slow(1500), 200)
+    tab = reduce(tab, slow(1200), 300)
+    expect(tab.history).toEqual([{ kind: 'slow', id: 1, method: 'GET', path: '/api/items', ms: 1200, n: 2, at: 300, state: 'open' }])
+    // Folded into the newest open slow entry, even with another entry since.
+    tab = reduce(tab, { kind: 'error', text: 'x' }, 400)
+    tab = reduce(tab, slow(2000), 500)
+    expect(tab.history.map((e: { kind: string; n: number; id: number }) => [e.kind, e.n, e.id])).toEqual([['slow', 3, 1], ['error', 1, 2]])
+    // Another path, or a resolved one, makes a new entry.
+    tab = reduce(tab, slow(1000, '/api/other'), 600)
+    expect(tab.history[0]).toMatchObject({ kind: 'slow', id: 3, path: '/api/other', n: 1 })
+    tab = reduce(reduce(tab, { kind: 'hot' }, 700), slow(1000, '/api/other'), 800)
+    expect(tab.history[0]).toMatchObject({ kind: 'slow', id: 4, n: 1, state: 'open' })
+  })
+
+  it('reduce leaves the tallies and the activity alone for a slow request', () => {
+    let tab = reduce(base(), { kind: 'error', text: 'x' }, 150)
+    tab = reduce(tab, { kind: 'request', path: '/api', status: 500 }, 160)
+    const next = reduce(tab, slow(1500), 900)
+    expect(next.errors).toEqual(tab.errors)
+    expect(next.requests).toEqual(tab.requests)
+    expect(next.activity).toBe(160)
+    // A slow entry pushed out of the ring un-counts nothing.
+    let full = tab
+    for (let i = 0; i < HISTORY_MAX + 3; i++) full = reduce(full, slow(1500, `/api/${i}`), 1_000 + i)
+    expect(full.history).toHaveLength(HISTORY_MAX)
+    expect(full.errors).toEqual(tab.errors)
+    expect(full.requests).toEqual(tab.requests)
+  })
+
+  it('reduce sets inFlight without stamping the activity, and a navigation sets it to 0', () => {
+    expect(base().inFlight).toBe(0)
+    const tab = reduce(base(), { kind: 'inflight', n: 3 }, 900)
+    expect(tab.inFlight).toBe(3)
+    expect(tab.activity).toBe(100)
+    expect(reduce(tab, { kind: 'inflight', n: 5000 }, 900).inFlight).toBe(999)
+    expect(reduce(tab, { kind: 'navigated', url: 'http://localhost:5173/x', title: '' }, 950).inFlight).toBe(0)
+    expect(reduce(tab, { kind: 'navigated', url: 'http://localhost:3000/', title: '' }, 950).inFlight).toBe(0)
+  })
+
+  it('wireRow carries inFlight and the slow entry, a home folder written ~, and trimHistory never touches inFlight', () => {
+    let tab = reduce(base(), { kind: 'inflight', n: 4 }, 200)
+    tab = reduce(tab, slow(1234, '/@fs/Users/example/app/src/main.ts'), 300)
+    const [row] = wireTabs([tab])
+    expect(row.inFlight).toBe(4)
+    expect(row.history[0]).toEqual({ kind: 'slow', id: 1, method: 'GET', path: '/@fs/~/app/src/main.ts', ms: 1234, n: 1, at: 300, state: 'open' })
+    expect(DevTabSchema.safeParse(row).success).toBe(true)
+    expect(validRow(row)).toBe(true)
+    // Over the size cap: the history goes, inFlight stays.
+    const big = Array.from({ length: 32 }, (_, i) => {
+      let t = reduce(emptyTab(i, `http://localhost:${3000 + i}/`, 'A', i), { kind: 'inflight', n: 7 }, 1)
+      for (let j = 0; j < HISTORY_MAX; j++) t = reduce(t, slow(1500, `/${'p'.repeat(250)}/${j}`), 10 + j)
+      return t
+    })
+    const rows = wireTabs(big)
+    expect(rows.reduce((s: number, r: { history: unknown[] }) => s + r.history.length, 0)).toBeLessThan(32 * HISTORY_MAX)
+    for (const r of rows) expect(r.inFlight).toBe(7)
+  })
+
+  it('restores a tab with a slow entry, its inFlight back to 0 (the timings were in memory)', () => {
+    const tab = reduce(reduce(base(), slow(1500), 200), { kind: 'inflight', n: 3 }, 300)
+    const restored = restoredTabs({ 1: tab })
+    expect(Object.keys(restored)).toEqual(['1'])
+    expect(restored['1'].inFlight).toBe(0)
+    expect(restored['1'].history[0]).toMatchObject({ kind: 'slow', ms: 1500 })
+  })
+
+  it('DevTabSchema refuses ms 999 and inFlight 1000, and reads a row without inFlight as 0', () => {
+    const [row] = wireTabs([reduce(base(), slow(1500), 200)])
+    expect(DevTabSchema.safeParse(row).success).toBe(true)
+    const entry = row.history[0]
+    for (const bad of [{ ...entry, ms: 999 }, { ...entry, ms: 3_600_001 }, { ...entry, ms: 1500.5 }, { ...entry, path: '/a?b' }, { ...entry, status: 200 }]) {
+      expect(DevTabSchema.safeParse({ ...row, history: [bad] }).success, JSON.stringify(bad)).toBe(false)
+      expect(validRow({ ...row, history: [bad] }), JSON.stringify(bad)).toBe(false)
+    }
+    expect(DevTabSchema.safeParse({ ...row, history: [{ ...entry, ms: 3_600_000 }] }).success).toBe(true)
+    expect(DevTabSchema.safeParse({ ...row, inFlight: 1000 }).success).toBe(false)
+    expect(validRow({ ...row, inFlight: 1000 })).toBe(false)
+    const { inFlight: _, ...without } = row
+    expect(DevTabSchema.parse(without).inFlight).toBe(0)
+  })
+
+  it('reports a Slow requests section', () => {
+    const WORDS: Record<string, (...s: unknown[]) => string> = {
+      reportTitle: () => 'Bug report',
+      reportServer: () => 'dev server',
+      reportLines: () => 'Line numbers are those of the code the dev server sent.',
+      reportSlow: () => 'Slow requests',
+      stateSeen: () => 'seen',
+      stateResolved: () => 'resolved',
+    }
+    const fmt = { stack: false, now: 9_000, t: (key: string, ...subs: unknown[]) => WORDS[key](...subs), time: () => '10:00:00', date: (ms: number) => `D${ms}` }
+    let tab = reduce(base(), slow(1200), 200)
+    tab = reduce(tab, slow(2500, '/@fs/Users/Jane Example/app/x.ts', 'POST'), 300)
+    tab = reduce(tab, slow(2600, '/@fs/Users/Jane Example/app/x.ts', 'POST'), 400)
+    const text = buildReport(tab, fmt)
+    expect(text).toContain('\n\n### Slow requests\n- 10:00:00 ×2 POST /@fs/~/app/x.ts 2600 ms\n- 10:00:00 GET /api/items 1200 ms')
+    expect(text).not.toContain('/Users/')
   })
 })

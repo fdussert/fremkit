@@ -213,7 +213,8 @@ them back. Pages already loaded keep the hook they were given until they reload 
 Watched: `console.error` calls, uncaught errors, unhandled promise rejections, the dev server's
 connection signals (Vite and webpack-dev-server lines such as *server connection lost*), failed
 requests (network errors and HTTP 4xx/5xx) and main-frame loads that fail because the server is
-down. Not counted: `favicon.ico`, hot-update traffic (`/@vite/*`, `/__webpack_hmr`,
+down; and, timed but never counted as failures, requests that took a second or more and the
+requests in flight (see [Slow requests](#slow-requests-and-requests-in-flight)). Not counted: `favicon.ico`, hot-update traffic (`/@vite/*`, `/__webpack_hmr`,
 `/sockjs-node/*`, `*.hot-update.*`) and aborted requests.
 
 What goes to Fremkit, over the extension's authenticated socket to `127.0.0.1:4242`, is per tab: the
@@ -336,6 +337,32 @@ cache* / *Reload without cache* (the browser's hard reload). They show only for 
 relays `dev.reload` to that install only when it reported the tab, and the extension calls
 `tabs.reload(tabId, { bypassCache })` for a tab it has a row for. Nothing runs in the page. The reload's
 own navigation resolves the row's open entries as any navigation does.
+
+### Slow requests and requests in flight
+
+Fremdev times a dev tab's requests with the `chrome.webRequest` permission it already holds, from
+`onBeforeRequest` to `onCompleted` or `onErrorOccurred`, with Chrome's own timestamps. It times only
+the requests of a tab it has a row for, to a dev host, and not the noise listed above. A `websocket`
+(Vite's hot-reload socket, for instance) is never timed; a redirect counts from the first request.
+Nothing in the page runs for this, and nothing is read from bodies, headers or cookies.
+
+- A request that **succeeded** (a status under 400) in **1 second or more** adds a `slow` entry to
+  the history: its method, its path (no query or fragment, a home folder written `~/`) and how long it
+  took, in milliseconds up to an hour. The same method and path again, while that entry is open,
+  folds into it: its count goes up, it takes the latest duration and comes back to the top. A slow
+  request counts in **no tally and never changes the light**; it resolves and is marked seen like the
+  others. A request that failed is a failed request, never a slow one. The Edge writes the duration
+  in seconds with one decimal; the report lists them under *Requêtes lentes* / *Slow requests*.
+- The row carries `inFlight`, the requests started and not finished, at most 999, sent on the same
+  twice-a-second throttle as the rest (a change in it alone does not wake the socket). The widget
+  shows *n en cours* / *n in flight* beside the tab's name while it is above zero. **A request still
+  pending after 30 seconds stops counting** and is forgotten, so a long poll or an EventSource that
+  never finishes stays neither in flight nor slow. A navigation sets the count to 0; a navigation to
+  another origin, and the tab closing, forget its timings. At most 4 096 requests are timed at once,
+  all tabs together, the oldest dropped first. The timings live in the extension's memory only.
+
+An install that times requests lists `fremdev.slow`; an older one sends neither, and its rows read
+0 in flight.
 
 ### The hook in the page
 

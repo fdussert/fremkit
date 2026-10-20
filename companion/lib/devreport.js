@@ -36,6 +36,8 @@ function entryLines(e, { stack, t, time }) {
       return [`- ${at} ${count}${line(e.method)} ${homeLine(e.path)} ${e.status > 0 ? e.status : t('noAnswer')}${state}`]
     case 'limited':
       return [`- ${at} +${e.n} ${t('reportLimited')}${state}`]
+    case 'slow':
+      return [`- ${at} ${count}${line(e.method)} ${homeLine(e.path)} ${Math.round(Number(e.ms) || 0)} ms${state}`]
     case 'build': {
       const out = [`- ${at} ${count}${homeLine(e.text)}${state}`]
       if (typeof e.path === 'string' && e.path !== '') {
@@ -61,6 +63,7 @@ function render(tab, entries, opts) {
   const builds = entries.filter((e) => e.kind === 'build')
   const errors = entries.filter((e) => e.kind === 'error' || e.kind === 'limited')
   const requests = entries.filter((e) => e.kind === 'request')
+  const slow = entries.filter((e) => e.kind === 'slow')
   // The compile error first: while it shows, nothing else on the page is current.
   if (builds.length > 0) {
     out.push('', `### ${t('reportBuild')}`)
@@ -73,6 +76,11 @@ function render(tab, entries, opts) {
   if (requests.length > 0) {
     out.push('', `### ${t('reportRequests')}`)
     for (const e of requests) out.push(...entryLines(e, opts))
+  }
+  // Last: a slow request is no fault, only a lead.
+  if (slow.length > 0) {
+    out.push('', `### ${t('reportSlow')}`)
+    for (const e of slow) out.push(...entryLines(e, opts))
   }
   return out.join('\n')
 }
