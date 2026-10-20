@@ -22,7 +22,9 @@
 #                                      the Mac's LAN address, ports FREMKIT_ANDROID_TEST_PORT..+2
 #                                      (default 18450), hands the tests its address and public pins,
 #                                      and stops it. The tablet must reach the Mac over the LAN: the
-#                                      Mac answers 421 over loopback (`adb reverse`), by design
+#                                      Mac answers 421 over loopback (`adb reverse`), by design. The
+#                                      debug app's data is cleared first, and the app uninstalled at
+#                                      the end: pair it again afterwards
 #   scripts/build-android.sh release   a signed release APK, dist/Fremkit-Android-<version>.apk, and its
 #                                      .sha256. Needs a clean tree, the keystore made by
 #                                      scripts/create-android-keystore.sh (folder 0700, file 0600, or
@@ -262,6 +264,11 @@ device_test() {
     # Public test data only: the address, the ports, and the pins of two keys made for this run.
     field() { sed -n "s/.*\"$1\":\"\{0,1\}\([^\",}]*\).*/\1/p" <<<"$line"; }
     echo "test server on https://$host:$port (pins $(field pinA), $(field pinB))"
+    # The tests run in the debug app's process, and connectedDebugAndroidTest uninstalls the app
+    # when they end: its pairing is lost either way. Cleared first, a paired debug app cannot show
+    # a dashboard in the test process (a pin change after one restarts the process, and the run
+    # with it), nor be brought back to the front there by the system.
+    "$ADB" -s "$serial" shell pm clear "$DEBUG_PACKAGE" >/dev/null 2>&1 || true
     ANDROID_SERIAL="$serial" gradle :app:connectedDebugAndroidTest \
         -Pandroid.testInstrumentationRunnerArguments.fremkitTestHost="$host" \
         -Pandroid.testInstrumentationRunnerArguments.fremkitTestMainPort="$(field main)" \
