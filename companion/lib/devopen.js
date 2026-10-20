@@ -7,8 +7,9 @@
 //
 // One endpoint per dev server kind:
 // - Vite:    `<base>__open-in-editor?file=<path[:line:col]>` (launch-editor-middleware), the path
-//            relative to the Vite root, or absolute; build entries and errors thrown on the page's
-//            own origin.
+//            absolute, or relative to the Vite process's working directory (`process.cwd()`, in
+//            practice the project folder; a project run with a `root` elsewhere opens the wrong path
+//            and still answers 200); build entries and errors thrown on the page's own origin.
 // - Next:    `/__nextjs_launch-editor?file=<path>&lineNumber=<n>&column=<n>&line1=<n>&column1=<n>`;
 //            build entries only. Next 15.5 reads `line1` and `column1` (its webpack and Turbopack
 //            middlewares alike) and opens line 1 without them; earlier releases read `lineNumber` and
@@ -17,7 +18,11 @@
 // Vite and webpack answer 200 whether or not an editor opened; Next answers 204, or 404 for a file it
 // does not find. A 2xx means the server answered, not that an editor opened.
 
+import { validBase } from './devtabs.js'
+
 const PLACE_RE = /^(.*):(\d+):(\d+)$/
+/** A scheme at the start of the file Vite is handed (`file:`, `http:`): launch-editor reads `file://` as a URL. */
+const SCHEME_RE = /^[A-Za-z][A-Za-z0-9+.-]*:/
 
 /** `path:line:col` as its parts; null for anything else. */
 export function parsePlace(s) {
@@ -43,8 +48,10 @@ function originOf(url) {
 /**
  * The file Vite is asked to open for an error thrown on the page's own origin: its URL path, decoded
  * (a folder with a space reaches the page as `%20`), the base stripped, then `@fs/` made absolute
- * again or the leading `/` dropped (Vite resolves it against its root). Null for another origin's
- * script (`host/path`), a protocol-relative one, or a path that does not decode.
+ * again or the leading `/` dropped (Vite resolves it against its process's working directory). Null
+ * for another origin's script (`host/path`), a protocol-relative one, a path that does not decode,
+ * and one that decodes into what the raw check refused: a leading `//`, a NUL, a `..` segment or a
+ * scheme.
  */
 function viteErrorFile(origin, base) {
   const place = parsePlace(origin)
@@ -55,10 +62,12 @@ function viteErrorFile(origin, base) {
   } catch {
     return null
   }
+  if (path.startsWith('//') || path.includes('\0') || path.split(/[/\\]/).includes('..')) return null
   const prefix = base.slice(0, -1)
   if (prefix !== '' && path.startsWith(`${prefix}/`)) path = path.slice(prefix.length)
   path = path.startsWith('/@fs/') ? path.slice('/@fs'.length) : path.slice(1)
-  return path === '' ? null : withPlace(path, place.line, place.col)
+  if (path === '' || path.startsWith('//') || SCHEME_RE.test(path.replace(/^\//, ''))) return null
+  return withPlace(path, place.line, place.col)
 }
 
 /**
@@ -72,7 +81,9 @@ export function editorUrl(tab, entry) {
   const isBuild = entry.kind === 'build' && typeof entry.path === 'string' && entry.path !== ''
   switch (tab.devServer) {
     case 'vite': {
-      const base = typeof tab.serverBase === 'string' && tab.serverBase.startsWith('/') && tab.serverBase.endsWith('/') ? tab.serverBase : '/'
+      // reduce() stores only a validBase; checked again, as this is where it meets a URL.
+      if (!validBase(tab.serverBase, 'vite')) return null
+      const base = tab.serverBase
       let file = null
       if (isBuild) file = withPlace(entry.path, entry.line, entry.col)
       else if (entry.kind === 'error') file = viteErrorFile(entry.origin, base)

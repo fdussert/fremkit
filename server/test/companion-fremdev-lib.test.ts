@@ -1129,6 +1129,29 @@ describe('devopen', () => {
     expect(editorUrl(vite(), error('/src/a.js'))).toBeNull()
   })
 
+  it('checks a Vite error path again once decoded: no //, NUL, .. segment or scheme', () => {
+    for (const origin of [
+      '/%2F/evil.example/x.js:1:1',
+      '/%2Fevil.example/x.js:1:1',
+      '/@fs/%2Fevil.example/x.js:1:1',
+      '/src/%00x.js:1:1',
+      '/src/%2E%2E/%2E%2E/etc/x.js:1:1',
+      '/src/..%5C..%5Cx.js:1:1',
+      '/file:%2F%2F%2Fetc/x.js:1:1',
+      '/@fs/file:///etc/x.js:1:1',
+      '/http:%2F%2Fevil.example/x.js:1:1',
+    ]) expect(editorUrl(vite(), error(origin)), origin).toBeNull()
+    // A colon further in is a file name, not a scheme.
+    expect(editorUrl(vite(), error('/src/a%3Ab.js:1:1'))).toBe('http://localhost:5173/__open-in-editor?file=src%2Fa%3Ab.js%3A1%3A1')
+  })
+
+  it('opens nothing under a Vite base that is not a valid one, whatever the tab holds', () => {
+    for (const base of ['//evil.example/', '/a/../', '/app', 'app/', '/a?b/', '', null]) {
+      expect(editorUrl(vite(base as string), error('/src/a.js:1:1')), String(base)).toBeNull()
+      expect(editorUrl(vite(base as string), build('/Users/example/a.js', 1, 1)), String(base)).toBeNull()
+    }
+  })
+
   it('opens a Vite build entry by its full path, a home folder with a space included (Review Focus 4)', () => {
     expect(editorUrl(vite(), build('/Users/Jane Example/app/src/App.vue', 12, 3)))
       .toBe('http://localhost:5173/__open-in-editor?file=%2FUsers%2FJane%20Example%2Fapp%2Fsrc%2FApp.vue%3A12%3A3')

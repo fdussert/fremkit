@@ -9,6 +9,8 @@
   'use strict'
 
   var RANK = { red: 0, orange: 1, green: 2 }
+  /** The dev servers the extension can open a file through (DEV_SERVERS). */
+  var KINDS = { vite: true, next: true, webpack: true }
 
   function installsOf(snap) {
     return snap && typeof snap === 'object' && Array.isArray(snap.installs) ? snap.installs : []
@@ -106,13 +108,16 @@
 
   /**
    * Whether a tap on the entry's file may ask to open it in the editor: the install listed
-   * `fremdev.open`, and the entry is a build entry naming a file, or, under Vite, an error thrown by
+   * `fremdev.open`, and the entry is a build entry naming a file under a known dev server (the
+   * extension opens nothing for an unknown one), or, under Vite, an error thrown by
    * a script on the page's own origin (`/path:line:col`; another origin's reads `host/path`). The
    * extension decides again from its own copy and builds the URL; this only says what to offer.
    */
   function openable(row, entry) {
     if (!hasFeature(row, 'fremdev.open') || !entry || typeof entry !== 'object') return false
-    if (entry.kind === 'build') return typeof entry.file === 'string' && entry.file !== ''
+    if (entry.kind === 'build') {
+      return KINDS[row.devServer] === true && typeof entry.file === 'string' && entry.file !== ''
+    }
     return row.devServer === 'vite' && entry.kind === 'error' && typeof entry.origin === 'string' &&
       entry.origin.charAt(0) === '/' && entry.origin.charAt(1) !== '/'
   }

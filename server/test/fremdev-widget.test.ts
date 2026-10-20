@@ -247,7 +247,11 @@ describe('fremdev/logic.js', () => {
     const build = { kind: 'build', id: 1, text: 'x', file: '~/app/src/App.vue', line: 1, col: 1, n: 1, at: 1, state: 'open' }
     const error = (origin: string | null) => ({ kind: 'error', id: 2, text: 'x', origin, n: 1, at: 1, state: 'open' })
     expect(openable(row('next'), build)).toBe(true)
-    expect(openable(row(null), build)).toBe(true)
+    expect(openable(row('vite'), build)).toBe(true)
+    expect(openable(row('webpack'), build)).toBe(true)
+    // A build entry under an unknown dev server: the extension would open nothing, so no button.
+    expect(openable(row(null), build)).toBe(false)
+    expect(openable(row('parcel'), build)).toBe(false)
     expect(openable(row('vite'), error('/src/main.ts:1:1'))).toBe(true)
     // Not without the feature, nor for a build entry with no file.
     expect(openable(row('vite', []), build)).toBe(false)

@@ -303,7 +303,7 @@ from a paired device.
 ### Open in editor
 
 In an unfolded row, a build entry's file, and under Vite an error thrown by a script on the page's
-own origin, is a button: tap it and the dev server opens that file at that line in your editor
+own origin, is a button (under a dev server Fremdev recognised): tap it and the dev server opens that file at that line in your editor
 (*Envoyé à l’éditeur* / *Sent to the editor* for 2 seconds; *Impossible d’ouvrir ici* / *Can't open
 here* when it could not). It shows only for an install that lists `fremdev.open`. The widget sends
 an `open` command naming the tab and the entry's id; the server asks the extension (`dev.open.ask`)
@@ -313,7 +313,9 @@ tab's origin and that entry, and asks the dev server's own endpoint, one per kin
 
 - **Vite**: `<base>__open-in-editor?file=<file>:<line>:<col>`. A build entry's file is the overlay's
   full path; an error's is its origin's path, decoded, the base stripped, `/@fs/` made absolute again
-  and otherwise relative to Vite's root. An error from another origin opens nothing.
+  and otherwise relative. Vite resolves a relative file against its process's working directory (in
+  practice the project folder): a project run with its `root` elsewhere opens the wrong path, and
+  still says *Sent to the editor*. An error from another origin opens nothing.
 - **Next**: `/__nextjs_launch-editor?file=<file>&lineNumber=<n>&column=<n>&line1=<n>&column1=<n>`,
   for build entries only (Next 15.5 reads `line1` and `column1`, earlier releases the other two).
 - **webpack**: `/webpack-dev-server/open-editor?fileName=<file>:<line>:<col>`, for build entries only.
