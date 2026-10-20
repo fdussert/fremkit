@@ -282,9 +282,10 @@ describe('fremdev/hook.js', () => {
         Object.defineProperty(URL.prototype, 'pathname', saved.pathname)
       }
     })
+    // Reverting any of the captures (a live slice, indexOf or exec, the pathname getter) calls one.
+    expect(ran).not.toHaveBeenCalled()
     const e = h.events()[0]
     expect(e.stack[0]).toMatch(/\/src\/page\.js:3:\d+$/)
-    // The harness's own clip and errorText may call the live ones; the frames never do.
     expect(e.stack.join('\n')).not.toContain('/page:')
   })
 
