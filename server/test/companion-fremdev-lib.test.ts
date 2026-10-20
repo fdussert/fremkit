@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 // @ts-expect-error plain JS module outside server/, no declarations
 import { BUILTIN_PERMISSION_ORIGINS, FREMKIT_EXCLUDES, inOrigins, isDevUrl, parsePattern, releasableOrigins } from '../../companion/lib/devhosts.js'
 // @ts-expect-error plain JS module
-import { errorText, hotReloadSignal, isNoise, MAX_TEXT, pathOf, RateLimiter } from '../../companion/lib/devlog.js'
+import { boundFrames, errorText, framePlace, hotReloadSignal, isNoise, MAX_FRAME, MAX_FRAMES, MAX_STACK, MAX_TEXT, methodOf, parseStack, pathOf, RateLimiter } from '../../companion/lib/devlog.js'
 // @ts-expect-error plain JS module
 import { emptyTab, fremdevSupport, reduce, Throttle, validRow, wireTabs } from '../../companion/lib/devtabs.js'
 // @ts-expect-error plain JS module
@@ -212,6 +212,53 @@ describe('devlog', () => {
     expect(run()).toBe(10)
     t += 1000
     expect(run()).toBe(10)
+  })
+})
+
+describe('devlog frames', () => {
+  const PAGE = 'http://localhost:5173'
+
+  it('names a frame by its path on the page origin, by host and path elsewhere, never with a query', () => {
+    expect(framePlace('http://localhost:5173/src/App.vue?t=1#a', PAGE)).toBe('/src/App.vue')
+    expect(framePlace('https://cdn.example.com/lib.js?v=abc#x', PAGE)).toBe('cdn.example.com/lib.js')
+    expect(framePlace('http://localhost:3000/a.js', PAGE)).toBe('localhost:3000/a.js')
+    expect(framePlace('not a url', PAGE)).toBe('')
+    expect(framePlace('', PAGE)).toBe('')
+    expect(framePlace('data:text/javascript,alert(1)', PAGE)).toBe('')
+    expect(framePlace(undefined as unknown as string, PAGE)).toBe('')
+  })
+
+  it("reads V8's frames into fn place:line:col, skipping the header and what it cannot parse", () => {
+    const stack =
+      'TypeError: x\n    at Cart.setup (http://localhost:5173/src/components/Cart.vue?t=9:42:17)\n    at http://localhost:5173/node_modules/.vite/deps/vue.js?v=1:100:5'
+    expect(parseStack(stack, PAGE)).toEqual(['Cart.setup /src/components/Cart.vue:42:17', '/node_modules/.vite/deps/vue.js:100:5'])
+    expect(parseStack('Error: y\n    at Array.map (<anonymous>)\n    at async load (https://cdn.example.com/lib.js?v=abc#x:1:2)', PAGE)).toEqual([
+      'async load cdn.example.com/lib.js:1:2',
+    ])
+    expect(parseStack('', PAGE)).toEqual([])
+    expect(parseStack(undefined as unknown as string, PAGE)).toEqual([])
+  })
+
+  it('keeps at most 10 frames of 300 characters, 2000 in all', () => {
+    const frames = Array.from({ length: 15 }, (_, i) => `    at f${i} (http://localhost:5173/a.js:${i + 1}:1)`)
+    expect(parseStack(`Error: e\n${frames.join('\n')}`, PAGE)).toHaveLength(MAX_FRAMES)
+    const long = parseStack(`Error: e\n    at ${'f'.repeat(400)} (http://localhost:5173/a.js:1:1)`, PAGE)
+    expect(long).toHaveLength(1)
+    expect(long[0]).toHaveLength(MAX_FRAME)
+    const wide = Array.from({ length: 10 }, (_, i) => `    at ${String(i).repeat(290)} (http://localhost:5173/a.js:1:1)`)
+    const kept = parseStack(`Error: e\n${wide.join('\n')}`, PAGE)
+    expect(kept.length).toBeGreaterThan(0)
+    expect(kept.join('\n').length).toBeLessThanOrEqual(MAX_STACK)
+    expect([MAX_FRAMES, MAX_FRAME, MAX_STACK]).toEqual([10, 300, 2000])
+    expect(boundFrames(['a', 'b'.repeat(400)])).toEqual(['a', 'b'.repeat(300)])
+  })
+
+  it('names a method from a closed list', () => {
+    expect(methodOf('post')).toBe('POST')
+    expect(methodOf('GET')).toBe('GET')
+    expect(methodOf('PROPFIND')).toBe('OTHER')
+    expect(methodOf(undefined)).toBe('OTHER')
+    expect(methodOf({ toString: () => 'GET' })).toBe('OTHER')
   })
 })
 

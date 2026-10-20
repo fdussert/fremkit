@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 // @ts-expect-error plain JS module outside server/, no declarations
-import { errorText, MAX_TEXT, RateLimiter } from '../../companion/lib/devlog.js'
+import { errorText, MAX_FRAME, MAX_FRAMES, MAX_STACK, MAX_TEXT, RateLimiter } from '../../companion/lib/devlog.js'
 
 // fremdev/hook.js and fremdev/relay.js are classic content scripts (no import): they are run here
 // in a sandbox of fakes, which is also what keeps their copies of lib/devlog.js honest.
@@ -27,15 +27,26 @@ class FakeCustomEvent {
 class FakeErrorEvent {
   #error: unknown
   #message: string
-  constructor(error: unknown, message: string) {
+  #place: [string, number, number]
+  constructor(error: unknown, message: string, place: [string, number, number] = ['', 0, 0]) {
     this.#error = error
     this.#message = message
+    this.#place = place
   }
   get error() {
     return this.#error
   }
   get message() {
     return this.#message
+  }
+  get filename() {
+    return this.#place[0]
+  }
+  get lineno() {
+    return this.#place[1]
+  }
+  get colno() {
+    return this.#place[2]
   }
   preventDefault = vi.fn()
 }
@@ -86,18 +97,38 @@ function runHook() {
   }
   const original = console.error
   const run = () =>
-    new Function('window', 'console', 'document', 'EventTarget', 'CustomEvent', 'ErrorEvent', 'PromiseRejectionEvent', source('fremdev/hook.js'))(
-      window, console, document, EventTarget, FakeCustomEvent, FakeErrorEvent, FakeRejectionEvent,
+    new Function('window', 'console', 'document', 'location', 'EventTarget', 'CustomEvent', 'ErrorEvent', 'PromiseRejectionEvent', source('fremdev/hook.js'))(
+      window, console, document, { origin: PAGE }, EventTarget, FakeCustomEvent, FakeErrorEvent, FakeRejectionEvent,
     )
   run()
   const events = () => dispatched.map((d) => (expect(d.type).toBe(EVENT), JSON.parse(d.detail as string)))
   return { run, window, console, original, listeners, dispatched, events, printed }
 }
 
-const block = (text: string) => {
-  const m = /\/\/ <errorText>[\s\S]*?\/\/ <\/errorText>/.exec(text)
+const block = (text: string, name = 'errorText') => {
+  const m = new RegExp(`// <${name}>[\\s\\S]*?// </${name}>`).exec(text)
   return m ? m[0] : null
 }
+
+const PAGE = 'http://localhost:5173'
+/**
+ * Runs `fn` with `Error.prepareStackTrace` set by `define`, or absent as in Chrome (Node defines its
+ * own), and puts Node's back afterwards.
+ */
+function withPrepare(fn: () => void, define?: PropertyDescriptor) {
+  const saved = Object.getOwnPropertyDescriptor(Error, 'prepareStackTrace')
+  delete (Error as { prepareStackTrace?: unknown }).prepareStackTrace
+  try {
+    if (define) Object.defineProperty(Error, 'prepareStackTrace', { configurable: true, ...define })
+    fn()
+  } finally {
+    delete (Error as { prepareStackTrace?: unknown }).prepareStackTrace
+    if (saved) Object.defineProperty(Error, 'prepareStackTrace', saved)
+  }
+}
+
+/** An error made by "page code" at a known URL, so its frames read like a dev page's. */
+const pageError = (expr: string) => new Function(`return ${expr}\n//# sourceURL=${PAGE}/src/page.js`)() as Error
 
 describe('fremdev/hook.js', () => {
   it('carries lib/devlog.js errorText block byte for byte', () => {
@@ -105,9 +136,110 @@ describe('fremdev/hook.js', () => {
     expect(lib).not.toBeNull()
     expect(block(source('fremdev/hook.js'))).toBe(lib)
     // and the intrinsics it reads, taken the same way
-    for (const line of source('lib/devlog.js').split('\n').filter((l) => /^const (gopd|getProto|isArray|ownKeys|quote|symbolDescription|domProto|domName|domMessage) = /.test(l))) {
+    for (const line of source('lib/devlog.js').split('\n').filter((l) => /^const (gopd|getProto|isArray|ownKeys|quote|symbolDescription|domProto|domName|domMessage|Url) = /.test(l))) {
       expect(source('fremdev/hook.js')).toContain(line)
     }
+  })
+
+  it('carries lib/devlog.js frames block byte for byte', () => {
+    const lib = block(source('lib/devlog.js'), 'frames')
+    expect(lib).not.toBeNull()
+    expect(lib).toContain('function framePlace(')
+    expect(lib).toContain('function parseStack(')
+    expect(block(source('fremdev/hook.js'), 'frames')).toBe(lib)
+  })
+
+  it('sends the stack of an uncaught error, a logged one and a rejected one, its first frame as the origin', () => {
+    const h = runHook()
+    withPrepare(() => {
+      h.listeners.error(new FakeErrorEvent(pageError("new TypeError('x')"), 'x', [`${PAGE}/src/page.js`, 3, 8]))
+      h.console.error(pageError("new Error('y')"))
+      h.console.error('context:', pageError("new Error('w')"))
+      h.listeners.unhandledrejection(new FakeRejectionEvent(pageError("new Error('z')")))
+    })
+    const events = h.events()
+    expect(events.map((e) => e.text)).toEqual(['Uncaught TypeError: x', 'Error: y', 'context: Error: w', 'Uncaught (in promise) Error: z'])
+    for (const e of events) {
+      expect(e.stack.length).toBeGreaterThan(0)
+      expect(e.stack.length).toBeLessThanOrEqual(MAX_FRAMES)
+      expect(e.stack.join('\n').length).toBeLessThanOrEqual(MAX_STACK)
+      expect(e.origin).toBe(e.stack[0])
+      expect(e.stack[0]).toMatch(/^\S+ \/src\/page\.js:3:\d+$/)
+    }
+  })
+
+  it('sends no stack and no origin for what is not an error', () => {
+    const h = runHook()
+    h.console.error('plain', { stack: '    at f (http://localhost:5173/a.js:1:1)' })
+    h.listeners.unhandledrejection(new FakeRejectionEvent('nope'))
+    h.listeners.error(new FakeErrorEvent(null, 'Script error.'))
+    expect(h.events()).toEqual([
+      { kind: 'error', text: 'plain {"stack":"    at f (http://localhost:5173/a.js:1:1)"}' },
+      { kind: 'error', text: 'Uncaught (in promise) nope' },
+      { kind: 'error', text: 'Uncaught Script error.' },
+    ])
+  })
+
+  it("reads no stack while the page set Error.prepareStackTrace, and takes the origin from the event's place", () => {
+    const h = runHook()
+    const spy = vi.fn(() => 'page')
+    const errors = [pageError("new TypeError('x')"), pageError("new Error('y')"), pageError("new Error('z')")]
+    withPrepare(
+      () => {
+        h.listeners.error(new FakeErrorEvent(errors[0], 'x', [`https://cdn.example.com/lib.js?v=abc#x`, 1, 2]))
+        h.console.error(errors[1])
+        h.listeners.unhandledrejection(new FakeRejectionEvent(errors[2]))
+      },
+      { value: spy, writable: true },
+    )
+    expect(spy).not.toHaveBeenCalled()
+    const events = h.events()
+    for (const e of events) expect(e).not.toHaveProperty('stack')
+    expect(events[0].origin).toBe('cdn.example.com/lib.js:1:2')
+    expect(events[1]).not.toHaveProperty('origin')
+    expect(events[2]).not.toHaveProperty('origin')
+  })
+
+  it('reads no stack through an accessor the page put on Error.prepareStackTrace', () => {
+    const h = runHook()
+    const get = vi.fn(() => undefined)
+    withPrepare(() => h.console.error(pageError("new Error('y')")), { get })
+    expect(get).not.toHaveBeenCalled()
+    expect(h.events()[0]).not.toHaveProperty('stack')
+  })
+
+  it("never calls a stack getter the page defined, nor a name or message getter V8's formatting would read", () => {
+    const h = runHook()
+    let ran = 0
+    const own = pageError("new Error('a')")
+    Object.defineProperty(own, 'stack', { get: () => (ran++, '    at f (http://localhost:5173/a.js:1:1)'), configurable: true })
+    const message = pageError("new Error('b')")
+    Object.defineProperty(message, 'message', { get: () => (ran++, 'm') })
+    class Named extends Error {
+      get name() {
+        ran++
+        return 'Named'
+      }
+    }
+    const named = new Named('c')
+    const boxed = pageError("new Error('d')")
+    Object.defineProperty(boxed, 'message', { value: { toString: () => (ran++, 'boxed') } })
+    withPrepare(() => {
+      for (const e of [own, message, named, boxed]) h.console.error(e)
+      // and the same error left alone still gives its stack: the checks are what stopped it
+      h.console.error(pageError("new Error('e')"))
+    })
+    expect(ran).toBe(0)
+    const events = h.events()
+    expect(events).toHaveLength(5)
+    for (const e of events.slice(0, 4)) expect(e).not.toHaveProperty('stack')
+    expect(events[4]).toHaveProperty('stack')
+  })
+
+  it('bounds the origin it takes from the event', () => {
+    const h = runHook()
+    h.listeners.error(new FakeErrorEvent(null, 'm', [`${PAGE}/${'p'.repeat(400)}.js`, 1, 1]))
+    expect(h.events()[0].origin).toHaveLength(MAX_FRAME)
   })
 
   it("prints first, then dispatches console.error's text exactly as errorText joins it", () => {
@@ -280,7 +412,7 @@ describe('fremdev/relay.js', () => {
     r.post(null)
     r.raw('{not json')
     r.raw({ kind: 'error', text: 'an object detail' })
-    r.raw(JSON.stringify({ kind: 'error', text: 'z'.repeat(5000) }))
+    r.raw(JSON.stringify({ kind: 'error', text: 'z'.repeat(20_000) }))
     expect(r.sent).toEqual([])
     r.post({ kind: 'error', text: 'y'.repeat(1000).slice(0, 1000), tabId: 9, n: 5 })
     r.post({ kind: 'hot', text: 'z', tabId: 9 })
@@ -290,6 +422,28 @@ describe('fremdev/relay.js', () => {
       { target: 'worker', type: 'dev.event', kind: 'hot' },
       { target: 'worker', type: 'dev.event', kind: 'error', text: '' },
     ])
+  })
+
+  it('forwards an error\'s origin and stack within bounds, and drops a stack that is not a list of strings', () => {
+    const r = runRelay()
+    r.post({ kind: 'error', text: 't', origin: 'Cart.setup /src/Cart.vue:1:2', stack: ['Cart.setup /src/Cart.vue:1:2', '/a.js:3:4'] })
+    expect(r.sent.at(-1)).toEqual({
+      target: 'worker', type: 'dev.event', kind: 'error', text: 't',
+      origin: 'Cart.setup /src/Cart.vue:1:2', stack: ['Cart.setup /src/Cart.vue:1:2', '/a.js:3:4'],
+    })
+    for (const stack of ['a', ['a', 1], { 0: 'a', length: 1 }, [null]]) {
+      r.post({ kind: 'error', text: 't', stack, origin: 7 })
+      expect(r.sent.at(-1)).toEqual({ target: 'worker', type: 'dev.event', kind: 'error', text: 't' })
+    }
+    r.post({ kind: 'error', text: 't', origin: 'o'.repeat(400), stack: Array.from({ length: 15 }, () => 's'.repeat(400)) })
+    const last = r.sent.at(-1) as { origin: string; stack: string[] }
+    expect(last.origin).toHaveLength(300)
+    expect(last.stack.length).toBeLessThanOrEqual(10)
+    expect(last.stack.every((f) => f.length <= 300)).toBe(true)
+    expect(last.stack.join('\n').length).toBeLessThanOrEqual(2000)
+    expect(last.stack.length).toBe(6)
+    r.post({ kind: 'hot', origin: 'o', stack: ['a'] })
+    expect(r.sent.at(-1)).toEqual({ target: 'worker', type: 'dev.event', kind: 'hot' })
   })
 
   it('writes nothing on the page', () => {

@@ -7,6 +7,14 @@ import { linkAlarm, onlyFremdev, PROBE_MISSES, PROBE_SLOW_MS, ProbeBackoff, Reco
 import { createFremdev, pageEvent } from '../../companion/fremdev.js'
 // @ts-expect-error plain JS module
 import { BUILTIN_PERMISSION_ORIGINS } from '../../companion/lib/devhosts.js'
+// @ts-expect-error plain JS module
+import { reduce } from '../../companion/lib/devtabs.js'
+
+// The reducer, watched: the events the worker hands it carry fields no row keeps yet.
+vi.mock('../../companion/lib/devtabs.js', async (importOriginal) => {
+  const actual = (await importOriginal()) as Record<string, unknown>
+  return { ...actual, reduce: vi.fn(actual.reduce as (...a: unknown[]) => unknown) }
+})
 
 // companion/fremdev.js against a fake chrome.*, and the worker's reconnection policy for it.
 
@@ -204,6 +212,17 @@ describe('companion/fremdev.js', () => {
     expect(pageEvent({ kind: 'clear' })).toBeNull()
   })
 
+  it("keeps an error's origin and stack within bounds, and drops what is not one", () => {
+    expect(pageEvent({ kind: 'error', text: 't', origin: 'o', stack: ['a'] })).toEqual({ kind: 'error', text: 't', origin: 'o', stack: ['a'] })
+    expect(pageEvent({ kind: 'error', text: 't', origin: 7, stack: 'a' })).toEqual({ kind: 'error', text: 't' })
+    expect(pageEvent({ kind: 'error', text: 't', stack: ['a', 1] })).toEqual({ kind: 'error', text: 't' })
+    const big = pageEvent({ kind: 'error', text: 't', origin: 'o'.repeat(400), stack: Array.from({ length: 15 }, () => 's'.repeat(400)) })
+    expect(big.origin).toHaveLength(300)
+    expect(big.stack.length).toBeLessThanOrEqual(10)
+    expect(big.stack.every((f: string) => f.length <= 300)).toBe(true)
+    expect(big.stack.join('\n').length).toBeLessThanOrEqual(2000)
+  })
+
   it('takes a dev event only from its own content script in the top frame of a granted dev tab', async () => {
     const f = await makeFremdev()
     const refused = [
@@ -325,6 +344,22 @@ describe('companion/fremdev.js', () => {
     const row = f.rows()['7']
     expect(row.requests.total).toBe(2)
     expect(row.requests.last).toMatchObject({ path: '/api/z', status: 0 })
+  })
+
+  it("names a failed request's method from the closed list", async () => {
+    const f = await makeFremdev()
+    await f.fremdev.onPageEvent({ kind: 'hot' }, devSender())
+    const [onCompleted] = f.api.webRequest.onCompleted.addListener.mock.calls.at(-1)
+    const [onFailed] = f.api.webRequest.onErrorOccurred.addListener.mock.calls.at(-1)
+    vi.mocked(reduce).mockClear()
+    onCompleted({ tabId: 7, url: 'http://localhost:5173/api/x', method: 'POST', statusCode: 500, type: 'xmlhttprequest' })
+    onFailed({ tabId: 7, url: 'http://localhost:5173/api/y', method: 'PROPFIND', error: 'net::ERR_FAILED', type: 'fetch' })
+    await f.later()
+    const requests = vi.mocked(reduce).mock.calls.map((c: unknown[]) => c[1]).filter((e: { kind: string }) => e.kind === 'request')
+    expect(requests).toEqual([
+      { kind: 'request', method: 'POST', path: '/api/x', status: 500 },
+      { kind: 'request', method: 'OTHER', path: '/api/y', status: 0 },
+    ])
   })
 
   it('counts only requests to dev hosts: not Fremkit, not another domain', async () => {

@@ -22,6 +22,7 @@ const symbolDescription = gopd(Symbol.prototype, 'description').get
 const domProto = typeof DOMException === 'function' ? DOMException.prototype : null
 const domName = domProto ? gopd(domProto, 'name')?.get : undefined
 const domMessage = domProto ? gopd(domProto, 'message')?.get : undefined
+const Url = URL
 
 // <errorText> This block is copied byte for byte into fremdev/hook.js, which cannot import it
 // (server/test/companion-fremdev-scripts.test.ts compares them). It never runs the logged value's
@@ -189,6 +190,76 @@ function errorText(args) {
 // </errorText>
 
 export { errorText }
+
+// <frames> This block is copied byte for byte into fremdev/hook.js, like <errorText> above. It reads
+// V8's stack text only: no source map is looked up and line numbers stay as Chrome reports them.
+/** At most this many frames leave the tab, each this long, and this long joined by newlines. */
+const MAX_FRAMES = 10
+const MAX_FRAME = 300
+const MAX_STACK = 2000
+/** A line longer than this is not a frame worth parsing. */
+const MAX_LINE = 2000
+const FRAME = /^\s+at (?:(.+) \((.+):(\d+):(\d+)\)|(.+):(\d+):(\d+))$/
+
+/** Where a script lives: its path on the page's origin, `host/path` elsewhere, '' when unknown. */
+function framePlace(url, pageOrigin) {
+  if (typeof url !== 'string' || url === '') return ''
+  try {
+    const u = new Url(url)
+    if (u.protocol === 'data:' || u.protocol === 'blob:' || u.protocol === 'javascript:' || u.protocol === 'about:') return ''
+    return clip(u.origin === pageOrigin ? u.pathname : `${u.host}${u.pathname}`, MAX_FRAME)
+  } catch {
+    return ''
+  }
+}
+
+/** Frames clipped one by one, kept while there are no more than MAX_FRAMES and they fit MAX_STACK. */
+function boundFrames(frames) {
+  const out = []
+  let length = 0
+  for (let i = 0; i < frames.length && out.length < MAX_FRAMES; i++) {
+    const frame = clip(frames[i], MAX_FRAME)
+    const next = length + (out.length > 0 ? 1 : 0) + frame.length
+    if (next > MAX_STACK) break
+    out[out.length] = frame
+    length = next
+  }
+  return out
+}
+
+/** V8's `at fn (url:line:col)` and `at url:line:col` lines as `fn place:line:col`; the rest skipped. */
+function parseStack(stack, pageOrigin) {
+  if (typeof stack !== 'string') return []
+  const frames = []
+  let start = 0
+  while (start < stack.length && frames.length < MAX_FRAMES) {
+    let end = stack.indexOf('\n', start)
+    if (end < 0) end = stack.length
+    const line = stack.slice(start, end)
+    start = end + 1
+    if (line.length > MAX_LINE) continue
+    const m = FRAME.exec(line)
+    if (!m) continue
+    const fn = m[1] === undefined ? '' : m[1]
+    const place = framePlace(m[1] === undefined ? m[5] : m[2], pageOrigin)
+    if (!place) continue
+    const at = m[1] === undefined ? `${m[6]}:${m[7]}` : `${m[3]}:${m[4]}`
+    frames[frames.length] = `${fn ? `${fn} ` : ''}${place}:${at}`
+  }
+  return boundFrames(frames)
+}
+// </frames>
+
+export { boundFrames, framePlace, MAX_FRAME, MAX_FRAMES, MAX_STACK, parseStack }
+
+const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS']
+
+/** A request's method from the closed list, `OTHER` for anything else. */
+export function methodOf(m) {
+  if (typeof m !== 'string') return 'OTHER'
+  const upper = m.toUpperCase()
+  return METHODS.includes(upper) ? upper : 'OTHER'
+}
 
 const DOWN = ['[vite] server connection lost', '[webpack-dev-server] Disconnected!', '[WDS] Disconnected!']
 const UP = [

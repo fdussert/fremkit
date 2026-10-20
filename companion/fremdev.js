@@ -21,7 +21,7 @@
 // for the popup. Nothing Fremdev is sent unless this socket's `ready` said the server speaks it.
 
 import { BUILTIN_PERMISSION_ORIGINS, FREMKIT_EXCLUDES, inOrigins, isDevUrl, parsePattern } from './lib/devhosts.js'
-import { clip, isNoise, MAX_TEXT, pathOf } from './lib/devlog.js'
+import { boundFrames, clip, isNoise, MAX_FRAME, MAX_TEXT, methodOf, pathOf } from './lib/devlog.js'
 import { emptyTab, fremdevSupport, reduce, Throttle, wireTabs } from './lib/devtabs.js'
 import * as protocol from './lib/protocol.js'
 
@@ -46,14 +46,25 @@ const validId = (id) => Number.isInteger(id) && id >= 0
 const cleanPatterns = (list) =>
   Array.isArray(list) ? [...new Set(list.map((p) => parsePattern(p)?.pattern).filter(Boolean))] : []
 
+/** An error event rebuilt: its text, and its origin and stack when they are bounded strings. */
+function errorEvent(msg) {
+  const event = { kind: 'error', text: clip(typeof msg.text === 'string' ? msg.text : '', MAX_TEXT) }
+  if (typeof msg.origin === 'string' && msg.origin !== '') event.origin = clip(msg.origin, MAX_FRAME)
+  if (Array.isArray(msg.stack) && msg.stack.every((f) => typeof f === 'string')) {
+    const stack = boundFrames(msg.stack)
+    if (stack.length > 0) event.stack = stack
+  }
+  return event
+}
+
 /**
- * The event a page's relay may send, rebuilt from its kind and text alone; null for anything else.
- * The tab is never the message's to name.
+ * The event a page's relay may send, rebuilt from its kind and its bounded fields alone; null for
+ * anything else. The tab is never the message's to name.
  */
 export function pageEvent(msg) {
   switch (msg?.kind) {
     case 'error':
-      return { kind: 'error', text: clip(typeof msg.text === 'string' ? msg.text : '', MAX_TEXT) }
+      return errorEvent(msg)
     case 'count':
       return Number.isInteger(msg.n) && msg.n > 0 ? { kind: 'count', n: Math.min(MAX_COUNT, msg.n) } : null
     case 'up':
@@ -278,7 +289,7 @@ export function createFremdev({
       if (error !== undefined || status < 400) return
     }
     if (!tabs[String(d.tabId)] || (error === undefined && status < 400) || isNoise(d.url, error)) return
-    apply(d.tabId, { kind: 'request', path: pathOf(d.url), status })
+    apply(d.tabId, { kind: 'request', method: methodOf(d.method), path: pathOf(d.url), status })
   }
 
   let listening = false

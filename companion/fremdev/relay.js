@@ -9,8 +9,9 @@
 //
 // Transport: a CustomEvent of one fixed type on `document`, its detail a JSON string (why not a
 // window `message` nor a DOM attribute: see hook.js). The page can dispatch the same event; whatever
-// it sends reaches only its own tab's row: this relay forwards a known kind and a bounded text,
-// nothing else, and the worker takes the tab from Chrome's sender, never from the message.
+// it sends reaches only its own tab's row: this relay forwards a known kind, a bounded text and,
+// for an error, a bounded origin and stack, nothing else, and the worker takes the tab from
+// Chrome's sender, never from the message.
 
 ;(() => {
   // Once per page; a relay left behind by an extension reload no longer reaches the worker, and
@@ -28,8 +29,12 @@
   const EVENT = '__fremkit_fremdev__'
   const PER_SECOND = 10
   const MAX_TEXT = 300
-  /** A JSON-escaped 300-character text is at most six times longer, plus the envelope. */
-  const MAX_DETAIL = 6 * MAX_TEXT + 64
+  // The stack bounds of lib/devlog.js (MAX_FRAMES, MAX_FRAME, MAX_STACK).
+  const MAX_FRAMES = 10
+  const MAX_FRAME = 300
+  const MAX_STACK = 2000
+  /** JSON-escaped text, origin and stack are at most six times longer, plus the envelope. */
+  const MAX_DETAIL = 6 * (2 * MAX_TEXT + MAX_STACK) + 256
   const KINDS = ['error', 'up', 'down', 'hot']
 
   const forward = (event) => {
@@ -53,6 +58,30 @@
     if (passed.length >= PER_SECOND) return false
     passed.push(t)
     return true
+  }
+
+  /** A list of strings, each clipped, kept while it fits; undefined for anything else. */
+  const frames = (list) => {
+    if (!Array.isArray(list) || !list.every((f) => typeof f === 'string')) return undefined
+    const out = []
+    let length = 0
+    for (const f of list) {
+      if (out.length >= MAX_FRAMES) break
+      const frame = f.slice(0, MAX_FRAME)
+      const next = length + (out.length > 0 ? 1 : 0) + frame.length
+      if (next > MAX_STACK) break
+      out.push(frame)
+      length = next
+    }
+    return out.length > 0 ? out : undefined
+  }
+
+  const errorOf = (data) => {
+    const event = { kind: 'error', text: typeof data.text === 'string' ? data.text.slice(0, MAX_TEXT) : '' }
+    if (typeof data.origin === 'string' && data.origin !== '') event.origin = data.origin.slice(0, MAX_FRAME)
+    const stack = frames(data.stack)
+    if (stack) event.stack = stack
+    return event
   }
 
   const flush = () => {
@@ -83,7 +112,7 @@
       }
       return
     }
-    if (kind === 'error') forward({ kind, text: typeof data.text === 'string' ? data.text.slice(0, MAX_TEXT) : '' })
+    if (kind === 'error') forward(errorOf(data))
     else forward({ kind })
   })
 })()

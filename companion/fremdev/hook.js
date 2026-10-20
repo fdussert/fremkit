@@ -6,7 +6,8 @@
 //
 // A classic script, registered with chrome.scripting: no import. What it shares with
 // lib/devlog.js is copied, and kept equal by server/test/companion-extension-manifest.test.ts
-// (the prefixes) and server/test/companion-fremdev-scripts.test.ts (the <errorText> block).
+// (the prefixes) and server/test/companion-fremdev-scripts.test.ts (the <errorText> and <frames>
+// blocks).
 //
 // Transport: a CustomEvent of one fixed type on `document`, its detail a JSON string. Not a
 // window `message` (pages' own message handlers would see every one, and some loop or throw on a
@@ -51,6 +52,7 @@ const symbolDescription = gopd(Symbol.prototype, 'description').get
 const domProto = typeof DOMException === 'function' ? DOMException.prototype : null
 const domName = domProto ? gopd(domProto, 'name')?.get : undefined
 const domMessage = domProto ? gopd(domProto, 'message')?.get : undefined
+const Url = URL
 
 // <errorText> This block is copied byte for byte into fremdev/hook.js, which cannot import it
 // (server/test/companion-fremdev-scripts.test.ts compares them). It never runs the logged value's
@@ -217,6 +219,65 @@ function errorText(args) {
 }
 // </errorText>
 
+// <frames> This block is copied byte for byte into fremdev/hook.js, like <errorText> above. It reads
+// V8's stack text only: no source map is looked up and line numbers stay as Chrome reports them.
+/** At most this many frames leave the tab, each this long, and this long joined by newlines. */
+const MAX_FRAMES = 10
+const MAX_FRAME = 300
+const MAX_STACK = 2000
+/** A line longer than this is not a frame worth parsing. */
+const MAX_LINE = 2000
+const FRAME = /^\s+at (?:(.+) \((.+):(\d+):(\d+)\)|(.+):(\d+):(\d+))$/
+
+/** Where a script lives: its path on the page's origin, `host/path` elsewhere, '' when unknown. */
+function framePlace(url, pageOrigin) {
+  if (typeof url !== 'string' || url === '') return ''
+  try {
+    const u = new Url(url)
+    if (u.protocol === 'data:' || u.protocol === 'blob:' || u.protocol === 'javascript:' || u.protocol === 'about:') return ''
+    return clip(u.origin === pageOrigin ? u.pathname : `${u.host}${u.pathname}`, MAX_FRAME)
+  } catch {
+    return ''
+  }
+}
+
+/** Frames clipped one by one, kept while there are no more than MAX_FRAMES and they fit MAX_STACK. */
+function boundFrames(frames) {
+  const out = []
+  let length = 0
+  for (let i = 0; i < frames.length && out.length < MAX_FRAMES; i++) {
+    const frame = clip(frames[i], MAX_FRAME)
+    const next = length + (out.length > 0 ? 1 : 0) + frame.length
+    if (next > MAX_STACK) break
+    out[out.length] = frame
+    length = next
+  }
+  return out
+}
+
+/** V8's `at fn (url:line:col)` and `at url:line:col` lines as `fn place:line:col`; the rest skipped. */
+function parseStack(stack, pageOrigin) {
+  if (typeof stack !== 'string') return []
+  const frames = []
+  let start = 0
+  while (start < stack.length && frames.length < MAX_FRAMES) {
+    let end = stack.indexOf('\n', start)
+    if (end < 0) end = stack.length
+    const line = stack.slice(start, end)
+    start = end + 1
+    if (line.length > MAX_LINE) continue
+    const m = FRAME.exec(line)
+    if (!m) continue
+    const fn = m[1] === undefined ? '' : m[1]
+    const place = framePlace(m[1] === undefined ? m[5] : m[2], pageOrigin)
+    if (!place) continue
+    const at = m[1] === undefined ? `${m[6]}:${m[7]}` : `${m[3]}:${m[4]}`
+    frames[frames.length] = `${fn ? `${fn} ` : ''}${place}:${at}`
+  }
+  return boundFrames(frames)
+}
+// </frames>
+
 const signalOf = (text) => {
   if (typeof text !== 'string') return null
   if (DOWN.some((p) => text.startsWith(p))) return 'down'
@@ -245,6 +306,9 @@ const getterOf = (proto, key) => {
 const eventError = getterOf(typeof ErrorEvent === 'function' ? ErrorEvent.prototype : null, 'error')
 const eventMessage = getterOf(typeof ErrorEvent === 'function' ? ErrorEvent.prototype : null, 'message')
 const eventReason = getterOf(typeof PromiseRejectionEvent === 'function' ? PromiseRejectionEvent.prototype : null, 'reason')
+const eventFilename = getterOf(typeof ErrorEvent === 'function' ? ErrorEvent.prototype : null, 'filename')
+const eventLineno = getterOf(typeof ErrorEvent === 'function' ? ErrorEvent.prototype : null, 'lineno')
+const eventColno = getterOf(typeof ErrorEvent === 'function' ? ErrorEvent.prototype : null, 'colno')
 const read = (getter, e) => {
   try {
     return getter ? getter.call(e) : undefined
@@ -253,14 +317,98 @@ const read = (getter, e) => {
   }
 }
 
-const send = (kind, text) => {
+// The stack. V8's own `stack` getter and this realm's Error, taken now. The getter formats the
+// stack on its first read, and formatting runs page code in three places, so each is checked
+// first, by descriptors alone: `Error.prepareStackTrace` (read only while it is absent or a data
+// property holding undefined), and the error's `name` and `message`, which the header line reads
+// with an ordinary [[Get]] and then converts to a string (read only when the first one found up
+// the chain is a data property holding a string or undefined). An own `stack` the page redefined
+// is not V8's getter and is never called; a data property (older engines) is read as a value.
+const NativeError = Error
+const reflectApply = Reflect.apply
+const stackGetter = (() => {
+  try {
+    const d = gopd(new NativeError(), 'stack')
+    return d && typeof d.get === 'function' ? d.get : undefined
+  } catch {
+    return undefined
+  }
+})()
+const loc = location
+const pageOrigin = () => {
+  try {
+    const o = loc.origin
+    return typeof o === 'string' ? o : ''
+  } catch {
+    return ''
+  }
+}
+/** The first `key` up `o`'s chain is a data property whose value V8 turns into text without code. */
+const plainField = (o, key) => {
+  let at = o
+  for (let i = 0; i < WALK_PROTOS && at !== null; i++) {
+    const d = gopd(at, key)
+    if (d) return 'value' in d && (typeof d.value === 'string' || d.value === undefined)
+    at = getProto(at)
+  }
+  return at === null
+}
+const formatsQuietly = (error) => {
+  const p = gopd(NativeError, 'prepareStackTrace')
+  if (p && !('value' in p && p.value === undefined)) return false
+  return plainField(error, 'name') && plainField(error, 'message')
+}
+/** An Error's frames, or [] when it is none or reading them could run the page's code. */
+const stackOf = (error) => {
+  try {
+    if (error === null || typeof error !== 'object' || !isErrorLike(error) || !formatsQuietly(error)) return []
+    const d = gopd(error, 'stack')
+    let text
+    if (d && 'value' in d) text = d.value
+    else if (d && stackGetter !== undefined && d.get === stackGetter) text = reflectApply(stackGetter, error, [])
+    return typeof text === 'string' ? parseStack(text, pageOrigin()) : []
+  } catch {
+    return []
+  }
+}
+/** Where an uncaught error's event says it was thrown, when it says so. */
+const placeOf = (e) => {
+  const file = read(eventFilename, e)
+  const line = read(eventLineno, e)
+  const col = read(eventColno, e)
+  if (typeof file !== 'string' || typeof line !== 'number' || typeof col !== 'number') return undefined
+  const where = framePlace(file, pageOrigin())
+  return where ? clip(`${where}:${line}:${col}`, MAX_FRAME) : undefined
+}
+/** The first Error among a console call's arguments. */
+const firstError = (args) => {
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i]
+    if (a !== null && typeof a === 'object' && isErrorLike(a)) return a
+  }
+  return undefined
+}
+
+const send = (kind, text, origin, stack) => {
   try {
     // Built by hand from primitives, and a null-prototype init: no page code reads either.
-    const detail = `{"kind":${quote(kind)}${text === undefined ? '' : `,"text":${quote(text)}`}}`
-    dispatch.call(doc, new Custom(EVENT, { __proto__: null, detail }))
+    let detail = `{"kind":${quote(kind)}`
+    if (text !== undefined) detail += `,"text":${quote(text)}`
+    if (typeof origin === 'string' && origin !== '') detail += `,"origin":${quote(origin)}`
+    if (stack !== undefined && stack.length > 0) {
+      let list = ''
+      for (let i = 0; i < stack.length; i++) list += `${i > 0 ? ',' : ''}${quote(stack[i])}`
+      detail += `,"stack":[${list}]`
+    }
+    dispatch.call(doc, new Custom(EVENT, { __proto__: null, detail: `${detail}}` }))
   } catch {
     // nothing the page should notice
   }
+}
+/** An error's text, with the frames of `error` and the first one as its origin, else `place`. */
+const sendError = (text, error, place) => {
+  const stack = stackOf(error)
+  send('error', text, stack.length > 0 ? stack[0] : place, stack)
 }
 
 // A value whose inspection logs again (a Proxy trap calling console.error) is not followed.
@@ -305,7 +453,7 @@ const wrap = (name, after) => {
 }
 
 try {
-  wrap('error', (args) => send('error', errorText(args)))
+  wrap('error', (args) => sendError(errorText(args), firstError(args)))
   for (const name of ['log', 'info', 'debug']) {
     wrap(name, (args) => {
       const signal = signalOf(args[0])
@@ -315,11 +463,14 @@ try {
   listen('error', (e) =>
     guarded(() => {
       const error = read(eventError, e)
-      send('error', clip(`Uncaught ${errorText([error ?? read(eventMessage, e)])}`, MAX_TEXT))
+      sendError(clip(`Uncaught ${errorText([error ?? read(eventMessage, e)])}`, MAX_TEXT), error, placeOf(e))
     }),
   )
   listen('unhandledrejection', (e) =>
-    guarded(() => send('error', clip(`Uncaught (in promise) ${errorText([read(eventReason, e)])}`, MAX_TEXT))),
+    guarded(() => {
+      const reason = read(eventReason, e)
+      sendError(clip(`Uncaught (in promise) ${errorText([reason])}`, MAX_TEXT), reason)
+    }),
   )
 } catch {
   // a console the page froze: no hook rather than a broken page
