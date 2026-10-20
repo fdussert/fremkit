@@ -107,10 +107,11 @@ function walk(v, depth, budget) {
     case 'number':
     case 'boolean':
     case 'undefined':
-      s = String(v)
+      // Template conversion: a primitive needs no call, and the page's global String is never run.
+      s = `${v}`
       break
     case 'bigint':
-      s = `${String(v)}n`
+      s = `${v}n`
       break
     case 'symbol': {
       const d = reflectApply(symbolDescription, v, [])
@@ -146,7 +147,7 @@ function walkObject(o, depth, budget) {
     let out = ''
     let i = 0
     for (; i < n && i < WALK_ITEMS && budget.left > 0; i++) {
-      const d = gopd(o, String(i))
+      const d = gopd(o, `${i}`)
       out += (i > 0 ? ',' : '') + (!d ? '' : 'value' in d ? walk(d.value, depth + 1, budget) : '[Getter]')
     }
     return `[${out}${i < n ? (i > 0 ? ',…' : '…') : ''}]`

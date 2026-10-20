@@ -135,6 +135,8 @@ describe('fremdev/hook.js', () => {
     const lib = block(source('lib/devlog.js'))
     expect(lib).not.toBeNull()
     expect(block(source('fremdev/hook.js'))).toBe(lib)
+    // No global looked up at run time to convert a value: the page may have replaced it.
+    expect(lib).not.toMatch(/(?<![\w.`'"])(String|Number|Object|Array|Symbol|BigInt)\(/)
     // and the intrinsics it reads, taken the same way
     for (const line of source('lib/devlog.js').split('\n').filter((l) => /^const (gopd|getProto|isArray|ownKeys|quote|symbolDescription|domProto|domName|domMessage|Url|reflectApply|defineProp|strSlice|strIndexOf|strCharCodeAt|regexpExec|urlOrigin|urlHost|urlPathname|urlProtocol) = /.test(l))) {
       expect(source('fremdev/hook.js')).toContain(line)
@@ -330,6 +332,25 @@ describe('fremdev/hook.js', () => {
     expect(events[0].origin).toBe(events[0].stack[0])
     expect(events[1]).toEqual({ kind: 'up' })
     expect(events[2]).toEqual({ kind: 'error', text: 'Uncaught Script error.', origin: '/src/main.js:4:5' })
+  })
+
+  it("never runs a String the page put on the global after load, and the events still arrive", () => {
+    const h = runHook()
+    const saved = globalThis.String
+    let ran = 0
+    withPrepare(() => {
+      const err = pageError("new Error('y')")
+      ;(globalThis as { String: unknown }).String = function () { ran++; return 'page' }
+      try {
+        h.console.error(1, true, undefined, 7n, [1, [2]], err)
+      } finally {
+        globalThis.String = saved
+      }
+    })
+    expect(ran).toBe(0)
+    const [e] = h.events()
+    expect(e.text).toBe('1 true undefined 7n [1,[2]] Error: y')
+    expect(e.stack[0]).toMatch(/\/src\/page\.js:3:\d+$/)
   })
 
   it('bounds the origin it takes from the event', () => {
