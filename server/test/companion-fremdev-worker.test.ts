@@ -352,6 +352,34 @@ describe('companion/fremdev.js', () => {
     expect(await f.fremdev.report(8, true)).toBeNull()
   })
 
+  it('keeps stacks out of the session copy, and a restarted worker gets its rows back without them', async () => {
+    const f = await makeFremdev()
+    f.fremdev.onReady({ type: 'ready', protocol: 2, modules: { fremplay: true, fremdev: true } })
+    await f.fremdev.onPageEvent({ kind: 'error', text: 'boom', origin: '/src/a.js:1:2', stack: ['f /src/a.js:1:2', 'g /src/b.js:3:4'] }, devSender())
+    await f.later()
+    const saved = f.rows()['7']
+    expect(saved.history).toHaveLength(1)
+    expect(saved.history[0]).toMatchObject({ kind: 'error', text: 'boom', origin: '/src/a.js:1:2', stack: null })
+    expect(JSON.stringify(f.store.session)).not.toContain('g /src/b.js')
+    // The worker's own copy still has them, for a report.
+    expect(await f.fremdev.report(7, true)).toContain('g /src/b.js:3:4')
+
+    const again = createFremdev({
+      send: () => true,
+      wantSocket: vi.fn(),
+      api: f.api,
+      now: () => 5_000,
+      setTimer: () => undefined,
+      every: () => 1,
+      stopEvery: () => undefined,
+    })
+    await again.onServer({ type: 'none' })
+    const text = (await again.report(7, true)) as string
+    expect(text).toContain('boom')
+    expect(text).toContain('/src/a.js:1:2')
+    expect(text).not.toContain('g /src/b.js:3:4')
+  })
+
   it('worker.js relays dev.report.ask and answers the popup with the report', () => {
     const worker = source('worker.js')
     const relay = worker.slice(worker.indexOf("case 'dev.focus':"), worker.indexOf('return fremdev.onServer(msg)'))

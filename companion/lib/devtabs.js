@@ -174,6 +174,22 @@ const STATES = ['open', 'seen', 'resolved']
 const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS', 'OTHER']
 const statusOf = (s) => Math.max(0, Math.min(599, Math.trunc(s) || 0))
 
+/**
+ * The rows as chrome.storage.session keeps them: every entry's stack dropped. Stacks stay in the
+ * worker's memory, for a report; the session copy is rewritten up to twice a second and only has to
+ * bring the rows back after the worker was stopped, at which point a report simply has no stacks
+ * for what came before.
+ */
+export function sessionTabs(tabs) {
+  const out = {}
+  for (const [id, tab] of Object.entries(tabs)) {
+    out[id] = Array.isArray(tab.history)
+      ? { ...tab, history: tab.history.map((e) => (e.kind === 'error' && e.stack !== null ? { ...e, stack: null } : e)) }
+      : tab
+  }
+  return out
+}
+
 /** One history entry as `dev.tabs` carries it: bounded, and never its stack. Null for what cannot travel. */
 function wireEntry(e) {
   const common = { n: count(e?.n), at: Math.max(0, e?.at), state: e?.state }

@@ -17,13 +17,13 @@
 // - navigations and titles: chrome.tabs.onUpdated.
 //
 // State: `chrome.storage.local.fremdev = { on, patterns }` (the options page edits the patterns),
-// `chrome.storage.session.devTabs = { [tabId]: tab }` and `chrome.storage.session.fremdevSupport`
+// `chrome.storage.session.devTabs = { [tabId]: tab }` (stacks dropped) and `chrome.storage.session.fremdevSupport`
 // for the popup. Nothing Fremdev is sent unless this socket's `ready` said the server speaks it.
 
 import { BUILTIN_PERMISSION_ORIGINS, FREMKIT_EXCLUDES, inOrigins, isDevUrl, parsePattern } from './lib/devhosts.js'
 import { boundFrames, clip, isNoise, MAX_FRAME, MAX_TEXT, methodOf, pathOf } from './lib/devlog.js'
 import { buildReport, reportMessage } from './lib/devreport.js'
-import { emptyTab, fremdevSupport, reduce, Throttle, wireTabs } from './lib/devtabs.js'
+import { emptyTab, fremdevSupport, reduce, sessionTabs, Throttle, wireTabs } from './lib/devtabs.js'
 import * as protocol from './lib/protocol.js'
 
 const RELAY_ID = 'fremdev-relay'
@@ -133,7 +133,8 @@ export function createFremdev({
   const isDev = (url) => typeof url === 'string' && isDevUrl(url, patterns) && inOrigins(url, granted)
 
   function flush() {
-    storage.session.set({ devTabs: tabs }).catch(() => undefined)
+    // Without stacks (sessionTabs): a restarted worker gets its rows back, not their stacks.
+    storage.session.set({ devTabs: sessionTabs(tabs) }).catch(() => undefined)
     if (support === 'yes' && on) send(protocol.devTabs(wireTabs(Object.values(tabs))))
   }
 
