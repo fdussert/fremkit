@@ -57,7 +57,10 @@ export function emptyTab(tabId, url, title, now) {
     history: [],
     /** The id the next history entry gets. */
     nextId: 1,
-    /** The dev server's kind and, for Vite, its base path: the first told in a load, reset by the next. */
+    /**
+     * The dev server's kind and, for Vite, its base path (`validBase`: no empty or dot segment): the
+     * first told for the tab's origin, kept across same-origin loads, reset by a cross-origin one.
+     */
     devServer: null,
     serverBase: '/',
     server: 'up',
@@ -141,10 +144,11 @@ export function reduce(tab, event, now) {
         activity: now,
       }
     case 'navigated': {
-      // A new load says again which dev server it comes from; the entry ids keep counting.
-      const next = { ...tab, url: event.url, host: hostOf(event.url), title: event.title ?? '', activity: now, devServer: null, serverBase: '/' }
+      // The entry ids keep counting either way. The dev server's kind belongs to the origin: a
+      // reload or a pushState route change keeps it, another origin forgets it and looks again.
+      const next = { ...tab, url: event.url, host: hostOf(event.url), title: event.title ?? '', activity: now }
       if (originOf(event.url) !== originOf(tab.url)) {
-        return { ...next, errors: tally(), requests: tally(), history: [], server: 'up' }
+        return { ...next, errors: tally(), requests: tally(), history: [], server: 'up', devServer: null, serverBase: '/' }
       }
       return { ...next, errors: resolved(tab.errors), requests: resolved(tab.requests), history: restate(tab.history, ['open', 'seen'], 'resolved') }
     }
@@ -161,7 +165,8 @@ export function reduce(tab, event, now) {
     case 'title':
       return { ...tab, title: event.title ?? '' }
     case 'devserver':
-      // The first told in a load wins; a later one (another script tag) changes nothing.
+      // The first told for the origin wins; a later one (another script tag, the next reload)
+      // changes nothing until a cross-origin navigation resets it.
       if ((tab.devServer ?? null) !== null || !DEV_SERVERS.includes(event.server) || !validBase(event.base, event.server)) return tab
       return { ...tab, devServer: event.server, serverBase: event.base }
     case 'count': {

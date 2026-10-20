@@ -238,9 +238,11 @@ isolated world, reads the page's script tags once the document has loaded (and t
 during the next 30 seconds): a module script ending in `/@vite/client` is Vite, a script under
 `/_next/` is Next, a script whose path names `webpack-dev-server`, or that server's overlay
 element, is webpack-dev-server. It reads attributes only and runs none of the page's code. The
-first kind found in a load counts, and each new load looks again. **Only the kind leaves the
+first kind found for the tab's origin counts: a reload or a client-side route change keeps it, and
+only a navigation to another origin forgets it and looks again. **Only the kind leaves the
 extension**: for Vite, the base path the client script is served under (`/app/`) is kept in the
-extension to build that dev server's own URLs, and is never sent.
+extension to build that dev server's own URLs, and is never sent; a base with an empty or a dot
+segment (`//x/`, `/../`) is refused, so those URLs can only name the tab's own origin.
 
 ### The history and the bug report
 
