@@ -40,4 +40,14 @@
     <string name="pairing_replace_title">Remplacer l’appairage avec %1$s ?</string>
     <string name="pairing_replace_body">Cette tablette affichera à la place le tableau de bord de %1$s.</string>
     <string name="pairing_replace">Remplacer</string>
+    <string name="pairing_confirm_title">Appairer avec %1$s ?</string>
+    <string name="pairing_confirm_body">Une autre app a ouvert un lien d’appairage pour %1$s (%2$s). N’appairez qu’avec votre propre Mac : c’est lui qui choisira ce qu’affiche cette tablette.</string>
+    <string name="pairing_pair">Appairer</string>
+
+    <string name="welcome_scan">Scanner le code</string>
+    <string name="scan_title">Scanner le code</string>
+    <string name="scan_hint">Visez le code affiché par le Mac.</string>
+    <string name="scan_allow_camera">Autoriser l’appareil photo dans les réglages</string>
+    <string name="scan_open_settings">Ouvrir les réglages</string>
+    <string name="scan_unavailable">L’appareil photo n’est pas disponible.</string>
 </resources>

@@ -6,9 +6,6 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -19,17 +16,18 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import app.fremkit.android.screens.ConfirmLinkDialog
 import app.fremkit.android.screens.ConnectingScreen
 import app.fremkit.android.screens.FremkitTheme
 import app.fremkit.android.screens.KeyChangedScreen
 import app.fremkit.android.screens.LinkPairingScreen
 import app.fremkit.android.screens.OutdatedWebViewScreen
+import app.fremkit.android.screens.ScannerScreen
 import app.fremkit.android.screens.UnauthorizedScreen
 import app.fremkit.android.screens.UnreachableScreen
 import app.fremkit.android.screens.WelcomeScreen
@@ -42,7 +40,6 @@ import app.fremkit.kit.PairingFlow
 import app.fremkit.kit.PairingStep
 import app.fremkit.kit.ViewportMeter
 import app.fremkit.kit.VersionNudge
-import app.fremkit.kit.macName
 import kotlinx.coroutines.flow.StateFlow
 
 /**
@@ -88,6 +85,10 @@ fun Root(
                 // The process ends in a moment (a pin change): nothing of the new pairing starts here.
                 isRestarting -> ConnectingScreen(mac?.name)
                 current != null -> OutdatedWebViewScreen(current, checkAgain = webView::check)
+                step == PairingStep.Scanning -> ScannerScreen(
+                    scanned = { flow.scanned(it) },
+                    cancel = flow::cancel,
+                )
                 step is PairingStep.Link -> LinkPairingScreen(
                     link = step.link,
                     isWorking = pairing.isWorking,
@@ -95,9 +96,8 @@ fun Root(
                     retry = { flow.retry() },
                     cancel = flow::cancel,
                 )
-                // The scanner and the manual path have no screens yet: nothing starts them.
                 else -> when (val s = state) {
-                    AppState.Welcome -> WelcomeScreen(credentialsUnreadable, nudge)
+                    AppState.Welcome -> WelcomeScreen(credentialsUnreadable, nudge, scan = flow::scan)
                     AppState.Connecting -> ConnectingScreen(mac?.name)
                     is AppState.Dashboard -> mac?.let { DashboardScreen(s.host, it, model, hygiene) }
                     is AppState.Unreachable -> UnreachableScreen(s.name, isConnecting, nudge) { model.reconnect() }
@@ -112,15 +112,9 @@ fun Root(
             }
         }
 
-        // A link that would replace a working pairing waits for the user's word.
+        // A link from another app, or one that would replace a working pairing, waits for the user's word.
         pairing.pendingLink?.let { link ->
-            AlertDialog(
-                onDismissRequest = flow::declineLink,
-                title = { Text(stringResource(R.string.pairing_replace_title, mac?.name.orEmpty())) },
-                text = { Text(stringResource(R.string.pairing_replace_body, link.macName)) },
-                confirmButton = { TextButton(onClick = flow::confirmLink) { Text(stringResource(R.string.pairing_replace)) } },
-                dismissButton = { TextButton(onClick = flow::declineLink) { Text(stringResource(R.string.pairing_cancel)) } },
-            )
+            if (!isRestarting) ConfirmLinkDialog(link, pairedName = mac?.name, confirm = flow::confirmLink, decline = flow::declineLink)
         }
     }
 }
