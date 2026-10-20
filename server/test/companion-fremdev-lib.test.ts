@@ -645,6 +645,38 @@ describe('devtabs history', () => {
     for (const r of rows) expect(DevTabSchema.safeParse(r).success).toBe(true)
   })
 
+  it('32 tabs full of the cockpit kinds stay under the cap, and perf, inFlight and devServer are never trimmed', () => {
+    const PERF = { load: 600_000, lcp: 600_000, cls: 99.999, longTasks: 99_999, heapMb: 65_535 }
+    const tabs = Array.from({ length: 32 }, (_, i) => {
+      const url = `http://localhost:${3000 + i}/`
+      let t = emptyTab(i, url, `${'é'.repeat(119)}${i}`, 1)
+      t = reduce(t, { kind: 'devserver', server: 'vite', base: `/${'b'.repeat(98)}/` }, 2)
+      t = reduce(t, { kind: 'perf', values: PERF, doc: `D${i}` }, 3)
+      t = reduce(t, { kind: 'perf-regression', metric: 'lcp', value: 600_000, ratio: 99.9 }, 4)
+      // Fourteen builds, each replacing the last: the newest open, the others resolved.
+      for (let k = 0; k < 14; k++) {
+        t = reduce(t, { kind: 'build', text: `${k}${'é'.repeat(299)}`, file: `/src/${'é'.repeat(290)}${k}.vue`, line: 9_999_999, col: 9_999_999 }, 10 + k)
+      }
+      for (let k = 0; k < 5; k++) t = reduce(t, { kind: 'slow', method: 'OPTIONS', path: `/${k}${'é'.repeat(298)}`, ms: 3_600_000 }, 30 + k)
+      return reduce(t, { kind: 'inflight', n: 999 }, 40)
+    })
+    for (const t of tabs) {
+      expect(t.history).toHaveLength(HISTORY_MAX)
+      expect(new Set(t.history.map((e: { kind: string }) => e.kind))).toEqual(new Set(['build', 'slow', 'perf']))
+    }
+    const rows = wireTabs(tabs)
+    expect(bytes(rows)).toBeLessThanOrEqual(60_000)
+    expect(rows).toHaveLength(32)
+    // The history gave way; what tells the row's state did not.
+    expect(rows.some((r: { history: unknown[] }) => r.history.length < HISTORY_MAX)).toBe(true)
+    for (const r of rows) {
+      expect(r.perf).toEqual(PERF)
+      expect(r.inFlight).toBe(999)
+      expect(r.devServer).toBe('vite')
+      expect(DevTabSchema.safeParse(r).success).toBe(true)
+    }
+  })
+
   it('trims green history before touching a red one, and the oldest entries of the others next', () => {
     const fill = (i: number, at: number) => {
       let t = emptyTab(i, `http://localhost:${3000 + i}/`, `App ${i}`, 1)
