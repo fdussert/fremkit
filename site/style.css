@@ -380,7 +380,8 @@ details p { margin: 0 0 22px; color: var(--muted); max-width: 640px; }
 .foot .fine { flex-basis: 100%; }
 
 /* beyond the strip: the iPad app and the browser companion */
-.section + .section:not(.alt) { border-top: 1px solid var(--border); }
+/* The Widgets section follows this one with the same background: a hairline between them. */
+#beyond + .section:not(.alt) { border-top: 1px solid var(--border); }
 .beyond { display: grid; gap: 20px; margin-top: 56px; }
 .card.addon { display: grid; grid-template-columns: minmax(0, var(--shot-w, 300px)) minmax(0, 1fr); gap: 40px; align-items: center; padding: 24px; }
 .card.addon > .addon-text { max-width: 560px; }
