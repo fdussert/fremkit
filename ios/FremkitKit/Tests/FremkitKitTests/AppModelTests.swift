@@ -546,6 +546,12 @@ final class PageMessageTests: XCTestCase {
         }
     }
 
+    // The Android app's settings request: the page never sends it here (it offers the entry in the
+    // Android app only), and the iPad app ignores it if it ever comes.
+    func testIgnoresTheAndroidSettingsRequest() {
+        XCTAssertNil(PageMessage(body: ["type": "settings"]))
+    }
+
     func testTheDashboardURLAndTheMacName() {
         XCTAssertEqual(Dashboard.url(host: "192.0.2.10", port: 4243)?.absoluteString, "https://192.0.2.10:4243/")
         XCTAssertEqual(Dashboard.url(host: "fe80::1%en0", port: 4243)?.absoluteString, "https://[fe80::1%25en0]:4243/")
