@@ -173,7 +173,9 @@ tabs of your browser and lists them in the built-in `fremdev` widget on the Edge
 JavaScript errors, its failed requests and whether its dev server answers, with a red, orange or
 green light. Tap a row to bring that tab forward. The **×** on a row marks its errors and failed
 requests as seen: the counters stay, dimmed, and the light turns hollow until a new one comes in or
-the tab reloads (green means a page with nothing open since its last load or hot update). It is
+the tab reloads (green means a page with nothing open since its last load or hot update). A tap on the top line
+of a row also unfolds it to that tab's history and its **Show tab** and **Copy report** buttons
+(see [The history and the bug report](#the-history-and-the-bug-report)). It is
 experimental and behind the same switch as Fremplay (`labs.companion`): with the switch off the
 server reports Fremdev as disabled, the widget is left out like Fremplay's, and the popup says so.
 
@@ -213,13 +215,36 @@ down. Not counted: `favicon.ico`, hot-update traffic (`/@vite/*`, `/__webpack_hm
 
 What goes to Fremkit, over the extension's authenticated socket to `127.0.0.1:4242`, is per tab: the
 **page's title** (or its host:port when it has none, clipped to 120 characters) and its
-**host:port**, counters, and for each recent event a **kind and a text clipped to 300 characters**;
-for a request, the HTTP status and the URL's **path only**: request URLs never go with their query
-or fragment, and nothing is taken from bodies, headers or cookies. The title and an error's own
+**host:port**, counters, and for each of the tab's **last 20 events** (errors and failed requests, newest first, each open, seen
+or resolved) a **kind and a text clipped to 300 characters**; for an error, its **origin**, the
+first stack frame as `file:line:col` (the file's path when it is the page's own, `host/path` for
+another origin); for a request, its **method**, the HTTP status and the URL's **path only**:
+request URLs never go with their query or fragment (in an origin either), and nothing is taken
+from bodies, headers or cookies. An error's **full stack stays in the extension**: it is not in what
+the Edge receives, and leaves the browser only in a report you asked for (below). The title and an error's own
 message are free text and go as the page set or logged them, clipped, so a title or an error that
 quotes a token would show it on the Edge. Error events are forwarded at most ten per second per tab (the
 counter keeps counting) and the tab list at most twice a second. Nothing leaves your Mac, and
 nothing is sent while Fremdev is off.
+
+### The history and the bug report
+
+Tap a row's top line on the Edge and it unfolds to that tab's last 20 errors and failed requests,
+newest first, scrolling inside the row; only one row is unfolded at a time. Each entry shows its
+kind, text, method and status, and for an error its origin. **Line and column numbers are those of
+the code the dev server sent**: Fremdev does no source-map lookup, so a bundled or transpiled file
+reads as the browser reports it. The **×** still marks the row's issues as seen (the light turns
+hollow); it does not empty the history.
+
+**Copy report** puts a Markdown bug report for that tab on the Mac's clipboard: the page, the open
+issues and the history, at most 48 000 characters (the oldest entries are dropped first, then
+stacks). **Copy with stack** adds each error's stack. From the Edge, the widget sends a `report`
+command; the server asks the extension for the text, waits at most 5 seconds, and writes it to the
+clipboard with `pbcopy`, the text going through its standard input. The extension's popup has the
+same button for each tab, with a *stack* checkbox, and writes the clipboard from the popup itself.
+The report is built in the extension and goes nowhere else: only to the clipboard, when you press a
+button. It is available while Fremdev is on and `labs.companion` is ticked, for a tab the
+extension reported, and only from the Mac itself, never from a paired device.
 
 ### The hook in the page
 
@@ -232,6 +257,12 @@ the page's scripts, on dev hosts only. It is built not to disturb the page:
   introspection traps (`ownKeys`, `getOwnPropertyDescriptor`, `getPrototypeOf`) may run, within the
   walk budget; the text of an object is a bounded walk, so it is
   less faithful than the browser console's.
+- **Stacks are read without running page code.** The hook captures V8's native `stack` getter at
+  start and calls it with `Reflect.apply`, only for an error whose `name` and `message` are plain
+  strings and only while the page has not set `Error.prepareStackTrace` (a page that did, such as
+  one using source-map-support, gets no stack, and the origin then comes from the `error` event's
+  `filename`, `lineno` and `colno`). A stack is kept to 10 frames of at most 300 characters and
+  2000 characters in all, as `fn file:line:col`, with a query or fragment never kept.
 - It speaks to the extension through a `CustomEvent` on `document` that carries a string, not a
   window message and not an attribute on `<html>`, so it cannot loop through the page's handlers or
   cause a hydration warning.

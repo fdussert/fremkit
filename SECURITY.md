@@ -397,17 +397,32 @@ What it holds and what it can do:
   dev URL.
 - *What leaves the tab:* the tab's row names it by the page's title (or its host:port when it has
   none, clipped to 120 characters) and its host:port; then a kind and text clipped to 300
-  characters; request URLs as their path only, never query or fragment; nothing from bodies,
+  characters, for each of the tab's last 20 events; an error's origin (its first frame as
+  `file:line:col`, a path or `host/path`, no query or fragment) and a request's method (a closed
+  list); request URLs as their path only, never query or fragment; nothing from bodies,
   headers or cookies. The title and an error's own message are free text, sent as the page set or
   logged them (clipped), so one that quotes a secret shows it on the Edge. Fremkit's own ports
   (4242, 4243) are never watched.
+- *Stacks.* An error's stack (at most 10 frames, 2000 characters, URLs without query or fragment)
+  stays in the extension and never travels in `dev.tabs`; it leaves the browser only in a bug
+  report the user asked for. The hook reads it with V8's native `stack` getter, captured at hook
+  start and called with `Reflect.apply`, only when `Error.prepareStackTrace` is unset (checked by
+  descriptor, so no page getter runs) and the error's `name` and `message` are plain data strings;
+  otherwise there is no stack.
+- *The bug report.* The extension builds the text (at most 48 000 characters) and answers the
+  server's `dev.report.ask` with `dev.report`; the server waits 5 seconds, then writes it to the
+  clipboard through `pbcopy` with the text on stdin, never argv (`server/src/providers/clipboard.ts`).
+  The `report` command is loopback-only like `focus` and `clear`, names only a tab id the install
+  reported, and is gated by `labs.companion`; the module is announced as `fremdev.report` only
+  while Fremdev is on. The report reaches no one but the clipboard, and what it quotes (error
+  messages, titles) is as sensitive as on the Edge.
 - *Server side.* Every `dev.tabs`, `modules` and `ping` message is validated by a strict schema with
   bounded sizes, and publishing is capped at four per second per install. After hello, one that
   fails is dropped (a `dev.tabs` row by row, keeping the rows that parse) rather than closing the
   socket, which also carries Fremplay's share; every other message, and the handshake, is still
   refused with 1008. Nothing of a dropped message is logged but a count. `companion:dev` is in
   `LOCAL_ONLY_CHANNELS` and `BUILTIN_ONLY_CHANNELS`: paired devices and registry widgets never get
-  it, and the widget's focus and clear commands are loopback-only and name only a tab id the install
+  it, and the widget's focus, clear and report commands are loopback-only and name only a tab id the install
   reported. Fremdev is negotiated by capability with the protocol still at 2, so it widens nothing
   for a 0.5.0 server. A page's own text can be sensitive (an error message can quote data): it stays
   on this Mac, but it is displayed on the Edge.
