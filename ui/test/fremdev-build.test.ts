@@ -236,15 +236,15 @@ describe('fremdev/build.js', () => {
     expect(failing.sendMessage).toHaveBeenCalledTimes(1)
   })
 
-  it("reads Vite's code frame and stack", async () => {
+  it("reads Vite's code frame and stack, and the SFC compiler's message without the frame it repeats", async () => {
     vi.useFakeTimers()
     const p = page()
     p.run()
-    addOverlay('vite-overlay-sfc.html')
+    const [overlay] = addOverlay('vite-overlay-sfc.html')
     await settle()
     expect(p.sent()).toEqual([{
       ...BUILD,
-      text: expect.stringMatching(/^\[vue\/compiler-sfc\] Unexpected token \(3:18\)/),
+      text: '[vue/compiler-sfc] Unexpected token (3:18)',
       file: '/Users/example/app/src/App.vue',
       line: 3,
       col: 18,
@@ -261,6 +261,33 @@ describe('fremdev/build.js', () => {
     const stack = p.sent()[0].stack as string[]
     expect(stack).toHaveLength(10)
     expect(stack[0]).toBe('at constructor (/Users/example/app/node_modules/@babel/parser/lib/index.js:369:19)')
+    // The case a user copied: the message, the file on a line of its own, then a frame's last line.
+    overlay.shadowRoot!.querySelector('.message-body')!.textContent =
+      '[vue/compiler-sfc] Unexpected token (3:15)\n\n/Users/example/app/src/App.vue\n12 |'
+    await settle()
+    expect(p.sent().at(-1)).toMatchObject({ text: '[vue/compiler-sfc] Unexpected token (3:15)' })
+  })
+
+  it('drops the file and the code frame residue from a message, keeping its prefix', async () => {
+    vi.useFakeTimers()
+    const p = page()
+    p.run()
+    const [overlay] = addOverlay('vite-overlay-sfc.html')
+    const body = overlay.shadowRoot!.querySelector('.message-body')!
+    const cases: Array<[string, string]> = [
+      ['[plugin] Bad thing /Users/example/app/src/App.vue:3:18 here', '[plugin] Bad thing here'],
+      ['[plugin] Bad /Users/example/app/src/App.vue:3', '[plugin] Bad'],
+      // Another file stays, and so does one the path only starts.
+      ['[plugin] Bad /Users/example/app/src/Other.vue', '[plugin] Bad /Users/example/app/src/Other.vue'],
+      ['[plugin] Bad /Users/example/app/src/App.vue.bak', '[plugin] Bad /Users/example/app/src/App.vue.bak'],
+      ['Unexpected token\n  2 | a\n> 3 | b +* c\n    |     ^\n  4 | d', 'Unexpected token'],
+      ['Unexpected token\n    ^\nmore', 'Unexpected token more'],
+    ]
+    for (const [message, text] of cases) {
+      body.textContent = message
+      await settle()
+      expect(p.sent().at(-1)?.text, message).toBe(text)
+    }
   })
 
   it("reads webpack's code frame from its message, and Next's frame and what follows it", async () => {
@@ -270,7 +297,7 @@ describe('fremdev/build.js', () => {
     addOverlay('webpack-overlay-compile.html')
     await settle()
     const [w] = p.sent()
-    expect(w.text).toMatch(/^Module parse failed: Unexpected token \(2:0\)/)
+    expect(w.text).toBe("Module parse failed: Unexpected token (2:0) File was parsed as module type 'javascript/auto'. You may need an appropriate loader to handle this file type, currently no loaders are configured to process this file. See https://webpack.js.org/concepts#loaders")
     expect(w.frame).toEqual([
       "  1 | document.body.insertAdjacentHTML((('beforeend', '<h1>Scratch webpack</h1><button id=\"b\">Throw</button>')",
       "> 2 | document.getElementById('b').addEventListener('click', () => { throw new Error('runtime boom') })",
@@ -332,7 +359,7 @@ describe('fremdev/build.js', () => {
     overlay.shadowRoot!.querySelector('.frame')!.textContent = '4  |  const broken = 1 +* 2\n   |      ^'
     await settle()
     expect(p.sent()).toHaveLength(2)
-    expect(p.sent()[1]).toMatchObject({ frame: ['4  |  const broken = 1 +* 2', '   |      ^'] })
+    expect(p.sent()[1]).toMatchObject({ text: '[vue/compiler-sfc] Unexpected token (3:18)', frame: ['4  |  const broken = 1 +* 2', '   |      ^'] })
   })
 
   it('reads text and attributes only: no page object, no network, the shadow root through the prototype getter', () => {

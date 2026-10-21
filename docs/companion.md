@@ -266,9 +266,13 @@ light turns red), shown on the Edge with "Build" before its text:
   message, the file its code frame names, the line and column in that frame, the frame itself (SWC's
   `,-[` … `` `---- `` block) and what follows it (*Caused by*, the import trace) as its stack.
 
-The entry's **code frame and stack stay in the extension** like an error's stack: never in what
-the Edge receives nor in the session copy, only in a report copied with its stack. They are kept to
-20 lines of frame and 30 of stack, 300 characters a line and 6000 in all (the frame first).
+The entry's text is the overlay's message without the code frame some compilers repeat in it (from
+its first `N |` line on, and any `^` caret line) and without the file when the message names it
+again: Vite's `[vue/compiler-sfc] Unexpected token (3:15)` keeps its prefix and loses the path and
+the `12 |` that followed it. The **code frame and the stack stay in the extension** like an error's
+stack: never in what the Edge receives nor in the session copy, only in a report copied with its
+stack. They are kept to 20 lines of frame and 30 of stack, 300 characters a line and 6000 in all
+(the frame first).
 
 Runtime errors are the hook's to report: webpack-dev-server's *Uncaught runtime errors* overlay and
 Next's runtime dialog add no entry, so an error is never counted twice, and `nextjs-portal` alone

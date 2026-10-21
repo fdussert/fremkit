@@ -4,7 +4,8 @@
 // `{ kind: 'build-clear' }`. `frame` is the overlay's code frame and `stack` the trace it shows,
 // each a list of lines (MAX_FRAME_LINES, MAX_STACK_LINES, MAX_LINE, MAX_EXTRA, the bounds of
 // lib/devlog.js `boundBuildLines`): the worker keeps them for a report copied with its stack and
-// never sends them to the Edge.
+// never sends them to the Edge. The text stops before the code frame some overlays repeat in the
+// message, and loses the file when the overlay names it there again.
 // - Vite: the `vite-error-overlay` element, whose open shadow root holds the message, the file
 //   (`path:line:col`), the code frame and the stack;
 // - webpack-dev-server: the `#webpack-dev-server-client-overlay` iframe (same origin), only while its
@@ -97,6 +98,26 @@
 
   /** A code frame's line: `12 |`, `> 3 |`. */
   const FRAME_LINE_RE = /^\s*>?\s*\d+\s*\|/
+  /** A caret line under a code frame's line: `   |     ^`, `   : ^^^^`. */
+  const CARET_RE = /^[\s|:]*\^[\s^~]*$/
+  const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+  /**
+   * An overlay's message without the code frame it may repeat (from its first `N |` line on, and
+   * any caret line) and without the file the overlay names apart (`file`, `file:line`,
+   * `file:line:col`), whitespace folded and clipped.
+   */
+  function cleanMessage(message, file) {
+    const kept = []
+    for (const l of String(message).split('\n')) {
+      if (FRAME_LINE_RE.test(l)) break
+      if (!CARET_RE.test(l)) kept.push(l)
+    }
+    let out = kept.join('\n')
+    const f = typeof file === 'string' ? file.trim() : ''
+    if (f !== '') out = out.replace(new RegExp(`(^|\\s)${escapeRe(f)}(?::\\d+(?::\\d+)?)?(?=\\s|$)`, 'g'), '$1')
+    return tidy(out, MAX_TEXT)
+  }
 
   /**
    * Lines of `s`, their ends trimmed and their start kept (a frame's alignment), with no blank line
@@ -143,7 +164,7 @@
    * text. `fallback` is the text when the cleaned message is empty.
    */
   const found = (message, file, line, col, more = {}) => {
-    const t = tidy(message, MAX_TEXT) || tidy(more.fallback ?? '', MAX_TEXT)
+    const t = cleanMessage(message, file) || tidy(more.fallback ?? '', MAX_TEXT)
     if (t === '') return null
     const out = { text: t }
     const f = typeof file === 'string' ? file.trim() : ''
