@@ -170,12 +170,11 @@
     if (t === '') return null
     const out = { text: t }
     const f = typeof file === 'string' ? file.trim() : ''
-    if (f !== '' && f.length <= MAX_FILE) {
-      out.file = f
-      if (line !== undefined) {
-        out.line = line
-        if (col !== undefined) out.col = col
-      }
+    if (f !== '' && f.length <= MAX_FILE) out.file = f
+    // A line and column with no file still say where (Vite's `unknown file:3:15`).
+    if (line !== undefined) {
+      out.line = line
+      if (col !== undefined) out.col = col
     }
     return { ...out, ...extra(more.frame, more.stack) }
   }
@@ -197,11 +196,54 @@
     roots.push(root)
     const place = text(root.querySelector(r.file)).trim()
     const m = /^(.*?):(\d+)(?::(\d+))?$/.exec(place)
-    const frameText = text(root.querySelector(r.frame))
-    // A blank message (whitespace only) is none: the frame says it then.
-    const more = { fallback: frameText, frame: linesOf(frameText), stack: linesOf(text(root.querySelector(r.stack)), true) }
+    let file = m ? m[1] : place
+    let line = m ? pos(m[2]) : undefined
+    let col = m ? pos(m[3]) : undefined
     const message = text(root.querySelector(r.message))
-    return (m ? found(message, m[1], pos(m[2]), pos(m[3]), more) : found(message, place, undefined, undefined, more)) ?? KEEP
+    const frameText = text(root.querySelector(r.frame))
+    // An error thrown on a hot update (@vitejs/plugin-vue's handleHotUpdate) has no `id`: the
+    // overlay names `unknown file`, draws no `.frame`, and the message carries the file on a line of
+    // its own and the code frame after it. The file, line and column, and the frame, come from there.
+    if (file === '' || file === UNKNOWN_FILE) {
+      file = ''
+      const named = fileInMessage(message)
+      if (named) {
+        file = named.file
+        if (named.line !== undefined) [line, col] = [named.line, named.col]
+      }
+      if (line === undefined) {
+        const lc = /\((\d+):(\d+)\)/.exec(message)
+        if (lc) [line, col] = [pos(lc[1]), pos(lc[2])]
+      }
+    }
+    const frame = frameText.trim() !== '' ? linesOf(frameText) : frameInMessage(message)
+    // A blank message (whitespace only) is none: the frame says it then.
+    const more = { fallback: frameText, frame, stack: linesOf(text(root.querySelector(r.stack)), true) }
+    return found(message, file, line, col, more) ?? KEEP
+  }
+
+  /** What Vite's overlay writes for an error with no file. */
+  const UNKNOWN_FILE = 'unknown file'
+  /** A line that is an absolute path, `path:line` or `path:line:col`. */
+  const PATH_LINE_RE = /^((?:\/|[A-Za-z]:[\\/])[^\n]*?)(?::(\d+)(?::(\d+))?)?$/
+
+  /** `{ file, line?, col? }` from the first line of a message (after its first) that is a path. */
+  function fileInMessage(message) {
+    const lines = String(message).split('\n')
+    for (let i = 1; i < lines.length; i++) {
+      const l = lines[i].trim()
+      if (FRAME_LINE_RE.test(lines[i])) break
+      const m = PATH_LINE_RE.exec(l)
+      if (m && m[1].length <= MAX_FILE) return { file: m[1], line: pos(m[2]), col: pos(m[3]) }
+    }
+    return null
+  }
+
+  /** The code frame a message carries after its first line: from its first `N |` line on. */
+  function frameInMessage(message) {
+    const lines = linesOf(message)
+    const at = lines.findIndex((l, i) => i > 0 && FRAME_LINE_RE.test(l))
+    return at === -1 ? [] : lines.slice(at)
   }
 
   function readWebpack() {

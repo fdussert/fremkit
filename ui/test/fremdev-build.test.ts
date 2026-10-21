@@ -268,6 +268,41 @@ describe('fremdev/build.js', () => {
     expect(p.sent().at(-1)).toMatchObject({ text: '[vue/compiler-sfc] Unexpected token (3:15)' })
   })
 
+  it("reads a hot update's Vite overlay: no file but the message's, the frame from the message", async () => {
+    vi.useFakeTimers()
+    const p = page()
+    p.run()
+    // A real overlay of an SFC broken while the page was open: `.file` says `unknown file:3:15`, the
+    // `.frame` is empty, and the message holds the path and the code frame.
+    const [overlay] = addOverlay('vite-overlay-hmr.html')
+    await settle()
+    expect(p.sent()).toEqual([{
+      ...BUILD,
+      text: '[vue/compiler-sfc] Unexpected token (3:15)',
+      file: '/Users/example/app/src/App.vue',
+      line: 3,
+      col: 15,
+      frame: ['8  |  <script setup>', "9  |  const title = 'Scratch Vite'", '10 |  const broken = ;', '   |                 ^', '11 |  </script>', '12 |'],
+      stack: expect.arrayContaining(['at constructor (/Users/example/app/node_modules/@babel/parser/lib/index.js:369:19)']),
+    }])
+    const root = overlay.shadowRoot!
+    const body = root.querySelector('.message-body')!
+    // The path's own line and column win over the `(L:C)`.
+    body.textContent = '[plugin] Bad (3:15)\n\n/Users/example/app/src/App.vue:10:17'
+    await settle()
+    expect(p.sent().at(-1)).toMatchObject({ text: '[plugin] Bad (3:15)', file: '/Users/example/app/src/App.vue', line: 10, col: 17 })
+    // No path anywhere: the `unknown file` position stands, and no file.
+    body.textContent = '[plugin] Bad (4:2)'
+    await settle()
+    expect(p.sent().at(-1)).toEqual({ ...BUILD, text: '[plugin] Bad (4:2)', line: 3, col: 15, stack: expect.any(Array) })
+    // Neither a file nor a position in `.file`: the `(L:C)` of the message.
+    root.querySelector('.file')!.textContent = 'unknown file'
+    body.textContent = '[plugin] Worse (4:2)'
+    await settle()
+    expect(p.sent().at(-1)).toEqual({ ...BUILD, text: '[plugin] Worse (4:2)', line: 4, col: 2, stack: expect.any(Array) })
+    expect(JSON.stringify(p.sent())).not.toContain('unknown file')
+  })
+
   it('drops the file and the code frame residue from a message, keeping its prefix', async () => {
     vi.useFakeTimers()
     const p = page()

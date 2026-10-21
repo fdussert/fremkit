@@ -256,7 +256,11 @@ segment (`//x/`, `/../`) is refused, so those URLs can only name the tab's own o
 when it shows a **compile error**, and the tab gets a `build` entry, counted among its errors (the
 light turns red), shown on the Edge with "Build" before its text:
 - **Vite**: the `vite-error-overlay` element's open shadow root, its message, its file
-  (`path:line:col`), its code frame (the message itself when that is empty or blank) and its stack;
+  (`path:line:col`), its code frame (the message itself when that is empty or blank) and its stack.
+  An error thrown on a hot update (a Vue file broken while the page is open) has no file in the
+  overlay (`unknown file:3:15`) and no frame of its own: the file is then the message's line that is
+  an absolute path (its line and column, else the overlay's, else the message's `(3:15)`), and the
+  frame the message's lines from its first `N |` one;
 - **webpack-dev-server**: the overlay's iframe, only while its heading says *Compiled with
   problems* or *Failed to compile*, and only its first `ERROR` (a warning is no failed build): the
   message, the code frame it ends with (from its first `N |` line), and the file, line and column of
