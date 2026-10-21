@@ -19,7 +19,8 @@
 // children for webpack-dev-server's overlay: a webpack page's bundle (`main.js`) does not name its
 // dev server, so a page that loaded with a clean build shows the kind only when a later edit breaks
 // it, often minutes after the load. The overlay is appended to the body itself, and watching the
-// body's children alone, with no subtree, costs nothing on a busy page.
+// body's children alone (and the root's, for a body that comes late or is replaced), with no
+// subtree, costs nothing on a busy page.
 //
 // A classic script, registered with chrome.scripting: no import. The worker validates what it
 // sends (`pageEvent` in companion/fremdev.js) and takes the tab from Chrome's sender.
@@ -46,6 +47,9 @@
 
   let done = false
   let observer = null
+  // Past the 30 s: the body's own children, and which body that is.
+  let bodyObserver = null
+  let watchedBody = null
   let timer = null
 
   const OVERLAY_ID = 'webpack-dev-server-client-overlay'
@@ -113,24 +117,55 @@
     done = true
     observer?.disconnect()
     observer = null
+    bodyObserver?.disconnect()
+    bodyObserver = null
     if (timer !== null) clearTimeout(timer)
     timer = null
   }
 
-  /** The 30 s are up: the whole-document watch ends, the body's children are watched for the overlay. */
+  /** The overlay among nodes a mutation added. */
+  const hasOverlay = (records) => {
+    for (const record of records) {
+      for (const node of record.addedNodes) if (node.nodeType === 1 && node.id === OVERLAY_ID) return true
+    }
+    return false
+  }
+
+  const foundWebpack = () => look(() => ({ server: 'webpack', base: '/' }))
+
+  /** Watches the body's own children, the current body: again when the page replaced it. */
+  const watchBody = () => {
+    const body = document.body
+    if (done || body === watchedBody) return
+    bodyObserver?.disconnect()
+    bodyObserver = null
+    watchedBody = body
+    if (body === null) return
+    // A body put in with the overlay already among its children.
+    const overlay = document.getElementById(OVERLAY_ID)
+    if (overlay !== null && overlay.parentNode === body) return foundWebpack()
+    bodyObserver = new MutationObserver((records) => {
+      if (hasOverlay(records)) foundWebpack()
+    })
+    bodyObserver.observe(body, { childList: true })
+  }
+
+  /**
+   * The 30 s are up: the whole-document watch ends. The body's children are watched for the
+   * overlay, and the root's children for a body that comes later or replaces this one; neither
+   * watches a subtree.
+   */
   const narrow = () => {
     observer?.disconnect()
     observer = null
     timer = null
-    if (done || document.body === null) return
+    if (done) return
     try {
-      observer = new MutationObserver((records) => {
-        const overlay = records.some((r) => [...r.addedNodes].some((n) => n.nodeType === 1 && n.id === OVERLAY_ID))
-        if (overlay) look(() => ({ server: 'webpack', base: '/' }))
-      })
-      observer.observe(document.body, { childList: true })
+      observer = new MutationObserver(() => watchBody())
+      observer.observe(document.documentElement, { childList: true })
+      watchBody()
     } catch {
-      observer = null
+      stop()
     }
   }
 
