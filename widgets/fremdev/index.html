@@ -689,7 +689,10 @@
         if (list.children[i] !== entry.el) list.insertBefore(entry.el, list.children[i] || null)
       })
       Object.keys(drawn).forEach(function (key) {
-        if (!next[key] && drawn[key].el.parentNode === list) list.removeChild(drawn[key].el)
+        if (next[key]) return
+        // A row gone: its shot's timer goes with it.
+        clearTimeout(drawn[key].shotTimer)
+        if (drawn[key].el.parentNode === list) list.removeChild(drawn[key].el)
       })
       drawn = next
       if (unfolded !== null && !next[unfolded]) unfolded = null
