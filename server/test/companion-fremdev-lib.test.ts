@@ -878,8 +878,8 @@ describe('devreport', () => {
     tab = reduce(tab, { kind: 'navigated', url: 'http://localhost:5173/cart', title: 'Shop' }, 4_000)
     tab = reduce(tab, { kind: 'count', n: 40 }, 5_000)
     const text = buildReport(tab, fmt(true))
-    expect(text).toContain('- T1000 TypeError: boom (resolved)\n  at /src/Cart.vue:42:17\n    run /src/main.js:3:1\n')
-    expect(text).not.toContain('    setup ')
+    expect(text).toContain('- T1000 TypeError: boom (resolved)\n  at /src/Cart.vue:42:17\n  ```\n  run /src/main.js:3:1\n  ```\n')
+    expect(text).not.toContain('  setup ')
     expect(text).toContain('- T5000 +40 errors over the rate limit\n')
     expect(buildReport(tab, fmt(false))).not.toContain('run /src/main.js')
   })
@@ -955,7 +955,7 @@ describe('devreport', () => {
     expect(new TextEncoder().encode(JSON.stringify(msg)).length).toBeLessThanOrEqual(60_000)
     // The newest entry keeps its stack; the oldest went first.
     expect(msg.text).toContain('E19 ')
-    expect(msg.text).toContain('    f29 /src/19/')
+    expect(msg.text).toContain('\n  f29 /src/19/')
     expect(msg.text).not.toContain('E00 ')
   })
 })
@@ -1032,7 +1032,7 @@ describe('build entries', () => {
     const fmt = { stack: true, now: 9_000, t: (key: string, ...subs: unknown[]) => WORDS[key](...subs), time: (ms: number) => `T${ms}`, date: (ms: number) => `D${ms}` }
     const text = buildReport({ ...tab, title: 'App in /Users/Jane Example/app' }, fmt)
     expect(text).toContain('## Bug report: App in ~/app (localhost:5173/)')
-    expect(text).toContain('  at /@fs/~/pkg/a.js:1:2\n    g http://localhost:5173/@fs/~/pkg/b.js:3:4')
+    expect(text).toContain('  at /@fs/~/pkg/a.js:1:2\n  ```\n  g http://localhost:5173/@fs/~/pkg/b.js:3:4\n  ```')
     expect(text).toContain('- T300 GET /@fs/~/pkg/c.js 404')
     expect(text).not.toContain('/Users/')
     expect(wireTabs([{ ...tab, title: 'App in /Users/Jane Example/app' }])[0].app).toBe('App in ~/app')
@@ -1212,25 +1212,48 @@ describe('build entries', () => {
       stateSeen: () => 'seen', stateResolved: () => 'resolved',
     }
     const fmt = (stack: boolean) => ({ stack, now: 9_000, t: (key: string, ...subs: unknown[]) => WORDS[key](...subs), time: (ms: number) => `T${ms}`, date: (ms: number) => `D${ms}` })
-    const tab = reduce(base(), framed({ frame: [...FRAME, '   ,-[/Users/Jane Example/app/src/App.vue:3:15]'] }), 200)
+    const tab = reduce(base(), framed({
+      frame: [...FRAME, '   ,-[/Users/Jane Example/app/src/App.vue:3:15]'],
+      stack: [...STACK, 'at load (http://localhost:5173/@fs/Users/Jane Example/app/x.js:1:2)', 'at get (/files/%2FUsers%2FJane%20Example%2Fy.js:3:4)'],
+    }), 200)
+    // GitHub's shape: a fenced block nested in the list item, every line verbatim, two spaces in.
     expect(buildReport(tab, fmt(true))).toContain([
       '### Build',
       '- T200 [vue/compiler-sfc] Unexpected token (3:15)',
       '  at ~/app/src/App.vue:3:15',
-      '    1  |  <script setup>',
-      "    2  |  const title = 'Scratch Vite'",
-      '    3  |  const broken = 1 +* 2',
-      '       |                ^',
-      '    4  |  const other = 3',
-      '       ,-[~/app/src/App.vue:3:15]',
-      '    at constructor (~/app/node_modules/@babel/parser/lib/index.js:369:19)',
-      '    at Parser.raise (~/app/node_modules/@babel/parser/lib/index.js:6622:19)',
+      '  ```',
+      '  1  |  <script setup>',
+      "  2  |  const title = 'Scratch Vite'",
+      '  3  |  const broken = 1 +* 2',
+      '     |                ^',
+      '  4  |  const other = 3',
+      '     ,-[~/app/src/App.vue:3:15]',
+      '  at constructor (~/app/node_modules/@babel/parser/lib/index.js:369:19)',
+      '  at Parser.raise (~/app/node_modules/@babel/parser/lib/index.js:6622:19)',
+      '  at load (http://localhost:5173/@fs/~/app/x.js:1:2)',
+      '  at get (/files/%2F~%2Fy.js:3:4)',
+      '  ```',
     ].join('\n'))
-    expect(buildReport(tab, fmt(true))).not.toContain('/Users/')
+    expect(buildReport(tab, fmt(true))).not.toContain('Users')
+    expect(buildReport(tab, fmt(true))).not.toContain('Jane')
     const plain = buildReport(tab, fmt(false))
     expect(plain).toContain('- T200 [vue/compiler-sfc] Unexpected token (3:15)\n  at ~/app/src/App.vue:3:15')
     expect(plain).not.toContain('broken')
     expect(plain).not.toContain('Parser.raise')
+  })
+
+  it("fences webpack's frame with its `> 2 |` line and caret as they are, longer than any backtick run inside", () => {
+    const fmt = { stack: true, now: 9_000, t: (key: string) => key, time: (ms: number) => `T${ms}`, date: (ms: number) => `D${ms}` }
+    const frame = ["  1 | const a = 1", "> 2 | const b = 1 +* 2", '    |               ^', '  3 | const c = 3']
+    const tab = reduce(base(), build('Module parse failed: Unexpected token (2:14)', { file: './src/index.js', line: 2, col: 15, frame }), 200)
+    expect(buildReport(tab, fmt)).toContain(
+      '  at ./src/index.js:2:15\n  ```\n    1 | const a = 1\n  > 2 | const b = 1 +* 2\n      |               ^\n    3 | const c = 3\n  ```')
+    // A line holding a fence of its own: the block's fence is one longer than the longest run.
+    const ticks = reduce(base(), build('x', { frame: ['  1 | const md = `a ``` b ````` c`'] }), 200)
+    const text = buildReport(ticks, fmt)
+    expect(text).toContain('\n  ``````\n    1 | const md = `a ``` b ````` c`\n  ``````')
+    // Nothing to show: no empty block.
+    expect(buildReport(reduce(base(), build('x'), 200), fmt)).not.toContain('```')
   })
 
   it('keeps the dev.report message within 60 000 bytes with 20 build entries of the largest frames and stacks', () => {
@@ -1249,7 +1272,7 @@ describe('build entries', () => {
     expect(msg.text.length).toBeLessThanOrEqual(REPORT_MAX)
     expect(new TextEncoder().encode(JSON.stringify(msg)).length).toBeLessThanOrEqual(60_000)
     expect(msg.text).toContain('B19 ')
-    expect(msg.text).toContain('    F19 ')
+    expect(msg.text).toContain('\n  F19 ')
     expect(msg.text).not.toContain('B00 ')
   })
 

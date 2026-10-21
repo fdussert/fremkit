@@ -310,19 +310,23 @@ light turns hollow); it does not empty the history.
 **Copy report** puts a Markdown bug report for that tab on the Mac's clipboard: the page, the open
 issues and the history, at most 48 000 characters (the oldest entries are dropped first, then
 stacks). **Copy with stack** adds each error's stack, and under each build entry the overlay's code
-frame, its alignment kept, then its stack, indented under the entry with home folders as `~`:
+frame then its stack, home folders as `~`. Either goes in a fenced code block nested in the entry's
+list item, so a Markdown renderer (a GitHub issue) keeps the frame's alignment and shows `> 2 |` or
+`<script setup>` as code; the fence is longer than any run of backticks inside:
 
-```
+````
 ### Build
 - 10:21:05 [vue/compiler-sfc] Unexpected token (3:18)
   at ~/app/src/App.vue:3:18
-    2  |  const title = 'Scratch Vite'
-    3  |  const broken = 1 +* 2
-       |                  ^
-    4  |  const other = 3
-    at constructor (~/app/node_modules/@babel/parser/lib/index.js:369:19)
-    at Parser.raise (~/app/node_modules/@babel/parser/lib/index.js:6622:19)
-```
+  ```
+  2  |  const title = 'Scratch Vite'
+  3  |  const broken = 1 +* 2
+     |                  ^
+  4  |  const other = 3
+  at constructor (~/app/node_modules/@babel/parser/lib/index.js:369:19)
+  at Parser.raise (~/app/node_modules/@babel/parser/lib/index.js:6622:19)
+  ```
+````
 
 From the Edge, the widget sends a `report` command; the server asks the extension for the text,
 waits at most 5 seconds, and writes it to the clipboard with `pbcopy`, the text going through its

@@ -451,7 +451,7 @@ describe('companion/fremdev.js', () => {
     expect(JSON.stringify(f.store.session)).not.toContain('broken')
     expect(JSON.stringify(f.store.session)).not.toContain('Parser.raise')
     const withStack = await f.fremdev.report(7, true)
-    expect(withStack).toContain('  at ~/app/src/App.vue:3:15\n    3  |  const broken = 1 +* 2\n       |                ^\n    at Parser.raise (~/app/node_modules/p.js:1:2)')
+    expect(withStack).toContain('  at ~/app/src/App.vue:3:15\n  ```\n  3  |  const broken = 1 +* 2\n     |                ^\n  at Parser.raise (~/app/node_modules/p.js:1:2)\n  ```')
     const plain = await f.fremdev.report(7, false)
     expect(plain).toContain('Unexpected token (3:15)')
     expect(plain).not.toContain('broken')

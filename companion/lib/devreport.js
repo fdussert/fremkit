@@ -22,6 +22,19 @@ const line = (s, max = MAX_FIELD) => clip(String(s ?? '').replace(/\s*[\r\n]+\s*
 const homeLine = (s, max = MAX_FIELD) => line(homePath(String(s ?? '')), max)
 const isPos = (v) => Number.isInteger(v) && v >= 1
 
+/**
+ * `lines` as a fenced code block inside a list item (indented 2), so a Markdown renderer keeps
+ * their alignment and reads `> 2 |` or `<script setup>` as code. The fence is longer than any run
+ * of backticks in the lines. Nothing for no line.
+ */
+function fenced(lines) {
+  if (lines.length === 0) return []
+  let longest = 0
+  for (const l of lines) for (const run of l.match(/`+/g) ?? []) longest = Math.max(longest, run.length)
+  const fence = '`'.repeat(Math.max(3, longest + 1))
+  return [`  ${fence}`, ...lines.map((l) => `  ${l}`), `  ${fence}`]
+}
+
 function entryLines(e, { stack, t, time }) {
   const count = e.n > 1 ? `×${e.n} ` : ''
   const state = e.state === 'seen' ? ` (${t('stateSeen')})` : e.state === 'resolved' ? ` (${t('stateResolved')})` : ''
@@ -31,7 +44,7 @@ function entryLines(e, { stack, t, time }) {
       const out = [`- ${at} ${count}${homeLine(e.text)}${state}`]
       if (typeof e.origin === 'string' && e.origin !== '') out.push(`  at ${homeLine(e.origin)}`)
       // The first frame is the origin already.
-      if (stack && Array.isArray(e.stack)) for (const frame of e.stack.slice(1)) out.push(`    ${homeLine(frame, Infinity)}`)
+      if (stack && Array.isArray(e.stack)) out.push(...fenced(e.stack.slice(1).map((frame) => homeLine(frame, Infinity))))
       return out
     }
     case 'request':
@@ -57,8 +70,8 @@ function entryLines(e, { stack, t, time }) {
       }
       // The overlay's code frame, its alignment kept, then its stack: with the stack only.
       if (stack) {
-        for (const l of Array.isArray(e.frame) ? e.frame : []) out.push(`    ${homeLine(l, Infinity)}`)
-        for (const l of Array.isArray(e.stack) ? e.stack : []) out.push(`    ${homeLine(l, Infinity)}`)
+        const lines = [...(Array.isArray(e.frame) ? e.frame : []), ...(Array.isArray(e.stack) ? e.stack : [])]
+        out.push(...fenced(lines.map((l) => homeLine(l, Infinity))))
       }
       return out
     }
