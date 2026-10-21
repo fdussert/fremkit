@@ -31,6 +31,7 @@ interface Logic {
   entryView(entry: unknown): EntryView | null
   perfView(perf: unknown): Array<{ key: string; value: number; poor: boolean; dim: boolean }>
   requestsFact(row: unknown): { perf: EntryView | null; neutral: boolean }
+  shotOf(row: unknown, now: number): { thumb: string | null; until: number } | null
 }
 
 async function loadLogic(): Promise<Logic> {
@@ -382,5 +383,21 @@ describe('fremdev/logic.js', () => {
     const { entryView } = await loadLogic()
     expect(entryView(null)).toBeNull()
     expect(entryView({ kind: 'console', text: 'x', n: 1, at: 1, state: 'open' })).toBeNull()
+  })
+  it('shotOf: the shot until its time is up, its thumbnail only as a JPEG data URL within the cap', async () => {
+    const { shotOf, rowsOf } = await loadLogic()
+    const THUMB = 'data:image/jpeg;base64,/9j/4AAQ'
+    expect(shotOf({ shot: { thumb: THUMB, until: 2000 } }, 1000)).toEqual({ thumb: THUMB, until: 2000 })
+    expect(shotOf({ shot: { thumb: null, until: 2000 } }, 1000)).toEqual({ thumb: null, until: 2000 })
+    expect(shotOf({ shot: { thumb: THUMB, until: 2000 } }, 2000)).toBeNull()
+    for (const thumb of ['data:image/png;base64,iVBORw0KGgo=', 'javascript:alert(1)', 'https://example.com/a.jpg', `data:image/jpeg;base64,${'A'.repeat(40_000)}`, 42]) {
+      expect(shotOf({ shot: { thumb, until: 2000 } }, 1000)).toEqual({ thumb: null, until: 2000 })
+    }
+    for (const row of [null, {}, { shot: null }, { shot: { thumb: THUMB } }, { shot: { thumb: THUMB, until: '2000' } }]) {
+      expect(shotOf(row, 1000)).toBeNull()
+    }
+    // rowsOf carries it through.
+    const snap = { enabled: true, paired: 1, installs: [{ deviceId: 'a', name: 'Chrome', on: true, tabs: [{ tabId: 7, errors: {}, requests: {}, server: 'up', activity: 1, shot: { thumb: THUMB, until: 2000 } }] }] }
+    expect(shotOf(rowsOf(snap)[0], 1000)?.thumb).toBe(THUMB)
   })
 })

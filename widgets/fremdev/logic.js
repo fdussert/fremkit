@@ -267,7 +267,24 @@
     return { perf: live, neutral: perfs.length > 0 }
   }
 
+  /** The longest thumbnail the server passes on (SHOT_THUMB_MAX). */
+  var THUMB_MAX = 40000
+  var THUMB_RE = /^data:image\/jpeg;base64,[A-Za-z0-9+/]+={0,2}$/
+
+  /**
+   * The shot showing on a row, as `{ thumb, until }`, or null: none, or its time is up at `now` (the
+   * server clears it then too, a publish later). `thumb` is null unless it is a JPEG data URL of
+   * at most THUMB_MAX characters: the row then says "Copied" without a picture.
+   */
+  function shotOf(row, now) {
+    var shot = row && row.shot
+    if (!shot || typeof shot !== 'object' || typeof shot.until !== 'number' || !(shot.until > now)) return null
+    var thumb = typeof shot.thumb === 'string' && shot.thumb.length <= THUMB_MAX && THUMB_RE.test(shot.thumb) ? shot.thumb : null
+    return { thumb: thumb, until: shot.until }
+  }
+
   root.FremkitFremdev = {
+    shotOf: shotOf,
     requestsFact: requestsFact,
     entryView: entryView,
     perfView: perfView,

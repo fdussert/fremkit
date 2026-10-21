@@ -66,6 +66,18 @@
   button.clear:active{background:var(--accent, #d9b36a);color:var(--on-accent, #0b0d10)}
   button.clear[hidden]{display:inline-flex;visibility:hidden}
   .facts[hidden],.fact[hidden],.n[hidden],.browser[hidden],.down[hidden],.flight[hidden]{display:none}
+
+  /* A shot just copied from this tab: its thumbnail, the height of the line, and "Copied", for 3 s. */
+  .shot{flex:none;display:flex;align-items:center;gap:8px;min-width:0;animation:shotin .2s ease-out 1}
+  .shot[hidden]{display:none}
+  .shot img{display:block;height:44px;width:auto;max-width:96px;object-fit:cover;border-radius:6px;
+    box-shadow:0 0 0 2px var(--accent, #d9b36a)}
+  .shot img[hidden]{display:none}
+  .shot .said{font-size:calc(14px * var(--text-scale, 1));font-weight:600;color:var(--accent, #d9b36a);white-space:nowrap}
+  @keyframes shotin{from{opacity:0;transform:translateX(8px)}to{opacity:1;transform:none}}
+  @media (prefers-reduced-motion:reduce){.shot{animation:none}}
+  /* A narrow tile keeps the picture and drops the word; with no picture, the word stays. */
+  @media (max-width:520px){.shot:not(.bare) .said{display:none}}
   .body:focus-visible{outline:2px solid var(--accent, #d9b36a);outline-offset:2px;border-radius:6px}
   button:focus-visible{outline:2px solid var(--accent, #d9b36a);outline-offset:-2px}
 
@@ -137,6 +149,10 @@
   /* An accent body: the accent of the clear button would vanish, so it takes the text colour. */
   html.accent-fill button.clear:active,html.accent-fill button.show:active,html.accent-fill button.act:active{background:var(--on-surface, #0b0d10);color:var(--accent, #d9b36a)}
   html.on-light .entry button.origin{color:var(--on-surface, #0b0d10)}
+  html.on-light .shot .said{color:var(--on-surface, #0b0d10)}
+  html.on-light .shot img{box-shadow:0 0 0 2px var(--on-surface, #0b0d10)}
+  html.accent-fill .shot .said{color:var(--on-surface, #0b0d10)}
+  html.accent-fill .shot img{box-shadow:0 0 0 2px var(--on-surface, #0b0d10)}
   html.accent-fill .entry button.origin:active{background:var(--on-surface, #0b0d10);color:var(--accent, #d9b36a)}
   html.accent-fill button.show,html.accent-fill button.act{color:var(--on-surface, #0b0d10)}
   html.accent-fill button.act{border-color:var(--on-surface, #0b0d10)}
@@ -198,6 +214,8 @@
     heap: { fr: '{n} Mo', en: '{n} MB' },
     perfSlower: { fr: '{m} {v}, ×{r} plus lent', en: '{m} {v}, ×{r} slower' },
     perfPoor: { fr: '{m} {v}, mauvais', en: '{m} {v}, poor' },
+    shotCopied: { fr: 'Copiée', en: 'Copied' },
+    shotCopiedLong: { fr: 'Capture copiée', en: 'Screenshot copied' },
     elsewhere: { fr: 'Fremdev ne s\'affiche que sur l\'Edge du Mac.', en: 'Fremdev only shows on the Mac\'s Edge.' }
   }
 
@@ -511,8 +529,19 @@
       entry.clear = el('button', 'clear')
       entry.clear.type = 'button'
       entry.clear.appendChild(crossIcon())
+      entry.shot = el('div', 'shot')
+      entry.shot.hidden = true
+      entry.shot.setAttribute('role', 'status')
+      entry.shotImg = el('img')
+      entry.shotImg.alt = ''
+      entry.shotSaid = el('span', 'said')
+      entry.shot.appendChild(entry.shotImg)
+      entry.shot.appendChild(entry.shotSaid)
+      entry.shotUntil = 0
+      entry.shotTimer = 0
       top.appendChild(entry.light)
       top.appendChild(body)
+      top.appendChild(entry.shot)
       top.appendChild(entry.show)
       top.appendChild(entry.clear)
 
@@ -557,6 +586,36 @@
       return entry
     }
 
+    /**
+     * The shot copied from this tab, while it shows: the thumbnail and "Copied". Hidden at its
+     * `until` by a timer of its own, so a late snapshot does not leave it up.
+     */
+    function paintShot(entry) {
+      var shot = FD.shotOf(entry.row, Date.now())
+      entry.shot.hidden = !shot
+      clearTimeout(entry.shotTimer)
+      if (!shot) {
+        entry.shotUntil = 0
+        if (entry.shotImg.getAttribute('src')) entry.shotImg.removeAttribute('src')
+        return
+      }
+      setText(entry.shotSaid, Fremkit.t(L.shotCopied))
+      entry.shot.setAttribute('aria-label', Fremkit.t(L.shotCopiedLong))
+      if (shot.thumb) {
+        if (entry.shotImg.getAttribute('src') !== shot.thumb) entry.shotImg.src = shot.thumb
+      } else if (entry.shotImg.getAttribute('src')) entry.shotImg.removeAttribute('src')
+      entry.shotImg.hidden = !shot.thumb
+      entry.shot.classList.toggle('bare', !shot.thumb)
+      // A new shot replays the entrance.
+      if (entry.shotUntil !== shot.until) {
+        entry.shotUntil = shot.until
+        entry.shot.style.animation = 'none'
+        void entry.shot.offsetWidth
+        entry.shot.style.animation = ''
+      }
+      entry.shotTimer = setTimeout(function () { paintShot(entry) }, Math.min(shot.until - Date.now(), 5000) + 20)
+    }
+
     function update(entry, row, several) {
       entry.row = row
       var r = entry.el, e = row.errors, q = row.requests
@@ -596,6 +655,7 @@
       paintCopy(entry.copy)
       paintCopy(entry.copyStack)
       paintFold(entry)
+      paintShot(entry)
 
       // A new error flashes the row, at most once per flash: a page erroring at every snapshot
       // does not keep it blinking.
