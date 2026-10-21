@@ -45,6 +45,17 @@ tagged `vX.Y.Z`.
 
 ### Fixed
 
+- **Tapping the Edge dashboard no longer steals the keyboard.** The dashboard window took the
+  key focus on every tap, so the app you were typing into on the main display lost it and a
+  shortcut such as ⌘V landed in the dashboard. The window is now a non-activating panel that
+  never becomes key; touches still reach the page.
+- **The clipboard widget masks one-time codes.** A six-digit code copied from a text message or
+  an authenticator (`482913`, `482 913`, `4829-1375`) showed in full on the Edge and on a paired
+  iPad; any run of four to eight digits copied on its own is now shown as a secret, and still
+  copies back with a tap. Numbers inside a sentence and phone numbers are shown as before.
+- **The clipboard widget leaves alone what more password managers copy.** Besides the standard
+  "concealed" and "transient" markers, a copy from 1Password, KeeWeb, Butler, Typeit4me or a
+  Keyboard Maestro generator is no longer recorded at all.
 - **Backgrounds with dots at the end of their name.** A background uploaded from a file called,
   say, "a..png" was saved under a name the dashboard then refused: it never showed in the
   library and could not be deleted. It is now saved under a clean name.
