@@ -273,8 +273,19 @@ export function createFremdev({
     const next = reduce(tab, event, now())
     // An event that changed nothing (the reducer handed the row back) sends nothing and wakes nothing.
     if (next === tabs[key]) return
+    // Nor does one that changed only what stays in memory (a build's code frame or stack): the
+    // session copy and the row would go out exactly as before. The report reads the new values.
+    if (event.kind === 'build' && tab === tabs[key] && sameOutside(tab, next)) {
+      tabs = { ...tabs, [key]: next }
+      return
+    }
     tabs = { ...tabs, [key]: next }
     refresh(quiet ? { changed: true } : { changed: true, event: true })
+  }
+
+  /** Whether two states of a row leave the worker the same: their session copies are equal. */
+  function sameOutside(a, b) {
+    return JSON.stringify(sessionTabs({ 0: a })[0]) === JSON.stringify(sessionTabs({ 0: b })[0])
   }
 
   function drop(tabId) {

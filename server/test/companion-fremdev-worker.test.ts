@@ -455,6 +455,19 @@ describe('companion/fremdev.js', () => {
     const plain = await f.fremdev.report(7, false)
     expect(plain).toContain('Unexpected token (3:15)')
     expect(plain).not.toContain('broken')
+    // The same error with only its frame moved: no row goes out again, the report reads the new frame.
+    const before = f.sent.length
+    await f.fremdev.onPageEvent({
+      kind: 'build', text: '[vue/compiler-sfc] Unexpected token (3:15)', file: '/Users/example/app/src/App.vue', line: 3, col: 15,
+      frame: ['4  |  const broken = 1 +* 2'], stack: ['at Parser.raise (/Users/example/app/node_modules/p.js:1:2)'],
+    }, devSender())
+    await f.later()
+    expect(f.sent.length).toBe(before)
+    expect(await f.fremdev.report(7, true)).toContain('  4  |  const broken = 1 +* 2')
+    // A moved line does go out.
+    await f.fremdev.onPageEvent({ kind: 'build', text: '[vue/compiler-sfc] Unexpected token (3:15)', file: '/Users/example/app/src/App.vue', line: 4, col: 15 }, devSender())
+    await f.later()
+    expect(f.sent.length).toBeGreaterThan(before)
   })
 
   it('announces fremdev.report only while on', async () => {
