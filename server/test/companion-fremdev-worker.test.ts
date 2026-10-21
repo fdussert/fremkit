@@ -252,11 +252,11 @@ describe('companion/fremdev.js', () => {
     expect(pageEvent({ kind: 'error', text: 't', origin: 'o', stack: ['a'] })).toEqual({ kind: 'error', text: 't', origin: 'o', stack: ['a'] })
     expect(pageEvent({ kind: 'error', text: 't', origin: 7, stack: 'a' })).toEqual({ kind: 'error', text: 't' })
     expect(pageEvent({ kind: 'error', text: 't', stack: ['a', 1] })).toEqual({ kind: 'error', text: 't' })
-    const big = pageEvent({ kind: 'error', text: 't', origin: 'o'.repeat(400), stack: Array.from({ length: 15 }, () => 's'.repeat(400)) })
+    const big = pageEvent({ kind: 'error', text: 't', origin: 'o'.repeat(400), stack: Array.from({ length: 40 }, () => 's'.repeat(400)) })
     expect(big.origin).toHaveLength(300)
-    expect(big.stack.length).toBeLessThanOrEqual(10)
+    expect(big.stack.length).toBeLessThanOrEqual(30)
     expect(big.stack.every((f: string) => f.length <= 300)).toBe(true)
-    expect(big.stack.join('\n').length).toBeLessThanOrEqual(2000)
+    expect(big.stack.join('\n').length).toBeLessThanOrEqual(6000)
   })
 
   it('takes a dev event only from its own content script in the top frame of a granted dev tab', async () => {

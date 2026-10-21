@@ -231,9 +231,9 @@ export { errorText }
 // It calls only builtins taken at load and writes lists by definition, never by assignment: a page
 // that later puts an accessor on Array.prototype['0'] or replaces String.prototype.slice runs nothing.
 /** At most this many frames leave the tab, each this long, and this long joined by newlines. */
-const MAX_FRAMES = 10
+const MAX_FRAMES = 30
 const MAX_FRAME = 300
-const MAX_STACK = 2000
+const MAX_STACK = 6000
 /** A line longer than this is not a frame worth parsing. */
 const MAX_LINE = 2000
 const FRAME = /^\s+at (?:(.+) \((.+):(\d+):(\d+)\)|(async )?(.+):(\d+):(\d+))$/

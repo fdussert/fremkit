@@ -445,7 +445,7 @@ nothing else of `labs`. What it holds and what it can do:
   exception). The title, an error's own message and a build's message are free text, sent as the
   page set or logged them (clipped), so one that quotes a secret shows it on the Edge. Fremkit's own
   ports (4242, 4243) are never watched.
-- *Stacks.* An error's stack (at most 10 frames, 2000 characters, URLs without query or fragment)
+- *Stacks.* An error's stack (at most 30 frames, 6000 characters, URLs without query or fragment)
   stays in the extension and never travels in `dev.tabs`; it leaves the browser only in a bug
   report the user asked for. The hook reads it with V8's native `stack` getter, captured at hook
   start and called with `Reflect.apply`, only when `Error.prepareStackTrace` is absent or

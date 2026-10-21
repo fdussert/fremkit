@@ -503,8 +503,9 @@ the page's scripts, on dev hosts only. It is built not to disturb the page:
   strings and only while the page has not set `Error.prepareStackTrace` (a page that did, such as
   one using source-map-support, gets no stack, and the origin then comes from the `error` event's
   `filename`, `lineno` and `colno` for an uncaught error; a `console.error` or an unhandled
-  rejection then has no origin). A stack is kept to 10 frames of at most 300 characters and 2000
-  characters in all, as `fn file:line:col`, with a query or fragment never kept.
+  rejection then has no origin). A stack is kept to 30 frames of at most 300 characters and 6000
+  characters in all (V8 itself records 10 frames unless the page raises `Error.stackTraceLimit`),
+  as `fn file:line:col`, with a query or fragment never kept.
 - It speaks to the extension through a `CustomEvent` on `document` that carries a string, not a
   window message and not an attribute on `<html>`, so it cannot loop through the page's handlers or
   cause a hydration warning.

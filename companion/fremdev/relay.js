@@ -30,9 +30,9 @@
   const PER_SECOND = 10
   const MAX_TEXT = 300
   // The stack bounds of lib/devlog.js (MAX_FRAMES, MAX_FRAME, MAX_STACK); a test keeps them equal.
-  const MAX_FRAMES = 10
+  const MAX_FRAMES = 30
   const MAX_FRAME = 300
-  const MAX_STACK = 2000
+  const MAX_STACK = 6000
   /** JSON-escaped text, origin and stack are at most six times longer, plus the envelope. */
   const MAX_DETAIL = 6 * (2 * MAX_TEXT + MAX_STACK) + 256
   const KINDS = ['error', 'up', 'down', 'hot']

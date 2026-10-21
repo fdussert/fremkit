@@ -265,19 +265,19 @@ describe('devlog frames', () => {
     expect(parseStack(undefined as unknown as string, PAGE)).toEqual([])
   })
 
-  it('keeps at most 10 frames of 300 characters, 2000 in all', () => {
-    const frames = Array.from({ length: 15 }, (_, i) => `    at f${i} (http://localhost:5173/a.js:${i + 1}:1)`)
+  it('keeps at most 30 frames of 300 characters, 6000 in all', () => {
+    const frames = Array.from({ length: 35 }, (_, i) => `    at f${i} (http://localhost:5173/a.js:${i + 1}:1)`)
     expect(parseStack(`Error: e\n${frames.join('\n')}`, PAGE)).toHaveLength(MAX_FRAMES)
     const long = parseStack(`Error: e\n    at ${'f'.repeat(400)} (http://localhost:5173/a.js:1:1)`, PAGE)
     expect(long).toHaveLength(1)
     expect(long[0]).toHaveLength(MAX_FRAME)
-    const wide = Array.from({ length: 10 }, (_, i) => `    at ${String(i).repeat(290)} (http://localhost:5173/a.js:1:1)`)
+    const wide = Array.from({ length: 25 }, (_, i) => `    at ${String(i % 10).repeat(290)} (http://localhost:5173/a.js:1:1)`)
     const kept = parseStack(`Error: e\n${wide.join('\n')}`, PAGE)
-    // Each frame is 300 long: six of them and five newlines make 1805, a seventh would make 2106.
+    // Each frame is 300 long: 19 of them and 18 newlines make 5718, a twentieth would make 6019.
     expect(kept.every((f: string) => f.length === 300)).toBe(true)
-    expect(kept).toHaveLength(6)
+    expect(kept).toHaveLength(19)
     expect(kept.join('\n').length).toBeLessThanOrEqual(MAX_STACK)
-    expect([MAX_FRAMES, MAX_FRAME, MAX_STACK]).toEqual([10, 300, 2000])
+    expect([MAX_FRAMES, MAX_FRAME, MAX_STACK]).toEqual([30, 300, 6000])
     expect(boundFrames(['a', 'b'.repeat(400)])).toEqual(['a', 'b'.repeat(300)])
   })
 
@@ -937,6 +937,26 @@ describe('devreport', () => {
       expect(new TextEncoder().encode(JSON.stringify(msg)).length).toBeLessThanOrEqual(60_000)
       expect(msg.text).toContain('E19 ')
     }
+  })
+
+  it('keeps the dev.report message within 60 000 bytes with 20 entries of the largest stacks', () => {
+    let tab = emptyTab(7, 'http://localhost:5173/', 'App', 0)
+    // MAX_FRAMES frames of 199 characters, multibyte: 5999 joined, as much as MAX_STACK allows.
+    const frames = (i: number) => boundFrames(Array.from({ length: MAX_FRAMES }, (_, f) =>
+      `f${String(f).padStart(2, '0')} /src/${String(i).padStart(2, '0')}/${'é'.repeat(187)}`))
+    for (let i = 0; i < 20; i++) {
+      const stack = frames(i)
+      expect(stack).toHaveLength(MAX_FRAMES)
+      expect(stack.join('\n').length).toBe(MAX_STACK - 1)
+      tab = reduce(tab, err(`E${String(i).padStart(2, '0')} ${'x'.repeat(290)}`, { origin: stack[0], stack }), 1_000 + i)
+    }
+    const msg = reportMessage('6f1c2a5e-8f0b-4c1d-9a3e-2b7d4e5f6a7b', 7, tab, fmt(true))
+    expect(msg.text.length).toBeLessThanOrEqual(REPORT_MAX)
+    expect(new TextEncoder().encode(JSON.stringify(msg)).length).toBeLessThanOrEqual(60_000)
+    // The newest entry keeps its stack; the oldest went first.
+    expect(msg.text).toContain('E19 ')
+    expect(msg.text).toContain('    f29 /src/19/')
+    expect(msg.text).not.toContain('E00 ')
   })
 })
 
