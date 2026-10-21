@@ -26,6 +26,10 @@ tagged `vX.Y.Z`.
 
 ### Fixed
 
+- **Tapping the Edge dashboard no longer steals the keyboard.** The dashboard window took the
+  key focus on every tap, so the app you were typing into on the main display lost it and a
+  shortcut such as ⌘V landed in the dashboard. The window is now a non-activating panel that
+  never becomes key; touches still reach the page.
 - **The clipboard widget masks one-time codes.** A six-digit code copied from a text message or
   an authenticator (`482913`, `482 913`, `4829-1375`) showed in full on the Edge and on a paired
   iPad; any run of four to eight digits copied on its own is now shown as a secret, and still
