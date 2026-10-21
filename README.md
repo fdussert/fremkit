@@ -570,7 +570,8 @@ limits, and how to report a problem: **[SECURITY.md](SECURITY.md)**.
 ## Credits and trademarks
 
 Fremkit is written by [usul](https://github.com/fdussert), with
-[FlorianBruniaux](https://github.com/FlorianBruniaux) and [mcouzinet](https://github.com/mcouzinet).
+[FlorianBruniaux](https://github.com/FlorianBruniaux), [mcouzinet](https://github.com/mcouzinet) and
+[LivioGama](https://github.com/LivioGama).
 The widgets and themes on the registry name their own authors on their cards. The admin's
 **Settings → About** lists the same people, from `ui/src/shared/credits.ts`.
 

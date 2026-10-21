@@ -18,6 +18,7 @@ export const MAINTAINER: Person = { handle: 'usul', github: 'fdussert' }
 export const CONTRIBUTORS: readonly Person[] = [
   { handle: 'FlorianBruniaux', github: 'FlorianBruniaux' },
   { handle: 'mcouzinet', github: 'mcouzinet' },
+  { handle: 'LivioGama', github: 'LivioGama' },
 ]
 
 export const REPOSITORY = 'https://github.com/fdussert/fremkit'
