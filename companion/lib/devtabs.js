@@ -62,6 +62,11 @@ export function emptyTab(tabId, url, title, now) {
     host: hostOf(url),
     title: title ?? '',
     errors: tally(),
+    /**
+     * How many of `errors.total` were build entries, so a report counts its Build and Errors
+     * sections apart (the open ones are the live build entries of the history). Never on the wire.
+     */
+    buildTotal: 0,
     requests: tally(),
     history: [],
     /** The id the next history entry gets. */
@@ -342,6 +347,7 @@ export function reduce(tab, event, now) {
       const base = { ...tab, ...resolveBuilds(tab) }
       return {
         ...base,
+        buildTotal: Math.min(MAX_COUNT, count(tab.buildTotal) + 1),
         ...record({ ...base, errors: bump(base.errors, { text: event.text, at: now }) }, {
           kind: 'build',
           text: event.text,
@@ -682,6 +688,8 @@ export function restoredTabs(raw) {
         perf: t.perf ?? {},
         perfDoc: typeof t.perfDoc === 'string' && t.perfDoc.length <= 128 ? t.perfDoc : null,
         perfEntryId: isId(t.perfEntryId) ? t.perfEntryId : null,
+        // A row from before the count has none; never more than the errors it is part of.
+        buildTotal: Math.min(count(t.buildTotal), count(t.errors?.total)),
         perfFlaggedDoc: typeof t.perfFlaggedDoc === 'string' && t.perfFlaggedDoc.length <= 128 ? t.perfFlaggedDoc : null,
       }
     } catch {

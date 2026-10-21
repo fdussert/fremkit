@@ -312,14 +312,16 @@ transpiled file reads as the browser reports it. The **×** still marks the row'
 light turns hollow); it does not empty the history.
 
 **Copy report** puts a Markdown bug report for that tab on the Mac's clipboard: the page, the open
-issues and the history, at most 48 000 characters (the oldest entries are dropped first, then
-stacks). **Copy with stack** adds each error's stack, and under each build entry the overlay's code
-frame then its stack, home folders as `~`. Either goes in a fenced code block nested in the entry's
-list item, so a Markdown renderer (a GitHub issue) keeps the frame's alignment and shows `> 2 |` or
-`<script setup>` as code; the fence is longer than any run of backticks inside:
+issues and the history, in sections (Build, Errors, Failed requests, Performance, Slow requests),
+Build and Errors each counting only its own entries (`Errors (3 open, 4 total)`), at most 48 000
+characters (the oldest entries are dropped first, then stacks). **Copy with stack** adds each
+error's stack, and under each build entry the overlay's code frame then its stack, home folders as
+`~`. Either goes in a fenced code block nested in the entry's list item, so a Markdown renderer (a
+GitHub issue) keeps the frame's alignment and shows `> 2 |` or `<script setup>` as code; the fence
+is longer than any run of backticks inside:
 
 ````
-### Build
+### Build (1 open, 1 total)
 - 10:21:05 [vue/compiler-sfc] Unexpected token (3:18)
   at ~/app/src/App.vue:3:18
   ```

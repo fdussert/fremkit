@@ -21,6 +21,8 @@ const line = (s, max = MAX_FIELD) => clip(String(s ?? '').replace(/\s*[\r\n]+\s*
 /** A line that may name a file on this Mac: its home folder is `~/`. */
 const homeLine = (s, max = MAX_FIELD) => line(homePath(String(s ?? '')), max)
 const isPos = (v) => Number.isInteger(v) && v >= 1
+/** A count: a non-negative integer, 0 for anything else. */
+const count = (v) => (Number.isInteger(v) && v >= 0 ? v : 0)
 /** What Vite's overlay names for an error with no file: never a file. */
 const UNKNOWN_FILE = 'unknown file'
 
@@ -121,12 +123,19 @@ function render(tab, entries, opts) {
   const slow = entries.filter((e) => e.kind === 'slow')
   const perfs = entries.filter((e) => e.kind === 'perf')
   // The compile error first: while it shows, nothing else on the page is current.
+  // Each section counts its own: the tab's errors tally holds the build entries too, and the open
+  // ones among them are the history's live build entries (the ring uncounts any it pushes out).
+  const all = Array.isArray(tab.history) ? tab.history : []
+  const liveBuilds = all.filter((e) => e.kind === 'build' && (e.state === 'open' || e.state === 'seen')).length
+  const buildTotal = Math.max(all.filter((e) => e.kind === 'build').length, count(tab.buildTotal))
   if (builds.length > 0) {
-    out.push('', `### ${t('reportBuild')}`)
+    out.push('', `### ${t('reportBuild', liveBuilds, buildTotal)}`)
     for (const e of builds) out.push(...entryLines(e, opts))
   }
   if (errors.length > 0) {
-    out.push('', `### ${t('reportErrors', tab.errors?.open ?? 0, tab.errors?.total ?? 0)}`)
+    const open = Math.max(0, count(tab.errors?.open) - liveBuilds)
+    const total = Math.max(0, count(tab.errors?.total) - buildTotal)
+    out.push('', `### ${t('reportErrors', open, total)}`)
     for (const e of errors) out.push(...entryLines(e, opts))
   }
   if (requests.length > 0) {

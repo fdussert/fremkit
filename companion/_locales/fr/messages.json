@@ -207,7 +207,15 @@
     "message": "Requêtes lentes"
   },
   "reportBuild": {
-    "message": "Compilation"
+    "message": "Compilation ($v1$ ouvertes, $v2$ au total)",
+    "placeholders": {
+      "v1": {
+        "content": "$1"
+      },
+      "v2": {
+        "content": "$2"
+      }
+    }
   },
   "reportLimited": {
     "message": "erreurs au-delà de la limite"

@@ -207,7 +207,15 @@
     "message": "Slow requests"
   },
   "reportBuild": {
-    "message": "Build"
+    "message": "Build ($v1$ open, $v2$ total)",
+    "placeholders": {
+      "v1": {
+        "content": "$1"
+      },
+      "v2": {
+        "content": "$2"
+      }
+    }
   },
   "reportLimited": {
     "message": "errors over the rate limit"

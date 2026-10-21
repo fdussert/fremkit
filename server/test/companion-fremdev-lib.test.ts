@@ -1292,7 +1292,7 @@ describe('build entries', () => {
       reportServer: () => 'dev server',
       reportLines: () => 'Line numbers are those of the code the dev server sent.',
       reportErrors: (open, total) => `Errors (${open} open, ${total} total)`,
-      reportBuild: () => 'Build',
+      reportBuild: (open, total) => `Build (${open} open, ${total} total)`,
       stateSeen: () => 'seen',
       stateResolved: () => 'resolved',
     }
@@ -1300,8 +1300,30 @@ describe('build entries', () => {
     let tab = reduce(base(), { kind: 'error', text: 'TypeError: x', origin: '/src/a.js:1:2' }, 150)
     tab = reduce(tab, build('Invalid end tag in /Users/Jane Example/app/src/App.vue', { file: '/Users/Jane Example/app/src/App.vue' }), 200)
     const text = buildReport(tab, fmt)
-    expect(text).toContain('### Build\n- T200 Invalid end tag in ~/app/src/App.vue\n  at ~/app/src/App.vue:12:3\n\n### Errors (2 open, 2 total)\n- T150 TypeError: x\n')
+    // Each section counts its own entries: the tab's tally (2 open, 2 total) holds both.
+    expect(tab.errors).toMatchObject({ open: 2, total: 2 })
+    expect(text).toContain('### Build (1 open, 1 total)\n- T200 Invalid end tag in ~/app/src/App.vue\n  at ~/app/src/App.vue:12:3\n\n### Errors (1 open, 1 total)\n- T150 TypeError: x\n')
     expect(text).not.toContain('/Users/')
+
+    // The owner's case: an old build resolved, a new one open, three runtime errors (one seen).
+    tab = reduce(tab, build('Unexpected token (3:15)'), 300)
+    tab = reduce(tab, { kind: 'error', text: 'Uncaught TypeError: y' }, 400)
+    tab = reduce(tab, { kind: 'clear' }, 450)
+    tab = reduce(tab, { kind: 'error', text: 'Uncaught (in promise) Error: z' }, 500)
+    expect(tab.errors).toMatchObject({ open: 4, total: 5 })
+    expect(tab.buildTotal).toBe(2)
+    const again = buildReport(tab, fmt)
+    expect(again).toContain('### Build (1 open, 2 total)\n')
+    expect(again).toContain('### Errors (3 open, 3 total)\n')
+    // A build-clear: none open; the errors keep theirs.
+    const cleared = buildReport(reduce(tab, { kind: 'build-clear' }, 600), fmt)
+    expect(cleared).toContain('### Build (0 open, 2 total)\n')
+    expect(cleared).toContain('### Errors (3 open, 3 total)\n')
+    // The count stays in the extension, and a row from before it restores with none.
+    expect(JSON.stringify(wireTabs([tab]))).not.toContain('buildTotal')
+    const { buildTotal: _b, ...older } = tab
+    expect(restoredTabs({ 1: older })[1].buildTotal).toBe(0)
+    expect(restoredTabs({ 1: tab })[1].buildTotal).toBe(2)
   })
 })
 
