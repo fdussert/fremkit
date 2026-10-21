@@ -16,8 +16,8 @@
 
 /**
  * Draws the flash and, when `thumb` is a JPEG data URL, its thumbnail. Returns nothing the page
- * could read; throws nothing (a page that is not a document of ours, an image that does not decode:
- * the flash alone, or nothing).
+ * could read. An image that does not decode gets the flash alone; a document that is not HTML (an
+ * SVG or XML file open in the tab) gets nothing.
  */
 export async function shotOverlay(thumb) {
   /** How long the thumbnail stays, its fades included. */
@@ -29,7 +29,8 @@ export async function shotOverlay(thumb) {
     if (typeof scope[KEY] === 'function') scope[KEY]()
   } catch { /* gone already */ }
   const root = document.documentElement
-  if (!root) return
+  // An SVG or XML document makes elements with no `style`: nothing to draw there.
+  if (!root || !(document instanceof HTMLDocument)) return
 
   const set = (el, props) => {
     for (const [name, value] of Object.entries(props)) el.style.setProperty(name, value, 'important')
@@ -47,9 +48,8 @@ export async function shotOverlay(thumb) {
     all: 'initial',
     display: 'block',
     position: 'fixed',
+    // The viewport and no more: `100vw` would reach under a classic scrollbar.
     inset: '0',
-    width: '100vw',
-    height: '100vh',
     margin: '0',
     padding: '0',
     border: '0',
