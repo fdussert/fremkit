@@ -133,6 +133,23 @@ describe('the add-screen dialog', () => {
     wrapper.unmount()
   })
 
+  it('greys a Fremdev in the preview while its switch is off, as the canvas does', async () => {
+    const s = useAdminStore()
+    s.state.config!.widgets['dev-1'] = { widgetId: 'fremdev', showTitle: true, settings: {} }
+    s.state.config!.screens[0].pages[0].items.push({ instanceId: 'dev-1', x: 0, y: 4, w: 8, h: 4 })
+    s.state.manifests.fremdev = manifest('fremdev', 'Fremdev', [4, 2])
+    const OffStub = { props: ['off'], template: '<div class="page-stub" :data-off="[...(off ?? [])].join(\',\')" />' }
+    for (const fremdev of [false, true]) {
+      s.state.config!.labs = { fremdev }
+      const wrapper = mount(AddScreenDialog, { props: { device: ipad }, attachTo: document.body, global: { stubs: { PageView: OffStub } } })
+      await wrapper.find('input').setValue('Kitchen')
+      await wrapper.find('select').setValue('edge')
+      await button(wrapper, 'Preview…').trigger('click')
+      expect(wrapper.find('.page-stub').attributes('data-off'), String(fremdev)).toBe(fremdev ? '' : 'dev-1')
+      wrapper.unmount()
+    }
+  })
+
   it('pre-fills an Edge screen too', async () => {
     const s = useAdminStore()
     const wrapper = mount(AddScreenDialog, { attachTo: document.body, global: { stubs } })
