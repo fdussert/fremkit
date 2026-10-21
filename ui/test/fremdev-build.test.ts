@@ -353,6 +353,49 @@ describe('fremdev/build.js', () => {
     expect([value('MAX_FRAME_LINES'), value('MAX_STACK_LINES'), value('MAX_LINE'), value('MAX_EXTRA')]).toEqual([20, 30, 300, 6_000])
   })
 
+  it("bounds the frame and stack exactly as lib/devlog.js's boundBuildLines on the same inputs", async () => {
+    // lib/devlog.js takes URL.prototype's getters at load, which jsdom's URL lacks: Node's, for the import.
+    const jsdomUrl = globalThis.URL
+    globalThis.URL = NodeURL as unknown as typeof URL
+    let boundBuildLines: (f: string[], s: string[]) => { frame?: string[]; stack?: string[] }
+    try {
+      // @ts-expect-error plain JS module outside ui/, no declarations
+      ;({ boundBuildLines } = await import('../../companion/lib/devlog.js'))
+    } finally {
+      globalThis.URL = jsdomUrl
+    }
+    const many = (n: number, len: number, tag: string) => Array.from({ length: n }, (_, i) => `${tag}${i} |`.padEnd(len, 'x'))
+    const pair = '\u{1F600}'
+    const inputs: Array<[string[], string[]]> = [
+      [many(3, 20, 'f'), many(3, 20, 's')],
+      [many(25, 10, 'f'), many(35, 10, 's')],
+      [many(20, 400, 'f'), many(30, 400, 's')],
+      [many(10, 300, 'f'), many(30, 300, 's')],
+      [many(19, 300, 'f'), many(5, 200, 's')],
+      [many(5, 299, 'f').map((l) => l.slice(0, 299) + pair), [`s0 ${'y'.repeat(296)}${pair}`]],
+      [many(1, 50, 'f'), many(40, 150, 's')],
+      [[], many(2, 30, 's')],
+      // The edges of the 6 000: 19 lines of 300 leave 281, which a line of 281 and its break overrun.
+      [many(19, 300, 'f'), many(1, 281, 's')],
+      [many(19, 300, 'f'), many(1, 280, 's')],
+    ]
+    vi.useFakeTimers()
+    const p = page()
+    p.run()
+    const [overlay] = addOverlay('vite-overlay-sfc.html')
+    const root = overlay.shadowRoot!
+    for (const [i, [frame, stack]] of inputs.entries()) {
+      root.querySelector('.message-body')!.textContent = `case ${i}`
+      root.querySelector('.frame')!.textContent = frame.join('\n')
+      root.querySelector('.stack')!.textContent = stack.join('\n')
+      await settle()
+      const sent = p.sent().at(-1)!
+      expect(sent.text, `case ${i}`).toBe(`case ${i}`)
+      const { frame: f, stack: s } = sent as { frame?: string[]; stack?: string[] }
+      expect({ ...(f ? { frame: f } : {}), ...(s ? { stack: s } : {}) }, `case ${i}`).toEqual(boundBuildLines(frame, stack))
+    }
+  })
+
   it('says a changed code frame again for the same message', async () => {
     vi.useFakeTimers()
     const p = page()
