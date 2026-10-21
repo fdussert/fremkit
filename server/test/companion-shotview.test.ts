@@ -180,6 +180,20 @@ describe('CompanionDev and dev.shot', () => {
     expect(t.play).not.toHaveBeenCalled()
   })
 
+  it('drops the shot showing when Fremdev is turned off in Fremkit, its timer included', () => {
+    let on = true
+    const t = setup({ enabled: () => on })
+    t.shot(7)
+    expect(t.shotOn(7)).toBeDefined()
+    on = false
+    t.dev.switched()
+    on = true
+    expect(t.shotOn(7)).toBeUndefined()
+    t.changed.mockClear()
+    vi.advanceTimersByTime(SHOT_VIEW_MS)
+    expect(t.changed).not.toHaveBeenCalled()
+  })
+
   it('forgets the shot when the feature is withdrawn or the socket closes', () => {
     const t = setup()
     t.shot(7)

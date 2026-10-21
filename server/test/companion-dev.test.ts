@@ -206,6 +206,43 @@ describe('CompanionDev', () => {
     expect(t.send).not.toHaveBeenCalled()
   })
 
+  it('keeps no dev.tabs that arrive while labs.fremdev is off', () => {
+    let on = false
+    const t = setup({ enabled: () => on })
+    t.dev.connect(A, 'Chrome', ['fremdev'])
+    t.tabs(A, [row(7)])
+    on = true
+    // Turned on: nothing stale shows; the rows come back with the extension's next dev.tabs.
+    expect(t.dev.snapshot().installs[0].tabs).toEqual([])
+    expect(t.dev.focus(A, 7)).toBe(false)
+    t.tabs(A, [row(8)])
+    expect(t.dev.snapshot().installs[0].tabs).toEqual([row(8)])
+  })
+
+  it('drops every install\'s rows and pending asks when the switch goes off', async () => {
+    let on = true
+    const t = setup({ enabled: () => on })
+    t.dev.connect(A, 'Chrome', ['fremdev', 'fremdev.report'])
+    t.tabs(A, [row(7)])
+    const pending = t.dev.report(A, 7, false)
+    on = false
+    t.changed.mockClear()
+    t.dev.switched()
+    expect(t.changed).toHaveBeenCalled()
+    expect(await pending).toBeNull()
+    on = true
+    expect(t.dev.snapshot().installs[0].tabs).toEqual([])
+    expect(t.dev.focus(A, 7)).toBe(false)
+  })
+
+  it('keeps the rows when the switch is still on', () => {
+    const t = setup()
+    t.dev.connect(A, 'Chrome', ['fremdev'])
+    t.tabs(A, [row(7)])
+    t.dev.switched()
+    expect(t.dev.snapshot().installs[0].tabs).toEqual([row(7)])
+  })
+
   it('shows nothing while labs.fremdev is off', async () => {
     let on = true
     const t = setup({ enabled: () => on })

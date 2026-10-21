@@ -247,7 +247,8 @@ export class CompanionDev {
         return this.publish(install)
       }
       case 'dev.tabs':
-        if (!install.on) return
+        // Fremdev off in Fremkit: nothing is kept, so nothing stale shows when it is turned on.
+        if (!this.enabled() || !install.on) return
         install.tabs = msg.tabs
         // A tab that left the list is closed or no longer a dev tab: its answers will not come.
         abandonWhere(install, (p) => !install.tabs.some((t) => t.tabId === p.tabId))
@@ -309,8 +310,18 @@ export class CompanionDev {
     return install !== undefined && install.on && install.connected && holds(install, FREMDEV_SHOT_MODULE)
   }
 
-  /** `labs.fremdev` may have changed: the snapshot says so. */
+  /**
+   * `labs.fremdev` may have changed: the snapshot says so. Off, every install's rows, shot and
+   * pending asks go at once; the extension sends its rows again on the `ready` that says on.
+   */
   switched(): void {
+    if (!this.enabled()) {
+      for (const install of this.installs.values()) {
+        install.tabs = []
+        dropShot(install)
+        abandon(install)
+      }
+    }
     this.changed()
   }
 
