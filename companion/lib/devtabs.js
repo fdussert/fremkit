@@ -341,10 +341,12 @@ export function reduce(tab, event, now) {
       const newest = (tab.history ?? []).find(isLive)
       // The dev server's client repeats the overlay's error in the console (consoleBuild in
       // lib/devlog.js), with a text clipped shorter and no frame: while an overlay-read entry is
-      // live, that says nothing new. The overlay read after a console-born entry takes it over,
-      // with its id, its count and the tally: one problem, one entry.
+      // live, that says nothing new. Nor does one while a console-born entry is live: a compile with
+      // several errors logs one `ERROR in` line each, and the first stands for them all until an
+      // overlay read, a build-clear, a hot update or a navigation. The overlay read after a
+      // console-born entry takes it over, with its id, its count and the tally: one problem, one entry.
       const fromConsole = event.fromConsole === true
-      if (fromConsole && newest && !newest.fromConsole) return tab
+      if (fromConsole && newest) return tab
       if (!fromConsole && newest?.fromConsole) {
         const adopted = { ...newest, text: event.text, path, line, col, frame, stack, fromConsole: false }
         return {

@@ -1209,6 +1209,17 @@ describe('build entries', () => {
     expect(builds(alone)).toEqual([expect.objectContaining({ text: 'Expression expected', path: './app/page.js', line: 5, col: 1, state: 'open' })])
     expect(builds(reduce(alone, { kind: 'hot' }, 300))[0].state).toBe('resolved')
     expect(builds(reduce(alone, { kind: 'navigated', url: 'http://localhost:5173/', title: 'App' }, 300))[0].state).toBe('resolved')
+    // A compile with two errors: webpack-dev-server 5.2.7's client logs one `ERROR in` line each
+    // (client/index.js, `errors`), then the overlay shows the first. One entry, counted once.
+    const second = "[webpack-dev-server] ERROR in ./src/panel.js 2:3\nModule parse failed: Unexpected token (2:3)\nFile was parsed as module type 'javascript/auto'."
+    let two = reduce(base(), consoleBuild(WDS_ERROR), 200)
+    two = reduce(two, consoleBuild(second), 201)
+    expect(builds(two)).toEqual([expect.objectContaining({ id: 1, path: './src/index.js', state: 'open' })])
+    two = reduce(two, overlay, 400)
+    expect(builds(two)).toEqual([expect.objectContaining({ id: 1, text: WDS_TEXT, fromConsole: false, state: 'open' })])
+    expect(two.errors).toMatchObject({ total: 1, open: 1 })
+    expect(two.buildTotal).toBe(1)
+    expect(consoleBuild('[webpack-dev-server] ERROR in ./src/a.js (./src/a.js) 3:4\nBad')).toMatchObject({ file: './src/a.js', line: 3, col: 5 })
     // A wire row never says where an entry came from.
     expect(JSON.stringify(wireTabs([alone]))).not.toContain('fromConsole')
   })

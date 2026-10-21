@@ -371,7 +371,11 @@ function cleanBuildText(s) {
   return clip(kept.join('\n').replace(/\s+/g, ' ').trim(), MAX_TEXT)
 }
 
-const WDS_ERROR_RE = /^\[webpack-dev-server\] ERROR(?: in (\S+)(?: (\d+):(\d+))?)?[^\n]*(?:\n([\s\S]*))?$/
+/**
+ * webpack-dev-server 5's `formatProblem` header, then the message: `ERROR`, `ERROR in <module>`,
+ * `ERROR in <module> (<file>)`, each maybe followed by `<line>:<col>`.
+ */
+const WDS_ERROR_RE = /^\[webpack-dev-server\] ERROR(?: in (\S+)(?: \([^)\n]*\))?(?: (\d+):(\d+))?)?[^\n]*(?:\n([\s\S]*))?$/
 /** Next logs its build error as `<file>\nError:   x <message>\n   ,-[<path>:<line>:<col>]…`. */
 const NEXT_BUILD_RE = /^(\.{0,2}\/[^\n]*)\nError:\s+(?:x\s+)?([^\n]*)/
 const NEXT_PLACE_RE = /,-\[[^\n]*?:(\d+):(\d+)\]/
