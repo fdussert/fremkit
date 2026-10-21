@@ -35,7 +35,7 @@ tagged `vX.Y.Z`.
   press **Unlock pairing** in **Settings → Devices**.
 - **Paired browser extensions are listed in Settings → Devices**, with their name (editable),
   when they paired and were last seen, whether they are connected, and a Remove button (**Remove
-  every iPad** and **Reset the certificate** leave them linked), beside the pairing request
+  every tablet** and **Reset the certificate** leave them linked), beside the pairing request
   waiting for an answer and a link to the extension's store page.
 - **Tile icons.** A tile's title can show an icon: a pictogram from the built-in set, or your own
   SVG, PNG or WebP, tinted to the theme or in its own colours. Under **/admin**, select a tile,
@@ -75,6 +75,13 @@ tagged `vX.Y.Z`.
 - **Backgrounds with dots at the end of their name.** A background uploaded from a file called,
   say, "a..png" was saved under a name the dashboard then refused: it never showed in the
   library and could not be deleted. It is now saved under a clean name.
+- **The clipboard widget masks one-time codes.** A six-digit code copied from a text message or
+  an authenticator (`482913`, `482 913`, `4829-1375`) showed in full on the Edge and on a paired
+  iPad; any run of four to eight digits copied on its own is now shown as a secret, and still
+  copies back with a tap. Numbers inside a sentence and phone numbers are shown as before.
+- **The clipboard widget leaves alone what more password managers copy.** Besides the standard
+  "concealed" and "transient" markers, a copy from 1Password, KeeWeb, Butler, Typeit4me or a
+  Keyboard Maestro generator is no longer recorded at all.
 
 ## 0.5.0 — 2026-10-19
 
