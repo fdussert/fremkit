@@ -277,6 +277,8 @@ export function createFremdev({
     const next = reduce(tab, event, now())
     // An event that changed nothing (the reducer handed the row back) sends nothing and wakes nothing.
     if (next === tabs[key]) return
+    // Nor does one that left a row just seeded for it as it was (a dev server's status line): no row.
+    if (!tabs[key] && next === tab) return
     // Nor does one that changed only what stays in memory (a build's code frame or stack): the
     // session copy and the row would go out exactly as before. The report reads the new values.
     if (event.kind === 'build' && tab === tabs[key] && sameOutside(tab, next)) {
