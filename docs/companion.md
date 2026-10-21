@@ -345,7 +345,8 @@ most, as a JPEG of at most 40 000 characters (a smaller size or quality when nee
 extension runs in the tab's isolated world, never the page's: one element above everything, its
 content in a closed shadow root, painted on a canvas rather than loaded from a URL, so a page's CSS
 cannot hide it and a strict Content-Security-Policy does not block it; it takes no click and is
-removed when it has faded. It needs no permission: the key press or the popup's click is the grant,
+removed when it has faded. A shot taken while a thumbnail still shows takes it out of the tab first,
+so the thumbnail is never in the next image. It needs no permission: the key press or the popup's click is the grant,
 and a dev tab is in Fremdev's own. A tab that refuses the script (a `chrome://` page, an error page)
 keeps the badge's **✓** as the only sign.
 
