@@ -40,6 +40,11 @@ export interface DiagnosticsFacts {
   /** Channels that are watched or have polled; the rest are only counted. */
   providers: { channel: string; watched: boolean; state: string }[]
   idleProviders: number
+  /**
+   * The recent-projects sources a tile ticked: an id, whether it is installed, how many projects
+   * it named, and its error code. Counts only — never a path.
+   */
+  recentProjects?: { id: string; available: boolean; count: number; error?: string }[]
   devices: { paired: number; remoteAccess: boolean }
   log: LogSource | null
 }
@@ -93,6 +98,13 @@ export function renderReport(f: DiagnosticsFacts): string {
   }
   if (f.idleProviders > 0) out.push('', `${f.idleProviders} other channels idle, never polled.`)
   out.push('')
+
+  if (f.recentProjects?.length) {
+    out.push('### Recent projects sources', '')
+    out.push('| Source | Installed | Projects | Error |', '|---|---|---|---|')
+    for (const r of f.recentProjects) out.push(`| ${r.id} | ${r.available ? 'yes' : 'no'} | ${r.count} | ${r.error ?? '–'} |`)
+    out.push('')
+  }
 
   if (f.log) {
     const where = f.log.kind === 'file' ? 'server.log' : 'since this server started'
@@ -211,6 +223,8 @@ export interface DiagnosticsDeps {
   channelFor: (connection: Connection) => string
   secretsFor: (connection: Connection) => Promise<Record<string, string>>
   channels: () => ChannelStatus[]
+  /** The recent-projects provider's last source statuses, or null before its first poll. */
+  recentProjects?: () => { id: string; enabled: boolean; available: boolean; count: number; error?: string }[] | null
   devices: () => { name: string }[]
   remoteAccess: () => boolean
   accessToken: string | null
@@ -359,6 +373,8 @@ export async function buildDiagnostics(deps: DiagnosticsDeps): Promise<string> {
     connections,
     providers,
     idleProviders: allChannels.length - active.length,
+    recentProjects: deps.recentProjects?.()?.filter((r) => r.enabled)
+      .map((r) => ({ id: r.id, available: r.available, count: r.count, ...(r.error ? { error: r.error } : {}) })),
     devices: { paired: pairedDevices.length, remoteAccess: deps.remoteAccess() },
     log: deps.log ? await deps.log(RAW_LOG_LINES).then(compactLog, () => null) : null,
   }

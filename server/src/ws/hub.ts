@@ -42,10 +42,11 @@ export const DEVICE_TERMINATE_MS = 2000
 /**
  * Channels a paired device never reaches, whatever its screen holds. `companion` carries the
  * pairing code shown on the Edge, what a browser tab here is playing and the WebRTC offers to
- * watch it: this Mac's dashboard only, in this first version. Matched by family, so a
- * `companion:<suffix>` is refused too.
+ * watch it: this Mac's dashboard only, in this first version. `recent-projects` names this Mac's
+ * folders by full path and opens them here: nothing a device across the room has a use for.
+ * Matched by family, so a `companion:<suffix>` is refused too.
  */
-export const LOCAL_ONLY_CHANNELS: ReadonlySet<string> = new Set(['companion'])
+export const LOCAL_ONLY_CHANNELS: ReadonlySet<string> = new Set(['companion', 'recent-projects'])
 
 function isLocalOnly(channel: string): boolean {
   return LOCAL_ONLY_CHANNELS.has(channel.split(':')[0])

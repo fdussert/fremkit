@@ -114,6 +114,23 @@ describe('buildDiagnostics', () => {
     expect(text).toContain('read ~/Library/x')
   })
 
+  it('reports the ticked recent-projects sources by count, never by path', async () => {
+    const text = await buildDiagnostics(deps({
+      recentProjects: () => [
+        { id: 'git', enabled: true, available: true, count: 12 },
+        { id: 'herdr', enabled: true, available: false, count: 0 },
+        { id: 'claude', enabled: true, available: true, count: 3, error: 'timeout' },
+        { id: 'zoxide', enabled: false, available: false, count: 0 },
+      ],
+    }))
+    expect(text).toContain('### Recent projects sources')
+    expect(text).toContain('| git | yes | 12 | – |')
+    expect(text).toContain('| herdr | no | 0 | – |')
+    expect(text).toContain('| claude | yes | 3 | timeout |')
+    expect(text).not.toContain('| zoxide')
+    expect(await buildDiagnostics(deps())).not.toContain('Recent projects')
+  })
+
   it('says when there is no log', async () => {
     const text = await buildDiagnostics(deps({ log: undefined }))
     expect(text).toContain('### Server log\n\nNot available.')

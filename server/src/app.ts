@@ -64,6 +64,7 @@ import { createShortcutsProvider } from './providers/shortcuts.js'
 import { createServiceStatusProvider } from './providers/service-status.js'
 import { createSystemProvider } from './providers/system.js'
 import { createDiskMapProvider } from './providers/disk-map.js'
+import { createRecentProjectsProvider, MEMORY_FILE as RECENT_PROJECTS_FILE, RECENT_PROJECTS_CHANNEL, RECENT_PROJECTS_WIDGET } from './providers/recent-projects/index.js'
 import { BrightnessService } from './brightness/service.js'
 import { createBrightnessProvider, BRIGHTNESS_INTERVAL_MS } from './brightness/provider.js'
 import { brightnessRoutes } from './brightness/routes.js'
@@ -284,6 +285,8 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     const config = store.get()
     return instanceInScope(config, commandScope(ctx, screenOfDevice), instanceId) ? findInstance(config, instanceId) : null
   }
+  /** Kept for the diagnostics, which report its sources' counts. Null in demo mode. */
+  let recentProjects: ReturnType<typeof createRecentProjectsProvider> | null = null
   /** Every real provider: the Mac, the accounts, the helper's reports. Never called in demo mode. */
   function registerRealProviders(): void {
     for (const p of opts.providers ?? []) registry.register(p)
@@ -309,6 +312,13 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     // Registered here, not in providers/index.ts, because that is where the config store lives.
     registry.register(createShortcutsProvider(undefined, instances))
     registry.register(createServiceStatusProvider({}, instances))
+    // Reads what every shown tile ticked, so a source no tile asked for is never read.
+    recentProjects = createRecentProjectsProvider({
+      instances: () => findInstances(store.get(), RECENT_PROJECTS_WIDGET),
+      memoryFile: join(opts.dataDir, RECENT_PROJECTS_FILE),
+      onChange: () => registry.refresh(RECENT_PROJECTS_CHANNEL),
+    })
+    registry.register(recentProjects)
     // A paired device may set only its own screen's brightness: see mayCommandBrightness. Read
     // at command time, so a device moved to another screen (or unpaired) is judged as it is now.
     registry.register(createBrightnessProvider(brightness, brightnessChanged, (id) => deviceService.deviceScreenOf(id)))
@@ -375,7 +385,14 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   // How each provider's last poll went, for the editor's widget health (providers/health.ts).
   const stopHealth = publishHealth(registry, (channel, data) => hub.broadcast(channel, data))
   let showAccountEmail = store.get().privacy.showAccountEmail
+  // A tile that ticks a source or adds a git root sees it now, not on the next minute's poll.
+  let recentProjectsWants = JSON.stringify(findInstances(store.get(), RECENT_PROJECTS_WIDGET))
   store.onChange((cfg) => {
+    const wants = JSON.stringify(findInstances(cfg, RECENT_PROJECTS_WIDGET))
+    if (wants !== recentProjectsWants) {
+      recentProjectsWants = wants
+      registry.refresh(RECENT_PROJECTS_CHANNEL)
+    }
     setServerLocale(cfg.locale)
     if (cfg.privacy.showAccountEmail !== showAccountEmail) {
       showAccountEmail = cfg.privacy.showAccountEmail
@@ -564,6 +581,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
       channelFor: (connection) => connections.channelFor(connection),
       secretsFor: (connection) => connections.secretsFor(connection),
       channels: () => registry.status(),
+      recentProjects: () => recentProjects?.snapshot()?.sources ?? null,
       devices: () => devices.list(),
       remoteAccess: () => devices.enabled,
       accessToken: opts.accessToken,
