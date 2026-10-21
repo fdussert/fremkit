@@ -127,7 +127,8 @@ function render(tab, entries, opts) {
   // ones among them are the history's live build entries (the ring uncounts any it pushes out).
   const all = Array.isArray(tab.history) ? tab.history : []
   const liveBuilds = all.filter((e) => e.kind === 'build' && (e.state === 'open' || e.state === 'seen')).length
-  const buildTotal = Math.max(all.filter((e) => e.kind === 'build').length, count(tab.buildTotal))
+  // Part of the errors total, never more (a row restored or reset with a stale count).
+  const buildTotal = Math.min(Math.max(all.filter((e) => e.kind === 'build').length, count(tab.buildTotal)), count(tab.errors?.total))
   if (builds.length > 0) {
     out.push('', `### ${t('reportBuild', liveBuilds, buildTotal)}`)
     for (const e of builds) out.push(...entryLines(e, opts))

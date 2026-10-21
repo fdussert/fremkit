@@ -387,7 +387,7 @@ export function reduce(tab, event, now) {
       // values, `perf`), another origin forgets them.
       if (originOf(event.url) !== originOf(tab.url)) {
         return {
-          ...next, inFlight: 0, errors: tally(), requests: tally(), history: [], server: 'up', devServer: null, serverBase: '/',
+          ...next, inFlight: 0, errors: tally(), buildTotal: 0, requests: tally(), history: [], server: 'up', devServer: null, serverBase: '/',
           perf: {}, perfDoc: null, perfEntryId: null, perfFlaggedDoc: null,
         }
       }

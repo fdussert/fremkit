@@ -1324,6 +1324,18 @@ describe('build entries', () => {
     const { buildTotal: _b, ...older } = tab
     expect(restoredTabs({ 1: older })[1].buildTotal).toBe(0)
     expect(restoredTabs({ 1: tab })[1].buildTotal).toBe(2)
+
+    // Another origin starts the counts again, the build count with them.
+    let moved = reduce(tab, { kind: 'navigated', url: 'http://localhost:5174/', title: 'Other' }, 700)
+    expect(moved.buildTotal).toBe(0)
+    moved = reduce(moved, build('Unexpected token (1:1)'), 800)
+    moved = reduce(moved, { kind: 'error', text: 'E1' }, 900)
+    moved = reduce(moved, { kind: 'error', text: 'E2' }, 950)
+    const fresh = buildReport(moved, fmt)
+    expect(fresh).toContain('### Build (1 open, 1 total)\n')
+    expect(fresh).toContain('### Errors (2 open, 2 total)\n')
+    // A stale count is never more than the errors total it is part of.
+    expect(buildReport({ ...moved, buildTotal: 99 }, fmt)).toContain('### Build (1 open, 3 total)\n')
   })
 })
 
