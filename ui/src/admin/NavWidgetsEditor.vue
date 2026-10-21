@@ -15,6 +15,7 @@ import SettingsForm from './SettingsForm.vue'
 import { pick, useI18n } from '../shared/i18n'
 import { NAV_SLOTS, navItemsOf, type NavSlot } from '../shared/types'
 import { useAdminStore } from './store'
+import { offeredManifests } from './labs'
 import { widgetDelete, widgetDeleteKey } from './widgetDelete'
 import { openContextMenu } from '../shared/ui/contextMenu'
 import { editorFocus } from './editorFocus'
@@ -36,7 +37,7 @@ const SLOT_OPTIONS = computed(() => NAV_SLOTS.map((value) => ({
 const sameSide = (slot: NavSlot) => navWidgets.value.filter((w) => w.slot === slot)
 const sidePosition = (id: string, slot: NavSlot): number => sameSide(slot).findIndex((w) => w.instanceId === id)
 /** Only widgets with a compact rendering may go in the bar; the server refuses the others. */
-const addable = computed(() => Object.values(s.state.manifests).filter((m) => m.compact))
+const addable = computed(() => offeredManifests(s.state.config, s.state.manifests).filter((m) => m.compact))
 
 const manifestOf = (widgetId: string) => s.state.manifests[widgetId]
 const label = (widgetId: string): string => pick(manifestOf(widgetId)?.name) || widgetId

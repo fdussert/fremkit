@@ -619,6 +619,8 @@ export const fr: Record<string, string> = {
   'dashboard.navigation.previousNames': 'Voir les pages précédentes',
   'dashboard.navigation.nextNames': 'Voir les pages suivantes',
   'dashboard.widget.notInstalled': 'non installé',
+  /** A placed widget whose experimental feature is off (`labs.fremdev`): the admin's canvas only. */
+  'dashboard.widget.featureOff': 'Fonction désactivée',
   'dashboard.remote.noScreen': 'Choisissez un écran pour cette tablette dans l’admin du Mac',
   'dashboard.remote.noScreen.ipad': 'Choisissez un écran pour cet iPad dans l’admin du Mac',
   'dashboard.remote.unauthorized': 'Cette tablette n’est plus autorisée',

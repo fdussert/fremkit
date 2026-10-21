@@ -26,7 +26,9 @@ const props = withDefaults(defineProps<{
   adminGesture?: AdminGesture
   /** The default preserves the existing compact page dots. */
   navStyle?: NavStyle
-}>(), { navItems: () => [], widgets: () => ({}), manifests: () => ({}), cell: 40 })
+  /** Bar items whose experimental feature is off, drawn greyed (the admin's canvas). */
+  off?: ReadonlySet<string>
+}>(), { navItems: () => [], widgets: () => ({}), manifests: () => ({}), cell: 40, off: () => new Set<string>() })
 const emit = defineEmits<{
   select: [index: number]; swipe: [delta: 1 | -1]
   /** A compact widget with `popup` on was tapped; the element is where its popover hangs from. */
@@ -396,6 +398,7 @@ const style = computed<Record<string, string | number>>(() => {
         :cell="cell"
         :height="height"
         :edit="edit"
+        :off="off.has(item.instanceId)"
         :data-nav-instance="item.instanceId"
         @tap="emit('tap', item, $event)"
       />
