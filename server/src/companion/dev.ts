@@ -444,14 +444,19 @@ function dropShot(install: Install): void {
 
 /**
  * The install's rows, the shot's on its tab while it shows. Its thumbnail is left out when the rows
- * and it would weigh more than `DEV_INSTALL_MAX_BYTES`: the rows are never what gives way.
+ * as they would be published, the shot included, weigh more than `DEV_INSTALL_MAX_BYTES`: the rows
+ * are never what gives way.
  */
 function rowsWithShot(install: Install, now: number): DevRow[] {
   const shot = install.shot
   if (shot === null || shot.until <= now || !install.tabs.some((t) => t.tabId === shot.tabId)) return install.tabs
-  const fits = shot.thumb !== null && Buffer.byteLength(JSON.stringify(install.tabs), 'utf8') + shot.thumb.length <= DEV_INSTALL_MAX_BYTES
-  const view: DevShotView = { thumb: fits ? shot.thumb : null, until: shot.until }
-  return install.tabs.map((t) => (t.tabId === shot.tabId ? { ...t, shot: view } : t))
+  const withView = (thumb: string | null): DevRow[] =>
+    install.tabs.map((t) => (t.tabId === shot.tabId ? { ...t, shot: { thumb, until: shot.until } } : t))
+  if (shot.thumb !== null) {
+    const rows = withView(shot.thumb)
+    if (Buffer.byteLength(JSON.stringify(rows), 'utf8') <= DEV_INSTALL_MAX_BYTES) return rows
+  }
+  return withView(null)
 }
 
 /** The modules of `known` (`FREMDEV_FEATURES`) in a list: an unknown `fremdev.*` name is not one. */

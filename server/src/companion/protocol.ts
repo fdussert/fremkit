@@ -201,7 +201,7 @@ export const FREMDEV_FEATURES: readonly string[] = [
 
 /**
  * The names of the modules an extension runs. Unknown names pass, so a newer extension with a module
- * this server has never heard of still connects. 16: the cockpit lists 9, and room is left so a
+ * this server has never heard of still connects. 16: the cockpit lists 10, and room is left so a
  * newer extension's list does not cost the install its whole list through hello's `.catch`.
  */
 const ModulesSchema = z.array(z.string().min(1).max(32)).max(16)

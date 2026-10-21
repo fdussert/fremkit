@@ -229,7 +229,20 @@ describe('the snapshot cap with a thumbnail', () => {
     const t = setup()
     t.shot(7, thumbOf(SHOT_THUMB_MAX))
     expect(t.shotOn(7)?.thumb?.length).toBeGreaterThan(SHOT_THUMB_MAX - 4)
-    expect(Buffer.byteLength(JSON.stringify(t.rows()))).toBeLessThanOrEqual(DEV_INSTALL_MAX_BYTES + 100)
+    expect(Buffer.byteLength(JSON.stringify(t.rows()))).toBeLessThanOrEqual(DEV_INSTALL_MAX_BYTES)
+  })
+
+  it('counts the shot itself, not only the thumbnail: rows and thumbnail just under the cap leave it out', () => {
+    const t = setup()
+    const rows = Array.from({ length: 2 }, (_, i) => row(i + 7, heavy()))
+    t.dev.onMessage(A, { type: 'dev.tabs', tabs: rows })
+    const rowsBytes = Buffer.byteLength(JSON.stringify(rows))
+    const thumb = thumbOf(DEV_INSTALL_MAX_BYTES - rowsBytes - 10)
+    expect(thumb.length).toBeLessThanOrEqual(SHOT_THUMB_MAX)
+    expect(rowsBytes + thumb.length).toBeLessThanOrEqual(DEV_INSTALL_MAX_BYTES)
+    t.shot(7, thumb)
+    expect(t.shotOn(7)?.thumb).toBeNull()
+    expect(Buffer.byteLength(JSON.stringify(t.rows()))).toBeLessThanOrEqual(DEV_INSTALL_MAX_BYTES)
   })
 })
 
