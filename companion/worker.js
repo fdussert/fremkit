@@ -9,7 +9,8 @@
 
 import { browserName } from './lib/browser.js'
 import { createFremdev } from './fremdev.js'
-import { shootTab } from './lib/devshot.js'
+import { isThumb, shootTab, shotFeedback, thumbOf } from './lib/devshot.js'
+import { shotOverlay } from './lib/shotview.js'
 import { handshake } from './lib/handshake.js'
 import { grantToReturn } from './lib/grant.js'
 import { closeOutcome, refusalOf } from './lib/link.js'
@@ -866,6 +867,24 @@ async function shoot(given) {
     fetch: (...args) => fetch(...args),
     url: `${HTTP}/companion/dev/shot`,
     flash,
+    after: async (tabId, shot) => showShot(tabId, await thumbOf(shot)),
+  })
+}
+
+/** The options page's "Play the screenshot sound": off unless ticked. */
+const SHOT_SOUND_KEY = 'fremdevShotSound'
+
+/**
+ * A shot is on the clipboard (⌃⇧S, or the popup's Copy screenshot): the flash and the thumbnail in
+ * the tab, in the isolated world (the key press or the popup's click is the activeTab grant, and a
+ * dev tab is in Fremdev's own grant); then `dev.shot` for the Edge. An injection the tab refuses (a
+ * chrome:// page, an error page) leaves the badge's ✓ as the only sign.
+ */
+function showShot(tabId, thumb) {
+  return shotFeedback(tabId, thumb, {
+    inject: (id, shown) => chrome.scripting.executeScript({ target: { tabId: id }, func: shotOverlay, args: [shown] }),
+    sound: async () => (await chrome.storage.local.get(SHOT_SOUND_KEY))[SHOT_SOUND_KEY] === true,
+    tellEdge: (id, shown, loud) => fremdev.tellShot(id, shown, loud),
   })
 }
 
@@ -952,6 +971,15 @@ chrome.runtime.onMessage.addListener((msg, sender, respond) => {
       return reply(fremdev.stop().then(() => ({ ok: true })))
     case 'fremdevPatterns':
       return reply(fremdev.patternsChanged().then(() => ({ ok: true })))
+    // The popup's Copy screenshot landed on the clipboard: its thumbnail, made in the popup. Only for
+    // a dev tab, the one the popup's button is on.
+    case 'fremdevShot':
+      if (!validId(msg.tabId) || (msg.thumb !== null && !isThumb(msg.thumb))) return
+      return reply(ready.then(async () => {
+        if (!(await fremdev.isDevTab(msg.tabId))) return { ok: false }
+        await showShot(msg.tabId, msg.thumb)
+        return { ok: true }
+      }))
     // The popup's Copy report: the text comes back, the popup writes the clipboard within its click.
     case 'fremdevReport':
       return reply(fremdev.report(msg.tabId, msg.stack === true).then((text) => (text === null ? { ok: false } : { ok: true, text })))

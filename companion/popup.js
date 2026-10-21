@@ -6,7 +6,7 @@ import { localize, t } from './i18n.js'
 import { browserName } from './lib/browser.js'
 import { BUILTIN_PERMISSION_ORIGINS, parsePattern } from './lib/devhosts.js'
 import { homePath } from './lib/devlog.js'
-import { dataUrlBlob } from './lib/devshot.js'
+import { dataUrlBlob, thumbOf } from './lib/devshot.js'
 import { fremplayBlocked, shareErrorKey } from './lib/errors.js'
 import { cleanFrames, embeddedPlayer, pickVideo, survey } from './lib/video.js'
 
@@ -234,6 +234,8 @@ async function copyScreenshot(tabId) {
     const shot = chrome.tabs.captureVisibleTab(tab.windowId, { format: 'png' }).then(dataUrlBlob)
     await navigator.clipboard.write([new ClipboardItem({ 'image/png': shot })])
     outcome = 'done'
+    // On the clipboard: the worker shows it in the tab and on the Edge, from a thumbnail made here.
+    void thumbOf(await shot).then((thumb) => ask('fremdevShot', { tabId, thumb }))
   } catch (err) {
     // No capture right, or the popup lost focus. Only the reason is logged, never the image.
     console.warn('Fremdev: copy screenshot failed:', err?.message ?? err)

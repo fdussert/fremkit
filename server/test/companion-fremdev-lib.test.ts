@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 // @ts-expect-error plain JS module outside server/, no declarations
 import { BUILTIN_PERMISSION_ORIGINS, FREMKIT_EXCLUDES, inOrigins, isDevUrl, parsePattern, releasableOrigins } from '../../companion/lib/devhosts.js'
@@ -7,7 +8,7 @@ import { boundFrames, errorText, framePlace, homePath, hotReloadSignal, isNoise,
 // @ts-expect-error plain JS module
 import { emptyTab, fremdevSupport, HISTORY_MAX, reduce, SLOW_MAX, restoredTabs, Throttle, validRow, wireTabs } from '../../companion/lib/devtabs.js'
 // @ts-expect-error plain JS module
-import { hello, devTabs, modulesMsg, ping } from '../../companion/lib/protocol.js'
+import { hello, devShot, devTabs, modulesMsg, ping } from '../../companion/lib/protocol.js'
 // @ts-expect-error plain JS module
 import { buildReport, REPORT_MAX, reportMessage } from '../../companion/lib/devreport.js'
 // @ts-expect-error plain JS module
@@ -17,7 +18,7 @@ import { InFlight, MAX_IN_FLIGHT, MAX_TRACKED, SLOW_MS, STALE_MS } from '../../c
 // @ts-expect-error plain JS module
 import { CLS_POOR, LCP_POOR_MS, median, PERF_KEYS, PERF_MIN_MS, PERF_RATIO, PERF_SAMPLES, PerfMemory, perfVerdict } from '../../companion/lib/devperf.js'
 // @ts-expect-error plain JS module
-import { dataUrlBlob, fitShot, shootTab } from '../../companion/lib/devshot.js'
+import { blobDataUrl, dataUrlBlob, fitShot, isThumb, shootTab, shotFeedback, THUMB_MAX_CHARS, thumbOf } from '../../companion/lib/devshot.js'
 import { DEV_METHODS, DevTabSchema } from '../src/companion/protocol.js'
 
 const both = (host: string) => [`http://${host}/*`, `https://${host}/*`]
@@ -814,6 +815,8 @@ describe('protocol builders', () => {
     expect(modulesMsg(['fremdev'])).toEqual({ type: 'modules', modules: ['fremdev'] })
     expect(devTabs([])).toEqual({ type: 'dev.tabs', tabs: [] })
     expect(ping()).toEqual({ type: 'ping' })
+    expect(devShot(7, 'data:image/jpeg;base64,/9j/4A==', true)).toEqual({ type: 'dev.shot', tabId: 7, thumb: 'data:image/jpeg;base64,/9j/4A==', sound: true })
+    expect(devShot(7, undefined, 'yes')).toEqual({ type: 'dev.shot', tabId: 7, thumb: null, sound: false })
   })
 })
 
@@ -1905,6 +1908,29 @@ describe('shootTab', () => {
     expect(flashes).toEqual(['!'])
   })
 
+  it('shows the shot after a 200 only, with the shot posted', async () => {
+    const after = vi.fn(async () => undefined)
+    const { d, flashes } = deps({ after })
+    await shootTab(TAB, d)
+    expect(after).toHaveBeenCalledTimes(1)
+    const [tabId, shot] = after.mock.calls[0] as unknown as [number, Blob]
+    expect(tabId).toBe(7)
+    expect(shot.type).toBe('image/jpeg')
+    expect(flashes).toEqual(['✓'])
+    for (const status of [409, 500]) {
+      const refused = vi.fn(async () => undefined)
+      const r = deps({ after: refused, fetch: vi.fn(async () => ({ status })) })
+      await shootTab(TAB, r.d)
+      expect(refused).not.toHaveBeenCalled()
+    }
+  })
+
+  it('keeps ✓ when showing the shot fails', async () => {
+    const { d, flashes } = deps({ after: vi.fn(async () => { throw new Error('no tab') }) })
+    await shootTab(TAB, d)
+    expect(flashes).toEqual(['✓'])
+  })
+
   it('flashes ! on any other answer, a throw, a failed capture, or a shot that cannot fit', async () => {
     for (const over of [
       { fetch: vi.fn(async () => ({ status: 409 })) },
@@ -1918,5 +1944,148 @@ describe('shootTab', () => {
       await shootTab(TAB, d)
       expect(flashes, JSON.stringify(Object.keys(over))).toEqual(['!'])
     }
+  })
+})
+
+describe('the shot thumbnail', () => {
+  /** A canvas whose JPEG weighs what `sizes(quality, w, h)` says, its bytes starting FF D8 FF. */
+  function fakes(width: number, height: number, sizes: (quality: number, w: number, h: number) => number) {
+    const drawn: Array<{ w: number; h: number }> = []
+    const encoded: Array<{ w: number; quality: number }> = []
+    const image = { width, height, close: vi.fn() }
+    const decode = vi.fn(async () => image)
+    const canvas = vi.fn((w: number, h: number) => ({
+      getContext: () => ({ drawImage: () => void drawn.push({ w, h }) }),
+      convertToBlob: async ({ type, quality }: { type: string; quality: number }) => {
+        encoded.push({ w, quality })
+        const bytes = new Uint8Array(sizes(quality, w, h))
+        bytes.set([0xff, 0xd8, 0xff].slice(0, bytes.length))
+        return new Blob([bytes], { type })
+      },
+    }))
+    return { image, decode, canvas, drawn, encoded }
+  }
+
+  it('blobDataUrl: the bytes in base64, of the blob\'s type', async () => {
+    expect(await blobDataUrl(new Blob([new Uint8Array([0xff, 0xd8, 0xff, 0xe0])], { type: 'image/jpeg' }))).toBe('data:image/jpeg;base64,/9j/4A==')
+    // Larger than one String.fromCharCode slice.
+    const big = new Uint8Array(100_000).fill(65)
+    const url = await blobDataUrl(new Blob([big], { type: 'image/jpeg' }))
+    expect(atob(url.slice('data:image/jpeg;base64,'.length))).toBe('A'.repeat(100_000))
+  })
+
+  it('isThumb: a JPEG data URL of whole base64 quads, at most THUMB_MAX_CHARS', () => {
+    expect(THUMB_MAX_CHARS).toBe(40_000)
+    expect(isThumb('data:image/jpeg;base64,/9j/4A==')).toBe(true)
+    const prefix = 'data:image/jpeg;base64,/9j/'
+    expect(isThumb(prefix + 'A'.repeat(THUMB_MAX_CHARS - prefix.length - ((THUMB_MAX_CHARS - prefix.length) % 4)))).toBe(true)
+    for (const bad of [
+      'data:image/png;base64,iVBORw0KGgo=',
+      'data:image/jpeg;base64,iVBORw0KGgo=',
+      'data:image/jpeg;base64,/9j/4A=',
+      'data:image/jpeg,/9j/4A==',
+      'data:image/svg+xml;base64,PHN2Zz4=',
+      'https://example.com/a.jpg',
+      prefix + 'A'.repeat(THUMB_MAX_CHARS),
+      null,
+      42,
+    ]) expect(isThumb(bad), String(bad).slice(0, 40)).toBe(false)
+  })
+
+  it('draws a 2560×1440 shot at 320×180, JPEG 0.7', async () => {
+    const f = fakes(2560, 1440, () => 9_000)
+    const thumb = await thumbOf(new Blob([new Uint8Array(10)]), { decode: f.decode, canvas: f.canvas })
+    expect(isThumb(thumb)).toBe(true)
+    expect(f.drawn).toEqual([{ w: 320, h: 180 }])
+    expect(f.encoded).toEqual([{ w: 320, quality: 0.7 }])
+    expect(f.image.close).toHaveBeenCalled()
+  })
+
+  it('never enlarges a small shot', async () => {
+    const f = fakes(200, 100, () => 3_000)
+    await thumbOf(new Blob([new Uint8Array(10)]), { decode: f.decode, canvas: f.canvas })
+    expect(f.drawn).toEqual([{ w: 200, h: 100 }])
+  })
+
+  it('steps the quality down, then the size, and gives null when nothing fits', async () => {
+    // 0.75 × 40 000 base64 chars ≈ 30 000 bytes: only 160 px at 0.5 fits.
+    const f = fakes(1600, 900, (q, w) => (w === 160 && q === 0.5 ? 20_000 : 31_000))
+    const thumb = await thumbOf(new Blob([new Uint8Array(10)]), { decode: f.decode, canvas: f.canvas })
+    expect(f.encoded).toEqual([
+      { w: 320, quality: 0.7 }, { w: 320, quality: 0.5 },
+      { w: 240, quality: 0.7 }, { w: 240, quality: 0.5 },
+      { w: 160, quality: 0.7 }, { w: 160, quality: 0.5 },
+    ])
+    expect(thumb!.length).toBeLessThanOrEqual(THUMB_MAX_CHARS)
+    const never = fakes(1600, 900, () => 31_000)
+    expect(await thumbOf(new Blob([new Uint8Array(10)]), { decode: never.decode, canvas: never.canvas })).toBeNull()
+    expect(never.image.close).toHaveBeenCalled()
+  })
+
+  it('gives null for an image that does not decode', async () => {
+    expect(await thumbOf(new Blob([]), { decode: async () => { throw new Error('bad') } })).toBeNull()
+  })
+
+  it('shotFeedback: the tab first, then the Edge with the sound option; a bad thumb goes as null', async () => {
+    const calls: unknown[][] = []
+    const deps = {
+      inject: vi.fn(async (...a: unknown[]) => void calls.push(['inject', ...a])),
+      tellEdge: vi.fn(async (...a: unknown[]) => void calls.push(['edge', ...a])),
+      sound: vi.fn(async () => true),
+    }
+    await shotFeedback(7, 'data:image/jpeg;base64,/9j/4A==', deps)
+    await shotFeedback(7, 'data:image/png;base64,iVBORw0KGgo=', { ...deps, sound: vi.fn(async () => false) })
+    expect(calls).toEqual([
+      ['inject', 7, 'data:image/jpeg;base64,/9j/4A=='],
+      ['edge', 7, 'data:image/jpeg;base64,/9j/4A==', true],
+      ['inject', 7, null],
+      ['edge', 7, null, false],
+    ])
+  })
+
+  it('shotFeedback: a tab that refuses the script still tells the Edge; a failing option reads off', async () => {
+    const tellEdge = vi.fn(async () => true)
+    await shotFeedback(7, null, {
+      inject: vi.fn(async () => { throw new Error('Cannot access a chrome:// URL') }),
+      tellEdge,
+      sound: vi.fn(async () => { throw new Error('storage') }),
+    })
+    expect(tellEdge).toHaveBeenCalledWith(7, null, false)
+    // Only `true` turns the sound on.
+    await shotFeedback(7, null, { inject: async () => undefined, tellEdge, sound: async () => 'yes' })
+    expect(tellEdge).toHaveBeenLastCalledWith(7, null, false)
+    await expect(shotFeedback(7, null, { inject: async () => undefined, tellEdge: async () => { throw new Error('x') }, sound: async () => false })).resolves.toBeUndefined()
+  })
+})
+
+describe('the in-tab shot overlay', () => {
+  const overlay = readFileSync(join(import.meta.dirname, '..', '..', 'companion', 'lib', 'shotview.js'), 'utf8')
+
+  it('is one self-contained function: executeScript serializes it alone', async () => {
+    // @ts-expect-error plain JS module
+    const { shotOverlay } = await import('../../companion/lib/shotview.js')
+    const text: string = shotOverlay.toString()
+    expect(overlay).not.toMatch(/^import /m)
+    // Nothing from outside the function but browser globals.
+    expect(() => new Function(`return (${text})`)()).not.toThrow()
+    expect(text).toContain("attachShadow({ mode: 'closed' })")
+    expect(text).toContain("'z-index': '2147483647'")
+    expect(text).toContain("'pointer-events': 'none'")
+    expect(text).toContain('prefers-reduced-motion: reduce')
+  })
+
+  it('loads nothing by URL and writes no markup: a strict CSP has nothing to refuse', () => {
+    expect(overlay).not.toMatch(/innerHTML|outerHTML|insertAdjacentHTML|createElement\('(img|style|link|script)'\)|\.src\s*=|setAttribute\('style'|adoptedStyleSheets/)
+    expect(overlay).toContain('createImageBitmap(new Blob(')
+    // An `!important` opacity would beat the animations: the flash would never show.
+    expect(overlay).not.toMatch(/set\((flash|canvas), \{[^}]*opacity/)
+    expect(overlay).toContain("createElement('canvas')")
+  })
+
+  it('the worker injects it in the isolated world, never MAIN', () => {
+    const worker = readFileSync(join(import.meta.dirname, '..', '..', 'companion', 'worker.js'), 'utf8')
+    const call = worker.match(/executeScript\(\{ target: \{ tabId: id \}, func: shotOverlay, args: \[shown\] \}\)/)
+    expect(call).not.toBeNull()
+    expect(worker).not.toMatch(/func: shotOverlay[^)]*world/)
   })
 })
