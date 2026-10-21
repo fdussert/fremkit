@@ -140,10 +140,11 @@ export class CompanionSession {
   /**
    * The greeting, with the state of the modules this server can switch off. One switch for both
    * (`labs.companion`) and Fremdev's own (`fremdevEnabled`); `fremdev` being there at all is what
-   * tells the extension this server understands its dev messages.
+   * tells the extension this server understands its dev messages, and `shotView` that it takes
+   * `dev.shot` too.
    */
   private ready(): ServerMessage {
-    return { type: 'ready', protocol: PROTOCOL, modules: { fremplay: this.enabled(), fremdev: this.fremdevEnabled() } }
+    return { type: 'ready', protocol: PROTOCOL, modules: { fremplay: this.enabled(), fremdev: this.fremdevEnabled(), shotView: true } }
   }
 
   connect(deviceId: string, name: string): void {
@@ -196,6 +197,7 @@ export class CompanionSession {
       case 'ping':
       case 'dev.report':
       case 'dev.open.done':
+      case 'dev.shot':
         // Fremdev's; an install it does not know (no modules in its hello) is ignored there.
         return this.dev?.onMessage(deviceId, msg)
       case 'tab.started':

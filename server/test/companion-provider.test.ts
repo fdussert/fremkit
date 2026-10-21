@@ -297,7 +297,7 @@ describe('createCompanion', () => {
     sent.length = 0
     set({ ...configWith('page'), labs: { devices: false, companion: false } } as Config)
     expect(sent).toEqual([
-      { type: 'ready', protocol: 2, modules: { fremplay: false, fremdev: false } },
+      { type: 'ready', protocol: 2, modules: { fremplay: false, fremdev: false, shotView: true } },
       { type: 'tab.refused', sessionId: S1, reason: 'disabled' },
     ])
     expect(companion.session.snapshot().tab.state).toBe('idle')

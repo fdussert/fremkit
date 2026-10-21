@@ -50,3 +50,5 @@ export const stopped = (sessionId) => ({ type: 'tab.stopped', sessionId })
 export const modulesMsg = (modules) => ({ type: 'modules', modules })
 export const devTabs = (tabs) => ({ type: 'dev.tabs', tabs })
 export const ping = () => ({ type: 'ping' })
+/** A shot reached the clipboard: its thumbnail (a JPEG data URL, or null) and the sound option. */
+export const devShot = (tabId, thumb, sound) => ({ type: 'dev.shot', tabId, thumb: thumb ?? null, sound: sound === true })

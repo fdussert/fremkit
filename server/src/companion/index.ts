@@ -17,6 +17,7 @@ import { placeFremplay } from './placement.js'
 import { COMPANION_CHANNEL, createCompanionProvider, type CompanionProvider } from './provider.js'
 import { companionRoutes } from './routes.js'
 import { companionShotRoute, osascriptImageClipboard, type ImageClipboard } from './shot.js'
+import { afplayShotSound, type ShotSound } from './shotSound.js'
 import { CompanionSession } from './session.js'
 import { CompanionSockets, companionSocket } from './socket.js'
 
@@ -34,6 +35,8 @@ export interface CompanionOptions {
   imageClipboard?: ImageClipboard
   /** The data folder, where the shot's temporary file is written (0600, removed at once). */
   dataDir?: string
+  /** The capture sound a `dev.shot` may ask for: macOS's, through afplay, unless a test or a demo says. */
+  shotSound?: ShotSound
 }
 
 export interface Companion {
@@ -75,6 +78,7 @@ export async function createCompanion(opts: CompanionOptions): Promise<Companion
     changed: refreshDev,
     enabled: fremdevOn,
     pairedCount: pairedExtensions,
+    sound: opts.shotSound ?? afplayShotSound(),
   })
   // Assigned right below: the session only calls `changed` once something happens to it.
   let provider!: CompanionProvider

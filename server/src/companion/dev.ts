@@ -17,7 +17,8 @@ import { INSTANCE_ID_MAX, type Config } from '../config/schema.js'
 import { tr, type MessageKey } from '../i18n.js'
 import { pbPasteboard, type Pasteboard } from '../providers/clipboard.js'
 import type { CommandContext, Provider } from '../providers/types.js'
-import { FREMDEV_FEATURES, FREMDEV_MODULE, FREMDEV_OPEN_MODULE, FREMDEV_RELOAD_MODULE, FREMDEV_REPORT_MODULE, FREMDEV_SHOT_MODULE, type DevTab, type ExtensionMessage, type ServerMessage } from './protocol.js'
+import { FREMDEV_FEATURES, FREMDEV_MODULE, FREMDEV_OPEN_MODULE, FREMDEV_RELOAD_MODULE, FREMDEV_REPORT_MODULE, FREMDEV_SHOT_MODULE, FREMDEV_SHOTVIEW_MODULE, type DevTab, type ExtensionMessage, type ServerMessage } from './protocol.js'
+import { silentShotSound, type ShotSound } from './shotSound.js'
 
 export const COMPANION_DEV_CHANNEL = 'companion:dev'
 
@@ -37,6 +38,19 @@ export const OPEN_TIMEOUT_MS = 5_000
 /** At most this many asks (reports and the like) waited for per install: one more is refused rather than queued. */
 export const MAX_PENDING_ASKS = 8
 
+/** How long the Edge shows a shot on its tab's row (the thumbnail and "Copied"). */
+export const SHOT_VIEW_MS = 3_000
+
+/** The capture sound plays at most once per this many ms per install. */
+export const SHOT_SOUND_MIN_MS = 1_000
+
+/**
+ * The most an install's rows may weigh, as JSON, with a shot's thumbnail on one of them: what the
+ * extension holds its own `dev.tabs` to. The rows are never trimmed for a thumbnail; the thumbnail is
+ * left out instead, and the row still says the shot was copied.
+ */
+export const DEV_INSTALL_MAX_BYTES = 60_000
+
 /** A safety net only: every change is pushed through a refresh. */
 export const COMPANION_DEV_INTERVAL_MS = 30_000
 
@@ -44,6 +58,12 @@ export const COMPANION_DEV_INTERVAL_MS = 30_000
 export function fremdevEnabled(config: Pick<Config, 'labs'>): boolean {
   return config.labs?.companion === true && config.labs?.fremdev === true
 }
+
+/** A shot on its row, while the Edge shows it: the thumbnail (null when none came or it did not fit) and until when. */
+export type DevShotView = { thumb: string | null; until: number }
+
+/** A dev tab as the snapshot lists it: the extension's row, plus a shot while one shows. */
+export type DevRow = DevTab & { shot?: DevShotView }
 
 export type DevSnapshot = {
   /** `fremdevEnabled`: `labs.companion` and `labs.fremdev` both on; otherwise nothing is listed. */
@@ -59,7 +79,7 @@ export type DevSnapshot = {
    * switched it on. `connected` false: its socket is closed (the extension closes it while no dev
    * tab is open, the normal idle state), it has no rows, and its `on` is the last it said.
    */
-  installs: Array<{ deviceId: string; name: string; on: boolean; connected: boolean; report: boolean; features: string[]; tabs: DevTab[] }>
+  installs: Array<{ deviceId: string; name: string; on: boolean; connected: boolean; report: boolean; features: string[]; tabs: DevRow[] }>
 }
 
 export interface CompanionDevOptions {
@@ -70,9 +90,11 @@ export interface CompanionDevOptions {
   pairedCount: () => number
   /** The modules a control on the Edge depends on: `FREMDEV_FEATURES`, which a test may widen. */
   features?: readonly string[]
+  /** The capture sound a `dev.shot` may ask for; silent unless given (index.ts gives afplay's). */
+  sound?: ShotSound
 }
 
-export type DevMessage = Extract<ExtensionMessage, { type: 'modules' | 'dev.tabs' | 'ping' | 'dev.report' | 'dev.open.done' }>
+export type DevMessage = Extract<ExtensionMessage, { type: 'modules' | 'dev.tabs' | 'ping' | 'dev.report' | 'dev.open.done' | 'dev.shot' }>
 
 /** The messages that answer an ask, matched to it by their `id` and `tabId`. */
 export type DevAnswerType = 'dev.report' | 'dev.open.done'
@@ -103,6 +125,10 @@ interface Install {
   publishedAt?: number
   /** The trailing publish of rows that came too soon after the last one. */
   timer: ReturnType<typeof setTimeout> | null
+  /** The shot the Edge shows, until `SHOT_VIEW_MS` after it came; `timer` clears it. */
+  shot: { tabId: number; thumb: string | null; until: number; timer: ReturnType<typeof setTimeout> } | null
+  /** When the capture sound last played for this install. */
+  soundAt: number
 }
 
 export class CompanionDev {
@@ -112,6 +138,7 @@ export class CompanionDev {
   private readonly enabled: () => boolean
   private readonly pairedCount: () => number
   private readonly knownFeatures: readonly string[]
+  private readonly sound: ShotSound
   /**
    * The Fremdev-capable installs heard since this server started, connected or not, in the order
    * they first said hello. Forgotten only when their device is removed (`forget`, `prune`).
@@ -125,6 +152,7 @@ export class CompanionDev {
     this.enabled = opts.enabled
     this.pairedCount = opts.pairedCount
     this.knownFeatures = opts.features ?? FREMDEV_FEATURES
+    this.sound = opts.sound ?? silentShotSound
   }
 
   /**
@@ -139,6 +167,7 @@ export class CompanionDev {
     const known = this.installs.get(deviceId)
     if (known) {
       if (known.timer) clearTimeout(known.timer)
+      dropShot(known)
       // A new socket: the old one's answers will never come.
       abandon(known)
     }
@@ -152,6 +181,9 @@ export class CompanionDev {
       tabs: [],
       pending: new Map(),
       timer: null,
+      shot: null,
+      // The rate limit outlives the socket: a reconnect is no reason to play twice in a second.
+      soundAt: known?.soundAt ?? -Infinity,
     })
     this.changed()
   }
@@ -167,6 +199,7 @@ export class CompanionDev {
     install.timer = null
     install.connected = false
     install.tabs = []
+    dropShot(install)
     // Nobody is left to answer: the commands waiting give up now rather than at their timeout.
     abandon(install)
     this.changed()
@@ -194,6 +227,8 @@ export class CompanionDev {
       case 'dev.report':
       case 'dev.open.done':
         return answered(install, msg)
+      case 'dev.shot':
+        return this.shot(install, msg)
       case 'modules': {
         const on = msg.modules.includes(FREMDEV_MODULE)
         const report = msg.modules.includes(FREMDEV_REPORT_MODULE)
@@ -204,6 +239,7 @@ export class CompanionDev {
         // Off: nothing asked will be answered. On: what needs a feature withdrawn will not either.
         if (!on) abandon(install)
         else abandonWhere(install, (p) => !holds(install, p.feature))
+        if (!on || !holds(install, FREMDEV_SHOTVIEW_MODULE)) dropShot(install)
         if (on === install.on) return this.publish(install)
         install.on = on
         // Switched off, its rows are stale at once.
@@ -291,10 +327,35 @@ export class CompanionDev {
             connected: i.connected,
             report: i.report,
             features: [...i.features].sort(),
-            tabs: i.tabs,
+            tabs: rowsWithShot(i, this.now()),
           }))
         : [],
     }
+  }
+
+  /**
+   * A shot of the tab reached the clipboard: shown on its row for `SHOT_VIEW_MS`, then cleared and
+   * published again. Dropped, as if never sent, unless Fremdev is enabled and the install is on,
+   * lists `fremdev.shotview` and reported that tab. A newer shot replaces the one showing. The sound
+   * plays only when the message asks for it (the option is off by default in the extension), at
+   * most once per `SHOT_SOUND_MIN_MS` per install.
+   */
+  private shot(install: Install, msg: Extract<DevMessage, { type: 'dev.shot' }>): void {
+    if (!this.enabled() || !install.on || !holds(install, FREMDEV_SHOTVIEW_MODULE)) return
+    if (!install.tabs.some((t) => t.tabId === msg.tabId)) return
+    dropShot(install)
+    const timer = setTimeout(() => {
+      if (install.shot?.timer !== timer) return
+      install.shot = null
+      this.publish(install)
+    }, SHOT_VIEW_MS)
+    timer.unref?.()
+    install.shot = { tabId: msg.tabId, thumb: msg.thumb, until: this.now() + SHOT_VIEW_MS, timer }
+    if (msg.sound && this.now() - install.soundAt >= SHOT_SOUND_MIN_MS) {
+      install.soundAt = this.now()
+      this.sound.play()
+    }
+    this.publish(install)
   }
 
   /**
@@ -367,10 +428,30 @@ export class CompanionDev {
     const install = this.installs.get(deviceId)
     if (!install) return false
     if (install.timer !== null) clearTimeout(install.timer)
+    dropShot(install)
     abandon(install)
     this.installs.delete(deviceId)
     return true
   }
+}
+
+/** Forgets the shot showing, and its timer. */
+function dropShot(install: Install): void {
+  if (install.shot === null) return
+  clearTimeout(install.shot.timer)
+  install.shot = null
+}
+
+/**
+ * The install's rows, the shot's on its tab while it shows. Its thumbnail is left out when the rows
+ * and it would weigh more than `DEV_INSTALL_MAX_BYTES`: the rows are never what gives way.
+ */
+function rowsWithShot(install: Install, now: number): DevRow[] {
+  const shot = install.shot
+  if (shot === null || shot.until <= now || !install.tabs.some((t) => t.tabId === shot.tabId)) return install.tabs
+  const fits = shot.thumb !== null && Buffer.byteLength(JSON.stringify(install.tabs), 'utf8') + shot.thumb.length <= DEV_INSTALL_MAX_BYTES
+  const view: DevShotView = { thumb: fits ? shot.thumb : null, until: shot.until }
+  return install.tabs.map((t) => (t.tabId === shot.tabId ? { ...t, shot: view } : t))
 }
 
 /** The modules of `known` (`FREMDEV_FEATURES`) in a list: an unknown `fremdev.*` name is not one. */

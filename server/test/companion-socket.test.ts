@@ -106,7 +106,7 @@ async function proven(token: string, origin = ORIGIN): Promise<Client> {
 async function hello(token: string, installId = INSTALL, origin = ORIGIN): Promise<Client> {
   const client = await proven(token, origin)
   client.send({ type: 'hello', token, installId, protocol: PROTOCOL })
-  expect(await client.next()).toEqual({ type: 'ready', protocol: PROTOCOL, modules: { fremplay: true, fremdev: true } })
+  expect(await client.next()).toEqual({ type: 'ready', protocol: PROTOCOL, modules: { fremplay: true, fremdev: true, shotView: true } })
   return client
 }
 
@@ -365,7 +365,7 @@ describe('companion socket', () => {
     const { token } = await paired()
     const client = await proven(token)
     client.send({ type: 'hello', token, installId: INSTALL, protocol: PROTOCOL, modules: ['fremplay'] })
-    expect(await client.next()).toEqual({ type: 'ready', protocol: PROTOCOL, modules: { fremplay: true, fremdev: true } })
+    expect(await client.next()).toEqual({ type: 'ready', protocol: PROTOCOL, modules: { fremplay: true, fremdev: true, shotView: true } })
   })
 
   it('a hello whose modules it cannot read still connects, just not for Fremdev', async () => {
@@ -373,7 +373,7 @@ describe('companion socket', () => {
     for (const modules of [Array.from({ length: 17 }, (_, i) => `m${i}`), ['x'.repeat(33)]]) {
       const client = await proven(token)
       client.send({ type: 'hello', token, installId: INSTALL, protocol: PROTOCOL, modules })
-      expect(await client.next()).toEqual({ type: 'ready', protocol: PROTOCOL, modules: { fremplay: true, fremdev: true } })
+      expect(await client.next()).toEqual({ type: 'ready', protocol: PROTOCOL, modules: { fremplay: true, fremdev: true, shotView: true } })
       expect(dev.snapshot().installs).toEqual([])
       client.ws.close()
       await client.closed
@@ -624,7 +624,7 @@ describe('companion socket in the app', () => {
     ws.send(JSON.stringify({ type: 'challenge', deviceId: device.id, nonce: n }))
     expect(await next()).toEqual({ type: 'proof', mac: expectedMac(token, n) })
     ws.send(JSON.stringify({ type: 'hello', token, installId: INSTALL, protocol: PROTOCOL }))
-    expect(await next()).toEqual({ type: 'ready', protocol: PROTOCOL, modules: { fremplay: false, fremdev: false } })
+    expect(await next()).toEqual({ type: 'ready', protocol: PROTOCOL, modules: { fremplay: false, fremdev: false, shotView: true } })
     ws.close()
   }, 10_000)
 

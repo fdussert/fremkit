@@ -99,7 +99,7 @@ import { demoConnectionTypes } from './demo/connections.js'
 import { demoPublicFetch } from './demo/fetch.js'
 import { demoConnectionFetch } from './demo/declared.js'
 import { demoIcon } from './demo/icons.js'
-import { demoImageClipboard, demoPasteboard } from './demo/clipboard.js'
+import { demoImageClipboard, demoPasteboard, demoShotSound } from './demo/clipboard.js'
 import { DEMO_APPS } from './demo/world.js'
 import { FileSecretStore } from './secrets/file.js'
 
@@ -596,8 +596,8 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     app, store: devices, config: store, registry,
     lockPath: join(opts.dataDir, 'companion-lock.json'),
     dataDir: opts.dataDir,
-    // A demo never writes this Mac's clipboard: Fremdev's report and shot go nowhere.
-    ...(demo ? { pasteboard: demoPasteboard, imageClipboard: demoImageClipboard } : {}),
+    // A demo never writes this Mac's clipboard nor plays on it: Fremdev's report, shot and sound go nowhere.
+    ...(demo ? { pasteboard: demoPasteboard, imageClipboard: demoImageClipboard, shotSound: demoShotSound } : {}),
   })
 
   if (opts.uiDist && (await access(opts.uiDist).then(() => true, () => false))) {

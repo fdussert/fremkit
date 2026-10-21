@@ -170,6 +170,22 @@ export const FREMDEV_SHOT_MODULE = 'fremdev.shot'
 export const SHOT_MAX_BYTES = 2_097_152
 
 /**
+ * Fremdev tells the Edge that a shot reached the clipboard (`dev.shot`, with a thumbnail), and the
+ * widget shows it on the tab's row for a few seconds. Taken only from an install that listed it, and
+ * sent only to a server whose `ready` says `modules.shotView`.
+ */
+export const FREMDEV_SHOTVIEW_MODULE = 'fremdev.shotview'
+
+/** The longest thumbnail `dev.shot` carries, its `data:` prefix included (THUMB_MAX_CHARS in the extension). */
+export const SHOT_THUMB_MAX = 40_000
+
+/**
+ * A thumbnail: a JPEG (`/9j/` is the base64 of FF D8 FF) as a `data:` URL of whole base64 quads,
+ * nothing else; the widget paints it as an <img>. Linear: no nested quantifier can backtrack.
+ */
+export const SHOT_THUMB_RE = /^data:image\/jpeg;base64,\/9j\/(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/
+
+/**
  * The Fremdev modules a control on the Edge depends on (`features` in the snapshot): an install
  * that lists one is shown that control. Each feature's task appends its module name here.
  */
@@ -180,6 +196,7 @@ export const FREMDEV_FEATURES: readonly string[] = [
   FREMDEV_SLOW_MODULE,
   FREMDEV_PERF_MODULE,
   FREMDEV_SHOT_MODULE,
+  FREMDEV_SHOTVIEW_MODULE,
 ]
 
 /**
@@ -376,6 +393,14 @@ export const ExtensionMessageSchema = z.discriminatedUnion('type', [
   z.strictObject({ type: z.literal('dev.report'), id: Id, tabId: TabId, text: z.string().max(REPORT_MAX) }),
   // The answer to a `dev.open.ask`: whether the dev server answered the open-in-editor request.
   z.strictObject({ type: z.literal('dev.open.done'), id: Id, tabId: TabId, ok: z.boolean() }),
+  // A shot of the tab reached the clipboard: its thumbnail (null when none fitted), and whether the
+  // user asked for the capture sound.
+  z.strictObject({
+    type: z.literal('dev.shot'),
+    tabId: TabId,
+    thumb: z.string().max(SHOT_THUMB_MAX).regex(SHOT_THUMB_RE).nullable(),
+    sound: z.boolean(),
+  }),
 ])
 export type ExtensionMessage = z.infer<typeof ExtensionMessageSchema>
 
@@ -397,8 +422,9 @@ export type ServerMessage =
    * `labs.companion`). Optional and new within protocol 2: an extension that does not read it
    * learns the same from `tab.refused` with `disabled`. `fremdev` is present only on a server that
    * speaks Fremdev, and the extension sends no Fremdev message to a server that leaves it out.
+   * `shotView`: this server takes `dev.shot`; an extension sends none to one that does not say so.
    */
-  | { type: 'ready'; protocol: number; modules?: { fremplay: boolean; fremdev?: boolean } }
+  | { type: 'ready'; protocol: number; modules?: { fremplay: boolean; fremdev?: boolean; shotView?: boolean } }
   | { type: 'tab.accepted'; sessionId: string }
   /** `disabled`: Fremplay is off in Fremkit (`labs.companion`). */
   | { type: 'tab.refused'; sessionId: string; reason: 'noWidget' | 'protocol' | 'disabled' }
@@ -443,7 +469,7 @@ export function parseExtensionMessage(raw: string): ExtensionMessage | null {
 }
 
 /** Fremdev's messages: after hello, one that fails its schema costs itself, never the socket. */
-const DEV_MESSAGE_TYPES: ReadonlySet<unknown> = new Set(['dev.tabs', 'modules', 'ping', 'dev.report', 'dev.open.done'])
+const DEV_MESSAGE_TYPES: ReadonlySet<unknown> = new Set(['dev.tabs', 'modules', 'ping', 'dev.report', 'dev.open.done', 'dev.shot'])
 
 /** A `dev.tabs` whose rows are judged one by one. */
 const DevTabsEnvelope = z.strictObject({ type: z.literal('dev.tabs'), tabs: z.array(z.unknown()).max(MAX_DEV_TABS) })

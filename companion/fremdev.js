@@ -77,7 +77,7 @@ const OPEN_TIMEOUT_MS = 5_000
  * The modules of the features a control on the Edge depends on (FREMDEV_FEATURES on the server),
  * announced after the report's while Fremdev is on. Each feature appends its own.
  */
-export const FEATURE_MODULES = ['fremdev.build', 'fremdev.open', 'fremdev.reload', 'fremdev.slow', 'fremdev.perf', 'fremdev.shot']
+export const FEATURE_MODULES = ['fremdev.build', 'fremdev.open', 'fremdev.reload', 'fremdev.slow', 'fremdev.perf', 'fremdev.shot', 'fremdev.shotview']
 const cleanPatterns = (list) =>
   Array.isArray(list) ? [...new Set(list.map((p) => parsePattern(p)?.pattern).filter(Boolean))] : []
 
@@ -187,6 +187,11 @@ export function createFremdev({
    * between two sockets). Every send reads this.
    */
   let support = null
+  /**
+   * Whether this socket's `ready` said the server takes `dev.shot` (`modules.shotView`): an older one
+   * would close the socket on a message it does not know. Null with `support`.
+   */
+  let shotView = false
   /**
    * The last answer heard, from any socket and in an earlier worker life too (it is persisted, for
    * the popup's note): whether Fremdev wants the socket at all (`active`). Never a reason to send.
@@ -708,6 +713,7 @@ export function createFremdev({
      */
     onReady(ready) {
       support = fremdevSupport(ready)
+      shotView = ready?.modules?.shotView === true
       known = support
       storage.session.set({ fremdevSupport: known }).catch(() => undefined)
       void loaded.then(() => {
@@ -724,6 +730,7 @@ export function createFremdev({
      */
     socketClosed() {
       support = null
+      shotView = false
     },
 
     /**
@@ -792,6 +799,17 @@ export function createFremdev({
      * Fremkit, so the shot route may be shown the token.
      */
     canSend: () => support === 'yes',
+
+    /**
+     * A shot of the tab reached the clipboard: `dev.shot` for the Edge to show it, with its thumbnail
+     * (or null) and whether the Mac plays the capture sound. Only for a tab this install has a row
+     * for, on a socket greeted with Fremdev's yes by a server that takes it. False when not sent.
+     */
+    async tellShot(tabId, thumb, sound) {
+      await loaded
+      if (!on || support !== 'yes' || !shotView || !validId(tabId) || !tabs[String(tabId)]) return false
+      return send(protocol.devShot(tabId, thumb, sound))
+    },
 
     active,
     modules,
