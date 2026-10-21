@@ -216,7 +216,8 @@
       else if (named?.line !== undefined) [line, col] = [named.line, named.col]
       if (named) file = named.file
       if (line === undefined) {
-        const lc = /\((\d+):(\d+)\)/.exec(message)
+        // The message's own first line: a later `(L:C)` may be anything's.
+        const lc = /\((\d+):(\d+)\)/.exec(String(message).split('\n')[0])
         if (lc) [line, col] = [pos(lc[1]), pos(lc[2])]
       }
     }
@@ -227,8 +228,12 @@
 
   /** What Vite's overlay writes for an error with no file. */
   const UNKNOWN_FILE = 'unknown file'
-  /** A line that is an absolute path, `path:line` or `path:line:col`. */
-  const PATH_LINE_RE = /^((?:\/|[A-Za-z]:[\\/])[^\n]*?)(?::(\d+)(?::(\d+))?)?$/
+  /**
+   * A line that is an absolute path to a file, `path:line` or `path:line:col`, and nothing else: its
+   * last segment has an extension (spaces inside the path are fine), and a comment (`// note`,
+   * `/* … *\/`) or a sentence that starts with a path (`/x/a.js is not exported`) is none.
+   */
+  const PATH_LINE_RE = /^(?!\/\/|\/\*)((?:\/|[A-Za-z]:[\\/])(?:[^\n]*[\\/])?[^/\\\n]+\.[A-Za-z0-9]+)(?::(\d+)(?::(\d+))?)?$/
 
   /** `{ file, line?, col? }` from the first line of a message (after its first) that is a path. */
   function fileInMessage(message) {

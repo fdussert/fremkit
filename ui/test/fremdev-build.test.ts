@@ -320,6 +320,39 @@ describe('fremdev/build.js', () => {
     expect(JSON.stringify(p.sent())).not.toContain('unknown file')
   })
 
+  it('takes the file only from a line that is a path to a file, and the (L:C) only from the first line', async () => {
+    vi.useFakeTimers()
+    const p = page()
+    p.run()
+    const [overlay] = addOverlay('vite-overlay-hmr.html')
+    const root = overlay.shadowRoot!
+    root.querySelector('.file')!.textContent = 'unknown file'
+    const body = root.querySelector('.message-body')!
+    const taken: Array<[string, string, number | undefined]> = [
+      ['/Users/Jane Example/my app/src/App.vue', '/Users/Jane Example/my app/src/App.vue', undefined],
+      ['/Users/example/app/src/a.test.ts:4:2', '/Users/example/app/src/a.test.ts', 4],
+      ['C:\\work\\app\\src\\a.js:7', 'C:\\work\\app\\src\\a.js', 7],
+    ]
+    for (const [path, file, line] of taken) {
+      body.textContent = `Bad\n\n${path}`
+      await settle()
+      const sent = p.sent().at(-1)!
+      expect(sent.file, path).toBe(file)
+      expect(sent.line, path).toBe(line)
+    }
+    for (const notPath of ['// note', '/* a comment */', '/x/a.js is not exported', '/Users/example/app/src', '/usr/local/bin/', '/x/a.js:3:4 again']) {
+      body.textContent = `Not a path (2:3)\n${notPath}`
+      await settle()
+      const sent = p.sent().at(-1)!
+      expect(sent, notPath).not.toHaveProperty('file')
+      expect(sent.line, notPath).toBe(2)
+    }
+    // A `(L:C)` past the first line is not the error's place.
+    body.textContent = 'Bad\nsee (8:9)'
+    await settle()
+    expect(p.sent().at(-1)).not.toHaveProperty('line')
+  })
+
   it("takes the place from the caret of babel's or Vue's frame, with one or two spaces after the bar", async () => {
     vi.useFakeTimers()
     const p = page()
