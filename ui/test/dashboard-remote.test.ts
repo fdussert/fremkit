@@ -116,7 +116,7 @@ describe('the dashboard on a paired device', () => {
     await nextTick()
     expect(wrapper.find('.page-stub').exists()).toBe(false)
     expect(wrapper.text()).toContain('Kitchen iPad')
-    expect(wrapper.text()).toContain('Choose a screen for this iPad in the Mac’s admin')
+    expect(wrapper.text()).toContain('Choose a screen for this tablet in the Mac’s admin')
     wrapper.unmount()
   })
 
@@ -126,7 +126,7 @@ describe('the dashboard on a paired device', () => {
     push('device', { id: 'd1', name: 'Kitchen iPad', screenId: 'deleted', brightness: null })
     await nextTick()
     expect(wrapper.find('.page-stub').exists()).toBe(false)
-    expect(wrapper.text()).toContain('Choose a screen for this iPad')
+    expect(wrapper.text()).toContain('Choose a screen for this tablet')
     wrapper.unmount()
   })
 
@@ -140,11 +140,33 @@ describe('the dashboard on a paired device', () => {
     wrapper.unmount()
   })
 
-  it('says the iPad is no longer allowed on a 401', async () => {
+  it('says the tablet is no longer allowed on a 401', async () => {
     stubFetch({ status: 401 })
     const wrapper = await mountApp('https://example.local:4243/')
-    expect(wrapper.text()).toContain('This iPad is no longer allowed')
+    expect(wrapper.text()).toContain('This tablet is no longer allowed')
     expect(wrapper.find('.page-stub').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('says iPad inside the iPad app, for both messages', async () => {
+    vi.stubGlobal('webkit', { messageHandlers: { fremkit: { postMessage: vi.fn() } } })
+    stubFetch({ status: 200, body: { id: 'd1', name: 'Kitchen iPad', screenId: null, brightness: null } })
+    const wrapper = await mountApp('https://example.local:4243/')
+    expect(wrapper.text()).toContain('Choose a screen for this iPad in the Mac’s admin')
+    wrapper.unmount()
+
+    stubFetch({ status: 401 })
+    const revoked = await mountApp('https://example.local:4243/')
+    expect(revoked.text()).toContain('This iPad is no longer allowed')
+    revoked.unmount()
+  })
+
+  it('says tablet inside the Android app', async () => {
+    vi.stubGlobal('fremkit', { postMessage: vi.fn() })
+    stubFetch({ status: 401 })
+    const wrapper = await mountApp('https://example.local:4243/')
+    expect(wrapper.text()).toContain('This tablet is no longer allowed')
+    expect(wrapper.text()).not.toContain('iPad')
     wrapper.unmount()
   })
 
@@ -159,6 +181,79 @@ describe('the dashboard on a paired device', () => {
     expect(open).not.toHaveBeenCalled()
     expect(calls).not.toContain('/api/helper/admin')
     wrapper.unmount()
+  })
+})
+
+describe('the app settings entry', () => {
+  const me = { status: 200, body: { id: 'd1', name: 'Kitchen tablet', screenId: 'pad', brightness: null } }
+  /** Every message the Android app's listener was given, parsed. */
+  function androidListener() {
+    const postMessage = vi.fn()
+    vi.stubGlobal('fremkit', { postMessage })
+    return () => postMessage.mock.calls.map(([m]) => JSON.parse(m as string))
+  }
+
+  it('opens from the bar in the Android app and asks the app for its settings', async () => {
+    const sent = androidListener()
+    stubFetch(me)
+    const wrapper = await mountApp('https://example.local:4243/')
+    const { default: NavBar } = await import('../src/dashboard/NavBar.vue')
+    expect(wrapper.find('.app-menu').exists()).toBe(false)
+    wrapper.findComponent(NavBar).vm.$emit('admin')
+    await nextTick()
+    const entry = wrapper.find('.app-menu button')
+    expect(entry.text()).toBe('App settings')
+    await entry.trigger('click')
+    expect(sent()).toContainEqual({ type: 'settings' })
+    expect(wrapper.find('.app-menu').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('closes on a tap outside it, without asking anything', async () => {
+    const sent = androidListener()
+    stubFetch(me)
+    const wrapper = await mountApp('https://example.local:4243/')
+    const { default: NavBar } = await import('../src/dashboard/NavBar.vue')
+    wrapper.findComponent(NavBar).vm.$emit('admin')
+    await nextTick()
+    expect(wrapper.find('.app-menu').exists()).toBe(true)
+    document.body.dispatchEvent(new Event('pointerdown', { bubbles: true }))
+    await nextTick()
+    expect(wrapper.find('.app-menu').exists()).toBe(false)
+    expect(sent()).not.toContainEqual({ type: 'settings' })
+    wrapper.unmount()
+  })
+
+  it('is offered on the no-screen message in the Android app', async () => {
+    const sent = androidListener()
+    stubFetch({ status: 200, body: { ...me.body, screenId: null } })
+    const wrapper = await mountApp('https://example.local:4243/')
+    const entry = wrapper.find('.remote-action')
+    expect(entry.text()).toBe('App settings')
+    await entry.trigger('click')
+    expect(sent()).toContainEqual({ type: 'settings' })
+    wrapper.unmount()
+  })
+
+  it('is never offered in the iPad app nor in a browser', async () => {
+    for (const ipad of [true, false]) {
+      if (ipad) vi.stubGlobal('webkit', { messageHandlers: { fremkit: { postMessage: vi.fn() } } })
+      stubFetch(me)
+      const wrapper = await mountApp('https://example.local:4243/')
+      const { default: NavBar } = await import('../src/dashboard/NavBar.vue')
+      wrapper.findComponent(NavBar).vm.$emit('admin')
+      await nextTick()
+      expect(wrapper.find('.app-menu').exists()).toBe(false)
+      wrapper.unmount()
+      vi.unstubAllGlobals()
+
+      stubFetch({ status: 200, body: { ...me.body, screenId: null } })
+      if (ipad) vi.stubGlobal('webkit', { messageHandlers: { fremkit: { postMessage: vi.fn() } } })
+      const empty = await mountApp('https://example.local:4243/')
+      expect(empty.find('.remote-action').exists()).toBe(false)
+      empty.unmount()
+      vi.unstubAllGlobals()
+    }
   })
 })
 

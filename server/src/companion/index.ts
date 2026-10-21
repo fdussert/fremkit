@@ -26,9 +26,11 @@ export interface CompanionOptions {
   store: DeviceStore
   /** Where the pairing lock is kept (lock.ts); in memory only without one. */
   lockPath?: string
-  /** `onChange` tells the session when `labs.companion` or `labs.fremdev` turns; without it, only new shares see it. */
+  /** `onChange` tells the session when `labs.fremdev` turns; without it, only new hellos see it. */
   config: Pick<ConfigStore, 'get'> & Partial<Pick<ConfigStore, 'onChange'>>
   registry: Pick<ProviderRegistry, 'register' | 'refresh'>
+  /** Whether a pairing request would show anywhere on this Mac now (`viewers.ts`). */
+  seen: () => boolean
   /** Where Fremdev's report command copies a report: this Mac's pasteboard unless a test says. */
   pasteboard?: Pasteboard
   /** Where Fremdev's shot puts its image: this Mac's clipboard, through a file in `dataDir`, unless a test says. */
@@ -69,9 +71,8 @@ export async function createCompanion(opts: CompanionOptions): Promise<Companion
   const pairing = new CompanionPairing(store, undefined, lock)
   const sockets = new CompanionSockets()
   const pairedExtensions = (): number => store.list().filter((d) => d.kind === 'extension').length
-  // `labs.companion` off is Fremplay and Fremdev off, and Fremdev has its own `labs.fremdev` on top (docs/companion.md). A product switch: what
-  // keeps a share or a dev tab to this Mac is the socket's handshake and the channels' guards.
-  const enabled = (): boolean => config.get().labs?.companion === true
+  // Fremplay is always on; Fremdev has its own switch, `labs.fremdev` (docs/companion.md). A product
+  // switch: what keeps a dev tab to this Mac is the socket's handshake and the channels' guards.
   const fremdevOn = (): boolean => fremdevEnabled(config.get())
   const dev = new CompanionDev({
     send: (deviceId, msg) => sockets.send(deviceId, msg),
@@ -91,7 +92,6 @@ export async function createCompanion(opts: CompanionOptions): Promise<Companion
     // A share starts only when the Edge's screen has somewhere to show it.
     canShare: () => placeFremplay(config.get()) !== null,
     pairedCount: pairedExtensions,
-    enabled,
     fremdevEnabled: fremdevOn,
     dev,
   })
@@ -99,13 +99,10 @@ export async function createCompanion(opts: CompanionOptions): Promise<Companion
   registry.register(provider)
   registry.register(createDevProvider({ dev, config: () => config.get(), pasteboard: opts.pasteboard }))
 
-  let companionOn = config.get().labs?.companion === true
   let fremdevOnBefore = fremdevOn()
   const unsubscribeConfig = config.onChange?.((next) => {
-    const on = next.labs?.companion === true
     const fremdev = fremdevEnabled(next)
-    if (on === companionOn && fremdev === fremdevOnBefore) return
-    companionOn = on
+    if (fremdev === fremdevOnBefore) return
     fremdevOnBefore = fremdev
     session.switched()
   }) ?? (() => undefined)
@@ -118,7 +115,7 @@ export async function createCompanion(opts: CompanionOptions): Promise<Companion
     refreshDev()
   })
 
-  await app.register(companionRoutes, { pairing, config, origins, pairedExtensions })
+  await app.register(companionRoutes, { pairing, config, origins, pairedExtensions, seen: opts.seen })
   await app.register(companionSocket, { store, session, sockets, origins })
   const clipboard = opts.imageClipboard ?? (opts.dataDir !== undefined ? osascriptImageClipboard(opts.dataDir) : noClipboard)
   await app.register(companionShotRoute, { store, dev, origins, clipboard })

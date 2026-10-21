@@ -38,6 +38,31 @@ export function isSafeBackgroundName(name: unknown): name is string {
 // against the locale in force then, instead of being frozen when this module loads.
 const BackgroundImageName = z.string().refine(isSafeBackgroundName, { error: () => tr(undefined, 'config.backgroundName') })
 
+/** The extensions an imported tile icon is stored under; the routes pick it from the real bytes. */
+export const TILE_ICON_EXT_RE = /\.(png|webp|svg)$/
+
+/**
+ * The gate every imported tile icon name goes through, in the config, the routes and the backup.
+ * The same rules as a background name — one file name, never a path — with the icon extensions.
+ */
+export function isSafeTileIconName(name: unknown): name is string {
+  return isSafeBackgroundName(name) && TILE_ICON_EXT_RE.test(name)
+}
+
+const TileIconFileName = z.string().refine(isSafeTileIconName, { error: () => tr(undefined, 'config.tileIconName') })
+
+/**
+ * The icon the frame draws before a tile's title. A pictogram name is checked for shape only: the
+ * choosable list lives in the UI, and a name a later version no longer has renders as no icon
+ * rather than making the whole file invalid. `tint` absent means the file is painted in the
+ * title colour; only `false`, its own colours, is ever stored.
+ */
+export const TileIconSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('lucide'), name: z.string().regex(/^[a-z0-9-]{1,40}$/) }),
+  z.object({ kind: z.literal('file'), name: TileIconFileName, tint: z.literal(false).optional() }),
+])
+export type TileIcon = z.infer<typeof TileIconSchema>
+
 /** Darkest overlay a widget image may carry: past this the image no longer reads as one. */
 export const MAX_WIDGET_DIM = 0.9
 /** Overlay opacity applied when a widget image carries no explicit `dim`. */
@@ -95,6 +120,8 @@ export const WidgetSchema = z.object({
    * tile — border included — fully see-through. Absent means a solid tile.
    */
   opacity: OpacitySchema.optional(),
+  /** Drawn by the frame before the title. Absent means no icon, which is the default. */
+  icon: TileIconSchema.optional(),
   settings: z.record(z.string(), z.unknown()).default({}),
 })
 
@@ -417,26 +444,24 @@ export const MarketplaceSchema = z.object({
 export type MarketplaceState = z.infer<typeof MarketplaceSchema>
 
 /**
- * Features that ship in the code but stay out of the admin until they are ready for everyone.
+ * Features that ship in the code but stay out of the admin until they are ready for everyone. The
+ * switches live in Settings → About, revealed by seven clicks on the version (`ui/src/admin/labs.ts`).
  *
- * `devices` is pairing an iPad and adding screens: the server side works, but there is nothing to
- * pair until the iPad app is out, so a fresh install keeps the Devices section, the screen
- * selector and "Add a screen" out of sight. It changes what the admin *shows*, nothing the server
- * does: the remote listener stays exactly as `devices.json` says. A config written before this
- * existed is given a value by `adoptLabs` in `migrate.ts`, never this default.
+ * To add one: a key here, `name: z.boolean().default(false)`, the same key in `Labs` in
+ * `ui/src/shared/types.ts`, and one entry in `LAB_FLAGS` in `ui/src/admin/labs.ts`.
+ * A flag is a product switch for what the admin and the dashboard show; the server must never
+ * rely on one for security. A config written before the flag existed gets its default; one that
+ * should start on for some files needs a step in `migrateConfig` deciding it from the raw file.
+ * PUT /api/config keeps a flag the body leaves out, and a restore keeps this Mac's.
  *
- * `companion` is the Fremkit Companion browser extension and the Fremplay widget it feeds: the
- * extension rows and pairing request in the Devices pane, Fremplay in the widget library and the
- * pairing prompt on the Edge. UI only, like `devices`: the server never reads it, and must not rely
- * on it for security. The companion routes, the socket's challenge and the `companion` channel's
- * refusal to paired devices guard the same way whether it is on or off.
+ * `devices` (iPad pairing and extra screens) and `companion` (the browser extension and Fremplay)
+ * lived here until they shipped for everyone. A file that still carries them loads as is: the
+ * schema strips unknown keys, and the next save leaves them out.
  *
- * `fremdev` is Fremdev's own switch, on top of `companion`: Fremdev runs only while both are on
- * (`fremdevEnabled` in `companion/dev.ts`).
+ * `fremdev` is Fremdev, the companion's development-tabs module (`fremdevEnabled` in
+ * `companion/dev.ts`). Off unless a file states it on: a placed Fremdev widget does not turn it on.
  */
 export const LabsSchema = z.object({
-  devices: z.boolean().default(false),
-  companion: z.boolean().default(false),
   fremdev: z.boolean().default(false),
 }).prefault({})
 export type Labs = z.infer<typeof LabsSchema>
@@ -486,7 +511,7 @@ export const DEFAULT_CONFIG: Config = {
   secrets: { backend: defaultSecretsBackend() },
   locale: defaultLocale(),
   privacy: { claudeAccountUsage: false, showAccountEmail: false, codexAccount: false, codexHistorySources: [], macmonTemperature: false },
-  labs: { devices: false, companion: false, fremdev: false },
+  labs: { fremdev: false },
   marketplace: { installed: {} },
   widgets: {
     'clock-1': { widgetId: 'clock', showTitle: true, settings: {} },

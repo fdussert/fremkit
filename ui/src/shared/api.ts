@@ -23,6 +23,7 @@ export interface RestoreResult {
   pages: number
   screens: number
   backgrounds: number
+  tileIcons: number
   reenterSecrets: { id: string; name: string; type: string }[]
 }
 /** Which part of the dashboard a shared layout holds, and the free-text settings ticked into it. */
@@ -72,8 +73,10 @@ interface PublicDeviceBase {
   /** ISO date, written at most once a minute; null until the device first connects. */
   lastSeen: string | null
 }
-export interface PublicIpadDevice extends PublicDeviceBase {
-  kind: 'ipad'
+/** A tablet running the Fremkit app: an iPad, or an Android tablet. */
+export interface PublicTabletDevice extends PublicDeviceBase {
+  kind: 'tablet'
+  platform: 'ios' | 'android'
   viewport: { width: number; height: number }
   screenId: string | null
 }
@@ -85,7 +88,7 @@ export interface PublicExtensionDevice extends PublicDeviceBase {
   connected: boolean
 }
 /** A paired device as `GET /api/devices` lists it. */
-export type PublicDevice = PublicIpadDevice | PublicExtensionDevice
+export type PublicDevice = PublicTabletDevice | PublicExtensionDevice
 /** What `GET /api/devices` answers: the remote listener's state and the paired devices. */
 export interface DeviceStatus {
   enabled: boolean
@@ -154,6 +157,16 @@ export const api = {
       .then((r) => json<{ name: string }>(r)),
   deleteBackground: (name: string) =>
     fetch(`/api/backgrounds/${encodeURIComponent(name)}`, { method: 'DELETE' }).then((r) => json<{ ok: boolean }>(r)),
+  /** The icons imported for tile titles, sorted. */
+  listTileIcons: () => fetch('/api/tile-icons').then((r) => json<{ names: string[] }>(r)),
+  /** `data` is the raw file base64-encoded; the server answers with the name it stored it under. */
+  uploadTileIcon: (name: string, data: string) =>
+    fetch('/api/tile-icons', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name, data }) })
+      .then((r) => json<{ name: string }>(r)),
+  /** A 404 is a success: the icon is already gone, which is what the caller asked for. */
+  deleteTileIcon: (name: string) =>
+    fetch(`/api/tile-icons/${encodeURIComponent(name)}`, { method: 'DELETE' })
+      .then((r) => (r.status === 404 ? { ok: true } : json<{ ok: boolean }>(r))),
 
   /** The registry index merged with what this machine has installed. Never throws on offline. */
   getMarketplace: () => fetch('/api/marketplace').then((r) => json<MarketplaceResponse>(r)),
@@ -308,7 +321,8 @@ export const api = {
     fetch(`/api/companion/requests/${encodeURIComponent(requestId)}/refuse`, {
       method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ code }),
     }).then(empty),
-  getDevices: () => fetch('/api/devices').then((r) => json<DeviceStatus>(r)),
+  /** `watching`: the Devices pane's own poll, which shows a companion request while it is open. */
+  getDevices: (watching = false) => fetch(watching ? '/api/devices?watch=1' : '/api/devices').then((r) => json<DeviceStatus>(r)),
   /** Answers the status after the switch; on `portInUse` the switch stays off and `message` says why. */
   setDevicesEnabled: (enabled: boolean) =>
     fetch('/api/devices/settings', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ enabled }) })

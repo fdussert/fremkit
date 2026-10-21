@@ -14,7 +14,7 @@ import { dismissShotOverlay, shotOverlay } from './lib/shotview.js'
 import { handshake } from './lib/handshake.js'
 import { grantToReturn } from './lib/grant.js'
 import { closeOutcome, refusalOf } from './lib/link.js'
-import { fremplaySwitch } from './lib/errors.js'
+import { fremplaySwitch, pairRefusal } from './lib/errors.js'
 import { confirmCode, normalizeCode, pairingDeadline } from './lib/pairProof.js'
 import { newNonce } from './lib/proof.js'
 import { navigationClearsRect } from './lib/navigation.js'
@@ -138,13 +138,11 @@ async function pair() {
   } catch {
     return saveLocal({ pairError: 'unreachable' })
   }
-  // 409: another extension's request waits on the Edge, or the companion is off in Fremkit;
-  // 423: pairing locked after too many wrong codes; 429: too many, or refused a moment ago.
+  // 409 busy, unseen or (0.5.0) disabled; 423 locked; 429 limited or cooldown (lib/errors.js).
+  // The extension published as 0.1.0 knew no `unseen` and showed it as busy.
   if (res.status === 409 || res.status === 423 || res.status === 429) {
     const reason = (await res.json().catch(() => null))?.reason
-    const known = { 409: ['busy', 'disabled'], 423: ['locked'], 429: ['limited', 'cooldown'] }[res.status]
-    const fallback = { 409: 'busy', 423: 'locked', 429: 'limited' }[res.status]
-    return saveLocal({ pairError: known.includes(reason) ? reason : fallback })
+    return saveLocal({ pairError: pairRefusal(res.status, reason) })
   }
   const body = res.ok ? await res.json().catch(() => null) : null
   // The code is not in the answer: it shows on the Edge only, and the user types it here
@@ -527,8 +525,9 @@ async function onServerMessage(msg) {
       fremdev.onReady(msg)
       // A proven server greeted this token: an unproven 4401 before was not its word.
       if (local.revoked) await saveLocal({ revoked: false })
-      // Whether Fremkit has Fremplay on (`labs.companion`), for the popup to say before a click.
-      // Sent again when the switch turns; a server that does not say is taken as on.
+      // Whether Fremkit has Fremplay on, for the popup to say before a click: a 0.5.0 server's
+      // `labs.companion`, sent again when that switch turns. Later servers always say on, and a
+      // server that does not say is taken as on.
       {
         const off = msg.modules?.fremplay === false
         const patch = fremplaySwitch(session, off)

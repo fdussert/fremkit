@@ -6,7 +6,7 @@ import type { FastifyInstance } from 'fastify'
 import { buildApp } from '../src/app.js'
 import { RemoteListener } from '../src/devices/listener.js'
 import { deviceBrightnessView } from '../src/devices/service.js'
-import { commandScope, deviceConfigView, iconInScope, instanceInScope, widgetInScope, type ScreenScope } from '../src/devices/scope.js'
+import { commandScope, deviceConfigView, iconInScope, instanceInScope, tileIconInScope, widgetInScope, type ScreenScope } from '../src/devices/scope.js'
 import { ConfigSchema, type Config } from '../src/config/schema.js'
 import { hasOpenssl, remote, tlsMaterial, TinyWs, upgrade } from './helpers/remote.js'
 
@@ -27,8 +27,8 @@ const RAW_CONFIG = {
     'cal-edge': { widgetId: 'cal', settings: { source: 'ics-edge' } },
     'sc-b': { widgetId: 'shortcuts', settings: { buttons: [] } },
     'sc-edge': { widgetId: 'shortcuts', settings: { buttons: [] } },
-    'clock-edge': { widgetId: 'clock', settings: {} },
-    'clock-a': { widgetId: 'clock', settings: {} },
+    'clock-edge': { widgetId: 'clock', settings: {}, icon: { kind: 'file', name: '1-edge.svg' } },
+    'clock-a': { widgetId: 'clock', settings: {}, icon: { kind: 'file', name: '1-a.svg', tint: false } },
     'clock-b': { widgetId: 'clock', settings: {} },
     'status-edge': { widgetId: 'service-status', settings: { services: [] } },
     'status-a': { widgetId: 'service-status', settings: { services: [] } },
@@ -64,6 +64,7 @@ const RAW_CONFIG = {
 }
 
 const config = (): Config => ConfigSchema.parse(RAW_CONFIG)
+const TILE_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/></svg>'
 
 describe('screen scope', () => {
   const a: ScreenScope = { kind: 'screen', screenId: 'tab-a' }
@@ -129,10 +130,21 @@ describe('iconInScope', () => {
   })
 })
 
+describe('tileIconInScope', () => {
+  it('gives this Mac any icon, a device the ones its own screen wears, and a screenless device none', () => {
+    const a: ScreenScope = { kind: 'screen', screenId: 'tab-a' }
+    expect(tileIconInScope(config(), { kind: 'all' }, '9-anything.svg')).toBe(true)
+    expect(tileIconInScope(config(), a, '1-a.svg')).toBe(true)
+    expect(tileIconInScope(config(), a, '1-edge.svg')).toBe(false)
+    expect(tileIconInScope(config(), { kind: 'screen', screenId: 'tab-b' }, '1-a.svg')).toBe(false)
+    expect(tileIconInScope(config(), { kind: 'none' }, '1-a.svg')).toBe(false)
+  })
+})
+
 describe('deviceConfigView', () => {
   it('keeps its screen, the instances it shows, and what drawing it takes', () => {
     const view = deviceConfigView(config(), 'tab-b')
-    expect(Object.keys(view).sort()).toEqual(['labs', 'locale', 'screens', 'theme', 'version', 'widgets'])
+    expect(Object.keys(view).sort()).toEqual(['locale', 'screens', 'theme', 'version', 'widgets'])
     expect(view.screens.map((s) => s.id)).toEqual(['tab-b'])
     expect(Object.keys(view.widgets).sort()).toEqual(['cal-b', 'clock-b', 'docky-b', 'sc-b', 'status-b'])
   })
@@ -150,28 +162,20 @@ describe('deviceConfigView', () => {
     // No night theme on the Mac: none on the device either.
     expect(Object.hasOwn(deviceConfigView(config(), 'tab-b'), 'themeSchedule')).toBe(false)
   })
-  it('carries labs.companion and labs.fremdev and nothing else of labs', () => {
-    for (const companion of [true, false]) {
-      const cfg = ConfigSchema.parse({ ...RAW_CONFIG, labs: { devices: true, companion } })
+  it('carries labs.fremdev and nothing else of labs', () => {
+    for (const fremdev of [true, false]) {
+      // The former switches a 0.5.0 file still states never reach the device.
+      const cfg = ConfigSchema.parse({ ...RAW_CONFIG, labs: { devices: true, companion: true, fremdev } })
       const view = deviceConfigView(cfg, 'tab-b')
-      expect(view.labs).toEqual({ companion, fremdev: false })
-      expect(Object.keys(view.labs)).toEqual(['companion', 'fremdev'])
+      expect(view.labs).toEqual({ fremdev })
+      expect(Object.keys(view.labs)).toEqual(['fremdev'])
     }
-    // Every key the schema gives `labs`, other than `companion`, stays on the Mac.
-    const others = Object.keys(ConfigSchema.parse(RAW_CONFIG).labs).filter((k) => k !== 'companion' && k !== 'fremdev')
-    expect(others.length).toBeGreaterThan(0)
-    const view = deviceConfigView(ConfigSchema.parse({ ...RAW_CONFIG, labs: { devices: true, companion: true } }), 'tab-b')
-    for (const key of others) expect(Object.hasOwn(view.labs, key), key).toBe(false)
-  })
-  it('carries labs.fremdev beside labs.companion', () => {
-    const cfg = ConfigSchema.parse({ ...RAW_CONFIG, labs: { devices: true, companion: true, fremdev: true } })
-    expect(deviceConfigView(cfg, 'tab-b').labs).toEqual({ companion: true, fremdev: true })
   })
   it('projects or deliberately withholds every top-level config key', () => {
     // A key main adds to the config is dropped from the device view without a word; this makes
     // the next one a decision. Withheld: hosts and accounts, the secrets backend, the privacy
     // switches, the marketplace records and the admin's experimental features are the Mac's own business.
-    // `labs` is projected in part: `companion` and `fremdev` only (see the tests above).
+    // `labs` is projected in part: `fremdev` only (see the test above).
     const projected = ['version', 'theme', 'themeSchedule', 'locale', 'widgets', 'screens', 'labs']
     const withheld = ['connections', 'secrets', 'privacy', 'marketplace']
     expect(Object.keys(ConfigSchema.shape).sort()).toEqual([...projected, ...withheld].sort())
@@ -216,6 +220,8 @@ describe.skipIf(!hasOpenssl)('a paired device acts on its own screen only', () =
     await widget('service-status', { commands: ['service-status'], compact: { width: 4 } })
     await mkdir(join(dir, 'data'), { recursive: true })
     await writeFile(join(dir, 'data', 'fremkit.json'), JSON.stringify(RAW_CONFIG))
+    await mkdir(join(dir, 'data', 'tile-icons'), { recursive: true })
+    for (const name of ['1-a.svg', '1-edge.svg']) await writeFile(join(dir, 'data', 'tile-icons', name), TILE_SVG)
     app = await buildApp({ accessToken: null, dataDir: join(dir, 'data'), widgetsDir: join(dir, 'widgets') })
     listener = new RemoteListener(app, 0)
     const { key, cert } = await tlsMaterial()
@@ -260,6 +266,22 @@ describe.skipIf(!hasOpenssl)('a paired device acts on its own screen only', () =
     expect((await remote(port, { path: '/api/proxy/clock', headers: cookie(tokenNone) })).status).toBe(404)
     // Its own: past the scope, refused for the missing `url`.
     expect((await remote(port, { path: '/api/proxy/clock', headers: cookie(tokenA) })).status).toBe(400)
+  })
+
+  it('serves a device only the tile icons its own screen wears, and never the library list', async () => {
+    const own = await remote(port, { path: '/api/tile-icons/1-a.svg', headers: cookie(tokenA) })
+    expect(own.status).toBe(200)
+    expect(own.body).toContain('<svg')
+    // The Edge's icon exists, and is answered exactly like a name that does not.
+    const edge = await remote(port, { path: '/api/tile-icons/1-edge.svg', headers: cookie(tokenA) })
+    const missing = await remote(port, { path: '/api/tile-icons/9-none.svg', headers: cookie(tokenA) })
+    expect([edge.status, missing.status]).toEqual([404, 404])
+    expect(edge.body).toBe(missing.body)
+    expect((await remote(port, { path: '/api/tile-icons/1-a.svg', headers: cookie(tokenB) })).status).toBe(404)
+    expect((await remote(port, { path: '/api/tile-icons/1-a.svg', headers: cookie(tokenNone) })).status).toBe(404)
+    expect((await remote(port, { path: '/api/tile-icons', headers: cookie(tokenA) })).status).toBe(404)
+    // This Mac reads them all.
+    expect((await app.inject({ url: '/api/tile-icons/1-edge.svg' })).statusCode).toBe(200)
   })
 
   it('leaves the proxy alone for this Mac', async () => {
@@ -392,6 +414,20 @@ describe.skipIf(!hasOpenssl)('a paired device acts on its own screen only', () =
       const own = await command(ws, 'shortcuts', 'open', { instanceId: 'sc-b', index: 0 })
       expect(own.result.ok).toBe(false)
       expect(own).not.toEqual(edge)
+    } finally {
+      ws.close()
+    }
+  })
+
+  it('narrows the host channels to an Android tablet\'s own screen, as to an iPad\'s', async () => {
+    const { token } = await app.pairing.store.create('Kitchen tablet', { width: 1180, height: 820 }, 'tab-b', 'android')
+    const ws = await openWs(token)
+    try {
+      ws.send({ type: 'subscribe', channel: 'config' })
+      const config = await ws.next((m) => m.channel === 'config')
+      expect(config.data.screens.map((s: { id: string }) => s.id)).toEqual(['tab-b'])
+      expect(Object.keys(config.data.widgets)).not.toContain('clock-a')
+      expect((await conn(token, 'clock', 'clock-a')).status).toBe(404)
     } finally {
       ws.close()
     }

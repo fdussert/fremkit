@@ -9,6 +9,8 @@ export type AccentMode = 'none' | 'frame' | 'fill'
 export type BackgroundFit = 'cover' | 'contain'
 /** Mirrors the server schema; `dim` is the black overlay opacity laid over the image. */
 export interface WidgetBackground { image: string; fit?: BackgroundFit; dim?: number }
+/** Mirrors the server schema: what the frame draws before a tile's title. `tint` absent = tinted. */
+export type TileIcon = { kind: 'lucide'; name: string } | { kind: 'file'; name: string; tint?: false }
 /**
  * Mirrors the server schema: what a widget instance *is*, shared by every screen that shows it.
  * Stored in `Config.widgets` under its instance id; where it sits is a `Placement` or a `NavItem`.
@@ -26,6 +28,8 @@ export interface Widget {
   background?: WidgetBackground
   /** Opacity of the tile's surface, 0–1; absent means solid. 0 makes it fully see-through. */
   opacity?: number
+  /** Absent means no icon in the title, which is the default. */
+  icon?: TileIcon
   settings: Record<string, unknown>
 }
 /** Mirrors the server schema: where one widget sits on one page of one screen, in cells. */
@@ -147,14 +151,12 @@ export interface Privacy {
 }
 
 /**
- * Features shipped but kept out of the admin until they are ready. `devices` is iPad pairing and
- * adding screens; the server infers it for a config written before it existed.
+ * Features shipped but kept out of the admin until they are ready (`LabsSchema` on the server).
+ * A flag added there gets its key here, `name?: boolean`, absent meaning off
+ * (see `admin/labs.ts`).
  */
 export interface Labs {
-  devices: boolean
-  /** The browser companion and Fremplay; absent in a config the admin built itself, meaning off. */
-  companion?: boolean
-  /** Fremdev, on top of `companion`; absent means off. */
+  /** Fremdev, the companion's development-tabs module; absent means off. */
   fremdev?: boolean
 }
 

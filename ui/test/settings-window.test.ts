@@ -27,7 +27,6 @@ function config(): Config {
   return {
     version: 4,
     connections: [], secrets: { backend: 'file' }, locale: 'en',
-    labs: { devices: true },
     privacy: { claudeAccountUsage: false, showAccountEmail: false, codexAccount: false, codexHistorySources: [], macmonTemperature: false },
     widgets: {},
     screens: [

@@ -78,3 +78,56 @@ jobs:
             e2e/playwright-report/
             e2e/test-results/
           retention-days: 7
+
+  android:
+    name: Android (kit tests, lint, debug build)
+    runs-on: ubuntu-latest
+    # The kit reads test-vectors/ and the server's fingerprint word list in place, so a server
+    # change can break the Kotlin tests: this runs on every push, not only when android/ moves.
+    # Third-party actions are pinned to a commit, the release named beside it. No secret, nothing
+    # signed: the release is built and signed on the owner's Mac (scripts/build-android.sh).
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install JDK 17
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: 17
+
+      # Validates android/gradle/wrapper/gradle-wrapper.jar against Gradle's published checksums
+      # (the wrapper then checks the distribution against distributionSha256Sum), and caches the
+      # Gradle home. 'basic' is the open-source cache on the Actions cache; the default 'enhanced'
+      # is a commercial service. The cache is written from main only and read by pull requests.
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+        with:
+          validate-wrappers: true
+          cache-provider: basic
+
+      # The SDK levels come from the version catalog, as scripts/build-android.sh reads them; the
+      # runner image's SDK may not carry these exact ones.
+      - name: Install the Android platform and build-tools
+        run: |
+          catalog() { sed -n "s/^$1 *= *\"\\(.*\\)\"/\\1/p" android/gradle/libs.versions.toml | head -1; }
+          compile_sdk="$(catalog compileSdk)"
+          build_tools="$(catalog buildTools)"
+          [[ -n "$compile_sdk" && -n "$build_tools" ]] || { echo "no compileSdk or buildTools in the catalog" >&2; exit 1; }
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install \
+            "platforms;android-$compile_sdk" "build-tools;$build_tools"
+
+      - name: Test, lint and build
+        working-directory: android
+        run: ./gradlew --console=plain :fremkit-kit:test :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:checkNoPlayServices
+
+      - name: Keep the test and lint reports of a failed run
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: android-reports
+          path: |
+            android/fremkit-kit/build/reports/
+            android/app/build/reports/
+          retention-days: 7

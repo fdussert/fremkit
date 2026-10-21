@@ -38,6 +38,7 @@ import { wsRoutes } from './ws/routes.js'
 import { proxyRoutes } from './proxy/routes.js'
 import { ConnCache } from './proxy/conn.js'
 import { backgroundRoutes } from './backgrounds/routes.js'
+import { tileIconRoutes } from './tile-icons/routes.js'
 import { faviconRoutes } from './favicons/routes.js'
 import { ClaudeTracker } from './claude/tracker.js'
 import { ClaudeUsage } from './claude/usage.js'
@@ -87,6 +88,8 @@ import { deviceRoutes } from './devices/routes.js'
 import { REMOTE_PORT } from './devices/listener.js'
 import type { Advertiser } from './devices/bonjour.js'
 import { createCompanion, type Companion } from './companion/index.js'
+import { PairingViewers } from './companion/viewers.js'
+import { COMPANION_CHANNEL } from './companion/provider.js'
 import type { Exec } from './secrets/keychain.js'
 import { diagnosticsRoutes } from './diagnostics/routes.js'
 import { shareRoutes } from './share/routes.js'
@@ -486,6 +489,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     connCache,
   })
   await app.register(backgroundRoutes, { dataDir: opts.dataDir })
+  await app.register(tileIconRoutes, { dataDir: opts.dataDir, config: () => store.get(), screenOfDevice })
   await app.register(backupRoutes, {
     store,
     dataDir: opts.dataDir,
@@ -521,6 +525,9 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   // Built after the device service, which lists its extensions and waiting request: it reads them
   // through these closures.
   let companion: Companion | null = null
+  // Who would see a companion pairing request: this Mac's dashboards on the channel, or the
+  // Devices pane polling (`companion/viewers.ts`).
+  const pairingViewers = new PairingViewers(() => hub.localDashboardsOn(COMPANION_CHANNEL))
   // After the hub and the config store, which it feeds and listens to.
   const deviceService = new DeviceService({
     app,
@@ -553,6 +560,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     service: deviceService,
     config: store,
     reportBrightness: (screenId, report) => { brightness.deviceReport(screenId, report); brightnessChanged() },
+    notePanePoll: () => pairingViewers.notePanePoll(),
   })
   await app.register(diagnosticsRoutes, {
     deps: {
@@ -596,6 +604,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     app, store: devices, config: store, registry,
     lockPath: join(opts.dataDir, 'companion-lock.json'),
     dataDir: opts.dataDir,
+    seen: () => pairingViewers.seen(),
     // A demo never writes this Mac's clipboard nor plays on it: Fremdev's report, shot and sound go nowhere.
     ...(demo ? { pasteboard: demoPasteboard, imageClipboard: demoImageClipboard, shotSound: demoShotSound } : {}),
   })

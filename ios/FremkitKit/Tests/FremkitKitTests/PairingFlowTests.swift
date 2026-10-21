@@ -28,6 +28,15 @@ private let secretLinkURL = URL(string: "fremkit://pair?h=studio.local&a=192.0.2
 private let paired = PairedMac(host: "studio.local", address: "192.0.2.10", port: 4243, keyHash: SPKIFixture.keyHash,
                                token: "t", deviceId: "d1", name: "studio")
 
+/// Records the hosts and ports a flow read a key from.
+final class ReadRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var reads: [(String, Int)] = []
+
+    var all: [(String, Int)] { lock.withLock { reads } }
+    func add(_ host: String, _ port: Int) { lock.withLock { reads.append((host, port)) } }
+}
+
 @MainActor
 final class PairingFlowTests: XCTestCase {
     private func makeFlow(store: MemoryCredentialStore = MemoryCredentialStore(),
@@ -235,6 +244,57 @@ final class PairingFlowTests: XCTestCase {
         await flow.submit(code: "ABCDEFGH")?.value
         XCTAssertEqual(flow.step, .manualCode(service, keyHash: otherKey))
         XCTAssertEqual(flow.problem, .refused("Code incorrect"))
+    }
+
+    func testATypedAddressTakesThePathOfAPickedMac() async throws {
+        let pairer = ScriptedPairer(.success(paired))
+        let reads = ReadRecorder()
+        let model = AppModel(store: MemoryCredentialStore(), connector: Connector(prober: ScriptedProber([:])))
+        model.start()
+        let flow = PairingFlow(model: model, deviceName: { "Studio iPad" },
+                               viewport: { Viewport(width: 1408, height: 950) },
+                               pair: { try pairer.pair($0) },
+                               readKey: { host, port in reads.add(host, port); return otherKey })
+        flow.enterCode()
+        flow.typeAddress()
+        XCTAssertEqual(flow.step, .manualAddress(""))
+
+        await flow.connect(typed: " https://Studio.local:4300/ ")?.value
+        XCTAssertEqual(reads.all.map { "\($0.0):\($0.1)" }, ["studio.local:4300"], "the key of whatever answers there is read")
+        let typed = MacService(name: "studio.local", address: "studio.local", port: 4300)
+        XCTAssertEqual(flow.step, .manualCode(typed, keyHash: otherKey))
+        XCTAssertEqual(flow.words, Fingerprint.words(keyHash: otherKey), "its words are compared, as for a Mac from the list")
+
+        await flow.submit(code: "abcd efgh")?.value
+        let attempt = try XCTUnwrap(pairer.attempts.first)
+        XCTAssertEqual(pairer.attempts.count, 1)
+        XCTAssertEqual(attempt.hosts, ["studio.local"])
+        XCTAssertEqual(attempt.port, 4300)
+        XCTAssertEqual(attempt.keyHash, otherKey, "the key the user compared is the pin")
+        XCTAssertNil(attempt.secret, "the code alone, sent as a proof under that key")
+        XCTAssertEqual(model.mac, paired)
+        XCTAssertEqual(flow.step, .idle)
+    }
+
+    func testATypedAddressThatIsNotOneIsRefusedWithoutAnyRequest() {
+        let (flow, _) = makeFlow()
+        flow.enterCode()
+        XCTAssertNil(flow.connect(typed: "192.0.2.10"), "only from the address step")
+        flow.typeAddress()
+        for text in ["", "studio", "studio.local/admin", "user@192.0.2.10", "[2001:db8::1]:4243", "192.0.2.10:0"] {
+            XCTAssertNil(flow.connect(typed: text), text)
+        }
+        XCTAssertEqual(flow.step, .manualAddress(""))
+        XCTAssertFalse(flow.isWorking)
+    }
+
+    func testATypedAddressThatDoesNotAnswerComesBackToBeCorrected() async {
+        let (flow, _) = makeFlow(key: nil)
+        flow.typeAddress()
+        await flow.connect(typed: " 192.0.2.10 ")?.value
+        XCTAssertEqual(flow.step, .manualAddress("192.0.2.10"))
+        XCTAssertEqual(flow.problem, .unreachable)
+        XCTAssertFalse(flow.isWorking)
     }
 
     func testAnAttemptNeverPrintsTheCodeOrThePin() {

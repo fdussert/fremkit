@@ -32,9 +32,10 @@ The name is the Fremen survival kit from *Dune*.
   *from the registry*, meeting controls, CleanShot X actions, Azure DevOps builds, GitHub
   notifications and Actions, a Bambu Lab printer, Homey devices and flows, a Synology NAS.
   Twenty-two ship with Fremkit; the rest are one press away in the admin.
-- **An iPad app** that shows a screen of the dashboard from your Mac over the local network,
-  paired by QR code and revocable from the admin. See [docs/devices.md](docs/devices.md).
-- **A browser extension** — *Fremkit Companion* sends the video of a Chromium tab to the Fremplay widget on the Edge, with touch controls. See [docs/companion.md](docs/companion.md).
+- **An iPad app**, [on the App Store](https://apps.apple.com/app/id6824504862), that shows a screen
+  of the dashboard from your Mac over the local network, paired by QR code and revocable from the
+  admin. See [docs/devices.md](docs/devices.md).
+- **A browser extension** — *Fremkit Companion*, [on the Chrome Web Store](https://chromewebstore.google.com/detail/fremkit-companion/lnckeodobpbbmfbdlpnegjpchgkehdlk), sends the video of a Chromium tab to the Fremplay widget on the Edge, with touch controls. See [docs/companion.md](docs/companion.md).
 - **Compact widgets** in the navigation bar, with a full-size popover on touch.
 - **Per-tile appearance** — background colour, opacity, background image, accent colour and how
   much of the tile the accent paints.
@@ -43,6 +44,10 @@ The name is the Fremen survival kit from *Dune*.
 - **A native helper** — a menu bar app that drives the Edge's touch panel with its own HID
   driver, fences the mouse out of the display, shows the dashboard in a kiosk window and
   supervises the server.
+- **An Android app** for a spare tablet, the iPad app's counterpart: the same pairing by QR code
+  or typed code, the same pinned key, a screen of its own. An APK attached to each release (no
+  Play Store, nothing from Google Play inside), its signing fingerprint published. See
+  [docs/devices.md](docs/devices.md#android).
 - **A widget marketplace** — *Sietch* in the admin installs widgets from a curated registry,
   showing what each one will be allowed to do and asking again when an update wants more.
 - **Backup and restore** of the whole dashboard, as a zip that never carries a secret, and a
@@ -280,6 +285,13 @@ paints: **none** leaves it to the widget's own highlights, **frame** colours the
 border, **fill** colours the whole tile. The screen itself has a background colour and image too,
 and a page can have its own, shown instead of the screen's while that page is on screen.
 
+**Tile icons.** A tile's title can carry an icon: pick a pictogram, or import your own SVG, PNG or
+WebP (256 KB at most) — the logo of your NAS, the mark of a service you use. The icon shows with
+the title, so it is hidden while **Show the title** is off. Fremkit ships no third-party logos;
+what you import stays in your installation. An imported icon is tinted with the title colour by
+default, which keeps only its silhouette, or keeps its own colours and inner details if you
+untick **Tint**.
+
 **The navigation bar.** The strip at the bottom of every page, 80 px or 40 px tall, as opaque as
 you like. Its middle shows page dots by default. In *Settings → your screen → Layout → Pages in the bar*, each screen can show scrolling names instead. The sides stay available for compact widgets. **Hold or double-tap
 a page button to open the admin** — the Edge has no keyboard, so this is the way in from the screen.
@@ -504,7 +516,7 @@ itself (Sparkle's system profile is off).
 | A shortcut button to a NAS or a router has no icon | Expected: favicons of private and local addresses are not fetched. The button still works |
 | The admin shows an old version of itself | Reopen it, or Cmd+R in its window; it keeps one web view for the helper's lifetime |
 | Widgets break after pulling a new version | Restart the server: the widget bridge is read once, at start |
-| The iPad app does not list the Mac | The network may not relay Bonjour: scan the QR code the admin shows, or put both on the same Wi-Fi — [details](docs/devices.md#troubleshooting) |
+| The iPad or Android app does not list the Mac | The network may not relay Bonjour: scan the QR code the admin shows, or put both on the same Wi-Fi — [details](docs/devices.md#troubleshooting) |
 | The disk map shows locked folders | Give "Fremkit" (or "Fremkit Helper" for a source install) Full Disk Access, or leave them unmeasured |
 | The disk map says "du (no helper)" | Expected under `pnpm dev`: the bundled `fremkit-scan` is only there under the helper |
 

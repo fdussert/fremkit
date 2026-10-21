@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -11,6 +11,9 @@ import { generateToken, isPublicRoute, isCompanionRoute } from '../src/http/acce
 import { execFileAsync, type Exec } from '../src/secrets/keychain.js'
 import { pairClientMac, pairKey, pairServerMac } from '../src/companion/pairProof.js'
 import { hasOpenssl, remote } from './helpers/remote.js'
+import WebSocket from 'ws'
+import { PANE_POLL_WINDOW_MS } from '../src/companion/viewers.js'
+import { tr } from '../src/i18n.js'
 
 const SECRET = generateToken()
 /** Companion's own id, which needs no listing. */
@@ -29,7 +32,7 @@ const exec: Exec = (cmd, args) =>
 const CONFIG = {
   version: CONFIG_VERSION,
   locale: 'en',
-  labs: { devices: false, companion: true },
+  labs: {},
   secrets: { backend: 'file' },
   connections: [],
   widgets: {},
@@ -50,6 +53,11 @@ function pair(origin: string | undefined, body: unknown = { name: 'Chrome', inst
     headers: { host: HOST, 'content-type': 'application/json', ...(origin ? { origin } : {}) },
     payload: JSON.stringify(body),
   })
+}
+
+/** One poll of the admin's Devices pane while it is open. */
+function panePoll() {
+  return app.inject({ url: '/api/devices?watch=1', headers: { host: HOST, ...auth } })
 }
 
 function answer(requestId: string, verb: 'refuse', body?: unknown) {
@@ -125,15 +133,92 @@ describe('companion routes', () => {
   })
   // Each test starts a minute later, on Date alone: the per-minute counts and a refusal's cooldown
   // start afresh, so no test depends on what the ones before it spent.
-  beforeEach(() => {
+  // And the Devices pane is open, so a request would be seen (`companion/viewers.ts`); the tests
+  // of the 409 `unseen` start from a pane that stopped polling.
+  beforeEach(async () => {
     vi.useFakeTimers({ toFake: ['Date'] })
     vi.setSystemTime(Date.now() + 61_000)
+    await panePoll()
   })
   afterAll(async () => {
     vi.useRealTimers()
     await app?.close()
     await app?.pairing.store.settled()
     await rm(dir, { recursive: true, force: true })
+  })
+
+  describe('a request nobody can see', () => {
+    /** The pane's last poll (beforeEach) is now out of the window. */
+    // The window is read on a monotonic clock (`performance.now`), which the fake Date leaves alone.
+    let ahead = 0
+    beforeEach(() => {
+      const real = performance.now.bind(performance)
+      vi.spyOn(performance, 'now').mockImplementation(() => real() + ahead)
+    })
+    afterEach(() => { ahead = 0; vi.mocked(performance.now).mockRestore() })
+    const paneGone = () => { ahead += PANE_POLL_WINDOW_MS + 1 }
+    /** Takes a waiting request back off, so the next test is not told someone else waits. */
+    const withdraw = async (requestId: string) => {
+      expect((await answer(requestId, 'refuse', { code: await codeOf(requestId) })).statusCode).toBe(200)
+    }
+    const pending = async () => (await app.inject({ url: '/api/devices', headers: { host: HOST, ...auth } })).json().companionRequest
+
+    it('is refused with 409 unseen, and nothing waits', async () => {
+      paneGone()
+      const res = await pair(ORIGIN)
+      expect(res.statusCode).toBe(409)
+      expect(res.json()).toEqual({ error: tr('en', 'companion.unseen'), reason: 'unseen' })
+      expect(await pending()).toBeNull()
+    })
+
+    it('is still 403 to an origin that is not let in: the origin check comes first', async () => {
+      paneGone()
+      expect((await pair(STRANGER)).statusCode).toBe(403)
+    })
+
+    it('is taken while the Devices pane polls, and refused once its polls stop', async () => {
+      const taken = await pair(ORIGIN)
+      expect(taken.statusCode).toBe(200)
+      await withdraw(taken.json().requestId)
+      // Still within the window, with room for the real time the requests take.
+      ahead += PANE_POLL_WINDOW_MS - 1_000
+      expect((await pair(ORIGIN)).statusCode).not.toBe(409)
+      await withdraw((await pending()).requestId)
+      paneGone()
+      expect((await pair(ORIGIN)).json().reason).toBe('unseen')
+      // A one-off status read (a menu, the screen pane) is not the pane: it shows no request.
+      await app.inject({ url: '/api/devices', headers: { host: HOST, ...auth } })
+      expect((await pair(ORIGIN)).json().reason).toBe('unseen')
+    })
+
+    it('is taken while a dashboard of this Mac\'s is on the companion channel', async () => {
+      paneGone()
+      await app.listen({ port: 0, host: '127.0.0.1' })
+      const port = (app.server.address() as { port: number }).port
+      const open = async (view: string) => {
+        const ws = new WebSocket(`ws://127.0.0.1:${port}/ws${view}`, { headers: { host: HOST, ...auth } })
+        await new Promise((resolve, reject) => { ws.once('open', resolve); ws.once('error', reject) })
+        ws.send(JSON.stringify({ type: 'subscribe', channel: 'companion' }))
+        // The hub reads the message on its next turn; a round trip through `config` waits for it.
+        await new Promise<void>((resolve) => {
+          ws.on('message', (raw) => { if (JSON.parse(raw.toString()).channel === 'config') resolve() })
+          ws.send(JSON.stringify({ type: 'subscribe', channel: 'config' }))
+        })
+        return ws
+      }
+      // The admin's socket (no `view`) on the channel shows no prompt: still unseen.
+      const admin = await open('')
+      expect((await pair(ORIGIN)).json().reason).toBe('unseen')
+      const dashboard = await open('?view=dashboard')
+      const taken = await pair(ORIGIN)
+      expect(taken.statusCode).toBe(200)
+      await withdraw(taken.json().requestId)
+      const closed = new Promise((resolve) => dashboard.once('close', resolve))
+      dashboard.close()
+      await closed
+      await vi.waitFor(async () => expect((await pair(ORIGIN)).json().reason).toBe('unseen'))
+      admin.close()
+    })
   })
 
   it('pair without an extension origin is 403', async () => {

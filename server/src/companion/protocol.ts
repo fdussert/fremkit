@@ -418,16 +418,15 @@ export type Control = z.infer<typeof ControlSchema>
 export type ServerMessage =
   | { type: 'proof'; mac: string }
   /**
-   * `modules`: which of the extension's modules this server has switched on (`fremplay`:
-   * `labs.companion`). Optional and new within protocol 2: an extension that does not read it
-   * learns the same from `tab.refused` with `disabled`. `fremdev` is present only on a server that
-   * speaks Fremdev, and the extension sends no Fremdev message to a server that leaves it out.
+   * `modules`: which of the extension's modules this server has switched on. `fremplay` is always
+   * on since the companion left the experimental features, and kept because an extension released
+   * before then reads it. `fremdev` (`labs.fremdev`) is present only on a server that speaks
+   * Fremdev, and the extension sends no Fremdev message to a server that leaves it out.
    * `shotView`: this server takes `dev.shot`; an extension sends none to one that does not say so.
    */
   | { type: 'ready'; protocol: number; modules?: { fremplay: boolean; fremdev?: boolean; shotView?: boolean } }
   | { type: 'tab.accepted'; sessionId: string }
-  /** `disabled`: Fremplay is off in Fremkit (`labs.companion`). */
-  | { type: 'tab.refused'; sessionId: string; reason: 'noWidget' | 'protocol' | 'disabled' }
+  | { type: 'tab.refused'; sessionId: string; reason: 'noWidget' | 'protocol' }
   /** One receiver's offer named more than this Mac: that receiver gets no video, the share goes on. */
   | { type: 'tab.refused'; sessionId: string; reason: 'offer'; receiverId: string }
   | { type: 'tab.view'; receiverId: string }

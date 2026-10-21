@@ -25,8 +25,20 @@ export const REPOSITORY = 'https://github.com/fdussert/fremkit'
 /** The Sietch: the registry's own repository, where widgets and themes are published. */
 export const REGISTRY_REPOSITORY = 'https://github.com/fdussert/fremkit-sietch'
 
+/**
+ * The Android app's APK on the newest release, under the stable name `scripts/release.sh` gives it
+ * beside the versioned one (docs/releasing.md, "The Android app").
+ */
+export const ANDROID_APK_URL = `${REPOSITORY}/releases/latest/download/Fremkit-Android.apk`
+
 /** A new issue on the bug form, which asks for what the diagnostics report holds. */
 export const BUG_REPORT_URL = `${REPOSITORY}/issues/new?template=bug.yml`
+
+/** The iPad app's App Store page. */
+export const IPAD_APP_STORE_URL = 'https://apps.apple.com/app/id6824504862'
+
+/** The Fremkit Companion extension's Chrome Web Store page. */
+export const COMPANION_STORE_URL = 'https://chromewebstore.google.com/detail/fremkit-companion/lnckeodobpbbmfbdlpnegjpchgkehdlk'
 
 /** The UI's own version, bumped with the three others at every release. */
 export const VERSION: string = version

@@ -18,13 +18,15 @@ import { isRemoteRequest, pairedDeviceOf } from '../net/remote.js'
 import { DeviceReportSchema, type DeviceReport } from '../brightness/service.js'
 import { SECRET_PATTERN } from './codes.js'
 import type { DeviceService } from './service.js'
-import { ViewportSchema } from './store.js'
+import { PlatformSchema, ViewportSchema } from './store.js'
 
 export interface DeviceRoutesOptions {
   service: DeviceService
   config: ConfigStore
   /** Hands a device's brightness report to whoever decides brightness (injected, not imported). */
   reportBrightness: (screenId: string, report: DeviceReport) => void
+  /** The Devices pane polled while open (`?watch=1`): it shows a companion request now. */
+  notePanePoll?: () => void
 }
 
 const NameSchema = z.string().trim().min(1).max(60)
@@ -39,6 +41,8 @@ const PairSchema = z.object({
   secret: z.string().regex(SECRET_PATTERN).optional(),
   name: NameSchema,
   viewport: ViewportSchema,
+  // The shipped iPad app does not say which it is: no platform is an iPad.
+  platform: PlatformSchema.default('ios'),
 }).refine((b) => (b.proof === undefined) !== (b.secret === undefined), { message: 'proof or secret, one of them' })
 
 const SettingsSchema = z.object({ enabled: z.boolean() })
@@ -77,11 +81,11 @@ export async function deviceRoutes(app: FastifyInstance, opts: DeviceRoutesOptio
     reply.header('cache-control', 'no-store')
     const parsed = PairSchema.safeParse(req.body)
     if (!parsed.success) return badBody(reply, parsed.error)
-    const { proof, secret, name, viewport } = parsed.data
+    const { proof, secret, name, viewport, platform } = parsed.data
     // Counted per peer address (`codes.ts`): the socket's, which no header can change. A secret is
     // taken before that count, and a wrong one fails exactly as a wrong code does.
     const credential = secret !== undefined ? { secret } : { proof: proof ?? '' }
-    const result = await service.pair(credential, name, viewport, req.ip)
+    const result = await service.pair(credential, name, viewport, req.ip, platform)
     if ('error' in result) {
       const { status, key } = PAIR_ERRORS[result.error]
       return reply.code(status).send({ error: tr(locale(), key) })
@@ -116,7 +120,9 @@ export async function deviceRoutes(app: FastifyInstance, opts: DeviceRoutesOptio
 
   // --- the admin --------------------------------------------------------------------------------
 
-  app.get('/api/devices', { onRequest: localOnly }, async (_req, reply) => {
+  app.get('/api/devices', { onRequest: localOnly }, async (req, reply) => {
+    // The pane's own poll, not a one-off refresh from a menu: only it shows the request card.
+    if ((req.query as { watch?: unknown } | undefined)?.watch === '1') opts.notePanePoll?.()
     await service.loadKeyHash()
     reply.header('cache-control', 'no-store')
     return service.status()

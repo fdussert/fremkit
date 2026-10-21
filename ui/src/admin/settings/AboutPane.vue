@@ -9,40 +9,35 @@ import BaseSection from '../../shared/ui/BaseSection.vue'
 import DiagnosticsSection from '../DiagnosticsSection.vue'
 import { useI18n } from '../../shared/i18n'
 import { useAdminStore } from '../store'
-import { labsCompanion, labsDevices, labsFremdev, labsShown, tapVersion } from '../labs'
+import { LAB_FLAGS, labsShown, tapVersion, type LabFlag } from '../labs'
+import type { Labs } from '../../shared/types'
 import { CONTRIBUTORS, MAINTAINER, REGISTRY_REPOSITORY, REPOSITORY, VERSION } from '../../shared/credits'
 
 const s = useAdminStore()
 const { t, locale } = useI18n()
 
 /**
- * iPad pairing and extra screens, hidden until `labs.devices` is on. The switch appears after
- * seven clicks on the version (see `labs.ts`) and stays while the flag is on, so it can be turned
- * off again. It goes through `apply` like every setting: saved, undoable, in the history.
+ * The experimental features block: one checkbox per flag of `LAB_FLAGS` (`labs.ts`). It appears
+ * after seven clicks on the version and stays while any flag is on, so it can be turned off
+ * again. Each switch goes through `apply` like every setting: saved, undoable, in the history.
+ * With no flag, the block says there is nothing to try right now rather than show an empty
+ * heading. `flags` is for tests, which give it a flag the schema does not have yet.
  */
-const devicesOn = computed(() => labsDevices(s.state.config))
-/** The browser companion and Fremplay, behind `labs.companion` the same way. */
-const companionOn = computed(() => labsCompanion(s.state.config))
-/** Fremdev, behind `labs.fremdev` (and the companion). */
-const fremdevOn = computed(() => labsFremdev(s.state.config))
+const props = withDefaults(defineProps<{ flags?: readonly LabFlag[] }>(), { flags: () => LAB_FLAGS })
 const labsVisible = computed(() => labsShown(s.state.config))
 /**
- * The block appears right under the version; focusing its box brings it into view and tells a
- * screen reader what just appeared. The admin's toast is for errors, so it is not used here.
+ * The block appears right under the version; focusing its first box (the block itself when there
+ * is none) brings it into view and tells a screen reader what just appeared. The admin's toast is
+ * for errors, so it is not used here.
  */
 const labsBlock = ref<HTMLElement>()
 function onVersionClick(): void {
   if (!tapVersion()) return
-  void nextTick(() => labsBlock.value?.querySelector<HTMLInputElement>('input')?.focus())
+  void nextTick(() => (labsBlock.value?.querySelector<HTMLInputElement>('input') ?? labsBlock.value)?.focus())
 }
-function setLabsDevices(on: boolean): void {
-  s.apply((c) => { c.labs = { ...c.labs, devices: on } })
-}
-function setLabsCompanion(on: boolean): void {
-  s.apply((c) => { c.labs = { devices: c.labs?.devices ?? false, ...c.labs, companion: on } })
-}
-function setLabsFremdev(on: boolean): void {
-  s.apply((c) => { c.labs = { devices: c.labs?.devices ?? false, ...c.labs, fremdev: on } })
+/** Sets one flag and keeps the others as they are. */
+function setLab(key: keyof Labs, on: boolean): void {
+  s.apply((c) => { c.labs = { ...c.labs, [key]: on } })
 }
 
 /** "A, B and C" in the language in force, so a third contributor needs no new string. */
@@ -68,17 +63,14 @@ const contributors = computed(() =>
   <p class="ro">{{ t('admin.inspector.screen.about.registry') }}</p>
   <p class="ro">{{ t('admin.inspector.screen.about.icons') }}</p>
   <DiagnosticsSection />
-  <div v-if="labsVisible" ref="labsBlock" data-test="labs">
+  <div v-if="labsVisible" ref="labsBlock" class="labs" data-test="labs" tabindex="-1">
     <h3>{{ t('admin.inspector.screen.labs') }}</h3>
-    <BaseCheckbox :model-value="devicesOn" :label="t('admin.inspector.screen.labs.devices')"
-      data-test="labs-devices" @update:model-value="setLabsDevices($event)" />
-    <p class="ro">{{ t('admin.inspector.screen.labs.devices.hint') }}</p>
-    <BaseCheckbox :model-value="companionOn" :label="t('admin.inspector.screen.labs.companion')"
-      data-test="labs-companion" @update:model-value="setLabsCompanion($event)" />
-    <p class="ro">{{ t('admin.inspector.screen.labs.companion.hint') }}</p>
-    <BaseCheckbox :model-value="fremdevOn" :label="t('admin.inspector.screen.labs.fremdev')"
-      data-test="labs-fremdev" @update:model-value="setLabsFremdev($event)" />
-    <p class="ro">{{ t('admin.inspector.screen.labs.fremdev.hint') }}</p>
+    <template v-for="flag in props.flags" :key="flag.key">
+      <BaseCheckbox :model-value="s.state.config?.labs?.[flag.key] === true" :label="t(flag.label)"
+        :data-test="`labs-${flag.key}`" @update:model-value="setLab(flag.key, $event)" />
+      <p class="ro">{{ t(flag.hint) }}</p>
+    </template>
+    <p v-if="!props.flags.length" class="ro" data-test="labs-none">{{ t('admin.inspector.screen.labs.none') }}</p>
   </div>
   </BaseSection>
 </template>
@@ -86,6 +78,7 @@ const contributors = computed(() =>
 <style scoped>
 .ro { margin: 0 0 var(--space-2); font-size: var(--fs-sm); color: var(--text-muted); }
 .version:focus-visible { outline: 1px dotted var(--text-muted); outline-offset: 2px; }
+.labs:focus { outline: none; }
 .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; word-break: break-all; }
 .links { display: grid; grid-template-columns: auto 1fr; gap: var(--space-1) var(--space-3); margin: 0 0 var(--space-2);
   font-size: var(--fs-sm); color: var(--text-muted); }

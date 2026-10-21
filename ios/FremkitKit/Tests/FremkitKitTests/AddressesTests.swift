@@ -19,6 +19,12 @@ final class AddressesTests: XCTestCase {
         XCTAssertEqual(info.addresses, ["10.20.30.40", "192.168.1.20"])
     }
 
+    /// A newer Mac also says which Fremkit it runs (`serverVersion`): this app ignores the key.
+    func testIgnoresTheServerVersionAndAnyOtherNewKey() throws {
+        let info = try decode(#"{"id":"d1","name":"iPad","screenId":"s1","brightness":null,"addresses":["192.168.1.20"],"serverVersion":"9.9.9","somethingNew":{"a":1}}"#)
+        XCTAssertEqual(info, DeviceInfo(id: "d1", name: "iPad", screenId: "s1", brightness: nil, addresses: ["192.168.1.20"]))
+    }
+
     func testAMacThatSendsNoAddressesGivesNone() throws {
         let info = try decode(#"{"id":"d1","name":"iPad","screenId":"s1","brightness":null}"#)
         XCTAssertEqual(info.addresses, [])
@@ -43,11 +49,13 @@ final class AddressesTests: XCTestCase {
         XCTAssertEqual(info.addresses, (1...8).map { "10.9.1.\($0)" })
     }
 
+    // The shared `ipv4` vectors (test-vectors/devices.json): what inet_pton says on the Mac is
+    // what the Android kit's parser is held to.
     func testIsPrivateIPv4Literal() {
-        for a in ["10.20.30.40", "172.16.0.1", "172.31.255.255", "192.168.0.1"] { XCTAssertTrue(isPrivateIPv4Literal(a), a) }
-        for a in ["172.15.255.255", "172.32.0.1", "192.169.0.1", "100.64.0.1", "169.254.1.1", "192.0.2.10", "8.8.8.8",
-                  "fd00::1", "::ffff:10.20.30.40", "studio.local", ""] {
-            XCTAssertFalse(isPrivateIPv4Literal(a), a)
+        XCTAssertFalse(Vectors.all.ipv4.isEmpty)
+        for v in Vectors.all.ipv4 {
+            XCTAssertEqual(isIPv4Literal(v.literal), v.ipv4, "isIPv4Literal(\(v.literal))")
+            XCTAssertEqual(isPrivateIPv4Literal(v.literal), v.private, "isPrivateIPv4Literal(\(v.literal))")
         }
     }
 

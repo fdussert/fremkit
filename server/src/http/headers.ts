@@ -13,12 +13,13 @@ export const BYTES_CSP = "default-src 'none'; sandbox"
 
 /**
  * The routes that answer with bytes we did not write: a site's favicon, an application icon, a
- * wallpaper, a widget's proxied response, a printer snapshot.
+ * wallpaper, an imported tile icon, a widget's proxied response, a printer snapshot.
  */
 export const BYTE_ROUTES = [
   '/api/favicon',
   '/api/apps/icon/',
   '/api/backgrounds/',
+  '/api/tile-icons/',
   '/api/proxy/',
   '/api/bambu/',
   '/api/backup',

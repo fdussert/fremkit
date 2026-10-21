@@ -9,36 +9,12 @@ development tabs on the Edge (see [Fremdev](#fremdev-your-development-tabs)). No
 needs the extension except the Fremplay and Fremdev widgets, which show how to get it until an
 extension is linked.
 
-It is **experimental** for now, and hidden until you turn it on: in the admin, open **Settings →
-About**, click the version number seven times (or focus it and press Enter seven times), and tick
-**Browser companion (Fremplay)** under **Experimental features** (Fremdev has its own box there,
-**Fremdev (development tabs)**, and needs the companion ticked as well). Until then the admin leaves
-Fremplay out of the widget library and the bar's list and hides the pairing request in **Settings →
-Devices**, and the Edge shows no pairing prompt, so no code can be typed. A browser already linked
-stays listed in **Settings → Devices** whatever the switch says, so it can always be renamed or
-removed.
-
-**Off is Fremplay off.** While the switch (`labs.companion` in the config) is off:
-
-- the Edge draws no Fremplay widget, in a page or in the bar, and a page that held nothing else
-  drops out of the navigation. The config keeps them, so ticking the switch again brings them back
-  where they were;
-- the admin's canvas still shows them, greyed and labelled *Fonction désactivée* / *Feature turned
-  off*, so they can be deleted as usual;
-- the server refuses a share (`tab.refused` with reason `disabled`), and ends the one running when
-  the switch goes off. It tells every connected extension in its `ready` (`modules: { fremplay:
-  false }`, sent again when the switch turns), so the popup says *Fremplay est désactivé dans
-  Fremkit (fonctions expérimentales).* / *Fremplay is turned off in Fremkit (experimental
-  features).* with **Send** greyed, and the shortcut flashes `!` and leaves that message for the
-  popup;
-- a pairing request is turned down (*Activez le compagnon dans les fonctions expérimentales de
-  Fremkit.* / *Turn the companion on in Fremkit's experimental features.*), a browser already
-  linked included, since the Edge would show nobody the request.
-
-That is a product switch, not a security boundary: the server does not rely on it for security. The
-companion routes, the socket's challenge and the refusal of the `companion` channel to paired
-devices guard the same way whether it is on or off, and a browser linked before you turned it off
-stays linked, its socket connected, until you remove it.
+Fremplay and pairing are always on. Fremdev is **experimental** for now, behind its own experimental
+switch, **Fremdev**: in the admin, open **Settings → About**, click the version number seven times (or
+focus it and press Enter seven times), and tick **Fremdev (development tabs)** under **Experimental
+features**. Until then the admin leaves Fremdev out of the widget library and the bar's list, and a
+Fremdev widget already placed stays on the admin's canvas, greyed and labelled *Fonction désactivée* /
+*Feature turned off*, but is not drawn on the Edge.
 
 ## What you need
 
@@ -47,16 +23,22 @@ stays linked, its socket connected, until you remove it.
 
 ## Install
 
-The extension lives in `companion/` in this repository. Until it is published on the Chrome Web
-Store, load it unpacked:
+Install **Fremkit Companion** from the [Chrome Web Store](https://chromewebstore.google.com/detail/fremkit-companion/lnckeodobpbbmfbdlpnegjpchgkehdlk): **Add to Chrome**, then pin the
+Fremkit icon to the toolbar if you like. Edge, Brave and Arc install it from the same page. The
+admin links to it too, under **Settings → Devices**.
+
+### From the source, to work on it
+
+The extension lives in `companion/` in this repository. To run your own copy, load it unpacked
+(turn the store version off or remove it first: both have the same ID):
 
 1. Open `chrome://extensions` and turn on **Developer mode**.
 2. Press **Load unpacked** and choose the `companion/` folder.
 3. Pin the Fremkit icon to the toolbar if you like.
 
-The extension's ID is fixed by the `key` in its manifest: `lnckeodobpbbmfbdlpnegjpchgkehdlk`. That
-is the ID the store listing will have (publication is pending), so a link made with the unpacked
-copy keeps working when you switch to the store version. The server answers that extension only:
+The extension's ID is fixed by the `key` in its manifest: `lnckeodobpbbmfbdlpnegjpchgkehdlk`, the
+store listing's own, so a link made with the unpacked copy keeps working with the store version
+and the other way round. The server answers that extension only:
 any other extension is refused (403) before it can ask to pair, and the Edge and **Settings →
 Devices** show the first characters of the asking or linked extension's ID (*extension lnckeo…*).
 That short ID only tells extensions apart (Companion from a developer's copy). It cannot tell
@@ -73,12 +55,23 @@ The extension speaks to `127.0.0.1:4242` only, and its manifest asks for that or
 port (`FREMKIT_PORT=4301`, say), edit your local copy: `PORT` in `companion/worker.js` and the port
 in `host_permissions` in `companion/manifest.json`, then reload the extension.
 
+### Publishing a new version
+
+Bump `version` in `companion/manifest.json`, then `bash scripts/package-companion.sh` writes
+`dist/fremkit-companion-<version>.zip`: the folder as it is, without the manifest's `key`, which
+the store refuses (it keeps the listing's ID, the same one). Upload it from the listing's
+**Package** tab in the Chrome Web Store developer dashboard and submit it for review.
+
 ## Link it to Fremkit
 
 1. Click the Fremkit icon and press **Connecter à Fremkit** (*Connect to Fremkit*).
 2. A four-character code appears on the Edge, and in the admin under **Settings → Devices**. The
    popup does not show it: it asks *Tapez le code affiché sur l'Edge* (*Type the code shown on the
-   Edge*).
+   Edge*). Fremkit takes the request only while one of those two can show it: the dashboard open
+   on the Edge (or in a browser on this Mac), or **Settings → Devices** open in the admin.
+   Otherwise it refuses it, and the popup says *Nobody would see the code*; the extension's first
+   store release, 0.1.0, knew no such answer and says *Another pairing request is already waiting
+   on the Edge* instead (0.1.1 and later say it right).
 3. Type the code in the popup and press **Valider** (*Confirm*). That is the approval: there is no
    Allow button. **Refuse** on the Edge (or in the admin) drops the request.
 
@@ -120,7 +113,7 @@ on the Edge, and could show a code of its own. So:
   Mac, and the extension finds Fremkit again on its own.
 
 Linked extensions are listed in **Settings → Devices**, where you can rename or remove them.
-**Remove every iPad** and **Reset the certificate** leave them linked.
+**Remove every tablet** and **Reset the certificate** leave them linked.
 Removing one closes its connection at once, and the extension goes back to showing the **Connect**
 button; link it again the same way.
 
@@ -146,9 +139,7 @@ Edge*), or press **⌃⇧F** (Control-Shift-F). Press it again to stop. The shor
 - **On the Mac's Edge only.** A Fremplay widget on a paired iPad's screen shows *Fremplay ne
   s'affiche que sur l'Edge du Mac.* / *Fremplay only shows on the Mac's Edge.* and nothing else:
   the picture goes peer to peer between addresses of this Mac, and the iPad's copy of the widget
-  gets no WebRTC and no `companion` channel. With the switch off, the iPad leaves its Fremplay
-  widgets out as the Edge does: its view of the config carries `labs.companion` and `labs.fremdev`
-  (so Fremdev's tiles are gated the same way), and nothing else of the experimental switches.
+  gets no WebRTC and no `companion` channel.
 - The browser can be in the background, on another tab or another desktop. Quitting it, or
   closing the tab, ends the share.
 - The video travels directly between the browser and the Edge over WebRTC, between addresses of
@@ -176,12 +167,14 @@ green light. Tap a row to unfold it to that tab's history and its **Copy report*
 history and the bug report](#the-history-and-the-bug-report)); **Show tab** brings that tab forward.
 The **×** on a row marks its errors and failed requests as seen: the counters stay, dimmed, and the
 light turns hollow until a new one comes in or the tab reloads (green means a page with nothing open
-since its last load or hot update). It is experimental and behind its own switch, `labs.fremdev`, on
-top of `labs.companion` (Fremdev runs only while both are on, `fremdevEnabled`): with either off the
-server reports Fremdev as disabled (*Activez Fremdev dans les fonctions expérimentales* / *Turn
-Fremdev on under Experimental features*), the widget is left out like Fremplay's, and `ready`
-announces `modules.fremdev: false`. Turning a switch sends every connected install a fresh `ready`.
-A config that already places a Fremdev widget starts with `labs.fremdev` on.
+since its last load or hot update). It is experimental and behind its own experimental switch, Fremdev (`labs.fremdev`,
+`fremdevEnabled`): with it off the server reports Fremdev as disabled (*Activez Fremdev dans les
+fonctions expérimentales* / *Turn Fremdev on under Experimental features*), the widget is left out
+of the library and not drawn on the Edge, and `ready` announces `modules.fremdev: false`. Turning
+the switch sends every connected install a fresh `ready`. The switch starts off, a config that
+already places a Fremdev widget included; it is on only once ticked. A paired tablet's view of the
+config carries `labs.fremdev` and nothing else of the experimental switches, so it leaves Fremdev's
+tiles out the same way.
 
 ### Turn it on
 
@@ -363,8 +356,8 @@ waits at most 5 seconds, and writes it to the clipboard with `pbcopy`, the text 
 standard input. The extension's popup has the same button for each tab, with a *stack* checkbox,
 and writes the clipboard from the popup itself.
 At most 8 reports can be pending per install. The report is built in the extension and goes nowhere
-else: only to the clipboard, when you press a button. It is available while Fremdev is on and
-`labs.companion` and `labs.fremdev` are ticked, for a tab the extension reported, and only from the
+else: only to the clipboard, when you press a button. It is available while Fremdev is on in the extension and
+`labs.fremdev` is ticked, for a tab the extension reported, and only from the
 Mac itself, never from a paired device.
 
 The popup also has **Copy screenshot**, on the row of the tab it was opened on: the popup's
@@ -385,7 +378,7 @@ cache, and the badge flashes **✓** in gold when the server answered 200, **!**
 module is announced as `fremdev.shot`.
 
 The server takes the shot only from this Mac (the route is not on the remote listener), from
-Companion's origin with that extension's own token, while `labs.companion` and `labs.fremdev` are on
+Companion's origin with that extension's own token, while `labs.fremdev` is on
 and the install is connected, on and lists `fremdev.shot` (409 otherwise); a body over 2 MiB is 413,
 one that does not start like a JPEG (`FF D8 FF`) is 415, and a second shot while the first is being
 written is 429. The token is sent only on a socket that was greeted, so only once the socket's

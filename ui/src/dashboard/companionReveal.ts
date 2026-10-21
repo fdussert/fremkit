@@ -1,5 +1,4 @@
 import type { Config, Screen } from '../shared/types'
-import { companionOn } from '../shared/companionGate'
 
 /**
  * Which page a browser-extension share should bring up on this dashboard.
@@ -17,9 +16,6 @@ import { companionOn } from '../shared/companionGate'
  * kiosk, so that is rarely the first snapshot. Past the window, or once it has landed, a
  * dashboard is only ever moved by a new share (`reveal`).
  */
-
-/** The widget a share is shown in; the companion's other widgets (Fremdev) never hold one. */
-const FREMPLAY = 'fremplay'
 
 /** How long after a load a resumed share may still bring its page up. */
 export const LANDING_WINDOW_MS = 15_000
@@ -43,18 +39,20 @@ export function createRevealTracker() {
   }
 }
 
+/** The built-in widget that shows a shared tab. */
+const FREMPLAY = 'fremplay'
+
 /**
  * The page a dashboard that has just loaded turns to, from its first `companion` snapshot: the
- * first page in order holding a Fremplay widget, while a share is live and `labs.companion` is
- * on. Null when nothing is shared, when the bar holds the widget (it shows there whatever the
- * page), or when no page does. `screen` is the screen as drawn, so the index is the dashboard's.
+ * first page in order holding a Fremplay widget, while a share is live. Null when nothing is
+ * shared, when the bar holds the widget (it shows there whatever the page), or when no page does.
  */
 export function landingPage(
   snapshot: { tab?: { state?: string } | null },
-  config: Pick<Config, 'labs' | 'widgets'>,
+  config: Pick<Config, 'widgets'>,
   screen: Pick<Screen, 'nav' | 'pages'>,
 ): number | null {
-  if (snapshot.tab?.state !== 'sharing' || !companionOn(config)) return null
+  if (snapshot.tab?.state !== 'sharing') return null
   const holds = (instanceId: string): boolean => config.widgets[instanceId]?.widgetId === FREMPLAY
   if (screen.nav.some((item) => holds(item.instanceId))) return null
   const index = screen.pages.findIndex((page) => page.items.some((item) => holds(item.instanceId)))

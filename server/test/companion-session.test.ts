@@ -11,7 +11,7 @@ const R = (n: number) => `00000000-0000-4000-8000-00000000000${n}`
 const TOKEN = 'a'.repeat(43)
 const INSTALL = '0b7d1c2e-4f5a-4b6c-8d7e-9f0a1b2c3d4e'
 
-function setup(opts: { canShare?: boolean; paired?: number; enabled?: () => boolean; fremdevEnabled?: () => boolean } = {}) {
+function setup(opts: { canShare?: boolean; paired?: number; fremdevEnabled?: () => boolean } = {}) {
   let time = 1_000_000
   const sent: Array<{ to: string; msg: ServerMessage }> = []
   let changes = 0
@@ -21,7 +21,6 @@ function setup(opts: { canShare?: boolean; paired?: number; enabled?: () => bool
     changed: () => { changes++ },
     canShare: () => opts.canShare ?? true,
     pairedCount: () => opts.paired ?? 2,
-    ...(opts.enabled ? { enabled: opts.enabled } : {}),
     ...(opts.fremdevEnabled ? { fremdevEnabled: opts.fremdevEnabled } : {}),
   })
   const hello = (device: string, extra: object = {}) => {
@@ -486,10 +485,16 @@ describe('CompanionSession tab.meta throttle', () => {
     expect(t.changes()).toBe(base)
   })
 
+  it('greets with Fremplay on, which a released extension still reads', () => {
+    const t = setup({ fremdevEnabled: () => false })
+    t.hello('a')
+    expect(t.to('a')).toEqual([{ type: 'ready', protocol: 2, modules: { fremplay: true, fremdev: false, shotView: true } }])
+  })
+
   describe('with Fremdev off on its own (labs.fremdev)', () => {
     it('says so in ready, and a fresh ready goes to every install when it turns on', () => {
       let fremdev = false
-      const t = setup({ enabled: () => true, fremdevEnabled: () => fremdev })
+      const t = setup({ fremdevEnabled: () => fremdev })
       t.hello('a')
       t.hello('b')
       expect(t.to('a')).toEqual([{ type: 'ready', protocol: 2, modules: { fremplay: true, fremdev: false, shotView: true } }])
@@ -499,51 +504,16 @@ describe('CompanionSession tab.meta throttle', () => {
       expect(t.to('a')).toEqual([{ type: 'ready', protocol: 2, modules: { fremplay: true, fremdev: true, shotView: true } }])
       expect(t.to('b')).toEqual([{ type: 'ready', protocol: 2, modules: { fremplay: true, fremdev: true, shotView: true } }])
     })
-  })
 
-  describe('with Fremplay off (labs.companion)', () => {
-    it('says so in ready and refuses a new share with disabled', () => {
-      const t = setup({ enabled: () => false })
+    it('leaves a running share alone when it turns, Fremplay being always on', () => {
+      let fremdev = true
+      const t = setup({ fremdevEnabled: () => fremdev })
       t.hello('a')
-      expect(t.to('a')).toEqual([{ type: 'ready', protocol: 2, modules: { fremplay: false, fremdev: false, shotView: true } }])
-      t.clear()
       t.start('a')
-      expect(t.to('a')).toEqual([{ type: 'tab.refused', sessionId: S1, reason: 'disabled' }])
-      expect(t.session.snapshot().tab.state).toBe('idle')
-    })
-
-    it('refuses a share carried back by hello', () => {
-      const t = setup({ enabled: () => false })
-      t.hello('a', { session: { sessionId: S1, meta: META } })
-      expect(t.to('a')).toEqual([
-        { type: 'ready', protocol: 2, modules: { fremplay: false, fremdev: false, shotView: true } },
-        { type: 'tab.refused', sessionId: S1, reason: 'disabled' },
-      ])
-      expect(t.session.snapshot().tab.state).toBe('idle')
-    })
-
-    it('ends a running share when the switch goes off, and tells every extension', () => {
-      let on = true
-      const t = setup({ enabled: () => on })
-      t.hello('a')
-      t.hello('b')
-      t.start('a')
-      t.session.view(R(1), 'w1')
       t.clear()
-      on = false
+      fremdev = false
       t.session.switched()
-      expect(t.to('a')).toEqual([
-        { type: 'ready', protocol: 2, modules: { fremplay: false, fremdev: false, shotView: true } },
-        { type: 'tab.refused', sessionId: S1, reason: 'disabled' },
-      ])
-      expect(t.to('b')).toEqual([{ type: 'ready', protocol: 2, modules: { fremplay: false, fremdev: false, shotView: true } }])
-      expect(t.session.snapshot().tab).toMatchObject({ state: 'idle', receivers: [] })
-      // Back on: the extensions hear it, and a share starts again.
-      t.clear()
-      on = true
-      t.session.switched()
-      expect(t.to('a')).toEqual([{ type: 'ready', protocol: 2, modules: { fremplay: true, fremdev: true, shotView: true } }])
-      t.start('a', S2)
+      expect(t.to('a')).toEqual([{ type: 'ready', protocol: 2, modules: { fremplay: true, fremdev: false, shotView: true } }])
       expect(t.session.snapshot().tab.state).toBe('sharing')
     })
   })
@@ -555,7 +525,7 @@ describe('CompanionSession with Fremdev', () => {
     const devChanged = vi.fn<() => void>()
     const enabled = opts.enabled ?? (() => true)
     const dev = new CompanionDev({ send: (to, msg) => sent.push({ to, msg }), changed: devChanged, enabled, pairedCount: () => 1 })
-    const session = new CompanionSession({ send: (to, msg) => sent.push({ to, msg }), changed: () => undefined, enabled, dev })
+    const session = new CompanionSession({ send: (to, msg) => sent.push({ to, msg }), changed: () => undefined, fremdevEnabled: enabled, dev })
     const hello = (device: string, extra: object = {}) => {
       session.connect(device, `Browser ${device}`)
       session.onMessage(device, { type: 'hello', token: TOKEN, installId: INSTALL, protocol: 2, ...extra })
@@ -572,7 +542,7 @@ describe('CompanionSession with Fremdev', () => {
     t.devChanged.mockClear()
     on = false
     t.session.switched()
-    expect(t.sent).toEqual([{ to: 'a', msg: { type: 'ready', protocol: 2, modules: { fremplay: false, fremdev: false, shotView: true } } }])
+    expect(t.sent).toEqual([{ to: 'a', msg: { type: 'ready', protocol: 2, modules: { fremplay: true, fremdev: false, shotView: true } } }])
     // The dev channel is published again: its snapshot now says the switch is off.
     expect(t.devChanged).toHaveBeenCalled()
   })

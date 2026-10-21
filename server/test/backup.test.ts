@@ -1,15 +1,18 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { mkdtemp, mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
+import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { FastifyInstance } from 'fastify'
 import { buildApp } from '../src/app.js'
-import { backupFilename, CONFIG_ENTRY, MANIFEST_ENTRY, readBackup } from '../src/backup/routes.js'
+import { backupFilename, CONFIG_ENTRY, MANIFEST_ENTRY, readBackup, TILE_ICONS_PREFIX } from '../src/backup/routes.js'
 import { readZip, writeZip } from '../src/backup/zip.js'
 import { DEFAULT_BACKGROUND } from '../src/backgrounds/seed.js'
+import { checkTileIcon, MAX_TILE_ICON_BYTES } from '../src/tile-icons/routes.js'
+import { tr } from '../src/i18n.js'
 
 /** A one-pixel PNG, which is what detectImageType has to accept. */
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64')
+const NAS_SVG = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect width="20" height="8" x="2" y="8"/></svg>')
 
 const CONFIG = {
   version: 4,
@@ -36,6 +39,8 @@ beforeEach(async () => {
   await writeFile(join(dir, 'fremkit.json'), JSON.stringify(CONFIG), 'utf8')
   await mkdir(join(dir, 'backgrounds'), { recursive: true })
   await writeFile(join(dir, 'backgrounds', 'photo.png'), PNG)
+  await mkdir(join(dir, 'tile-icons'), { recursive: true })
+  await writeFile(join(dir, 'tile-icons', '1-nas.svg'), NAS_SVG)
   app = await build(dir)
 })
 afterEach(async () => { await app.close() })
@@ -343,6 +348,54 @@ describe('POST /api/restore and the secrets already on this machine', () => {
   })
 })
 
+describe('tile icons in a backup', () => {
+  it('archives the imported icons', async () => {
+    const names = zipOf(await app.inject({ url: '/api/backup' })).map((e) => e.name)
+    expect(names).toContain(`${TILE_ICONS_PREFIX}1-nas.svg`)
+  })
+  it('restores them beside the config', async () => {
+    const archive = Buffer.from((await app.inject({ url: '/api/backup' })).rawPayload)
+    await rm(join(dir, 'tile-icons'), { recursive: true, force: true })
+    const res = await post(archive)
+    expect(res.statusCode).toBe(200)
+    expect(res.json().tileIcons).toBe(1)
+    expect(await readFile(join(dir, 'tile-icons', '1-nas.svg'))).toEqual(NAS_SVG)
+  })
+  it('refuses an archive smuggling an active SVG, a JPEG, an oversize icon or a bad name', () => {
+    const config = { name: CONFIG_ENTRY, data: Buffer.from(JSON.stringify(CONFIG)) }
+    // A plain drawing padded past the limit with a comment, so only its size is wrong.
+    const oversize = Buffer.concat([NAS_SVG, Buffer.from(`<!--${'x'.repeat(MAX_TILE_ICON_BYTES)}-->`)])
+    expect(checkTileIcon(oversize).ok).toBe(true)
+    for (const [entry, message] of [
+      [{ name: `${TILE_ICONS_PREFIX}1-x.svg`, data: Buffer.from('<svg onload="x"/>') }, tr(undefined, 'backup.badTileIcon')],
+      [{ name: `${TILE_ICONS_PREFIX}1-x.png`, data: Buffer.from([0xff, 0xd8, 0xff, 0xe0, 1]) }, tr(undefined, 'backup.badTileIcon')],
+      [{ name: `${TILE_ICONS_PREFIX}1-big.svg`, data: oversize }, tr(undefined, 'backup.badTileIcon')],
+      [{ name: `${TILE_ICONS_PREFIX}../../x.svg`, data: NAS_SVG }, tr(undefined, 'backup.badTileIconName')],
+    ] as const) expect(() => readBackup(writeZip([config, entry], new Date())), entry.name).toThrow(message)
+  })
+  it('takes a library of a few hundred backgrounds and icons together', () => {
+    const config = { name: CONFIG_ENTRY, data: Buffer.from(JSON.stringify(CONFIG)) }
+    const icons = Array.from({ length: 300 }, (_, i) => ({ name: `${TILE_ICONS_PREFIX}${i}-x.svg`, data: NAS_SVG }))
+    const bgs = Array.from({ length: 300 }, (_, i) => ({ name: `backgrounds/${i}.png`, data: PNG }))
+    const read = readBackup(writeZip([config, ...icons, ...bgs], new Date()))
+    expect([read.tileIcons.length, read.backgrounds.length]).toEqual([300, 300])
+  })
+  it('refuses an icon whose name claims another type than its bytes', () => {
+    // The route serves an icon by its extension, so a `.svg` name on raster bytes would be
+    // served as SVG — and RIFF…WEBP bytes can carry `<svg onload>` past the magic check.
+    const config = { name: CONFIG_ENTRY, data: Buffer.from(JSON.stringify(CONFIG)) }
+    const webpSvg = Buffer.concat([Buffer.from('RIFF\0\0\0\0WEBP'), Buffer.from('<svg onload="x"/>')])
+    expect(checkTileIcon(webpSvg).ok).toBe(true)
+    for (const entry of [
+      { name: `${TILE_ICONS_PREFIX}1-x.svg`, data: webpSvg },
+      { name: `${TILE_ICONS_PREFIX}1-x.svg`, data: PNG },
+      { name: `${TILE_ICONS_PREFIX}1-x.png`, data: NAS_SVG },
+    ]) expect(() => readBackup(writeZip([config, entry], new Date())), entry.name).toThrow(tr(undefined, 'backup.badTileIcon'))
+    const ok = readBackup(writeZip([config, { name: `${TILE_ICONS_PREFIX}1-x.png`, data: PNG }], new Date()))
+    expect(ok.tileIcons.map((i) => i.name)).toEqual(['1-x.png'])
+  })
+})
+
 describe('page backgrounds in a backup', () => {
   it('carries a page background and its image, and restores both', async () => {
     const config = structuredClone(CONFIG) as typeof CONFIG & { screens: { pages: Record<string, unknown>[] }[] }
@@ -389,52 +442,52 @@ describe('what an archive or a PUT cannot change', () => {
     expect(after.marketplace.installed['evil-widget']).toBeUndefined()
   })
 
-  it('restoring keeps this Mac\'s experimental features switches, either way', async () => {
+  it('restoring keeps this Mac\'s experimental features switches, and drops the former ones', async () => {
     for (const here of [true, false]) {
       const current = (await app.inject({ url: '/api/config' })).json()
-      const mine = { devices: here, companion: !here, fremdev: here }
-      expect((await app.inject({ method: 'PUT', url: '/api/config', payload: { ...current, labs: mine } })).statusCode).toBe(200)
-      // A file stating the opposite, then one written before the switches existed with two
-      // screens and a Fremplay widget, which the migration would turn both on for.
-      for (const labs of [{ labs: { devices: !here, companion: here, fremdev: !here } }, {}]) {
+      expect((await app.inject({ method: 'PUT', url: '/api/config', payload: { ...current, labs: { fremdev: here } } })).statusCode).toBe(200)
+      // A file stating the opposite with both former switches, then one written before any switch
+      // existed, with two screens, a Fremplay and a Fremdev widget.
+      for (const labs of [{ labs: { devices: true, companion: true, fremdev: !here } }, {}]) {
         const crafted = {
           ...CONFIG, ...labs,
-          widgets: { ...CONFIG.widgets, 'fremplay-1': { widgetId: 'fremplay', showTitle: false, settings: {} } },
+          widgets: {
+            ...CONFIG.widgets,
+            'fremplay-1': { widgetId: 'fremplay', showTitle: false, settings: {} },
+            'fremdev-1': { widgetId: 'fremdev', showTitle: false, settings: {} },
+          },
           screens: [CONFIG.screens[0], { ...CONFIG.screens[0], id: 'second', name: 'Second' }],
         }
         const archive = writeZip([{ name: CONFIG_ENTRY, data: Buffer.from(JSON.stringify(crafted)) }])
         expect((await post(archive)).statusCode).toBe(200)
-        expect((await app.inject({ url: '/api/config' })).json().labs).toEqual(mine)
+        expect((await app.inject({ url: '/api/config' })).json().labs, String(here)).toEqual({ fremdev: here })
       }
     }
   })
 
-  it('PUT /api/config without labs keeps the switches, and with them sets them', async () => {
+  it('PUT /api/config drops the former switches an older admin may send', async () => {
     const current = (await app.inject({ url: '/api/config' })).json()
-    expect((await app.inject({ method: 'PUT', url: '/api/config', payload: { ...current, labs: { devices: true, companion: true } } })).statusCode).toBe(200)
     const { labs: _labs, ...without } = current
-    expect((await app.inject({ method: 'PUT', url: '/api/config', payload: without })).statusCode).toBe(200)
-    expect((await app.inject({ url: '/api/config' })).json().labs).toEqual({ devices: true, companion: true, fremdev: false })
-    // One switch sent, the other kept.
-    expect((await app.inject({ method: 'PUT', url: '/api/config', payload: { ...current, labs: { devices: false } } })).statusCode).toBe(200)
-    expect((await app.inject({ url: '/api/config' })).json().labs).toEqual({ devices: false, companion: true, fremdev: false })
-    expect((await app.inject({ method: 'PUT', url: '/api/config', payload: { ...current, labs: { companion: false } } })).statusCode).toBe(200)
-    expect((await app.inject({ url: '/api/config' })).json().labs).toEqual({ devices: false, companion: false, fremdev: false })
+    for (const payload of [without, { ...current, labs: { devices: true, companion: false } }]) {
+      expect((await app.inject({ method: 'PUT', url: '/api/config', payload })).statusCode).toBe(200)
+      expect((await app.inject({ url: '/api/config' })).json().labs).toEqual({ fremdev: false })
+    }
   })
 
   it('PUT /api/config keeps labs.fremdev when the body has no boolean for it, and sets it when it has', async () => {
     const current = (await app.inject({ url: '/api/config' })).json()
     const put = async (labs: Record<string, boolean>) =>
       expect((await app.inject({ method: 'PUT', url: '/api/config', payload: { ...current, labs } })).statusCode).toBe(200)
-    await put({ devices: false, companion: true, fremdev: true })
-    expect((await app.inject({ url: '/api/config' })).json().labs.fremdev).toBe(true)
+    await put({ fremdev: true })
+    expect((await app.inject({ url: '/api/config' })).json().labs).toEqual({ fremdev: true })
+    // An older admin sending only the former switches leaves Fremdev's as it is.
     await put({ devices: false, companion: true })
-    expect((await app.inject({ url: '/api/config' })).json().labs.fremdev).toBe(true)
+    expect((await app.inject({ url: '/api/config' })).json().labs).toEqual({ fremdev: true })
     const { labs: _labs, ...without } = current
     expect((await app.inject({ method: 'PUT', url: '/api/config', payload: without })).statusCode).toBe(200)
-    expect((await app.inject({ url: '/api/config' })).json().labs.fremdev).toBe(true)
-    await put({ devices: false, companion: true, fremdev: false })
-    expect((await app.inject({ url: '/api/config' })).json().labs.fremdev).toBe(false)
+    expect((await app.inject({ url: '/api/config' })).json().labs).toEqual({ fremdev: true })
+    await put({ fremdev: false })
+    expect((await app.inject({ url: '/api/config' })).json().labs).toEqual({ fremdev: false })
   })
 
   it('PUT /api/config replays the current consent records', async () => {

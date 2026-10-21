@@ -59,8 +59,8 @@ export const DEMO_SETTINGS: Record<string, Record<string, unknown>> = {
 /**
  * Built-ins the demo leaves off its dashboard and gives no provider: Fremplay shows a browser
  * tab sent by the Fremkit Companion extension, and Fremdev the dev tabs that extension watches,
- * which a demo has no way to fake; both are experimental features hidden in the admin until
- * `labs.companion` is on.
+ * which a demo has no way to fake; Fremdev is an experimental feature hidden in the admin until
+ * `labs.fremdev` is on.
  */
 export const DEMO_LEAVES_OUT: readonly string[] = ['fremplay', 'fremdev']
 
@@ -127,8 +127,8 @@ export function demoConfig(locale: 'fr' | 'en' = 'en'): Config {
     locale,
     privacy: { claudeAccountUsage: true, showAccountEmail: false, codexAccount: true, codexHistorySources: ['cli', 'vscode', 'appServer'], macmonTemperature: false },
     marketplace: { installed: {} },
-    // As on a fresh install: the iPad screens stay an experimental feature until it is ticked.
-    labs: { devices: false, companion: false, fremdev: false },
+    // As on a fresh install: Fremdev stays an experimental feature until it is ticked.
+    labs: { fremdev: false },
     widgets,
     screens: [{
       id: 'edge',

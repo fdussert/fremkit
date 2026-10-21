@@ -92,14 +92,13 @@ export function widgetInScope(config: Config, scope: ScreenScope, widgetId: stri
  * the marketplace records, the privacy switches, or any other screen and its widgets' settings.
  * A device with no screen gets no screen at all, which is what its page needs to say so.
  *
- * Of the experimental switches, `labs.companion` and `labs.fremdev` alone: off is Fremplay (or
- * Fremdev) off on every screen, so a device's page leaves those tiles out the way the Edge does
- * (`ui/src/shared/companionGate.ts`), and shows them, saying they only play on the Edge, when it
- * is on. Two booleans, nothing else of `labs`.
+ * Of the experimental switches, `labs.fremdev` alone: off is Fremdev off on every screen, so a
+ * device's page leaves those tiles out the way the Edge does, and shows them when it is on. One
+ * boolean, nothing else of `labs`.
  */
 export type DeviceConfigView = Pick<Config, 'version' | 'theme' | 'locale' | 'widgets' | 'screens'> & {
   themeSchedule?: { night: string }
-  labs: { companion: boolean; fremdev: boolean }
+  labs: { fremdev: boolean }
 }
 
 export function deviceConfigView(config: Config, screenId: string | null): DeviceConfigView {
@@ -115,7 +114,7 @@ export function deviceConfigView(config: Config, screenId: string | null): Devic
     theme: config.theme,
     ...(config.themeSchedule ? { themeSchedule: { night: config.themeSchedule.night } } : {}),
     locale: config.locale,
-    labs: { companion: config.labs?.companion === true, fremdev: config.labs?.fremdev === true },
+    labs: { fremdev: config.labs?.fremdev === true },
     widgets,
     screens: screen ? [screen] : [],
   }
@@ -158,4 +157,20 @@ export function iconInScope(config: Config, scope: ScreenScope, target: URL, raw
     try { url = new URL(s) } catch { return false }
     return (url.protocol === 'http:' || url.protocol === 'https:') && url.origin === target.origin
   })
+}
+
+/**
+ * Whether a caller in `scope` may read the imported tile icon `name`: on this Mac, any; for a
+ * device, only one an instance of its own screen wears. The library is the user's, and its file
+ * names (a NAS, a bank, an employer's mark) say more than the screen a device was given.
+ */
+export function tileIconInScope(config: Config, scope: ScreenScope, name: string): boolean {
+  if (scope.kind === 'all') return true
+  if (scope.kind === 'none') return false
+  for (const id of screenInstanceIds(config, scope.screenId)) {
+    if (!Object.hasOwn(config.widgets, id)) continue
+    const icon = config.widgets[id].icon
+    if (icon?.kind === 'file' && icon.name === name) return true
+  }
+  return false
 }

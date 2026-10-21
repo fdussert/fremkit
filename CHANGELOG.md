@@ -14,11 +14,74 @@ tagged `vX.Y.Z`.
 
 ### Added
 
-- **Fremdev has its own switch.** Settings → About → Experimental features now turns Fremdev on
-  and off on its own; it still needs the browser companion.
+- **Fremplay: a browser tab's video on the Edge, with touch controls.** Play and pause, ten
+  seconds back or ahead, volume, mute, fill the tile, bring the tab back, stop. The volume and mute
+  buttons drive the Mac's output by default; the **Volume buttons** setting switches them to the
+  video in the browser. The Edge turns to the page holding Fremplay when a share starts, and once
+  more after Fremkit restarts when the share comes back. On a paired iPad's screen the tile says
+  it only shows on the Mac's Edge.
+- **Fremkit Companion, the browser extension that feeds it**, for Chrome and other Chromium
+  browsers, [on the Chrome Web Store](https://chromewebstore.google.com/detail/fremkit-companion/lnckeodobpbbmfbdlpnegjpchgkehdlk). Send the video of any tab from its toolbar menu or
+  with ⌃⇧F. A player embedded from another site asks for that site's permission the first time,
+  after the popup names the site, and the extension gives the permission back unless the share
+  starts with a video in that site's frame.
+- **Pairing the extension takes the code shown on the Edge, typed into the extension.** The Edge
+  shows the code and the browser's name with a Refuse button; typing the code is the approval, and
+  three wrong tries refuse the request. A request is taken only while the dashboard or **Settings →
+  Devices** is open to show its code. The code never leaves the Mac's screen, and the extension
+  checks it is talking to your Fremkit before it signs in, so a program holding Fremkit's port
+  cannot link your browser to itself (the popup says *The server on this port is not your
+  Fremkit*). After five requests refused for wrong codes within a day, pairing locks until you
+  press **Unlock pairing** in **Settings → Devices**.
+- **Paired browser extensions are listed in Settings → Devices**, with their name (editable),
+  when they paired and were last seen, whether they are connected, and a Remove button (**Remove
+  every tablet** and **Reset the certificate** leave them linked), beside the pairing request
+  waiting for an answer and a link to the extension's store page.
+- **Tile icons.** A tile's title can show an icon: a pictogram from the built-in set, or your own
+  SVG, PNG or WebP, tinted to the theme or in its own colours. Under **/admin**, select a tile,
+  then **Icon**. Fremkit ships no brand logos; the marks you import stay in your installation.
+- **The Fremkit app for Android tablets.** It shows a screen of your dashboard on an Android tablet
+  (Android 9 or later) as the iPad app does: pair it by scanning the QR code in **Settings →
+  Devices**, or by typing the code after checking the four words; it finds the Mac again when its
+  address changes, follows the brightness set for its screen (move the tablet's own slider and
+  yours wins, and the admin follows), runs full screen and keeps the screen on. Its settings,
+  opened over the dashboard with the gesture that opens the admin on the Edge, can pin the app to
+  the screen with Android's screen pinning, or forget the Mac. The APK comes with each release
+  rather than from the Play Store, and needs nothing from Google Play: **Settings → Devices** and the
+  site link to it, and the site shows its signing certificate's fingerprint to check it against.
+  Obtainium can keep it up to date.
+- **Pairing by address when the tablet finds no Mac.** **Settings → Devices** now shows, beside the
+  code, the Mac's addresses to type on a tablet, and the Android app (the iPad app from its next
+  version) has **Enter the Mac's address** under its list of Macs: for networks where the tablet
+  never sees the Mac on its own, such as a Mac on both Wi-Fi and Ethernet. You still check the
+  four words before typing the code.
+
+### Changed
+
+- **Paired devices are filed as tablets.** Fremkit now records a paired iPad as a tablet and
+  notes which platform it runs, ready for tablets other than the iPad. Nothing changes for an
+  iPad already paired. Going back to an older version of Fremkit afterwards sets the list of
+  paired devices aside: every iPad and browser extension then has to pair again.
+- **The Devices settings speak of tablets.** Pairing, the empty list and **Remove every tablet**
+  say "tablet" rather than "iPad", since an Android tablet pairs too. A paired screen's own
+  messages still say "iPad" in the iPad app.
+- **Tablet pairing and extra screens are no longer experimental.** **Settings → Devices** pairs an
+  iPad running the Fremkit app from the App Store, and links to the app there; the screen
+  selector with its **+ Add a screen** is always above the canvas. Importing a layout brings its
+  tablet screens along with the rest.
 
 ### Fixed
 
+- **Backgrounds with dots at the end of their name.** A background uploaded from a file called,
+  say, "a..png" was saved under a name the dashboard then refused: it never showed in the
+  library and could not be deleted. It is now saved under a clean name.
+- **The clipboard widget masks one-time codes.** A six-digit code copied from a text message or
+  an authenticator (`482913`, `482 913`, `4829-1375`) showed in full on the Edge and on a paired
+  iPad; any run of four to eight digits copied on its own is now shown as a secret, and still
+  copies back with a tap. Numbers inside a sentence and phone numbers are shown as before.
+- **The clipboard widget leaves alone what more password managers copy.** Besides the standard
+  "concealed" and "transient" markers, a copy from 1Password, KeeWeb, Butler, Typeit4me or a
+  Keyboard Maestro generator is no longer recorded at all.
 - **The clipboard widget keeps accents and symbols intact.** Under the Fremkit Helper, text with
   an accent, a `·` or a `×` came out garbled in the clipboard history and when copied back from it.
 

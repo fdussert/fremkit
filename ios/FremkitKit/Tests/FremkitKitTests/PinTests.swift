@@ -2,23 +2,12 @@ import CryptoKit
 import XCTest
 @testable import FremkitKit
 
-/// A P-256 public key in DER SubjectPublicKeyInfo form, made with
+/// A P-256 public key in DER SubjectPublicKeyInfo form (the shared `spki` vector), made with
 /// `openssl ecparam -name prime256v1 -genkey | openssl ec -pubout -outform DER`. Its hash was
 /// computed by `openssl dgst -sha256 -binary | base64 | tr '+/' '-_' | tr -d '='`.
 enum SPKIFixture {
-    static let hex = "3059301306072a8648ce3d020106082a8648ce3d030107034200042fb1227411d23e4c17c047a472bfec3e71847e5ae51c785951bb4702e560d44aad22e120c9c885e22ea1069d316c6e42f97f2537118e4a5768af6b1c43420bde"
-    static let keyHash = "Y4nRTFWKfvKwllWID7DQPMgZIF8SqUUvgWkQZsK_ArQ"
-
-    static var der: Data {
-        var bytes = [UInt8]()
-        var index = hex.startIndex
-        while index < hex.endIndex {
-            let next = hex.index(index, offsetBy: 2)
-            bytes.append(UInt8(hex[index..<next], radix: 16)!)
-            index = next
-        }
-        return Data(bytes)
-    }
+    static let keyHash = Vectors.all.spki.keyHash
+    static var der: Data { Data(hex: Vectors.all.spki.derHex) }
 }
 
 final class PinTests: XCTestCase {
@@ -27,13 +16,14 @@ final class PinTests: XCTestCase {
     }
 
     func testRebuildsTheSPKIOfARawP256Key() {
-        let raw = SPKIFixture.der.dropFirst(26)
+        let raw = SPKIFixture.der.dropFirst(Vectors.all.spki.rawOffset)
         XCTAssertEqual(Pin.spki(p256Raw: Data(raw)), SPKIFixture.der)
     }
 
     func testRefusesARawKeyThatIsNotAnUncompressedP256Point() {
-        XCTAssertNil(Pin.spki(p256Raw: Data(repeating: 4, count: 64)))
-        XCTAssertNil(Pin.spki(p256Raw: Data([0x02]) + Data(repeating: 1, count: 64)))
+        for hex in Vectors.all.spki.rejectedRawHex {
+            XCTAssertNil(Pin.spki(p256Raw: Data(hex: hex)), hex)
+        }
     }
 
     func testAgreesWithCryptoKitOnAFreshKey() {
@@ -99,25 +89,30 @@ final class PinDecisionTests: XCTestCase {
 
 final class FingerprintTests: XCTestCase {
     func testListHashMatchesTheServerConstant() {
-        XCTAssertEqual(Fingerprint.listSHA256, "247bec0519f05acf5f8716f8515af0532676cce180409949d265f5670797c930")
+        XCTAssertEqual(Fingerprint.listSHA256, Vectors.all.fingerprint.listSha256)
     }
 
     func testBundledListHashesToTheConstant() throws {
         let url = try XCTUnwrap(Bundle.module.url(forResource: "fingerprint-words", withExtension: "txt"))
         let digest = SHA256.hash(data: try Data(contentsOf: url)).map { String(format: "%02x", $0) }.joined()
         XCTAssertEqual(digest, Fingerprint.listSHA256)
-        XCTAssertEqual(Fingerprint.list.count, 256)
+        XCTAssertEqual(Fingerprint.list.count, Vectors.all.fingerprint.listLength)
     }
 
     func testMapsTheFirstFourBytesToWords() {
-        // The same vector as server/test/devices-fingerprint.test.ts: 00 01 fe ff, then 28 sevens.
-        let hash = Data([0x00, 0x01, 0xfe, 0xff] + [UInt8](repeating: 7, count: 28)).base64URLEncoded()
-        XCTAssertEqual(hash, "AAH-_wcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc")
-        XCTAssertEqual(Fingerprint.words(keyHash: hash), ["aardvark", "absurd", "woodlark", "zulu"])
+        // The shared vectors, which server/test/devices-fingerprint.test.ts reads too.
+        for vector in Vectors.all.fingerprint.cases {
+            XCTAssertEqual(Data(hex: vector.bytesHex).base64URLEncoded(), vector.keyHash)
+            XCTAssertEqual(Fingerprint.words(keyHash: vector.keyHash), vector.words)
+        }
     }
 
     func testGivesNoWordsForAHashShorterThanFourBytes() {
-        XCTAssertEqual(Fingerprint.words(keyHash: "AAH-"), [])
+        // Where the server throws, the app shows no words.
+        for keyHash in Vectors.all.fingerprint.tooShort {
+            XCTAssertEqual(Fingerprint.words(keyHash: keyHash), [], keyHash)
+        }
+        // Not shared: Node's base64url decoder skips the characters it does not know.
         XCTAssertEqual(Fingerprint.words(keyHash: "not base64!"), [])
     }
 }

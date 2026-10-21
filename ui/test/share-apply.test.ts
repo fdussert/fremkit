@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { mergeLayout, skippedDeviceScreens, type ImportChoices } from '../src/admin/shareApply'
+import { mergeLayout, type ImportChoices } from '../src/admin/shareApply'
 import type { Config, LayoutFile, SharedScreen, WidgetManifest } from '../src/shared/types'
 
 function manifest(id: string, minSize: [number, number], defaultSize: [number, number], compact?: number): WidgetManifest {
@@ -18,7 +18,6 @@ function mine(): Config {
   return {
     version: 4, theme: 'fremkit', locale: 'en', connections: [],
     // This Mac already has an iPad screen, which is what turns the experimental feature on.
-    labs: { devices: true },
     widgets: { old: { widgetId: 'clock', showTitle: true, settings: {} }, shared: { widgetId: 'clock', showTitle: true, settings: {} } },
     screens: [
       { id: 'edge', name: 'Xeneon Edge', kind: 'edge', display: { cols: 64, rows: 16, cell: 40, autoCycleSeconds: 0 }, nav: [],
@@ -64,7 +63,7 @@ describe('mergeLayout', () => {
     const out = mergeLayout(cfg, pageFile(), { screenId: 'edge', pageIndex: 0 }, choices(), MANIFESTS)
     const edge = cfg.screens[0]
     expect(edge.pages.map((p) => p.name)).toEqual(['Home', 'Work'])
-    expect(out).toEqual({ screenId: 'edge', pageIndex: 1, leftOut: 0, skippedDevices: 0 })
+    expect(out).toEqual({ screenId: 'edge', pageIndex: 1, leftOut: 0 })
     const [a, b] = edge.pages[1].items
     expect(a).toMatchObject({ x: 0, y: 0, w: 8, h: 4 })
     expect(cfg.widgets[a.instanceId]).toEqual({ widgetId: 'clock', showTitle: false, bgColor: '#112233', settings: { format: '24h' }, background: { image: '123-image-1.png', dim: 0.3 } })
@@ -150,48 +149,28 @@ describe('mergeLayout', () => {
   })
 })
 
-describe('importing device screens while iPad screens are an experimental feature that is off', () => {
+describe('importing device screens', () => {
   const tablet = (): SharedScreen => edgeScreen({ name: 'Tablet', kind: 'device', nav: [],
     display: { cols: 20, rows: 18, cell: 40, autoCycleSeconds: 0, navHeight: 40 },
     pages: [{ name: 'Wall', items: [{ widget: 'w2', x: 0, y: 0, w: 8, h: 4 }] }] })
-  /** One Edge screen and the flag off: a fresh install. */
+  /** One Edge screen and no `labs`: a fresh install. */
   const fresh = (): Config => {
     const c = mine()
-    c.labs = { devices: false }
+    delete c.labs
     c.screens = [c.screens[0]]
     return c
   }
 
-  it('counts nothing to skip with the flag on, or for a page file', () => {
-    expect(skippedDeviceScreens(mine(), file('setup', [edgeScreen(), tablet()]))).toBe(0)
-    expect(skippedDeviceScreens(fresh(), file('page', [tablet()]))).toBe(0)
-    expect(skippedDeviceScreens(fresh(), file('setup', [edgeScreen(), tablet()]))).toBe(1)
-  })
-
-  it('adds the Edge screens of a setup file and skips its device screens with their widgets', () => {
+  it('adds the Edge and the device screens of a setup file on a fresh install', () => {
     const cfg = fresh()
     const out = mergeLayout(cfg, file('setup', [edgeScreen(), tablet()]), { screenId: 'edge', pageIndex: 0 }, choices(), MANIFESTS)
-    expect(out.skippedDevices).toBe(1)
-    expect(cfg.screens.map((x) => x.kind)).toEqual(['edge', 'edge'])
-    // w2 was on both screens: it stays for the Edge. Nothing of the tablet's is left over.
-    expect(Object.values(cfg.widgets).filter((w) => w.widgetId === 'calendar')).toHaveLength(1)
+    expect(cfg.screens.map((x) => x.kind)).toEqual(['edge', 'edge', 'device'])
   })
 
-  it('imports nothing from a device screen file and leaves the editor where it was', () => {
+  it('adds a device screen file as a screen of its own', () => {
     const cfg = fresh()
-    const before = JSON.stringify(cfg)
     const out = mergeLayout(cfg, file('screen', [tablet()]), { screenId: 'edge', pageIndex: 0 }, choices(), MANIFESTS)
-    expect(out).toEqual({ screenId: 'edge', pageIndex: 0, leftOut: 0, skippedDevices: 1 })
-    expect(JSON.stringify(cfg)).toBe(before)
-  })
-
-  it('keeps the device screens already here when a setup file replaces the rest', () => {
-    const cfg = mine()
-    cfg.labs = { devices: false }
-    const out = mergeLayout(cfg, file('setup', [edgeScreen(), tablet()]), { screenId: 'edge', pageIndex: 0 }, choices({ mode: 'replace' }), MANIFESTS)
-    expect(out.skippedDevices).toBe(1)
-    expect(cfg.screens.map((x) => [x.id, x.kind])).toEqual([['edge', 'edge'], ['ipad', 'device']])
-    expect(cfg.screens[1].pages[0].items.map((i) => i.instanceId)).toEqual(['shared'])
-    expect(cfg.widgets.shared).toBeDefined()
+    expect(cfg.screens.map((x) => x.kind)).toEqual(['edge', 'device'])
+    expect(out.screenId).toBe(cfg.screens[1].id)
   })
 })

@@ -82,8 +82,18 @@ void main() {
   gl_Position = vec4(aPos.x / uRes.x * 2.0 - 1.0, 1.0 - aPos.y / uRes.y * 2.0, 0.0, 1.0);
 }`
 
-const BODY_FS = `
+/**
+ * The fragment shaders' precision: high where the GPU has it, medium elsewhere. Some tablet GPUs
+ * have no high-precision floats in fragment shaders and refuse to compile a shader asking for them.
+ */
+const FS_PRECISION = `#ifdef GL_FRAGMENT_PRECISION_HIGH
 precision highp float;
+#else
+precision mediump float;
+#endif`
+
+const BODY_FS = `
+${FS_PRECISION}
 varying vec2 vTan; varying float vV; varying float vS; varying float vR; varying vec2 vPos;
 varying float vPh; varying float vRing; varying float vSlope;
 uniform float uTime; uniform float uSand;
@@ -178,7 +188,7 @@ varying vec2 vUv;
 void main() { vUv = aUv; gl_Position = vec4(aPos.x / uRes.x * 2.0 - 1.0, 1.0 - aPos.y / uRes.y * 2.0, 0.0, 1.0); }`
 
 const MAW_FS = `
-precision highp float;
+${FS_PRECISION}
 varying vec2 vUv;
 uniform float uOpen; uniform float uTime; uniform float uPx; uniform vec2 uA; uniform vec2 uB; uniform float uShow;
 ${NOISE}
@@ -369,7 +379,7 @@ vec3 dither(vec3 c) { return c + (hash21(gl_FragCoord.xy) + hash21(gl_FragCoord.
 
 /** The sand: the worm's own layer, which it ploughs, breaks out of and dives into. */
 const SAND_FS = `
-precision highp float;
+${FS_PRECISION}
 ${SAND_LIB}
 void main() {
   vec2 p = pix();
@@ -404,7 +414,7 @@ void main() {
 }`
 
 const HAZE_FS = `
-precision highp float;
+${FS_PRECISION}
 uniform vec2 uRes; uniform float uScale; uniform float uAmt; uniform float uTime; uniform float uDir;
 uniform float uBase; uniform vec2 uHead; uniform float uSeed;
 ${NOISE}

@@ -1,8 +1,8 @@
 /**
  * @vitest-environment jsdom
  *
- * "Import a layout…" while iPad screens are an experimental feature that is off: the dialog says
- * before the import that the file's iPad screens will be skipped, and the toast says so after.
+ * "Import a layout…" with iPad screens in the file, on a fresh config: they are imported like the
+ * Edge ones, with no note that anything was skipped.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
@@ -18,11 +18,10 @@ const { default: ShareImportDialog } = await import('../src/admin/ShareImportDia
 const { useAdminStore } = await import('../src/admin/store')
 const { share } = await import('../src/admin/share')
 
-function config(devices: boolean): Config {
+function config(): Config {
   return {
     version: 4, connections: [], secrets: { backend: 'file' }, locale: 'en',
     privacy: { claudeAccountUsage: false, showAccountEmail: false, codexAccount: false, codexHistorySources: [], macmonTemperature: false },
-    labs: { devices },
     widgets: {},
     screens: [{ id: 'edge', name: 'Edge', kind: 'edge', display: { cols: 64, rows: 16, cell: 40, autoCycleSeconds: 0 }, nav: [], pages: [{ id: 'home', name: 'Home', items: [] }] }],
   }
@@ -58,40 +57,33 @@ afterEach(async () => {
 })
 
 describe('importing a setup with an iPad screen', () => {
-  for (const devices of [false, true]) {
-    it(`flag ${devices ? 'on: imports it' : 'off: says it skips it, then does'}`, async () => {
-      const s = useAdminStore()
-      s.state.config = config(devices)
-      s.state.manifests = {}
-      s.selectScreen('edge')
-      const wrapper = mount(ShareImportDialog, { attachTo: document.body })
-      await flushPromises()
-      expect(wrapper.find('[data-test="devices-skipped"]').exists()).toBe(!devices)
-      if (!devices) expect(wrapper.find('[data-test="devices-skipped"]').text()).toMatch(/Experimental features|Fonctions expérimentales/)
-      const apply = wrapper.findAll('button').at(-1)!
-      await apply.trigger('click')
-      await flushPromises()
-      expect(s.state.config!.screens.map((x) => x.kind)).toEqual(devices ? ['edge', 'edge', 'device'] : ['edge', 'edge'])
-      expect(/Experimental features|Fonctions expérimentales/.test(s.state.toast)).toBe(!devices)
-      wrapper.unmount()
-    })
-  }
-})
-
-describe('importing a file with nothing but iPad screens while they are hidden', () => {
-  it('imports nothing and says so, rather than "imported"', async () => {
-    readLayout.mockResolvedValue(preview(['device']))
+  it('imports it, and the toast says "imported"', async () => {
     const s = useAdminStore()
-    s.state.config = config(false)
+    s.state.config = config()
     s.state.manifests = {}
     s.selectScreen('edge')
-    const before = JSON.stringify(s.state.config!.screens)
+    const wrapper = mount(ShareImportDialog, { attachTo: document.body })
+    await flushPromises()
+    expect(wrapper.text()).not.toMatch(/Experimental features|Fonctions expérimentales/)
+    await wrapper.findAll('button').at(-1)!.trigger('click')
+    await flushPromises()
+    expect(s.state.config!.screens.map((x) => x.kind)).toEqual(['edge', 'edge', 'device'])
+    expect(s.state.toast).not.toMatch(/Experimental features|Fonctions expérimentales|skipped|ignoré/)
+    wrapper.unmount()
+  })
+
+  it('imports a file of nothing but iPad screens', async () => {
+    readLayout.mockResolvedValue(preview(['device']))
+    const s = useAdminStore()
+    s.state.config = config()
+    s.state.manifests = {}
+    s.selectScreen('edge')
     const wrapper = mount(ShareImportDialog, { attachTo: document.body })
     await flushPromises()
     await wrapper.findAll('button').at(-1)!.trigger('click')
     await flushPromises()
-    expect(JSON.stringify(s.state.config!.screens)).toBe(before)
-    expect(s.state.toast).toMatch(/^(Nothing was imported|Rien n’a été importé)/)
+    expect(s.state.config!.screens.map((x) => x.kind)).toEqual(['edge', 'device'])
+    expect(s.state.toast).not.toMatch(/^(Nothing was imported|Rien n’a été importé)/)
     wrapper.unmount()
   })
 })

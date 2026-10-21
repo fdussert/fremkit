@@ -30,7 +30,7 @@ function configWith(where: 'page' | 'bar' | 'nowhere'): Config {
   const edge = DEFAULT_CONFIG.screens[0]
   return {
     ...DEFAULT_CONFIG,
-    labs: { devices: false, companion: true, fremdev: true },
+    labs: { fremdev: true },
     widgets: {
       'clock-1': { widgetId: 'clock', showTitle: true, settings: {} },
       'play-1': { widgetId: 'fremplay', showTitle: false, settings: {} },
@@ -214,11 +214,11 @@ describe('createCompanion', () => {
 
   afterEach(async () => { await app?.close() })
 
-  async function build(config: Config = configWith('page'), lockPath?: string) {
+  async function build(config: Config = configWith('page'), lockPath?: string, seen: () => boolean = () => true) {
     app = Fastify()
     await app.register(fastifyWebsocket)
     const registry = { register: vi.fn(), refresh: vi.fn() }
-    const companion = await createCompanion({ app, store, config: { get: () => config }, registry, lockPath })
+    const companion = await createCompanion({ app, store, config: { get: () => config }, registry, lockPath, seen })
     await app.ready()
     return { companion, registry }
   }
@@ -268,7 +268,7 @@ describe('createCompanion', () => {
     app = Fastify()
     await app.register(fastifyWebsocket)
     const registry = { register: vi.fn(), refresh: vi.fn() }
-    const companion = await createCompanion({ app, store, config: { get: () => config }, registry })
+    const companion = await createCompanion({ app, store, config: { get: () => config }, registry, seen: () => true })
     const send = vi.spyOn(companion.sockets, 'send').mockImplementation((_id, msg) => { sent.push(msg) })
     companion.session.onMessage('ext', { type: 'tab.started', sessionId: S1, meta: META })
     expect(sent).toEqual([{ type: 'tab.refused', sessionId: S1, reason: 'noWidget' }])
@@ -278,38 +278,19 @@ describe('createCompanion', () => {
     send.mockRestore()
   })
 
-  it('ends the share when labs.companion goes off, and refuses one until it is back on', async () => {
-    let config = configWith('page')
-    const listeners: Array<(c: Config) => void> = []
+  it('shares whatever a 0.5.0 config said about labs.companion, and greets with Fremplay on', async () => {
+    // The switch is gone from the schema; a config object still carrying it changes nothing.
+    const old = { ...configWith('page'), labs: { companion: false } } as unknown as Config
     const sent: ServerMessage[] = []
     app = Fastify()
     await app.register(fastifyWebsocket)
     const registry = { register: vi.fn(), refresh: vi.fn() }
-    const companion = await createCompanion({
-      app, store, registry,
-      config: { get: () => config, onChange: (cb) => { listeners.push(cb); return () => undefined } },
-    })
-    const set = (next: Config) => { config = next; for (const cb of listeners) cb(next) }
+    const companion = await createCompanion({ app, store, registry, config: { get: () => old }, seen: () => true })
     const send = vi.spyOn(companion.sockets, 'send').mockImplementation((_id, msg) => { sent.push(msg) })
     companion.session.connect('ext', 'Chrome')
     companion.session.onMessage('ext', { type: 'tab.started', sessionId: S1, meta: META })
+    expect(sent).toContainEqual({ type: 'tab.accepted', sessionId: S1 })
     expect(companion.session.snapshot().tab.state).toBe('sharing')
-    sent.length = 0
-    set({ ...configWith('page'), labs: { devices: false, companion: false } } as Config)
-    expect(sent).toEqual([
-      { type: 'ready', protocol: 2, modules: { fremplay: false, fremdev: false, shotView: true } },
-      { type: 'tab.refused', sessionId: S1, reason: 'disabled' },
-    ])
-    expect(companion.session.snapshot().tab.state).toBe('idle')
-    // Another save with the switch still off says nothing more.
-    sent.length = 0
-    set({ ...configWith('page'), labs: { devices: true, companion: false } } as Config)
-    expect(sent).toEqual([])
-    companion.session.onMessage('ext', { type: 'tab.started', sessionId: S1, meta: META })
-    expect(sent).toEqual([{ type: 'tab.refused', sessionId: S1, reason: 'disabled' }])
-    set(configWith('page'))
-    companion.session.onMessage('ext', { type: 'tab.started', sessionId: S1, meta: META })
-    expect(sent.at(-1)).toEqual({ type: 'tab.accepted', sessionId: S1 })
     send.mockRestore()
   })
 
@@ -327,18 +308,11 @@ describe('createCompanion', () => {
     payload: { name: 'Chrome', installId, salt: 'S'.repeat(43) },
   })
 
-  it('refuses a request with 409 while labs.companion is off, with an extension paired or not', async () => {
-    const off = { ...configWith('page'), labs: { devices: false, companion: false } } as Config
-    await build(off)
+  it('takes a pairing request whatever a 0.5.0 config said about labs.companion', async () => {
+    await build({ ...configWith('page'), labs: { companion: false } } as unknown as Config)
     const res = await ask()
-    expect(res.statusCode).toBe(409)
-    expect(res.json()).toEqual({ error: tr(off.locale, 'companion.disabled'), reason: 'disabled' })
-    // Off is Fremplay off: an extension already paired is refused too (it stays in Devices).
-    await store.createExtension({ name: 'Chrome', origin: ORIGIN, installId: INSTALL })
-    const again = await ask()
-    expect(again.statusCode).toBe(409)
-    expect(again.json().reason).toBe('disabled')
-    expect(store.list().filter((d) => d.kind === 'extension')).toHaveLength(1)
+    expect(res.statusCode).not.toBe(409)
+    expect(res.statusCode).toBeLessThan(300)
   })
 
   it('locks pairing after five requests refused for wrong codes, across a restart, until unlocked', async () => {
@@ -354,7 +328,12 @@ describe('createCompanion', () => {
     const locked = await ask()
     expect(locked.statusCode).toBe(423)
     expect(locked.json()).toEqual({ error: tr(configWith('page').locale, 'companion.pairLocked'), reason: 'locked' })
-    // A restart reads the flag back.
+    // A restart reads the flag back. With nobody watching, still 423: the lock is checked before
+    // whether anyone could see the code, so it says what is in the way and nothing about who looks.
+    await app.close()
+    const unseen = await build(configWith('page'), lockPath, () => false)
+    expect(unseen.companion.pairing.locked).toBe(true)
+    expect((await ask()).json()).toEqual({ error: tr(configWith('page').locale, 'companion.pairLocked'), reason: 'locked' })
     await app.close()
     const again = await build(configWith('page'), lockPath)
     expect(again.companion.pairing.locked).toBe(true)

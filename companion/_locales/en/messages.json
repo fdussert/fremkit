@@ -289,6 +289,9 @@
   "pairBusy": {
     "message": "Another pairing request is already waiting on the Edge."
   },
+  "pairUnseen": {
+    "message": "Nobody would see the code: open the dashboard on the Edge, or Settings → Devices in Fremkit, then try again."
+  },
   "pairCooldown": {
     "message": "Request refused; try again in a minute."
   },

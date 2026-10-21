@@ -72,7 +72,7 @@ struct RootView: View {
             ScannerView(flow: flow)
         case let .link(link):
             LinkPairingView(flow: flow, link: link)
-        case .manualList, .manualKey, .manualCode:
+        case .manualList, .manualAddress, .manualKey, .manualCode:
             ManualPairView(flow: flow, network: network)
         }
     }

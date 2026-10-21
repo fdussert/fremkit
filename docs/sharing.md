@@ -89,12 +89,6 @@ showing it; a setup's screens take the place of yours kind by kind (Edge for Edg
 device). Pages made for another grid are re-arranged to fit, as **Copy to screen** does. The
 images go into your background library, and the whole import is one edit: **⌘Z** takes it back.
 
-While iPad screens are an experimental feature that is off (see [devices.md](devices.md#turn-it-on)),
-a screen or setup file's iPad screens are skipped, with the widgets only they show: the dialog says
-so before the import and the message after it. A file with nothing but iPad screens imports
-nothing. Edge screens import as above, a page file is unaffected, and **Replace** leaves the iPad
-screens already on this Mac as they are.
-
 ## The file
 
 ```json
