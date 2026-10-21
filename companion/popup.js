@@ -6,7 +6,8 @@ import { localize, t } from './i18n.js'
 import { browserName } from './lib/browser.js'
 import { BUILTIN_PERMISSION_ORIGINS, parsePattern } from './lib/devhosts.js'
 import { homePath } from './lib/devlog.js'
-import { dataUrlBlob, thumbOf } from './lib/devshot.js'
+import { clearBeforeCapture, dataUrlBlob, thumbOf } from './lib/devshot.js'
+import { dismissShotOverlay } from './lib/shotview.js'
 import { fremplayBlocked, shareErrorKey } from './lib/errors.js'
 import { cleanFrames, embeddedPlayer, pickVideo, survey } from './lib/video.js'
 
@@ -231,7 +232,10 @@ async function copyScreenshot(tabId) {
   let outcome = 'failed'
   try {
     // The Blob is a promise handed to ClipboardItem, so the write is made inside the click.
-    const shot = chrome.tabs.captureVisibleTab(tab.windowId, { format: 'png' }).then(dataUrlBlob)
+    // A thumbnail from a shot just before (⌃⇧S) leaves the tab first, so it is not in this one.
+    const shot = clearBeforeCapture(() => chrome.scripting.executeScript({ target: { tabId }, func: dismissShotOverlay }))
+      .then(() => chrome.tabs.captureVisibleTab(tab.windowId, { format: 'png' }))
+      .then(dataUrlBlob)
     await navigator.clipboard.write([new ClipboardItem({ 'image/png': shot })])
     outcome = 'done'
     // On the clipboard: the worker shows it in the tab and on the Edge, from a thumbnail made here.

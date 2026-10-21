@@ -9,8 +9,8 @@
 
 import { browserName } from './lib/browser.js'
 import { createFremdev } from './fremdev.js'
-import { isThumb, shootTab, shotFeedback, thumbOf } from './lib/devshot.js'
-import { shotOverlay } from './lib/shotview.js'
+import { clearBeforeCapture, isThumb, shootTab, shotFeedback, thumbOf } from './lib/devshot.js'
+import { dismissShotOverlay, shotOverlay } from './lib/shotview.js'
 import { handshake } from './lib/handshake.js'
 import { grantToReturn } from './lib/grant.js'
 import { closeOutcome, refusalOf } from './lib/link.js'
@@ -867,8 +867,24 @@ async function shoot(given) {
     fetch: (...args) => fetch(...args),
     url: `${HTTP}/companion/dev/shot`,
     flash,
+    before: (tabId) => clearShot(tabId),
     after: async (tabId, shot) => showShot(tabId, await thumbOf(shot)),
   })
+}
+
+/** tabId → until when a shot's thumbnail may still show there (lib/shotview.js holds it 3 s). */
+const shotShown = new Map()
+const SHOT_SHOWN_MS = 3_500
+
+/**
+ * Before ⌃⇧S captures: the last shot's thumbnail out of the tab, so it is not in this shot. Only
+ * when one was shown there lately: a shot with nothing to clear pays nothing.
+ */
+async function clearShot(tabId) {
+  const until = shotShown.get(tabId)
+  shotShown.delete(tabId)
+  if (until === undefined || until <= Date.now()) return
+  await clearBeforeCapture(() => chrome.scripting.executeScript({ target: { tabId }, func: dismissShotOverlay }))
 }
 
 /** The options page's "Play the screenshot sound": off unless ticked. */
@@ -882,7 +898,10 @@ const SHOT_SOUND_KEY = 'fremdevShotSound'
  */
 function showShot(tabId, thumb) {
   return shotFeedback(tabId, thumb, {
-    inject: (id, shown) => chrome.scripting.executeScript({ target: { tabId: id }, func: shotOverlay, args: [shown] }),
+    inject: (id, shown) => {
+      shotShown.set(id, Date.now() + SHOT_SHOWN_MS)
+      return chrome.scripting.executeScript({ target: { tabId: id }, func: shotOverlay, args: [shown] })
+    },
     sound: async () => (await chrome.storage.local.get(SHOT_SOUND_KEY))[SHOT_SOUND_KEY] === true,
     tellEdge: (id, shown, loud) => fremdev.tellShot(id, shown, loud),
   })

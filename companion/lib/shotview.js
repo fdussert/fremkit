@@ -140,3 +140,16 @@ export async function shotOverlay(thumb) {
     out.finished.then(remove, remove)
   }, HOLD_MS - 300))
 }
+
+/**
+ * Removes the shot overlay showing in the tab, if any, and resolves once the page has painted
+ * without it (two animation frames), so the next capture does not include it. Same world and same
+ * key as `shotOverlay`; self-contained for executeScript too.
+ */
+export function dismissShotOverlay() {
+  const KEY = '__fremkitShotOverlay'
+  try {
+    if (typeof globalThis[KEY] === 'function') globalThis[KEY]()
+  } catch { /* gone already */ }
+  return new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
+}

@@ -98,6 +98,31 @@ describe('the companion extension', () => {
     expect(script).toContain("chrome.tabs.create({ url: 'chrome://extensions/shortcuts' })")
   })
 
+  it('runs the shot overlay and its dismissal in the isolated world only, never MAIN', () => {
+    const calls: string[] = []
+    for (const file of ['worker.js', 'popup.js']) {
+      const text = read(file)
+      // Every executeScript call that names one of the shot's functions, up to its closing `})`.
+      for (const m of text.matchAll(/executeScript\(\{[^]*?\}\)/g)) {
+        if (/func: (shotOverlay|dismissShotOverlay)\b/.test(m[0])) calls.push(`${file}: ${m[0]}`)
+      }
+    }
+    expect(calls.filter((c) => c.includes('func: shotOverlay'))).toHaveLength(1)
+    expect(calls.filter((c) => c.includes('func: dismissShotOverlay'))).toHaveLength(2)
+    // No `world` key: the default, ISOLATED. Naming 'ISOLATED' would do too; anything else would not.
+    for (const call of calls) expect(call.replace(/world: 'ISOLATED'/, ''), call).not.toMatch(/\bworld\b/)
+    expect(read('lib/shotview.js')).not.toMatch(/\bworld\s*:/)
+  })
+
+  it('dismisses the overlay with a self-contained function, under the overlay\'s own key', async () => {
+    // @ts-expect-error plain JS module
+    const { dismissShotOverlay, shotOverlay } = await import('../../companion/lib/shotview.js')
+    const text: string = dismissShotOverlay.toString()
+    expect(() => new Function(`return (${text})`)()).not.toThrow()
+    expect(text).toContain("'__fremkitShotOverlay'")
+    expect(shotOverlay.toString()).toContain("'__fremkitShotOverlay'")
+  })
+
   it('offers the screenshot sound in both languages, off unless ticked, read by the worker under the same key', () => {
     expect(messages('fr').optShotSound.message).toBe('Jouer le son de capture')
     expect(messages('en').optShotSound.message).toBe('Play the screenshot sound')

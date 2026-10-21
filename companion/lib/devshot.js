@@ -137,6 +137,18 @@ export async function shotFeedback(tabId, thumb, { inject, tellEdge, sound }) {
   await Promise.resolve().then(() => tellEdge(tabId, shown, loud)).catch(() => undefined)
 }
 
+/** How long a shot waits for the last shot's thumbnail to leave the tab before it captures anyway. */
+export const CLEAR_WAIT_MS = 300
+
+/**
+ * Takes the last shot's thumbnail out of the tab before the next capture, so the feedback never ends
+ * up in the image it confirms (macOS leaves its own out too). `run` removes it; a tab that makes it
+ * wait (a hung page) or refuses it costs at most `waitMs`, and the capture goes ahead.
+ */
+export async function clearBeforeCapture(run, { waitMs = CLEAR_WAIT_MS, wait = (ms) => new Promise((r) => setTimeout(r, ms)) } = {}) {
+  await Promise.race([Promise.resolve().then(run).catch(() => undefined), wait(waitMs)])
+}
+
 /** Chrome throws on a tab id that is not a non-negative integer. */
 const validId = (id) => Number.isInteger(id) && id >= 0
 
@@ -147,12 +159,14 @@ const validId = (id) => Number.isInteger(id) && id >= 0
  * challenge proved the port is Fremkit, so the token goes to nobody else. Checked again after the
  * capture, which the socket may not have outlived. The key press is the activeTab grant the capture
  * needs. Flashes ✓ when the route answered 200, ! otherwise, and sends nothing on a refusal here.
- * After a 200, `after(tabId, shot)` shows it (`shotFeedback`); what it does is not the shot's outcome.
+ * Before the capture, `before(tabId)` takes a previous shot's thumbnail out of the tab; after a 200,
+ * `after(tabId, shot)` shows this one (`shotFeedback`). Neither is the shot's outcome.
  */
-export async function shootTab(given, { activeTab, isDevTab, canSend, token, capture, fetch, url, flash, fit = fitShot, after = async () => undefined }) {
+export async function shootTab(given, { activeTab, isDevTab, canSend, token, capture, fetch, url, flash, fit = fitShot, before = async () => undefined, after = async () => undefined }) {
   const tab = given ?? (await activeTab())
   if (!tab || !validId(tab.id) || !(await isDevTab(tab.id)) || !canSend() || !token()) return flash('!')
   try {
+    await Promise.resolve().then(() => before(tab.id)).catch(() => undefined)
     const shot = await fit(dataUrlBlob(await capture(tab.windowId)))
     const bearer = token()
     if (!shot || !canSend() || !bearer) return flash('!')

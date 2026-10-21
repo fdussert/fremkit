@@ -18,7 +18,7 @@ import { InFlight, MAX_IN_FLIGHT, MAX_TRACKED, SLOW_MS, STALE_MS } from '../../c
 // @ts-expect-error plain JS module
 import { CLS_POOR, LCP_POOR_MS, median, PERF_KEYS, PERF_MIN_MS, PERF_RATIO, PERF_SAMPLES, PerfMemory, perfVerdict } from '../../companion/lib/devperf.js'
 // @ts-expect-error plain JS module
-import { blobDataUrl, dataUrlBlob, fitShot, isThumb, shootTab, shotFeedback, THUMB_MAX_CHARS, thumbOf } from '../../companion/lib/devshot.js'
+import { blobDataUrl, clearBeforeCapture, CLEAR_WAIT_MS, dataUrlBlob, fitShot, isThumb, shootTab, shotFeedback, THUMB_MAX_CHARS, thumbOf } from '../../companion/lib/devshot.js'
 import { DEV_METHODS, DevTabSchema } from '../src/companion/protocol.js'
 
 const both = (host: string) => [`http://${host}/*`, `https://${host}/*`]
@@ -1943,6 +1943,39 @@ describe('shootTab', () => {
       await shootTab(TAB, r.d)
       expect(refused).not.toHaveBeenCalled()
     }
+  })
+
+  it('takes the last thumbnail out of the tab before it captures', async () => {
+    const order: string[] = []
+    const { d, flashes } = deps({
+      before: vi.fn(async (id: number) => void order.push(`before ${id}`)),
+      capture: vi.fn(async () => { order.push('capture'); return 'data:image/jpeg;base64,/9j/4AAQ' }),
+    })
+    await shootTab(TAB, d)
+    expect(order).toEqual(['before 7', 'capture'])
+    expect(flashes).toEqual(['✓'])
+  })
+
+  it('captures anyway when clearing the tab fails, and clears nothing for a refused shot', async () => {
+    const failing = deps({ before: vi.fn(async () => { throw new Error('no tab') }) })
+    await shootTab(TAB, failing.d)
+    expect(failing.d.capture).toHaveBeenCalled()
+    expect(failing.flashes).toEqual(['✓'])
+    const before = vi.fn(async () => undefined)
+    const refused = deps({ before, isDevTab: vi.fn(async () => false) })
+    await shootTab(TAB, refused.d)
+    expect(before).not.toHaveBeenCalled()
+  })
+
+  it('clearBeforeCapture waits for the tab, at most CLEAR_WAIT_MS, and never throws', async () => {
+    expect(CLEAR_WAIT_MS).toBe(300)
+    const run = vi.fn(async () => undefined)
+    await clearBeforeCapture(run, { wait: () => new Promise(() => undefined) })
+    expect(run).toHaveBeenCalled()
+    const waited: number[] = []
+    await clearBeforeCapture(() => new Promise(() => undefined), { wait: async (ms: number) => void waited.push(ms) })
+    expect(waited).toEqual([300])
+    await expect(clearBeforeCapture(() => { throw new Error('refused') }, { wait: () => new Promise(() => undefined) })).resolves.toBeUndefined()
   })
 
   it('keeps ✓ when showing the shot fails', async () => {
