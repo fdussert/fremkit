@@ -243,7 +243,11 @@ open, so the Edge can name one entry. A row also says which **dev server** serve
 isolated world, reads the page's script tags once the document has loaded (and the nodes added
 during the next 30 seconds): a module script ending in `/@vite/client` is Vite, a script under
 `/_next/` is Next, a script whose path names `webpack-dev-server`, or that server's overlay
-element, is webpack-dev-server. It reads attributes only and runs none of the page's code.
+element, is webpack-dev-server. A webpack page's bundle (`main.js`) seldom names its dev server, so
+past those 30 seconds the script keeps watching the body's own children, for as long as the page
+is open, for that overlay: a page loaded with a clean build is known as webpack the moment an edit
+breaks the build, and its build entry can then be opened in the editor. It reads attributes only
+and runs none of the page's code.
 Only scripts from the page's own origin count. The kind is kept for the tab's origin: a
 client-side route change keeps it, each fresh load of the page looks again (and may find another
 dev server on the same port, or a Vite client whose base cannot be used, which reads as none

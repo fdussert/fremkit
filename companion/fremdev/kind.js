@@ -15,7 +15,11 @@
 // It reads attributes and element ids only, never a page object, and runs no page code. It looks at
 // the whole document at DOMContentLoaded (at once when the document is past `loading`), then at the
 // nodes added to it and the scripts whose `src` changes, and only those, until a kind is found or
-// 30 s have passed.
+// 30 s have passed. After that, and for as long as the page lives, it still watches the body's own
+// children for webpack-dev-server's overlay: a webpack page's bundle (`main.js`) does not name its
+// dev server, so a page that loaded with a clean build shows the kind only when a later edit breaks
+// it, often minutes after the load. The overlay is appended to the body itself, and watching the
+// body's children alone, with no subtree, costs nothing on a busy page.
 //
 // A classic script, registered with chrome.scripting: no import. The worker validates what it
 // sends (`pageEvent` in companion/fremdev.js) and takes the tab from Chrome's sender.
@@ -113,6 +117,23 @@
     timer = null
   }
 
+  /** The 30 s are up: the whole-document watch ends, the body's children are watched for the overlay. */
+  const narrow = () => {
+    observer?.disconnect()
+    observer = null
+    timer = null
+    if (done || document.body === null) return
+    try {
+      observer = new MutationObserver((records) => {
+        const overlay = records.some((r) => [...r.addedNodes].some((n) => n.nodeType === 1 && n.id === OVERLAY_ID))
+        if (overlay) look(() => ({ server: 'webpack', base: '/' }))
+      })
+      observer.observe(document.body, { childList: true })
+    } catch {
+      observer = null
+    }
+  }
+
   const send = (found) => {
     if (!alive()) return
     try {
@@ -146,7 +167,7 @@
     } catch {
       observer = null
     }
-    timer = setTimeout(stop, GIVE_UP_MS)
+    timer = setTimeout(narrow, GIVE_UP_MS)
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true })

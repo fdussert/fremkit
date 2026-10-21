@@ -95,6 +95,34 @@ describe('fremdev/kind.js', () => {
     expect(p.sent()).toEqual([])
   })
 
+  it('still tells webpack-dev-server from its overlay added to the body after 30 s', async () => {
+    // A webpack page loaded with a clean build names no dev server; the overlay comes with the
+    // first edit that breaks the build, often minutes later.
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    const p = page('<script defer src="main.js"></script>')
+    p.run(setTimeout)
+    await Promise.resolve()
+    vi.advanceTimersByTime(10 * 60_000)
+    const scan = vi.spyOn(document, 'querySelectorAll')
+    // Deeper than the body's own children is no longer looked at.
+    const box = document.createElement('div')
+    document.body.appendChild(box)
+    box.appendChild(Object.assign(document.createElement('iframe'), { id: 'webpack-dev-server-client-overlay' }))
+    await Promise.resolve()
+    expect(p.sent()).toEqual([])
+    box.remove()
+    document.body.appendChild(Object.assign(document.createElement('iframe'), { id: 'webpack-dev-server-client-overlay' }))
+    await Promise.resolve()
+    expect(p.sent()).toEqual([{ target: 'worker', type: 'dev.event', kind: 'devserver', server: 'webpack', base: '/' }])
+    expect(scan).not.toHaveBeenCalled()
+    scan.mockRestore()
+    // Found: it stops watching.
+    document.getElementById('webpack-dev-server-client-overlay')?.remove()
+    document.body.appendChild(Object.assign(document.createElement('iframe'), { id: 'webpack-dev-server-client-overlay' }))
+    await Promise.resolve()
+    expect(p.sent()).toHaveLength(1)
+  })
+
   it('runs once per page: a second run sends nothing more', async () => {
     const p = page('<script type="module" src="/@vite/client"></script>')
     p.run()
