@@ -103,15 +103,17 @@
   const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
   /**
-   * An overlay's message without the code frame it may repeat (from its first `N |` line on, and
-   * any caret line) and without the file the overlay names apart (`file`, `file:line`,
-   * `file:line:col`), whitespace folded and clipped.
+   * An overlay's message without the code frame it may repeat (from its first `N |` line after
+   * the first line of text on, and any caret line) and without the file the overlay names apart
+   * (`file`, `file:line`, `file:line:col`), whitespace folded and clipped. The first line is the
+   * message's own however it reads (`1 | 2 is not assignable…`).
    */
   function cleanMessage(message, file) {
     const kept = []
     for (const l of String(message).split('\n')) {
-      if (FRAME_LINE_RE.test(l)) break
-      if (!CARET_RE.test(l)) kept.push(l)
+      const first = !kept.some((k) => k.trim() !== '')
+      if (!first && FRAME_LINE_RE.test(l)) break
+      if (first || !CARET_RE.test(l)) kept.push(l)
     }
     let out = kept.join('\n')
     const f = typeof file === 'string' ? file.trim() : ''

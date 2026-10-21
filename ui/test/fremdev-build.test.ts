@@ -282,6 +282,9 @@ describe('fremdev/build.js', () => {
       ['[plugin] Bad /Users/example/app/src/App.vue.bak', '[plugin] Bad /Users/example/app/src/App.vue.bak'],
       ['Unexpected token\n  2 | a\n> 3 | b +* c\n    |     ^\n  4 | d', 'Unexpected token'],
       ['Unexpected token\n    ^\nmore', 'Unexpected token more'],
+      // A first line that only looks like a frame's is the message's own text.
+      ["1 | 2 is not assignable to type 'string'\n  1 | type A = 1 | 2\n    | ^", "1 | 2 is not assignable to type 'string'"],
+      ['\n  1 | 2 is not a frame here', '1 | 2 is not a frame here'],
     ]
     for (const [message, text] of cases) {
       body.textContent = message

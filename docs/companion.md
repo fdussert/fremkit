@@ -267,7 +267,7 @@ light turns red), shown on the Edge with "Build" before its text:
   `,-[` … `` `---- `` block) and what follows it (*Caused by*, the import trace) as its stack.
 
 The entry's text is the overlay's message without the code frame some compilers repeat in it (from
-its first `N |` line on, and any `^` caret line) and without the file when the message names it
+its first `N |` line after the first line on, and any `^` caret line) and without the file when the message names it
 again: Vite's `[vue/compiler-sfc] Unexpected token (3:15)` keeps its prefix and loses the path and
 the `12 |` that followed it. The **code frame and the stack stay in the extension** like an error's
 stack: never in what the Edge receives nor in the session copy, only in a report copied with its
