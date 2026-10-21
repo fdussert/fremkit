@@ -437,6 +437,37 @@ describe('companion/fremdev.js', () => {
     expect(f.rows()['7'].errors).toMatchObject({ total: 1, open: 0 })
   })
 
+  it("counts webpack-dev-server's console lines for a broken build as the one build entry, and drops its status lines", async () => {
+    const f = await makeFremdev()
+    f.fremdev.onReady({ type: 'ready', protocol: 2, modules: { fremplay: true, fremdev: true } })
+    // What the client logged on 18081 when the build broke with the page open, in that order.
+    const logged = [
+      '[webpack-dev-server] Errors while compiling. Reload prevented.',
+      "[webpack-dev-server] ERROR in ./src/index.js 4:15\nModule parse failed: Unexpected token (4:15)\nFile was parsed as module type 'javascript/auto'.\nYou may need an appropriate loader to handle this file type, currently no loaders are configured to process this file. See https://webpack.js.org/concepts#loaders\n  3 | mountPanel()\n> 4 | const broken = ;\n    |                ^\n  5 | ",
+    ]
+    expect(pageEvent({ kind: 'error', text: logged[0] })).toBeNull()
+    expect(pageEvent({ kind: 'error', text: logged[1] })).toMatchObject({ kind: 'build', file: './src/index.js', line: 4, col: 16, fromConsole: true })
+    // A page's own build event never says it came from the console.
+    expect(pageEvent({ kind: 'build', text: 'x', fromConsole: true })).toEqual({ kind: 'build', text: 'x' })
+    for (const text of logged) await f.fremdev.onPageEvent({ kind: 'error', text: text.slice(0, 300) }, devSender())
+    await f.fremdev.onPageEvent({
+      kind: 'build', file: './src/index.js', line: 4, col: 16, frame: ['> 4 | const broken = ;'],
+      text: "Module parse failed: Unexpected token (4:15) File was parsed as module type 'javascript/auto'. You may need an appropriate loader to handle this file type, currently no loaders are configured to process this file. See https://webpack.js.org/concepts#loaders",
+    }, devSender())
+    await f.later()
+    const row = f.rows()['7']
+    expect(row.history.map((e: { kind: string }) => e.kind)).toEqual(['build'])
+    expect(row.errors).toMatchObject({ total: 1, open: 1 })
+    const report = await f.fremdev.report(7, true) as string
+    expect(report).toContain('### reportBuild')
+    expect(report).not.toContain('### reportErrors')
+    expect(report).not.toContain('Reload prevented')
+    await f.fremdev.onPageEvent({ kind: 'build-clear' }, devSender())
+    await f.later()
+    expect(f.rows()['7'].history[0].state).toBe('resolved')
+    expect(f.rows()['7'].errors).toMatchObject({ total: 1, open: 0 })
+  })
+
   it("keeps a build entry's code frame and stack for the report with its stack, never in dev.tabs or the session copy", async () => {
     const f = await makeFremdev()
     f.fremdev.onReady({ type: 'ready', protocol: 2, modules: { fremplay: true, fremdev: true } })

@@ -351,6 +351,70 @@ export function boundBuildLines(frame, stack) {
   return out
 }
 
+/** A code frame's line (`12 |`, `> 3 |`) and a caret line under one (`   |   ^`, `   : ^^`). */
+const FRAME_LINE_RE = /^\s*>?\s*\d+\s*\|/
+const CARET_RE = /^[\s|:]*\^[\s^~]*$/
+const MAX_POS = 10_000_000
+const posOf = (s) => {
+  const n = Number(s)
+  return Number.isInteger(n) && n >= 1 && n <= MAX_POS ? n : undefined
+}
+
+/** A message's text the way fremdev/build.js cleans an overlay's: its first line, then up to a code frame, no caret line. */
+function cleanBuildText(s) {
+  const kept = []
+  for (const l of String(s).split('\n')) {
+    const first = !kept.some((k) => k.trim() !== '')
+    if (!first && FRAME_LINE_RE.test(l)) break
+    if (first || !CARET_RE.test(l)) kept.push(l)
+  }
+  return clip(kept.join('\n').replace(/\s+/g, ' ').trim(), MAX_TEXT)
+}
+
+const WDS_ERROR_RE = /^\[webpack-dev-server\] ERROR(?: in (\S+)(?: (\d+):(\d+))?)?[^\n]*(?:\n([\s\S]*))?$/
+/** Next logs its build error as `<file>\nError:   x <message>\n   ,-[<path>:<line>:<col>]…`. */
+const NEXT_BUILD_RE = /^(\.{0,2}\/[^\n]*)\nError:\s+(?:x\s+)?([^\n]*)/
+const NEXT_PLACE_RE = /,-\[[^\n]*?:(\d+):(\d+)\]/
+
+/**
+ * What a `console.error` text the dev server's own client logged says, or null for a runtime
+ * error: `'drop'` for a status line (webpack-dev-server's `Errors while compiling. Reload
+ * prevented.` and the like, `[HMR] …`), or a `build` event for a compile error it repeats from the
+ * overlay (webpack-dev-server's `ERROR in <file> <L:C>`, Next's `<file>\nError: x …`), its text,
+ * file and place read the way fremdev/build.js reads the overlay's, so the two fold into one entry
+ * (`fromConsole`, reduce in lib/devtabs.js). Vite's client logs none (checked on Vite 7).
+ */
+export function consoleBuild(text) {
+  if (typeof text !== 'string') return null
+  const wds = WDS_ERROR_RE.exec(text)
+  if (wds) {
+    const event = { kind: 'build', text: cleanBuildText(wds[4] ?? '') || 'ERROR', fromConsole: true }
+    if (wds[1] !== undefined) event.file = wds[1]
+    if (wds[2] !== undefined) {
+      const line = posOf(wds[2])
+      // webpack counts columns from 0, the editors (and build.js) from 1.
+      const col = posOf(Number(wds[3]) + 1)
+      if (line !== undefined) {
+        event.line = line
+        if (col !== undefined) event.col = col
+      }
+    }
+    return event
+  }
+  if (text.startsWith('[webpack-dev-server] ') || text.startsWith('[HMR] ')) return 'drop'
+  const next = NEXT_BUILD_RE.exec(text)
+  if (next) {
+    const event = { kind: 'build', text: clip(next[2].trim(), MAX_TEXT) || 'Error', file: next[1].trim(), fromConsole: true }
+    const at = NEXT_PLACE_RE.exec(text)
+    if (at && posOf(at[1]) !== undefined) {
+      event.line = posOf(at[1])
+      if (posOf(at[2]) !== undefined) event.col = posOf(at[2])
+    }
+    return event
+  }
+  return null
+}
+
 /** The request methods reported as themselves; any other reads `OTHER`. The one list: devtabs.js reads it too. */
 export const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS']
 

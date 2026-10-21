@@ -339,6 +339,20 @@ export function reduce(tab, event, now) {
       const frame = isLines(event.frame) ? event.frame : null
       const stack = isLines(event.stack) ? event.stack : null
       const newest = (tab.history ?? []).find(isLive)
+      // The dev server's client repeats the overlay's error in the console (consoleBuild in
+      // lib/devlog.js), with a text clipped shorter and no frame: while an overlay-read entry is
+      // live, that says nothing new. The overlay read after a console-born entry takes it over,
+      // with its id, its count and the tally: one problem, one entry.
+      const fromConsole = event.fromConsole === true
+      if (fromConsole && newest && !newest.fromConsole) return tab
+      if (!fromConsole && newest?.fromConsole) {
+        const adopted = { ...newest, text: event.text, path, line, col, frame, stack, fromConsole: false }
+        return {
+          ...tab,
+          history: tab.history.map((e) => (e === newest ? adopted : e)),
+          errors: tab.errors.last ? { ...tab.errors, last: { ...tab.errors.last, text: event.text } } : tab.errors,
+        }
+      }
       if (newest && newest.text === event.text && newest.path === path) {
         if (newest.line === line && newest.col === col && sameLines(newest.frame, frame) && sameLines(newest.stack, stack)) return tab
         return { ...tab, history: tab.history.map((e) => (e === newest ? { ...e, path, line, col, frame, stack } : e)) }
@@ -356,6 +370,7 @@ export function reduce(tab, event, now) {
           col,
           frame,
           stack,
+          fromConsole,
           n: 1,
           at: now,
           state: 'open',

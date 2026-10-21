@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 // @ts-expect-error plain JS module outside server/, no declarations
 import { BUILTIN_PERMISSION_ORIGINS, FREMKIT_EXCLUDES, inOrigins, isDevUrl, parsePattern, releasableOrigins } from '../../companion/lib/devhosts.js'
 // @ts-expect-error plain JS module
-import { boundBuildLines, boundFrames, errorText, framePlace, homePath, hotReloadSignal, isNoise, MAX_BUILD_EXTRA, MAX_BUILD_LINE, MAX_FRAME, MAX_FRAME_LINES, MAX_FRAMES, MAX_STACK, MAX_STACK_LINES, MAX_TEXT, METHODS, methodOf, parseStack, pathOf, RateLimiter } from '../../companion/lib/devlog.js'
+import { boundBuildLines, boundFrames, consoleBuild, errorText, framePlace, homePath, hotReloadSignal, isNoise, MAX_BUILD_EXTRA, MAX_BUILD_LINE, MAX_FRAME, MAX_FRAME_LINES, MAX_FRAMES, MAX_STACK, MAX_STACK_LINES, MAX_TEXT, METHODS, methodOf, parseStack, pathOf, RateLimiter } from '../../companion/lib/devlog.js'
 // @ts-expect-error plain JS module
 import { emptyTab, fremdevSupport, HISTORY_MAX, reduce, SLOW_MAX, restoredTabs, sessionTabs, Throttle, validRow, wireTabs } from '../../companion/lib/devtabs.js'
 // @ts-expect-error plain JS module
@@ -1071,7 +1071,7 @@ describe('build entries', () => {
     expect(same).toBe(tab)
     tab = same
     expect(builds(tab)).toHaveLength(1)
-    expect(tab.history[0]).toEqual({ kind: 'build', id: 1, text: 'Invalid end tag.', path: '/Users/example/app/src/App.vue', line: 12, col: 3, frame: null, stack: null, n: 1, at: 200, state: 'open' })
+    expect(tab.history[0]).toEqual({ kind: 'build', id: 1, text: 'Invalid end tag.', path: '/Users/example/app/src/App.vue', line: 12, col: 3, frame: null, stack: null, fromConsole: false, n: 1, at: 200, state: 'open' })
     expect(tab.errors).toMatchObject({ total: 1, open: 1, seen: 0, last: { text: 'Invalid end tag.', at: 200 } })
   })
 
@@ -1158,6 +1158,60 @@ describe('build entries', () => {
   ]
   const framed = (extra: Record<string, unknown> = {}) =>
     build('[vue/compiler-sfc] Unexpected token (3:15)', { file: '/Users/Jane Example/app/src/App.vue', line: 3, col: 15, frame: FRAME, stack: STACK, ...extra })
+
+  // What the dev servers' clients log through console.error for a broken build (webpack-dev-server 5,
+  // Next 15.5), as the hook and the relay pass them on: clipped to 300.
+  const WDS_ERROR = '[webpack-dev-server] ERROR in ./src/index.js 4:15\nModule parse failed: Unexpected token (4:15)\nFile was parsed as module type \'javascript/auto\'.\nYou may need an appropriate loader to handle this file type, currently no loaders are configured to process this file. See https://webpack.js.org/concepts#loaders\n  3 | mountPanel()\n> 4 | const broken = ;\n    |                ^\n  5 | '.slice(0, 300)
+  const NEXT_ERROR = './app/page.js\nError:   x Expression expected\n   ,-[/Users/example/app/app/page.js:5:1]\n 2 | import { useEffect } from \'react\'\n 3 | import { mountPanel } from \'./panel.js\'\n 4 | export default function Page() {\n 5 |   const broken = ;\n   :                  ^\n 6 |   useEffect(() => { mountPanel() }, [])\n 7 |   return <main><h1>Scratch Next</h1></main>\n 8 | }\n   `----\n\nCaused by:\n    Syntax Error\n\nImport trace for requested module:\n./app/page.js'.slice(0, 300)
+  const WDS_TEXT = "Module parse failed: Unexpected token (4:15) File was parsed as module type 'javascript/auto'. You may need an appropriate loader to handle this file type, currently no loaders are configured to process this file. See https://webpack.js.org/concepts#loaders"
+
+  it('consoleBuild reads a compile error the dev server logs as a build event, drops its status lines, and leaves the rest', () => {
+    expect(consoleBuild('[webpack-dev-server] ERROR in ./src/index.js 4:15\nModule parse failed: Unexpected token (4:15)\nFile was parsed as module type \'javascript/auto\'.\nYou may need an appropriate loader to handle this file type, currently no loaders are configured to process this file. See https://webpack.js.org/concepts#loaders\n  3 | mountPanel()\n> 4 | const broken = ;\n    |                ^\n  5 | ')).toEqual({ kind: 'build', text: WDS_TEXT, file: './src/index.js', line: 4, col: 16, fromConsole: true })
+    // Clipped by the hook: the same file and place, a shorter text.
+    const clipped = consoleBuild(WDS_ERROR)
+    expect(clipped).toMatchObject({ kind: 'build', file: './src/index.js', line: 4, col: 16, fromConsole: true })
+    expect(WDS_TEXT.startsWith(clipped.text)).toBe(true)
+    expect(consoleBuild('[webpack-dev-server] ERROR\nModule not found')).toEqual({ kind: 'build', text: 'Module not found', fromConsole: true })
+    expect(consoleBuild('[webpack-dev-server] ERROR in ./src/a.css')).toEqual({ kind: 'build', text: 'ERROR', file: './src/a.css', fromConsole: true })
+    expect(consoleBuild(NEXT_ERROR)).toEqual({ kind: 'build', text: 'Expression expected', file: './app/page.js', line: 5, col: 1, fromConsole: true })
+    for (const status of [
+      '[webpack-dev-server] Errors while compiling. Reload prevented.',
+      '[webpack-dev-server] Warnings while compiling.',
+      '[webpack-dev-server] Disconnected!',
+      '[HMR] Update failed: ChunkLoadError',
+    ]) expect(consoleBuild(status), status).toBe('drop')
+    for (const runtime of ['TypeError: x', 'Uncaught Error: boom', 'Error: ./app/page.js', './a.js said hi', '[vite] x', '']) {
+      expect(consoleBuild(runtime), runtime).toBeNull()
+    }
+  })
+
+  it('folds the console-born and the overlay-read build error into one entry, which resolves', () => {
+    const overlay = { kind: 'build', text: WDS_TEXT, file: './src/index.js', line: 4, col: 16, frame: ['> 4 | const broken = ;', '    |                ^'] }
+    // The console first (the client logs before build.js's debounce reads the overlay).
+    let tab = reduce(base(), consoleBuild(WDS_ERROR), 200)
+    expect(builds(tab)).toHaveLength(1)
+    tab = reduce(tab, overlay, 300)
+    expect(builds(tab)).toEqual([expect.objectContaining({ id: 1, text: WDS_TEXT, frame: overlay.frame, fromConsole: false, state: 'open' })])
+    expect(tab.errors).toMatchObject({ total: 1, open: 1, last: { text: WDS_TEXT } })
+    expect(tab.buildTotal).toBe(1)
+    // The console says it again on the next compile: nothing new, the frame stays.
+    expect(reduce(tab, consoleBuild(WDS_ERROR), 400)).toBe(tab)
+    // Fixed: the overlay goes, the one entry resolves.
+    const fixed = reduce(tab, { kind: 'build-clear' }, 500)
+    expect(builds(fixed).map((e) => e.state)).toEqual(['resolved'])
+    expect(fixed.errors).toMatchObject({ total: 1, open: 0 })
+    // The overlay first, then the console: still one.
+    const other = reduce(reduce(base(), overlay, 200), consoleBuild(WDS_ERROR), 250)
+    expect(builds(other)).toHaveLength(1)
+    expect(other.errors.total).toBe(1)
+    // The overlay off: the console's entry alone, resolved by the hot update or reload that follows a fix.
+    const alone = reduce(base(), consoleBuild(NEXT_ERROR), 200)
+    expect(builds(alone)).toEqual([expect.objectContaining({ text: 'Expression expected', path: './app/page.js', line: 5, col: 1, state: 'open' })])
+    expect(builds(reduce(alone, { kind: 'hot' }, 300))[0].state).toBe('resolved')
+    expect(builds(reduce(alone, { kind: 'navigated', url: 'http://localhost:5173/', title: 'App' }, 300))[0].state).toBe('resolved')
+    // A wire row never says where an entry came from.
+    expect(JSON.stringify(wireTabs([alone]))).not.toContain('fromConsole')
+  })
 
   it('boundBuildLines keeps 20 frame lines, 30 stack lines, 300 characters each, 6000 in all', () => {
     expect([MAX_FRAME_LINES, MAX_STACK_LINES, MAX_BUILD_LINE, MAX_BUILD_EXTRA]).toEqual([20, 30, 300, 6_000])
