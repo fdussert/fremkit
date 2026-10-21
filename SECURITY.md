@@ -343,7 +343,11 @@ files:
   not. The server writes the image to `shot-<uuid>.jpg` in the data folder (`mode: 0600`,
   `flag: 'wx'`), runs `/usr/bin/osascript` with an argument list, a constant script and the file's
   path as `argv` (never interpolated into the script), and removes the file in a `finally`, whether
-  osascript succeeded or not. The log names the device id, never the token or the path.
+  osascript succeeded or not. The log names the device id, never the token or the path. The
+  capture sound a shot may ask for (`dev.shot` with `sound: true`, an extension option off by
+  default) runs `/usr/bin/afplay` with an argument list holding one constant, the system's
+  `Screen Capture.aif`: nothing from the message reaches the command line, at most once per second
+  per install, and a demo plays nothing.
 
 Refusing a request stays behind the secret and is local-only. None of these routes
 exists on the remote listener (4243). The `companion` channel the dashboard watches is built-in
@@ -470,9 +474,17 @@ nothing else of `labs`. What it holds and what it can do:
   answered 2xx, not that an editor opened: these endpoints answer whatever happens (Next 404s a
   missing file). The editor that opens is the dev server's own launch-editor, configured by the
   developer, as from its error overlay.
-- *Server side.* Every `dev.tabs`, `modules`, `ping`, `dev.report` and `dev.open.done` message is
-  validated by a strict schema with bounded sizes, and publishing is capped at four per second per
-  install. After hello, one that fails is dropped (a `dev.tabs` row by row, keeping the rows that
+- *The shot's thumbnail.* After a shot reached the clipboard, the extension draws a thumbnail of it
+  (at most 320 pixels, a JPEG of at most 40 000 characters) and shows it in the captured tab with a
+  function run in the isolated world (never the page's), inside a closed shadow root, decoded and
+  painted on a canvas so no URL is loaded; the page gets the thumbnail's pixels on screen, never the
+  shot. The same thumbnail goes to the Edge in `dev.shot`, which the server takes only from an
+  install that lists `fremdev.shotview`, for a tab it reported, with Fremdev enabled and on, and only
+  as `data:image/jpeg;base64,` followed by `/9j/` (FF D8 FF) and whole base64 quads; it shows on that
+  row of `companion:dev` for 3 seconds and is left out rather than trimming any row past 60 000 bytes.
+- *Server side.* Every `dev.tabs`, `modules`, `ping`, `dev.report`, `dev.open.done` and `dev.shot`
+  message is validated by a strict schema with bounded sizes, and publishing is capped at four per
+  second per install. After hello, one that fails is dropped (a `dev.tabs` row by row, keeping the rows that
   parse) rather than closing the socket, which also carries Fremplay's share; every other message,
   and the handshake, is still refused with 1008. Nothing of a dropped message is logged but a count.
   `companion:dev` is in `LOCAL_ONLY_CHANNELS` and `BUILTIN_ONLY_CHANNELS`: paired devices and

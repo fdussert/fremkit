@@ -336,6 +336,36 @@ the file's path as an argument, and removes the file whether that worked or not.
 changed at `chrome://extensions/shortcuts`; the options page shows both the Fremplay and the Fremdev
 shortcut.
 
+**Seeing the shot.** Once a shot is on the clipboard, by either way, the tab shows it as macOS does: a
+white flash over the page, then a small thumbnail of the shot in the bottom-right corner for 3
+seconds. With *Reduce motion* on (`prefers-reduced-motion`), there is no flash and the thumbnail just
+appears and disappears. The thumbnail is made in the extension, with its long side at 320 pixels at
+most, as a JPEG of at most 40 000 characters (a smaller size or quality when needed, none when even
+160 pixels do not fit), so the page never receives the shot itself. It is drawn by a script the
+extension runs in the tab's isolated world, never the page's: one element above everything, its
+content in a closed shadow root, painted on a canvas rather than loaded from a URL, so a page's CSS
+cannot hide it and a strict Content-Security-Policy does not block it; it takes no click and is
+removed when it has faded. It needs no permission: the key press or the popup's click is the grant,
+and a dev tab is in Fremdev's own. A tab that refuses the script (a `chrome://` page, an error page)
+keeps the badge's **✓** as the only sign.
+
+On the Edge, the Fremdev widget shows the same thumbnail on that tab's row for 3 seconds, with
+*Copiée* / *Copied*. The extension sends it on its socket as `dev.shot` (the tab, the thumbnail or
+none, and the sound option), after the server's 200 for ⌃⇧S and after the clipboard write for the
+popup's button; it announces `fremdev.shotview`, and sends `dev.shot` only to a Fremkit whose `ready`
+says `modules.shotView`. Fremkit takes it only from an install that listed `fremdev.shotview`, with
+Fremdev enabled and on, for a tab it reported, and drops a malformed one without closing the socket.
+The thumbnail rides on the row of the `companion:dev` snapshot and is cleared after 3 seconds; rows
+are never trimmed for it, and when the install's rows and the thumbnail would weigh more than 60 000
+bytes the thumbnail is left out and the row says *Copiée* alone. Like the rest of `companion:dev`, it
+never reaches a paired device.
+
+**The capture sound** is an option of the extension, off by default: *Jouer le son de capture* / *Play
+the screenshot sound* on its options page. When it is ticked, `dev.shot` says so and Fremkit plays
+macOS's own screenshot sound on the Mac (`/usr/bin/afplay` with the system's `Screen Capture.aif`,
+both fixed: the extension only says whether to play), at most once per second per browser. A demo
+(`FREMKIT_DEMO=1`) plays nothing.
+
 ### Open in editor
 
 In an unfolded row, a build entry's file, and under Vite an error thrown by a script on the page's
@@ -512,7 +542,7 @@ goes back to the faster pace.
 
 The protocol number stays `2`. Fremdev is negotiated by capability: the extension sends its
 `modules` in `hello` and only talks Fremdev (`dev.tabs`, `ping`) when Fremkit's `ready` says
-`modules.fremdev`. Fremkit 0.5.0 with this extension keeps Fremplay, and the popup tells you that
+`modules.fremdev`, and sends `dev.shot` only when it also says `modules.shotView`. Fremkit 0.5.0 with this extension keeps Fremplay, and the popup tells you that
 Fremdev needs a newer Fremkit; an old extension with a newer Fremkit simply has no Fremdev.
 
 ## Limits
