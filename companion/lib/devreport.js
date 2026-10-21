@@ -21,6 +21,8 @@ const line = (s, max = MAX_FIELD) => clip(String(s ?? '').replace(/\s*[\r\n]+\s*
 /** A line that may name a file on this Mac: its home folder is `~/`. */
 const homeLine = (s, max = MAX_FIELD) => line(homePath(String(s ?? '')), max)
 const isPos = (v) => Number.isInteger(v) && v >= 1
+/** What Vite's overlay names for an error with no file: never a file. */
+const UNKNOWN_FILE = 'unknown file'
 
 /**
  * `lines` as a fenced code block inside a list item (indented 2), so a Markdown renderer keeps
@@ -64,10 +66,12 @@ function entryLines(e, { stack, t, time }) {
     }
     case 'build': {
       const out = [`- ${at} ${count}${homeLine(e.text)}${state}`]
-      if (typeof e.path === 'string' && e.path !== '') {
-        const pos = isPos(e.line) ? `:${e.line}${isPos(e.col) ? `:${e.col}` : ''}` : ''
-        out.push(`  at ${homeLine(e.path)}${pos}`)
-      }
+      // Where, with no file when there is none (Vite's `unknown file`, from an entry read before
+      // build.js knew it): `at 3:15`, or no line at all.
+      const file = typeof e.path === 'string' && e.path !== UNKNOWN_FILE ? e.path : ''
+      const pos = isPos(e.line) ? `${e.line}${isPos(e.col) ? `:${e.col}` : ''}` : ''
+      if (file !== '') out.push(`  at ${homeLine(file)}${pos ? `:${pos}` : ''}`)
+      else if (pos !== '') out.push(`  at ${pos}`)
       // The overlay's code frame, its alignment kept, then its stack: with the stack only.
       if (stack) {
         const lines = [...(Array.isArray(e.frame) ? e.frame : []), ...(Array.isArray(e.stack) ? e.stack : [])]

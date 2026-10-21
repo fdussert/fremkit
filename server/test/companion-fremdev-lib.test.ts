@@ -1242,6 +1242,16 @@ describe('build entries', () => {
     expect(plain).not.toContain('Parser.raise')
   })
 
+  it('writes a build entry with no file as `at L:C`, or with no `at` line, never `unknown file`', () => {
+    const fmt = { stack: false, now: 9_000, t: (key: string) => key, time: (ms: number) => `T${ms}`, date: (ms: number) => `D${ms}` }
+    const at = (extra: Record<string, unknown>) => buildReport(reduce(base(), build('Bad', extra), 200), fmt).split('\n').slice(-2)
+    expect(at({ file: undefined, line: 3, col: 15 })).toEqual(['- T200 Bad', '  at 3:15'])
+    expect(at({ file: undefined, line: 3, col: undefined })).toEqual(['- T200 Bad', '  at 3'])
+    expect(at({ file: 'unknown file', line: 3, col: 15 })).toEqual(['- T200 Bad', '  at 3:15'])
+    expect(at({ file: undefined, line: undefined, col: undefined }).at(-1)).toBe('- T200 Bad')
+    expect(at({ file: './src/a.js', line: undefined, col: undefined }).at(-1)).toBe('  at ./src/a.js')
+  })
+
   it("fences webpack's frame with its `> 2 |` line and caret as they are, longer than any backtick run inside", () => {
     const fmt = { stack: true, now: 9_000, t: (key: string) => key, time: (ms: number) => `T${ms}`, date: (ms: number) => `D${ms}` }
     const frame = ["  1 | const a = 1", "> 2 | const b = 1 +* 2", '    |               ^', '  3 | const c = 3']
