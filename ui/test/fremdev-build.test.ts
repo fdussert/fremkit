@@ -329,6 +329,8 @@ describe('fremdev/build.js', () => {
     const cases: Array<[string, number, number]> = [
       // babel: `> N | code`, one space.
       ['Bad (1:1)\n/Users/example/app/a.js\n  6 |   foo()\n> 7 | bar(1 +)\n    |        ^\n  8 | baz()', 7, 8],
+      // babel with every line indented: still one space after the bar.
+      ['Bad (1:1)\n/Users/example/app/a.js\n  6 |     foo()\n> 7 |     bar(1 +)\n    |            ^\n  8 |     baz()', 7, 12],
       // Vue: `N  |  code`, two spaces, the code itself indented.
       ['Bad (1:1)\n/Users/example/app/a.vue\n4  |  <div>\n5  |    {{ x + }}\n   |           ^\n6  |  </div>', 5, 10],
     ]

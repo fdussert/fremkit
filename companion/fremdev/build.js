@@ -245,8 +245,8 @@
   /**
    * `{ line, col }` a code frame points at: the number of the `N |` line above its first caret
    * line, and the caret's column in that line's code. The code starts after the `|` and the gap
-   * the frame puts there (babel one space, Vue two: the narrowest of its non-empty lines, 1 to 2).
-   * Null without a caret under a numbered line.
+   * the frame's format puts there: babel's frame marks its line with `>` and writes one space, Vue's
+   * has no marker and writes two. Null without a caret under a numbered line.
    */
   function caretPlace(frame) {
     const at = frame.findIndex((l, i) => i > 0 && CARET_RE.test(l) && /\^/.test(l))
@@ -254,12 +254,7 @@
     const m = /^(\s*>?\s*(\d+)\s*)\|/.exec(frame[at - 1])
     const bar = frame[at].indexOf('|')
     if (!m || bar !== m[1].length) return null
-    let gap = 2
-    for (const l of frame) {
-      const n = /^\s*>?\s*\d+\s*\|( *)\S/.exec(l)
-      if (n) gap = Math.min(gap, n[1].length)
-    }
-    gap = Math.max(1, gap)
+    const gap = frame.some((l) => /^\s*>\s*\d+\s*\|/.test(l)) ? 1 : 2
     const col = frame[at].indexOf('^') - bar - gap
     const line = pos(m[2])
     return line === undefined ? null : { line, col: pos(col) }
