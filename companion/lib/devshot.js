@@ -124,17 +124,18 @@ export async function thumbOf(blob, {
 }
 
 /**
- * After a shot reached the clipboard, by either path: the thumbnail shown in the tab (`inject`,
- * lib/shotview.js in the isolated world), then sent to the Edge (`tellEdge`, which sends `dev.shot`
- * only where the server took Fremdev's word for it). `thumb` null: the tab still flashes, and the Edge
- * still says it was copied. Neither may fail the shot: it is on the clipboard already, and the
- * badge has said so.
+ * After a shot reached the clipboard, by either path: sent to the Edge first (`tellEdge`, which sends
+ * `dev.shot` only where the server took Fremdev's word for it, with the sound option), then shown in
+ * the tab (`inject`, lib/shotview.js in the isolated world). The Edge goes first because the tab may
+ * make the script wait: a dev page reloading, or hung in a loop, still gets captured, and its row and
+ * the sound must not wait on it. `thumb` null: the tab still flashes, and the Edge still says it was
+ * copied. Neither may fail the shot: it is on the clipboard already, and the badge has said so.
  */
 export async function shotFeedback(tabId, thumb, { inject, tellEdge, sound }) {
   const shown = isThumb(thumb) ? thumb : null
-  await Promise.resolve().then(() => inject(tabId, shown)).catch(() => undefined)
   const loud = await Promise.resolve().then(sound).then((v) => v === true, () => false)
   await Promise.resolve().then(() => tellEdge(tabId, shown, loud)).catch(() => undefined)
+  await Promise.resolve().then(() => inject(tabId, shown)).catch(() => undefined)
 }
 
 /** How long a shot waits for the last shot's thumbnail to leave the tab before it captures anyway. */

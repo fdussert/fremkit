@@ -2079,7 +2079,7 @@ describe('the shot thumbnail', () => {
     expect(await thumbOf(new Blob([]), { decode: async () => { throw new Error('bad') } })).toBeNull()
   })
 
-  it('shotFeedback: the tab first, then the Edge with the sound option; a bad thumb goes as null', async () => {
+  it('shotFeedback: the Edge first with the sound option, then the tab; a bad thumb goes as null', async () => {
     const calls: unknown[][] = []
     const deps = {
       inject: vi.fn(async (...a: unknown[]) => void calls.push(['inject', ...a])),
@@ -2089,11 +2089,17 @@ describe('the shot thumbnail', () => {
     await shotFeedback(7, 'data:image/jpeg;base64,/9j/4A==', deps)
     await shotFeedback(7, 'data:image/png;base64,iVBORw0KGgo=', { ...deps, sound: vi.fn(async () => false) })
     expect(calls).toEqual([
-      ['inject', 7, 'data:image/jpeg;base64,/9j/4A=='],
       ['edge', 7, 'data:image/jpeg;base64,/9j/4A==', true],
-      ['inject', 7, null],
+      ['inject', 7, 'data:image/jpeg;base64,/9j/4A=='],
       ['edge', 7, null, false],
+      ['inject', 7, null],
     ])
+  })
+
+  it('shotFeedback: a tab that never answers does not hold the Edge or the sound back', async () => {
+    const tellEdge = vi.fn(async () => true)
+    void shotFeedback(7, null, { inject: () => new Promise(() => undefined), tellEdge, sound: async () => true })
+    await vi.waitFor(() => expect(tellEdge).toHaveBeenCalledWith(7, null, true))
   })
 
   it('shotFeedback: a tab that refuses the script still tells the Edge; a failing option reads off', async () => {
