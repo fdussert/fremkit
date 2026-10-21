@@ -1,5 +1,6 @@
 // The options page: whether this browser is linked and under which name, unlinking, Fremdev's own
-// development hosts, and the Fremplay and Fremdev shortcuts (changed on the browser's own shortcut page).
+// development hosts, the Fremplay and Fremdev shortcuts (changed on the browser's own shortcut page),
+// and whether the Mac plays the screenshot sound after a Fremdev shot (off unless ticked).
 
 import { localize, t } from './i18n.js'
 import { parsePattern, releasableOrigins } from './lib/devhosts.js'
@@ -10,6 +11,9 @@ const $ = (id) => document.getElementById(id)
 const ask = (type) => chrome.runtime.sendMessage({ target: 'worker', type }).catch(() => null)
 
 let hostsBusy = false
+
+/** The worker reads it at each shot (worker.js `SHOT_SOUND_KEY`). */
+const SHOT_SOUND_KEY = 'fremdevShotSound'
 
 async function readFremdev() {
   const { fremdev } = await chrome.storage.local.get('fremdev')
@@ -52,7 +56,7 @@ function renderHosts(patterns) {
 }
 
 async function render() {
-  const local = await chrome.storage.local.get(['token', 'name', 'revoked'])
+  const local = await chrome.storage.local.get(['token', 'name', 'revoked', SHOT_SOUND_KEY])
   const { link } = await chrome.storage.session.get('link')
   const paired = Boolean(local.token)
   $('paired').hidden = !paired
@@ -72,6 +76,7 @@ async function render() {
   const commands = await chrome.commands.getAll()
   showShortcut($('hint'), commands.find((c) => c.name === 'fremplay-toggle')?.shortcut)
   showShortcut($('shothint'), commands.find((c) => c.name === 'fremdev-shot')?.shortcut)
+  $('shotsound').checked = local[SHOT_SOUND_KEY] === true
 }
 
 /** A command's keys as `kbd`s, or the note that it has none. */
@@ -142,6 +147,10 @@ async function removeHost(pattern) {
     render()
   }
 }
+
+$('shotsound').addEventListener('change', (e) => {
+  void chrome.storage.local.set({ [SHOT_SOUND_KEY]: e.target.checked === true })
+})
 
 // A page cannot link to chrome://; the tabs API may open it.
 $('shortcuts').addEventListener('click', () => chrome.tabs.create({ url: 'chrome://extensions/shortcuts' }))

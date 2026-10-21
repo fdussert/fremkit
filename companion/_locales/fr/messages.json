@@ -366,6 +366,9 @@
   "optShotShortcut": {
     "message": "Capture Fremdev"
   },
+  "optShotSound": {
+    "message": "Jouer le son de capture"
+  },
   "optShortcutChange": {
     "message": "Changer le raccourci"
   }

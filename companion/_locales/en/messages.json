@@ -366,6 +366,9 @@
   "optShotShortcut": {
     "message": "Fremdev screenshot"
   },
+  "optShotSound": {
+    "message": "Play the screenshot sound"
+  },
   "optShortcutChange": {
     "message": "Change the shortcut"
   }

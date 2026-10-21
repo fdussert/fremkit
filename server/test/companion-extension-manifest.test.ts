@@ -98,6 +98,21 @@ describe('the companion extension', () => {
     expect(script).toContain("chrome.tabs.create({ url: 'chrome://extensions/shortcuts' })")
   })
 
+  it('offers the screenshot sound in both languages, off unless ticked, read by the worker under the same key', () => {
+    expect(messages('fr').optShotSound.message).toBe('Jouer le son de capture')
+    expect(messages('en').optShotSound.message).toBe('Play the screenshot sound')
+    const page = read('options.html')
+    expect(page).toMatch(/<input type="checkbox" id="shotsound">\s*__MSG_optShotSound__/)
+    expect(page).not.toMatch(/id="shotsound"[^>]*checked/)
+    const options = read('options.js')
+    const worker = read('worker.js')
+    for (const script of [options, worker]) expect(script).toContain("const SHOT_SOUND_KEY = 'fremdevShotSound'")
+    // Only a stored `true` turns it on: a fresh install has nothing stored.
+    expect(options).toContain("$('shotsound').checked = local[SHOT_SOUND_KEY] === true")
+    expect(worker).toContain('[SHOT_SOUND_KEY] === true')
+    expect(options).toContain('chrome.storage.local.set({ [SHOT_SOUND_KEY]: e.target.checked === true })')
+  })
+
   it('fr and en messages have the same keys', () => {
     const fr = messages('fr')
     const en = messages('en')
