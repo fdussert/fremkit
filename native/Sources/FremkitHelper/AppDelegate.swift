@@ -26,8 +26,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     #if FREMKIT_SPARKLE
     private var updater: Updater?
     #endif
-    /// Latest Edge bounds, kept so the kiosk window can be created lazily when it appears.
-    private var edge: CGRect?
+    /// Latest dashboard target bounds (Edge when connected, otherwise the selected ILITEK screen).
+    private var dashboardBounds: CGRect?
     /// Polls the Accessibility grant until it lands, so the menu stops claiming it is missing.
     private var accessibilityTimer: Timer?
     /// True once `applicationDidFinishLaunching` has built the windows a URL may want.
@@ -323,7 +323,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             touch: state.touch.description,
             inputMonitoring: grant(Permissions.inputMonitoring),
             accessibility: AXIsProcessTrusted() ? .granted : .denied,
-            kioskDisplay: edge.map { (Int($0.width), Int($0.height)) },
+            kioskDisplay: dashboardBounds.map { (Int($0.width), Int($0.height)) },
             kioskWindow: kiosk != nil,
             brightness: brightness,
             fence: fence,
@@ -370,24 +370,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func refreshDashboardMenu() {
         menu?.update { state in
-            state.dashboardAvailable = edge != nil && kiosk != nil
+            state.dashboardAvailable = dashboardBounds != nil && kiosk != nil
             state.dashboardHidden = kiosk?.isHiddenByUser == true
         }
     }
 
     private func edgeDidChange(_ edge: CGRect?) {
-        self.edge = edge
-        driver?.displayBounds = edge
-        fence?.edge = edge
+        let ilitek = ILITEKDisplayTarget.bounds(fallbackSize: CGSize(width: config.display.width, height: config.display.height))
+        let profiles = TouchDriver.connectedProfiles()
+        let profile = TouchHardwareProfile.preferred(edgeDevice: profiles.contains(.edge),
+                                                     edgeTarget: edge != nil,
+                                                     ilitekDevice: profiles.contains(.ilitek),
+                                                     ilitekTarget: ilitek != nil) ?? .edge
+        let target = TouchHardwareProfile.target(for: profile, edge: edge, ilitek: ilitek)
+        dashboardBounds = target
+        driver?.use(profile)
+        driver?.displayBounds = target
+        fence?.edge = target
         brightness?.displayDidChange(edge == nil ? nil : EdgeDisplay.findID(width: config.display.width, height: config.display.height))
 
-        if let edge {
-            let frame = NSRect.fromCGDisplayBounds(edge, primaryHeight: NSRect.primaryScreenHeight)
+        if let target {
+            let frame = NSRect.fromCGDisplayBounds(target, primaryHeight: NSRect.primaryScreenHeight)
             // The admin window must never open where the kiosk is: the kiosk sits above the
             // status-bar level, so a window on that display is focused and invisible.
             admin?.kioskFrame = frame
             if let kiosk {
-                kiosk.setEdgeFrame(edge)
+                kiosk.setEdgeFrame(target)
             } else if let access {
                 let url = Self.parseURL(config.url, what: "url")
                 kiosk = KioskWindow(frame: frame, url: url, access: access)
@@ -428,7 +436,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func wireMenu(_ menu: StatusMenu) {
         menu.onToggleDashboard = { [weak self] in
-            guard let self, self.edge != nil, let kiosk = self.kiosk else { return }
+            guard let self, self.dashboardBounds != nil, let kiosk = self.kiosk else { return }
             if kiosk.isHiddenByUser { kiosk.showDashboard() }
             else { kiosk.hideDashboard() }
         }

@@ -84,6 +84,19 @@ final class GestureEngineTests: XCTestCase {
         XCTAssertEqual(engine.feed(up(further, 0.6)), [.mouseUp(further), .restoreCursor])
     }
 
+    func testCancelReleasesDragAndStartsNextTouchAsFreshGesture() {
+        let engine = GestureEngine()
+        _ = engine.feed(down(p0, 0))
+        _ = engine.tick(now: 0.4)
+        let moved = CGPoint(x: p0.x + 30, y: p0.y)
+        XCTAssertEqual(engine.feed(down(moved, 0.45)), [.move(p0), .mouseDown(p0), .drag(moved)])
+        let last = CGPoint(x: p0.x + 50, y: p0.y)
+
+        XCTAssertEqual(engine.cancel(), [.mouseUp(moved), .restoreCursor])
+        XCTAssertEqual(engine.feed(down(last, 0.5)), [])
+        XCTAssertEqual(engine.feed(up(last, 0.55)), [.move(last), .mouseDown(last), .mouseUp(last), .restoreCursor])
+    }
+
     func testLongPress() {
         let engine = GestureEngine()
         XCTAssertEqual(engine.feed(down(p0, 0)), [])

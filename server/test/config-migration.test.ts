@@ -183,6 +183,13 @@ describe('privacy settings on an older config', () => {
   it('starts off for a config that does not show the widget', () => {
     const cfg = migrateConfig({ version: 2, pages: [page([widget('clock')])] })
     expect(cfg.privacy.claudeAccountUsage).toBe(false)
+    expect(cfg.privacy.messages2FA).toBe(false)
+  })
+
+  it('keeps the Messages lookup opt-in off for existing configs unless they carry the setting', () => {
+    expect(migrateConfig({ ...DEFAULT_CONFIG, privacy: { ...DEFAULT_CONFIG.privacy, messages2FA: true } }).privacy.messages2FA).toBe(true)
+    expect(migrateConfig({ ...DEFAULT_CONFIG, privacy: { ...DEFAULT_CONFIG.privacy, messages2FA: false } }).privacy.messages2FA).toBe(false)
+    expect(migrateConfig({ ...DEFAULT_CONFIG, privacy: { claudeAccountUsage: false } }).privacy.messages2FA).toBe(false)
   })
 
   it('starts on for a config that already shows it on a page', () => {

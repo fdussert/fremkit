@@ -126,6 +126,9 @@ describe('demo mode', () => {
     const volume = providers.find((p) => p.channel === 'volume')!
     await volume.commands!.set({ level: 12 })
     expect(((await volume.poll!()) as { level: number }).level).toBe(12)
+    const messages2FA = providers.find((p) => p.channel === 'messages-2fa')!
+    await expect(messages2FA.commands!.copyLatest(null, { loopback: true, paired: false }))
+      .resolves.toMatchObject({ ok: false })
     const status = providers.find((p) => p.channel === 'service-status')!
     const probe = await status.commands!.probe({ instanceId: 'service-status-1' }) as { ok: boolean; results: unknown[] }
     expect(probe.ok).toBe(true)

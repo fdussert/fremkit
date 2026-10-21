@@ -21,6 +21,10 @@ import { tr } from '../i18n.js'
  *    minute is well inside it.
  *  - `GET   /repos/{owner}/{repo}/actions/runs?per_page=10` — workflow runs, one call per repo
  *    named in the connection's `repos` field, capped at ten repos.
+ *  - `GET   /users/{login}/events?per_page=100` — the authenticated user's recent activity, used
+ *    to order My Scope by what Livio did rather than by what somebody else changed. GitHub's
+ *    event feed can lag and only covers a bounded recent window; it is the closest supported
+ *    account-wide signal, not a real-time audit log.
  *
  * Every GET goes through a conditional request: the ETag of the previous answer is sent back as
  * `If-None-Match`, and a `304 Not Modified` replays the cached body. GitHub does not charge a 304
@@ -95,6 +99,11 @@ export interface GhRun {
   url: string
 }
 
+export interface GhRepoActivity {
+  repo: string
+  updatedAt: number
+}
+
 /**
  * Why one source of the snapshot has no fresh rows.
  *
@@ -111,6 +120,7 @@ export type GhSectionError = 'unauthorized' | 'forbidden' | 'fine-grained-token'
 
 /** One entry per source of the snapshot; a missing key means that source is fresh. */
 export interface GhSectionErrors {
+  activity?: GhSectionError
   notifications?: GhSectionError
   reviews?: GhSectionError
   myPrs?: GhSectionError
@@ -130,6 +140,7 @@ export interface GhSectionErrors {
  * at all, therefore still shows its reviews, its pull requests and its workflow runs.
  */
 export interface GhSnapshot {
+  repoActivity: GhRepoActivity[]
   notifications: GhNotification[]
   reviewRequests: GhPull[]
   myPrs: GhPull[]
@@ -147,6 +158,11 @@ export const isFineGrainedToken = (token: string | undefined): boolean =>
   (token ?? '').startsWith(FINE_GRAINED_PREFIX)
 
 const OWNER_REPO_RE = /^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/
+const USER_ACTIVITY_TYPES = new Set([
+  'CommitCommentEvent', 'CreateEvent', 'DeleteEvent', 'DiscussionEvent', 'ForkEvent',
+  'IssueCommentEvent', 'IssuesEvent', 'PullRequestEvent', 'PullRequestReviewEvent',
+  'PullRequestReviewCommentEvent', 'PushEvent', 'ReleaseEvent',
+])
 
 /**
  * `https://api.github.com/` → `https://api.github.com`, empty → the github.com root.
@@ -275,6 +291,24 @@ export function normalizePulls(json: unknown): GhPull[] {
   return out
 }
 
+/** `GET /users/{login}/events` → only the authenticated user's contribution-like repo touches. */
+export function normalizeUserRepoActivity(json: unknown, login: string): GhRepoActivity[] {
+  if (!Array.isArray(json) || !login) return []
+  const latest = new Map<string, GhRepoActivity>()
+  for (const raw of json as Record<string, any>[]) {
+    const repo = String(raw?.repo?.name ?? '')
+    const actor = String(raw?.actor?.login ?? '')
+    const updatedAt = epoch(raw?.created_at)
+    if (!OWNER_REPO_RE.test(repo) || repo.split('/').some(part => part === '.' || part === '..')
+      || actor.toLowerCase() !== login.toLowerCase()) continue
+    if (!USER_ACTIVITY_TYPES.has(String(raw?.type)) || updatedAt === undefined) continue
+    const key = repo.toLowerCase()
+    const previous = latest.get(key)
+    if (!previous || updatedAt > previous.updatedAt) latest.set(key, { repo, updatedAt })
+  }
+  return [...latest.values()].sort((a, b) => b.updatedAt - a.updatedAt)
+}
+
 function runStatus(status: unknown): GhRunStatus {
   switch (status) {
     case 'completed': return 'completed'
@@ -360,6 +394,11 @@ const OpenRowPayload = z.object({
   id: z.string().regex(/^\d{1,20}$/),
 })
 
+// A widget can ask to open a repository name, but it cannot supply a destination URL.
+const OpenRepoPayload = z.strictObject({
+  repo: z.string().regex(OWNER_REPO_RE),
+})
+
 export interface GithubDeps {
   openRunner?: (cmd: string, args: string[]) => Promise<void>
   fetchFn?: typeof fetch
@@ -391,7 +430,7 @@ export function createGithubProvider(ctx: ConnectionProviderContext, deps: Githu
   /** While `now()` is below this the provider does not call at all: the quota is spent. */
   let quietUntil = 0
   let rateLimit: GhSnapshot['rateLimit']
-  let last: GhSnapshot = { notifications: [], reviewRequests: [], myPrs: [], runs: [] }
+  let last: GhSnapshot = { repoActivity: [], notifications: [], reviewRequests: [], myPrs: [], runs: [] }
   /**
    * Set once a fine-grained token has been refused by `/notifications`. The endpoint only answers
    * a classic token, so asking again every minute would spend a request on a certain 403 forever.
@@ -559,7 +598,9 @@ export function createGithubProvider(ctx: ConnectionProviderContext, deps: Githu
         }
       }
 
-      const [reviewRequests, myPrs] = await Promise.all([
+      const [repoActivity, reviewRequests, myPrs] = await Promise.all([
+        section('activity', last.repoActivity, async () =>
+          normalizeUserRepoActivity(await get(`${base}/users/${encodeURIComponent(me)}/events?per_page=100`), me)),
         section('reviews', last.reviewRequests, async () =>
           normalizePulls(await get(searchUrl(`is:pr is:open archived:false review-requested:${me}`)))),
         section('myPrs', last.myPrs, async () =>
@@ -591,6 +632,7 @@ export function createGithubProvider(ctx: ConnectionProviderContext, deps: Githu
       }
 
       last = {
+        repoActivity,
         notifications,
         reviewRequests,
         myPrs,
@@ -623,6 +665,32 @@ export function createGithubProvider(ctx: ConnectionProviderContext, deps: Githu
         if (url.protocol !== 'https:' || url.hostname !== host || url.username || url.password || url.port ||
             !(url.pathname === `/${row.repo}` || url.pathname.startsWith(`/${row.repo}/`))) return { ok: false }
         try { await openRunner('/usr/bin/open', [url.href]); return { ok: true } }
+        catch { return { ok: false } }
+      },
+      /** Opens a repository shown in this connection's current activity snapshot. */
+      openRepo: async (payload, context) => {
+        if (!context?.loopback) return { ok: false, error: tr(undefined, 'provider.localOnly') }
+        const parsed = OpenRepoPayload.safeParse(payload)
+        if (!parsed.success) throw new Error(tr(undefined, 'github.invalidCommand'))
+        const { repo } = parsed.data
+        const visibleRepos = [
+          ...last.repoActivity.map(item => item.repo),
+          ...last.notifications.map(row => row.repo),
+          ...last.reviewRequests.map(row => row.repo),
+          ...last.myPrs.map(row => row.repo),
+        ]
+        if (!base || !visibleRepos.includes(repo)) return { ok: false }
+
+        let host: string
+        try {
+          const configured = new URL(base)
+          // Do not turn an API URL with an unusual port into a different web origin.
+          if (configured.port) return { ok: false }
+          host = base === GITHUB_DEFAULT_HOST ? 'github.com' : configured.hostname
+          if (!host || configured.username || configured.password) return { ok: false }
+        } catch { return { ok: false } }
+
+        try { await openRunner('/usr/bin/open', [`https://${host}/${repo}`]); return { ok: true } }
         catch { return { ok: false } }
       },
       /** Marks one notification thread read — what a tap on an inbox row asks for. */

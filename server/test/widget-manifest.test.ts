@@ -243,6 +243,11 @@ describe('channels a manifest may not ask for', () => {
     expect(builtinOnlyChannels({ ...m, commands: [] })).toEqual(['brightness'])
   })
 
+  it('reserves the Messages 2FA command for built-in widgets', () => {
+    const m = ManifestSchema.parse({ ...base, commands: ['messages-2fa'] })
+    expect(builtinOnlyChannels(m)).toEqual(['messages-2fa'])
+  })
+
   it('names the reason', () => {
     const parsed = ManifestSchema.safeParse({ ...base, subscriptions: ['config'] })
     expect(parsed.success).toBe(false)

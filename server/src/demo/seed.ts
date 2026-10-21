@@ -124,7 +124,7 @@ export function demoConfig(locale: 'fr' | 'en' = 'en'): Config {
     // A file next to the config, never the keychain: a demo has nothing to keep secret.
     secrets: { backend: 'file' },
     locale,
-    privacy: { claudeAccountUsage: true, showAccountEmail: false, codexAccount: true, codexHistorySources: ['cli', 'vscode', 'appServer'], macmonTemperature: false },
+    privacy: { claudeAccountUsage: true, showAccountEmail: false, codexAccount: true, codexHistorySources: ['cli', 'vscode', 'appServer'], macmonTemperature: false, messages2FA: false },
     marketplace: { installed: {} },
     // As on a fresh install: the iPad screens stay an experimental feature until it is ticked.
     labs: { devices: false, companion: false },

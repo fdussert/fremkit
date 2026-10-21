@@ -12,8 +12,44 @@ tagged `vX.Y.Z`.
 
 ## Unreleased
 
+### Added
+- **Messages verification-code provider.** Adds the local, default-off provider for the companion
+  [Sietch Messages widget PR #16](https://github.com/fdussert/fremkit-sietch/pull/16); the widget
+  is not bundled here, and its trusted integration remains separate. When integrated, codes are
+  written as concealed, temporary, current-Mac-only pasteboard content. The provider schedules a
+  conditional clear after 60 seconds; if cleanup startup or execution fails, it attempts an
+  immediate conditional clear. If macOS refuses both cleanup attempts, the code may remain on the
+  pasteboard. A cleanup startup failure is returned as a generic copy failure; a later cleaner
+  failure is logged without exposing the code.
+
+- **Recent Projects.** Remembers canonical working directories reported by Herdr panes and opens a
+  selected folder in a new pane, optionally starting Claude Code or Codex from a known executable
+  location.
+
+- **Paste Pad provider.** Answers the `paste-pad` command channel: a button copies its saved value
+  onto the pasteboard as a transient entry, then sends ⌘V — and an optional Return — to the field
+  that has focus on the main display. Values come only from the widget's own saved settings, so a
+  button cannot be made to paste something the user never typed.
+
+
+
+- **Translate Selection reaches editors that hide the selection.** Apps that never publish
+  `AXSelectedText` — GPU-rendered editors, terminals — still answer ⌘C, so when the Accessibility
+  read comes back empty the widget copies the selection instead of giving up. The translation is
+  then pasted back over the still-selected text, replacing it in place; it also stays on the
+  pasteboard for a second ⌘V.
+
 ### Fixed
 
+- **Tapping the Edge dashboard no longer steals the keyboard.** The dashboard window took the
+  key focus on every tap, so the app you were typing into on the main display lost it and a
+  shortcut such as ⌘V landed in the dashboard. The window is now a non-activating panel that
+  never becomes key; touches still reach the page.
+- **The Claude limits tile finds the sign-in again.** Recent Claude Code versions keep the OAuth
+  credentials in a keychain item whose name carries a config-dir suffix
+  (`Claude Code-credentials-8047733a`), while the plainly named item can hold MCP data instead.
+  The provider now looks through every `Claude Code-credentials*` item for the one that has the
+  token, instead of reporting "not available on this Mac".
 - **The clipboard widget masks one-time codes.** A six-digit code copied from a text message or
   an authenticator (`482913`, `482 913`, `4829-1375`) showed in full on the Edge and on a paired
   iPad; any run of four to eight digits copied on its own is now shown as a secret, and still
@@ -21,6 +57,9 @@ tagged `vX.Y.Z`.
 - **The clipboard widget leaves alone what more password managers copy.** Besides the standard
   "concealed" and "transient" markers, a copy from 1Password, KeeWeb, Butler, Typeit4me or a
   Keyboard Maestro generator is no longer recorded at all.
+- **List settings rows reorder by drag.** Each row of a list setting — a Paste Pad button, a
+  clock city — carries a grip on its left edge: grab it and drop the row where it belongs. The
+  up/down chevrons stay for keyboard reordering.
 
 ## 0.5.0 — 2026-10-19
 

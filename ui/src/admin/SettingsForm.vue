@@ -398,6 +398,35 @@ function moveItem(k: string, i: number, delta: number): void {
 function setItemField(k: string, i: number, key: string, value: unknown): void {
   emit('change', k, items(k).map((item, j) => (j === i ? { ...item, [key]: value } : item)))
 }
+
+/**
+ * Drag-to-reorder of `list` rows: the grip arms the row's `draggable` only while its mouse is
+ * down, so the inputs inside keep their own text selection. One drop emits one change — a single
+ * undo step, like every other row edit.
+ */
+const dragRow = reactive<{ k: string; i: number | null; over: number | null }>({ k: '', i: null, over: null })
+function armDrag(k: string, i: number): void { dragRow.k = k; dragRow.i = i }
+function endDrag(): void { dragRow.k = ''; dragRow.i = null; dragRow.over = null }
+function onRowDragStart(k: string, i: number, ev: DragEvent): void {
+  if (dragRow.k !== k || dragRow.i !== i || !ev.dataTransfer) { ev.preventDefault(); return }
+  ev.dataTransfer.setData('text/plain', String(i))
+  ev.dataTransfer.effectAllowed = 'move'
+}
+function onRowDragOver(k: string, i: number, ev: DragEvent): void {
+  if (dragRow.k !== k || dragRow.i === null || !ev.dataTransfer) return
+  ev.dataTransfer.dropEffect = 'move'
+  ev.preventDefault()
+  dragRow.over = i
+}
+function onRowDrop(k: string, i: number, ev: DragEvent): void {
+  ev.preventDefault()
+  if (dragRow.k === k && dragRow.i !== null && dragRow.i !== i) {
+    const list = [...items(k)]
+    list.splice(i, 0, list.splice(dragRow.i, 1)[0])
+    emit('change', k, list)
+  }
+  endDrag()
+}
 /** An emptied number cell is not a zero: leave the item as it stands, like `onNumber` above. */
 function onItemNumber(k: string, i: number, key: string, value: string | number): void {
   if (Number.isFinite(Number(value))) setItemField(k, i, key, Number(value))
@@ -495,7 +524,15 @@ const itemText = (item: Record<string, unknown>, key: string, field: ListItemFie
       <span class="lbl">{{ pick(f.label) }}</span>
       <p v-if="!items(k).length" class="hint">{{ t('admin.settings.list.empty') }}</p>
       <ul v-else class="list">
-        <li v-for="(item, i) in items(k)" :key="i">
+        <li v-for="(item, i) in items(k)" :key="i"
+          :draggable="dragRow.k === k && dragRow.i === i"
+          :class="{ dropBefore: dragRow.k === k && dragRow.over === i && dragRow.i !== i }"
+          @dragstart="onRowDragStart(k, i, $event)" @dragover="onRowDragOver(k, i, $event)"
+          @drop="onRowDrop(k, i, $event)" @dragend="endDrag">
+          <button type="button" class="grip" :title="t('common.reorder')" tabindex="-1"
+            @mousedown="armDrag(k, i)" @mouseup="endDrag">
+            <BaseIcon name="grip-vertical" :size="14" />
+          </button>
           <div class="cells">
             <label v-for="(itf, ik) in f.itemSchema" :key="ik" class="cell" :class="{ flag: itf.type === 'boolean' }">
               <span class="cap">{{ pick(itf.label) }}</span>
@@ -608,6 +645,12 @@ select, .color { width: 100%; box-sizing: border-box; font: inherit; font-size: 
 .cell.flag input { accent-color: var(--accent); width: 16px; height: 16px; }
 .cap { font-size: var(--fs-xs); color: var(--text-dim); text-transform: uppercase; letter-spacing: .06em;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* The grip is the row's drag handle: a move cursor, not keyboard-focusable — the chevrons beside
+   it are the keyboard way to reorder. */
+.grip { align-self: center; flex: 0 0 auto; border: 0; background: none; padding: 0 2px;
+  color: var(--text-dim); cursor: move; }
+.grip:active { cursor: grabbing; }
+.list li.dropBefore { border-color: var(--accent); }
 .rowActions { display: flex; flex: 0 0 auto; }
 .add { align-self: flex-start; }
 </style>

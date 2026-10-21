@@ -509,6 +509,7 @@ describe('the real connection types bind their secrets', () => {
       // dev.azure.com is hardcoded, and an ICS calendar's URL *is* its secret.
       'azure-devops': [],
       ics: [],
+      'openai-shellsmith': ['provider'],
     })
     // Every bound key must be a real, non-secret field of its type.
     for (const type of defaultConnectionTypes()) {

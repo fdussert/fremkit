@@ -37,6 +37,7 @@ struct MenuState {
         case .notPermitted: return .touchNotPermitted
         case .needsRelaunch: return .touchNeedsRelaunch
         case .busy(.exclusiveAccess): return .touchBusy
+        case .busy(.siblingSeizeFailed): return .touchBusy
         case .busy(.openFailed): return .touchOpenFailed
         case .noDisplay: return .touchNoDisplay
         case .disabled: return .touchDisabled

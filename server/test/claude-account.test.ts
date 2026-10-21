@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { normalizeAccountUsage, createClaudeAccountProvider, parseKeychainJson } from '../src/claude/account.js'
+import { normalizeAccountUsage, createClaudeAccountProvider, parseKeychainJson, readClaudeOAuthToken } from '../src/claude/account.js'
 import { USER_AGENT } from '../src/version.js'
 
 const sample = {
@@ -35,6 +35,42 @@ describe('parseKeychainJson', () => {
     expect(parseKeychainJson(JSON.stringify({ claudeAiOauth: { accessToken: 'tok', expiresAt: 1 } }))).toBe('tok')
     expect(parseKeychainJson('nope')).toBeNull()
     expect(parseKeychainJson(JSON.stringify({ other: 1 }))).toBeNull()
+  })
+})
+
+describe('readClaudeOAuthToken', () => {
+  const creds = (accessToken: string) => JSON.stringify({ claudeAiOauth: { accessToken } })
+  // `security` stand-in: named items answering `-s <name> -w`, and a `dump-keychain`
+  // that lists their service names the way the real one writes them.
+  const runnerOf = (items: Record<string, string>) => vi.fn(async (_cmd: string, args: string[]) => {
+    if (args[0] === 'dump-keychain') return items ? Object.keys(items).map((s) => `"svce"<blob>="${s}"`).join('\n') : ''
+    const item = items[args[args.indexOf('-s') + 1]]
+    if (item === undefined) throw new Error('The specified item could not be found in the keychain.')
+    return item
+  })
+
+  it('reads the plainly named item without a dump', async () => {
+    const runner = runnerOf({ 'Claude Code-credentials': creds('tok') })
+    expect(await readClaudeOAuthToken(runner)).toBe('tok')
+    expect(runner).toHaveBeenCalledTimes(1)
+  })
+
+  it('finds the token in a config-dir-suffixed item when the plain name holds something else', async () => {
+    const runner = runnerOf({
+      'Claude Code-credentials': JSON.stringify({ mcpOAuth: {} }),
+      'Claude Code-credentials-10be7540': creds('tok2'),
+    })
+    expect(await readClaudeOAuthToken(runner)).toBe('tok2')
+  })
+
+  it('keeps looking when the plain name is absent entirely', async () => {
+    const runner = runnerOf({ 'Claude Code-credentials-8047733a': creds('tok3') })
+    expect(await readClaudeOAuthToken(runner)).toBe('tok3')
+  })
+
+  it('answers null when nothing parses to a token', async () => {
+    expect(await readClaudeOAuthToken(runnerOf({ 'Claude Code-credentials-10be7540': JSON.stringify({ mcpOAuth: {} }) }))).toBeNull()
+    expect(await readClaudeOAuthToken(runnerOf({}))).toBeNull()
   })
 })
 

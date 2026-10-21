@@ -77,6 +77,22 @@ public final class GestureEngine {
         return []
     }
 
+    /// Cancels an interrupted touch stream, releasing a drag or restoring a scrolled cursor.
+    public func cancel() -> [PointerAction] {
+        let actions: [PointerAction]
+        switch state {
+        case .scrolling:
+            actions = [.restoreCursor]
+        case let .dragging(last):
+            actions = [.mouseUp(last), .restoreCursor]
+        case .idle, .pressed, .holding:
+            actions = []
+        }
+        state = .idle
+        lastTap = nil
+        return actions
+    }
+
     private func handleDown(_ s: TouchSample) -> [PointerAction] {
         switch state {
         case .idle:

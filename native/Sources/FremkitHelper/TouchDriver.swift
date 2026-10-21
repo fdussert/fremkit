@@ -10,12 +10,15 @@ import IOKit.hid
 enum TouchBusyReason: Equatable, CustomStringConvertible {
     /// Another process holds the interface exclusively (e.g. Touchscreen Gestures).
     case exclusiveAccess
+    /// The ILITEK touchscreen opened, but its paired mouse interface could not be seized.
+    case siblingSeizeFailed
     /// `IOHIDManagerOpen` failed for some other reason; carries the raw IOReturn code.
     case openFailed(UInt32)
 
     var description: String {
         switch self {
         case .exclusiveAccess: return "another driver holds the panel"
+        case .siblingSeizeFailed: return "could not seize the panel's paired mouse interface"
         case let .openFailed(code): return String(format: "IOHIDManagerOpen failed (0x%08X)", code)
         }
     }
@@ -93,6 +96,16 @@ final class TouchDriver {
     private var reopenBackoff = TouchDriver.reopenDelay
     /// Guarded by `queue`.
     private var mapper: DisplayMapper?
+    /// Selected by AppDelegate from the configured target display; Edge remains the default.
+    var hardwareProfile: TouchHardwareProfile = .edge
+    private var ilitekDevice: IOHIDDevice?
+    private var ilitekSiblings: [IOHIDDevice] = []
+    private var ilitekDecoder = ILITEKTouchDecoder()
+    private var ilitekMouseDecoder = ILITEKMouseDecoder()
+    private var ilitekSourceSelector = ILITEKContactSourceSelector()
+    private var ilitekPendingSample: HIDTouchSample?
+    private var ilitekFlushScheduled = false
+    private let ilitekTraceEnabled = ProcessInfo.processInfo.environment["FREMKIT_ILITEK_TRACE"] == "1"
     /// Tells a missing grant from one this process cannot see until it is relaunched.
     private var accessGate = TouchAccessGate()
 
@@ -154,7 +167,8 @@ final class TouchDriver {
         // the Accessibility prompt was lost (macOS shows one privacy prompt at a time). See
         // `PermissionSequencer`.
 
-        openManager()
+        if hardwareProfile == .ilitek { openILITEKDevice() }
+        else { openManager() }
 
         // `.common` so a menu tracking loop cannot stall the gesture clock.
         let timer = Timer(timeInterval: Self.tickInterval, repeats: true) { [weak self] _ in
@@ -184,7 +198,29 @@ final class TouchDriver {
             self.wakeObserver = nil
         }
         closeManager()
+        closeILITEKDevice()
         state = .disabled
+    }
+
+    /// Switches between the existing Edge report adapter and the optional ILITEK element adapter.
+    func use(_ profile: TouchHardwareProfile) {
+        guard hardwareProfile != profile else { return }
+        let wasRunning = running
+        if wasRunning { stop() }
+        hardwareProfile = profile
+        if wasRunning { start() }
+    }
+
+    /// Enumerates HID metadata without opening or seizing any device.
+    static func connectedProfiles() -> Set<TouchHardwareProfile> {
+        let manager = IOHIDManagerCreate(kCFAllocatorDefault, IOOptionBits(0))
+        IOHIDManagerSetDeviceMatching(manager, nil)
+        guard let raw = IOHIDManagerCopyDevices(manager) else { return [] }
+        let devices = (raw as NSSet).allObjects as! [IOHIDDevice]
+        var profiles = Set<TouchHardwareProfile>()
+        if devices.contains(where: isEdgeTouchscreen) { profiles.insert(.edge) }
+        if devices.contains(where: isILITEKTouchscreen) { profiles.insert(.ilitek) }
+        return profiles
     }
 
     private func tick() {
@@ -264,6 +300,254 @@ final class TouchDriver {
         }
     }
 
+    /// Opens only the ILITEK digitizer collection, then seizes its paired mouse collection so one
+    /// physical touch cannot generate both a digitizer gesture and a WindowServer mouse click.
+    private func openILITEKDevice() {
+        closeILITEKDevice()
+        traceILITEK("open preflight inputMonitoring=\(Permissions.inputMonitoring) accessibilityTrusted=\(AXIsProcessTrusted())")
+        guard displayBounds != nil else {
+            state = .noDisplay
+            return
+        }
+
+        let manager = IOHIDManagerCreate(kCFAllocatorDefault, IOOptionBits(0))
+        IOHIDManagerSetDeviceMatching(manager, nil)
+        guard let raw = IOHIDManagerCopyDevices(manager) else {
+            state = .busy(.openFailed(UInt32(bitPattern: kIOReturnNoDevice)))
+            failedToOpen()
+            return
+        }
+        let devices = (raw as NSSet).allObjects as! [IOHIDDevice]
+        guard let device = devices.first(where: Self.isILITEKTouchscreen) else {
+            state = .busy(.openFailed(UInt32(bitPattern: kIOReturnNoDevice)))
+            failedToOpen()
+            return
+        }
+        let key = Self.physicalKey(for: device)
+        let mouseSiblings = devices.filter {
+            !CFEqual($0, device) && Self.physicalKey(for: $0) == key && Self.isMouseCollection($0)
+        }
+        guard !mouseSiblings.isEmpty || Self.isMouseCollection(device) else {
+            state = .busy(.siblingSeizeFailed)
+            failedToOpen()
+            return
+        }
+
+        let result = IOHIDDeviceOpen(device, IOOptionBits(kIOHIDOptionsTypeSeizeDevice))
+        guard result == kIOReturnSuccess else {
+            traceILITEK("primary open failed result=\(String(format: "0x%08X", UInt32(bitPattern: result)))")
+            if result == IOResult.notPermitted {
+                switch accessGate.refused(inputMonitoring: Permissions.inputMonitoring) {
+                case .missing: state = .notPermitted
+                case .relaunchNeeded: state = .needsRelaunch
+                }
+            } else if result == IOResult.exclusiveAccess {
+                accessGate.reset()
+                state = .busy(.exclusiveAccess)
+            } else {
+                accessGate.reset()
+                state = .busy(.openFailed(UInt32(bitPattern: result)))
+            }
+            failedToOpen()
+            return
+        }
+
+        for sibling in mouseSiblings {
+            guard IOHIDDeviceOpen(sibling, IOOptionBits(kIOHIDOptionsTypeSeizeDevice)) == kIOReturnSuccess else {
+                for opened in ilitekSiblings { IOHIDDeviceClose(opened, IOOptionBits(0)) }
+                ilitekSiblings = []
+                IOHIDDeviceClose(device, IOOptionBits(0))
+                state = .busy(.siblingSeizeFailed)
+                traceILITEK("mouse sibling open failed")
+                failedToOpen()
+                return
+            }
+            ilitekSiblings.append(sibling)
+        }
+
+        ilitekDecoder = ILITEKTouchDecoder(primaryFingerCookie: Self.primaryFingerCookie(device))
+        ilitekMouseDecoder = ILITEKMouseDecoder()
+        ilitekSourceSelector = ILITEKContactSourceSelector()
+        ilitekPendingSample = nil
+        IOHIDDeviceScheduleWithRunLoop(device, CFRunLoopGetMain(), CFRunLoopMode.commonModes.rawValue)
+        IOHIDDeviceRegisterRemovalCallback(device, Self.ilitekRemovalCallback, Unmanaged.passUnretained(self).toOpaque())
+        IOHIDDeviceRegisterInputValueCallback(device, Self.ilitekValueCallback, Unmanaged.passUnretained(self).toOpaque())
+        for sibling in ilitekSiblings {
+            IOHIDDeviceScheduleWithRunLoop(sibling, CFRunLoopGetMain(), CFRunLoopMode.commonModes.rawValue)
+            IOHIDDeviceRegisterRemovalCallback(sibling, Self.ilitekRemovalCallback, Unmanaged.passUnretained(self).toOpaque())
+            IOHIDDeviceRegisterInputValueCallback(sibling, Self.ilitekValueCallback, Unmanaged.passUnretained(self).toOpaque())
+        }
+        ilitekDevice = device
+        opened = true
+        accessGate.reset()
+        state = .active
+        reopenBackoff = Self.reopenDelay
+        traceILITEK("open active interfaces=digitizer+\(ilitekSiblings.count) mouse sibling(s); requested seize option=\(kIOHIDOptionsTypeSeizeDevice)")
+    }
+
+    private func closeILITEKDevice() {
+        opened = false
+        if let device = ilitekDevice {
+            IOHIDDeviceRegisterRemovalCallback(device, nil, nil)
+            IOHIDDeviceRegisterInputValueCallback(device, nil, nil)
+            IOHIDDeviceUnscheduleFromRunLoop(device, CFRunLoopGetMain(), CFRunLoopMode.commonModes.rawValue)
+            IOHIDDeviceClose(device, IOOptionBits(0))
+            ilitekDevice = nil
+        }
+        for sibling in ilitekSiblings {
+            IOHIDDeviceRegisterRemovalCallback(sibling, nil, nil)
+            IOHIDDeviceUnscheduleFromRunLoop(sibling, CFRunLoopGetMain(), CFRunLoopMode.commonModes.rawValue)
+            IOHIDDeviceClose(sibling, IOOptionBits(0))
+        }
+        ilitekSiblings = []
+        ilitekPendingSample = nil
+        ilitekSourceSelector = ILITEKContactSourceSelector()
+        ilitekFlushScheduled = false
+    }
+
+    private func handleILITEKRemoval() {
+        guard opened else { return }
+        queue.async { [weak self] in
+            guard let self else { return }
+            for action in self.engine.cancel() { self.poster.perform(action) }
+        }
+        closeILITEKDevice()
+        state = .busy(.openFailed(UInt32(bitPattern: kIOReturnNoDevice)))
+        failedToOpen()
+    }
+
+    private static func propertyInt(_ device: IOHIDDevice, _ key: String) -> Int {
+        (IOHIDDeviceGetProperty(device, key as CFString) as? NSNumber)?.intValue ?? 0
+    }
+
+    private static func isILITEKTouchscreen(_ device: IOHIDDevice) -> Bool {
+        let vendor = propertyInt(device, "VendorID")
+        let product = propertyInt(device, "ProductID")
+        guard vendor == 0x222A, product == 0x0001 else { return false }
+        return hasUsage(device, page: 0x0D, usage: 0x04)
+    }
+
+    private static func isEdgeTouchscreen(_ device: IOHIDDevice) -> Bool {
+        let vendor = propertyInt(device, "VendorID")
+        let product = propertyInt(device, "ProductID")
+        guard vendor == Hardware.vendorID, product == Hardware.productID else { return false }
+        return hasUsage(device, page: Hardware.usagePage, usage: Hardware.usage)
+    }
+
+    private static func isMouseCollection(_ device: IOHIDDevice) -> Bool {
+        hasUsage(device, page: 0x01, usage: 0x02)
+    }
+
+    private static func hasUsage(_ device: IOHIDDevice, page: Int, usage: Int) -> Bool {
+        guard let pairs = IOHIDDeviceGetProperty(device, "DeviceUsagePairs" as CFString) as? [[String: Any]] else {
+            return propertyInt(device, "PrimaryUsagePage") == page && propertyInt(device, "PrimaryUsage") == usage
+        }
+        return pairs.contains {
+            ($0["DeviceUsagePage"] as? NSNumber)?.intValue == page
+                && ($0["DeviceUsage"] as? NSNumber)?.intValue == usage
+        }
+    }
+
+    private static func physicalKey(for device: IOHIDDevice) -> HIDPhysicalDeviceKey {
+        HIDPhysicalDeviceKey(vendorID: propertyInt(device, "VendorID"),
+                             productID: propertyInt(device, "ProductID"),
+                             locationID: propertyInt(device, "LocationID"))
+    }
+
+    private static func primaryFingerCookie(_ device: IOHIDDevice) -> UInt64? {
+        guard let elements = IOHIDDeviceCopyMatchingElements(device, nil, IOOptionBits(0)) as? [IOHIDElement] else {
+            return nil
+        }
+        return elements.filter {
+            IOHIDElementGetType($0) == kIOHIDElementTypeCollection
+                && IOHIDElementGetUsagePage($0) == kHIDPage_Digitizer
+                && IOHIDElementGetUsage($0) == kHIDUsage_Dig_Finger
+        }.map { UInt64(IOHIDElementGetCookie($0)) }.min()
+    }
+
+    private func handleILITEKValue(_ value: IOHIDValue) {
+        let element = IOHIDValueGetElement(value)
+        let valueDevice = IOHIDElementGetDevice(element)
+        let source: ILITEKTouchSource
+        if let device = ilitekDevice, CFEqual(valueDevice, device) {
+            source = .digitizer
+        } else if ilitekSiblings.contains(where: { CFEqual(valueDevice, $0) }) {
+            source = .mouse
+        } else {
+            return
+        }
+        let parent = IOHIDElementGetParent(element)
+        let parentCookie: UInt64?
+        if let parent,
+           IOHIDElementGetUsagePage(parent) == kHIDPage_Digitizer,
+           IOHIDElementGetUsage(parent) == kHIDUsage_Dig_Finger {
+            parentCookie = UInt64(IOHIDElementGetCookie(parent))
+        } else {
+            parentCookie = nil
+        }
+        let relative = (IOHIDElementGetProperty(element, "IsRelative" as CFString) as? NSNumber)?.boolValue ?? false
+        let elementValue = HIDTouchElementValue(
+            usagePage: Int(IOHIDElementGetUsagePage(element)),
+            usage: Int(IOHIDElementGetUsage(element)),
+            value: IOHIDValueGetIntegerValue(value),
+            logicalMinimum: Int(IOHIDElementGetLogicalMin(element)),
+            logicalMaximum: Int(IOHIDElementGetLogicalMax(element)),
+            isRelative: relative,
+            fingerCookie: parentCookie
+        )
+        switch source {
+        case .digitizer: ilitekDecoder.consume(elementValue)
+        case .mouse: ilitekMouseDecoder.consume(elementValue)
+        }
+        let decodedSample = source == .digitizer ? ilitekDecoder.sample : ilitekMouseDecoder.sample
+        guard let sample = ilitekSourceSelector.select(decodedSample, from: source) else {
+            traceILITEK("callback source=\(source) usage=\(elementValue.usagePage):\(elementValue.usage) value=\(elementValue.value) ignored contact=\(decodedSample.isDown)")
+            return
+        }
+        ilitekPendingSample = sample
+        traceILITEK(String(format: "callback source=%@ usage=%04X:%04X value=%ld decoded x=%.4f y=%.4f down=%@",
+                            String(describing: source), elementValue.usagePage, elementValue.usage,
+                            elementValue.value, sample.x, sample.y, sample.isDown ? "yes" : "no"))
+        guard !ilitekFlushScheduled else { return }
+        ilitekFlushScheduled = true
+        DispatchQueue.main.async { [weak self] in self?.flushILITEKValues() }
+    }
+
+    private func flushILITEKValues() {
+        ilitekFlushScheduled = false
+        guard opened else { return }
+        guard let sample = ilitekPendingSample else { return }
+        ilitekPendingSample = nil
+        queue.async { [weak self] in
+            guard let self, let mapper = self.mapper else { return }
+            let point = mapper.point(normalizedX: sample.x, normalizedY: sample.y)
+            let touch = TouchSample(down: sample.isDown, point: point, time: ProcessInfo.processInfo.systemUptime)
+            self.traceILITEK(String(format: "mapped x=%.2f y=%.2f down=%@", point.x, point.y, sample.isDown ? "yes" : "no"))
+            for action in self.engine.feed(touch) {
+                self.traceILITEK("action/post \(action)")
+                self.poster.perform(action)
+            }
+        }
+    }
+
+    private func traceILITEK(_ message: String) {
+        guard ilitekTraceEnabled else { return }
+        FileHandle.standardError.write(Data("[ilitek-trace] \(message)\n".utf8))
+    }
+
+    private static let ilitekValueCallback: IOHIDValueCallback = { context, result, _, value in
+        guard result == kIOReturnSuccess, let context else { return }
+        let driver = Unmanaged<TouchDriver>.fromOpaque(context).takeUnretainedValue()
+        if Thread.isMainThread { driver.handleILITEKValue(value) }
+        else { DispatchQueue.main.async { driver.handleILITEKValue(value) } }
+    }
+
+    private static let ilitekRemovalCallback: IOHIDCallback = { context, _, _ in
+        guard let context else { return }
+        let driver = Unmanaged<TouchDriver>.fromOpaque(context).takeUnretainedValue()
+        DispatchQueue.main.async { driver.handleILITEKRemoval() }
+    }
+
     /// Backs off before the next attempt.
     ///
     /// While Input Monitoring is missing or another driver holds the panel, every open fails and
@@ -293,7 +577,8 @@ final class TouchDriver {
             guard let self else { return }
             self.reopenPending = false
             guard self.running else { return }
-            self.openManager()
+            if self.hardwareProfile == .ilitek { self.openILITEKDevice() }
+            else { self.openManager() }
         }
     }
 

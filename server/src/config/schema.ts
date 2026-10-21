@@ -355,6 +355,8 @@ export const PrivacySchema = z.object({
   codexHistorySources: z.array(HistorySourceSchema).max(10).default([]),
   /** Read CPU temperature from the optional local macmon executable. */
   macmonTemperature: z.boolean().default(false),
+  /** Read recent Messages for a verification code only after a separate, explicit opt-in. */
+  messages2FA: z.boolean().default(false),
 }).prefault({})
 
 /**
@@ -481,7 +483,7 @@ export const DEFAULT_CONFIG: Config = {
   connections: [],
   secrets: { backend: defaultSecretsBackend() },
   locale: defaultLocale(),
-  privacy: { claudeAccountUsage: false, showAccountEmail: false, codexAccount: false, codexHistorySources: [], macmonTemperature: false },
+  privacy: { claudeAccountUsage: false, showAccountEmail: false, codexAccount: false, codexHistorySources: [], macmonTemperature: false, messages2FA: false },
   labs: { devices: false, companion: false },
   marketplace: { installed: {} },
   widgets: {

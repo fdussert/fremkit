@@ -23,6 +23,13 @@ export interface AccountSnapshot extends AccountUsage { available: boolean; stal
 const USAGE_URL = 'https://api.anthropic.com/api/oauth/usage'
 const KEYCHAIN_SERVICE = 'Claude Code-credentials'
 /**
+ * Newer Claude Code versions suffix the item's service by their config dir
+ * (`Claude Code-credentials-8047733a`), and can leave the OAuth blob in one of
+ * those while the plain name holds something else (`mcpOAuth` only). The dump
+ * lists every item's service so each candidate can be tried by its full name.
+ */
+const SERVICE_RE = /"svce"<blob>="(Claude Code-credentials[^"]*)"/g
+/**
  * Names for the windows Claude reports without one of its own. Resolved on each poll rather than
  * once, so the language the user picked reaches the widget on the next refresh.
  */
@@ -61,8 +68,18 @@ async function persistUsage(filePath: string, data: Persisted): Promise<void> {
   await rename(tmp, filePath)
 }
 
-function run(cmd: string, args: string[]): Promise<string> {
-  return new Promise((resolve, reject) => execFile(cmd, args, { timeout: 5000 }, (err, stdout) => (err ? reject(err) : resolve(stdout.trim()))))
+function run(cmd: string, args: string[], maxBuffer = 1024 * 1024): Promise<string> {
+  return new Promise((resolve, reject) => execFile(cmd, args, { timeout: 5000, maxBuffer }, (err, stdout) => (err ? reject(err) : resolve(stdout.trim()))))
+}
+
+type Runner = (cmd: string, args: string[], maxBuffer?: number) => Promise<string>
+
+/** Every `Claude Code-credentials*` service in the keychain, base name first. */
+async function credentialServices(runner: Runner): Promise<string[]> {
+  const out = await runner('/usr/bin/security', ['dump-keychain'], 16 * 1024 * 1024)
+  const names = new Set<string>()
+  for (const m of out.matchAll(SERVICE_RE)) names.add(m[1])
+  return [...names].sort((a, b) => a.length - b.length)
 }
 
 /** Extracts the Claude Code OAuth access token from the keychain item's JSON payload. */
@@ -75,8 +92,23 @@ export function parseKeychainJson(raw: string): string | null {
 }
 
 /** Reads the token from the macOS keychain. Never logs or stores it. */
-export async function readClaudeOAuthToken(): Promise<string | null> {
-  try { return parseKeychainJson(await run('/usr/bin/security', ['find-generic-password', '-s', KEYCHAIN_SERVICE, '-w'])) } catch { return null }
+export async function readClaudeOAuthToken(runner: Runner = run): Promise<string | null> {
+  // The plain name first, so the common case stays a single `security` call;
+  // only when it misses does the dump list the per-config-dir variants.
+  try {
+    const token = parseKeychainJson(await runner('/usr/bin/security', ['find-generic-password', '-s', KEYCHAIN_SERVICE, '-w']))
+    if (token) return token
+  } catch { /* absent, locked, or not a credentials payload */ }
+  let services: string[]
+  try { services = await credentialServices(runner) } catch { return null }
+  for (const service of services) {
+    if (service === KEYCHAIN_SERVICE) continue
+    try {
+      const token = parseKeychainJson(await runner('/usr/bin/security', ['find-generic-password', '-s', service, '-w']))
+      if (token) return token
+    } catch { /* locked or unrelated item: try the next */ }
+  }
+  return null
 }
 
 function epoch(iso: unknown): number | null {

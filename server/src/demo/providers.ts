@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import type { Provider } from '../providers/types.js'
+import { tr } from '../i18n.js'
 import type { Config } from '../config/schema.js'
 import { findInstance, type InstanceLookup } from '../config/instances.js'
 import { resolveServices, type ServiceResult } from '../providers/service-status.js'
@@ -62,8 +63,28 @@ export function createDemoProviders(opts: DemoProviderOptions): Provider[] {
     { channel: 'cleanshot', commands: { run: ACTED } },
     rtkProvider(now),
     { channel: 'shortcuts', commands: { open: ACTED } },
+    { channel: 'messages-2fa', commands: { copyLatest: async () => ({ ok: false, error: tr(undefined, 'messages2fa.noneFound') }) } },
     serviceStatusProvider(now, opts.instances ?? ((id) => findInstance(opts.config(), id))),
+    recentProjectsProvider(now),
   ]
+}
+
+function recentProjectsProvider(now: () => number): Provider {
+  const historyStartsAt = now() - 7 * 86_400_000
+  return {
+    channel: 'recent-projects',
+    intervalMs: 30_000,
+    poll: async () => ({
+      historyStartsAt,
+      coverage: 'herdr-cwd-since-first-observation',
+      projects: [
+        { path: '/Users/demo/Projects/Fremkit', name: 'Fremkit', lastSeen: now() - 2_400_000 },
+        { path: '/Users/demo/Projects/Weather', name: 'Weather', lastSeen: now() - 19_200_000 },
+        { path: '/Users/demo/Projects/Notes', name: 'Notes', lastSeen: now() - 46_800_000 },
+      ],
+    }),
+    commands: { open: ACTED },
+  }
 }
 
 function systemProvider(now: () => number, startedAt: number): Provider {
