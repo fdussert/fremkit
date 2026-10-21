@@ -8,7 +8,7 @@ import { describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
 import PageView from '../src/dashboard/PageView.vue'
 import NavBar from '../src/dashboard/NavBar.vue'
-import { turnedOff, visibleScreen } from '../src/shared/fremdevGate'
+import { drawnPageIndex, turnedOff, visibleScreen } from '../src/shared/fremdevGate'
 import { setLocale } from '../src/shared/i18n'
 import type { Config, Page, Screen, WidgetManifest } from '../src/shared/types'
 
@@ -114,5 +114,17 @@ describe('the widget lists with Fremdev off', () => {
     expect(offeredManifests(cfg(true), manifests).map((m) => m.id).sort()).toEqual(['clock', 'fremdev', 'fremplay'])
     expect(widgetOffered(null, 'fremdev')).toBe(false)
     expect(widgetOffered(null, 'fremplay')).toBe(true)
+  })
+})
+
+describe('drawnPageIndex', () => {
+  it('maps a config page index to the drawn one by id, and drops a page that is not drawn', () => {
+    const s = screen([['clock'], ['fd'], ['fp']])
+    const drawn = visibleScreen(cfg(false), s)
+    expect(drawnPageIndex(s, drawn, 0)).toBe(0)
+    expect(drawnPageIndex(s, drawn, 1)).toBeNull()
+    expect(drawnPageIndex(s, drawn, 2)).toBe(1)
+    expect(drawnPageIndex(s, drawn, 5)).toBeNull()
+    expect(drawnPageIndex(s, visibleScreen(cfg(true), s), 2)).toBe(2)
   })
 })

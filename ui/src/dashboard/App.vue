@@ -6,7 +6,7 @@ import { useSocket } from '../shared/socket'
 import type { Config, NavItem, WidgetManifest } from '../shared/types'
 import { navHeightOf, navItemsOf } from '../shared/types'
 import { pickScreen } from '../shared/screens'
-import { visibleScreen } from '../shared/fremdevGate'
+import { drawnPageIndex, visibleScreen } from '../shared/fremdevGate'
 import { pageBackground, rootBackgroundStyle } from '../shared/background'
 import { followThemeSchedule, useConfigTheme } from '../shared/theme'
 import PageView from './PageView.vue'
@@ -204,7 +204,9 @@ onMounted(async () => {
     unsubCompanion = socket.subscribe('companion', (data) => {
       const snap = data as { pairing?: typeof companionPairing.value; reveal?: CompanionReveal | null; tab?: { state?: string } }
       companionPairing.value = snap.pairing ?? null
-      const revealed = reveal.observe(snap, screen.value?.id)
+      // The server counts the config's pages; this dashboard draws `shown`, which may leave some out.
+      const observed = reveal.observe(snap, screen.value?.id)
+      const revealed = observed !== null && screen.value && shown.value ? drawnPageIndex(screen.value, shown.value, observed) : null
       // Once per page load, within its first seconds, never on a reconnect: the first snapshot
       // that shows a live share lands on its page. After a server restart the kiosk is back before
       // the extension has resumed its share, so that snapshot is rarely the first one.

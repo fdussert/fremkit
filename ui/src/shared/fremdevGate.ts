@@ -48,3 +48,15 @@ export function visibleScreen(config: Pick<Config, 'labs' | 'widgets'>, screen: 
     pages: pages.length > 0 ? pages : screen.pages.slice(0, 1).map((p) => ({ ...p, items: [] })),
   }
 }
+
+/**
+ * A page index into the config's `screen.pages` (what the server's reveal counts), as an index into
+ * the pages drawn (`visibleScreen`): the same page, found by id. Null when that page is not drawn
+ * (it held only Fremdev, which is off) or does not exist.
+ */
+export function drawnPageIndex(screen: Pick<Screen, 'pages'>, drawn: Pick<Screen, 'pages'>, index: number): number | null {
+  const id = screen.pages[index]?.id
+  if (id === undefined) return null
+  const at = drawn.pages.findIndex((p) => p.id === id)
+  return at === -1 ? null : at
+}
