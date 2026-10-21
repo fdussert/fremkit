@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 // @ts-expect-error plain JS module outside server/, no declarations
-import { errorText, MAX_FRAME, MAX_FRAMES, MAX_STACK, MAX_TEXT, RateLimiter } from '../../companion/lib/devlog.js'
+import { DEV_CLIENT_PREFIXES, errorText, MAX_FRAME, MAX_FRAMES, MAX_STACK, MAX_TEXT, RateLimiter } from '../../companion/lib/devlog.js'
 
 // fremdev/hook.js and fremdev/relay.js are classic content scripts (no import): they are run here
 // in a sandbox of fakes, which is also what keeps their copies of lib/devlog.js honest.
@@ -629,6 +629,30 @@ describe('fremdev/relay.js', () => {
     r.at(1_001_000)
     r.post({ kind: 'error', text: 'later' })
     expect(r.sent[11]).toEqual({ target: 'worker', type: 'dev.event', kind: 'error', text: 'later' })
+  })
+
+  it("keeps the dev server clients' lines out of the errors' budget, under a cap of their own", () => {
+    const relay = source('fremdev/relay.js')
+    const listed = /const DEV_CLIENT_PREFIXES = (\[.*\])\n/.exec(relay)?.[1]
+    expect(listed && JSON.parse(listed.replace(/'/g, '"'))).toEqual(DEV_CLIENT_PREFIXES)
+    const r = runRelay()
+    r.at(5_000)
+    // A compile with 15 errors: the status line and one `ERROR in` line each, then 12 runtime errors.
+    r.post({ kind: 'error', text: '[webpack-dev-server] Errors while compiling. Reload prevented.' })
+    for (let i = 0; i < 15; i++) r.post({ kind: 'error', text: `[webpack-dev-server] ERROR in ./src/m${i}.js 1:0\nBad` })
+    for (let i = 0; i < 12; i++) r.post({ kind: 'error', text: `TypeError: e${i}` })
+    const texts = r.sent.map((m) => String(m.text))
+    expect(texts.filter((t) => t.startsWith('[webpack-dev-server] '))).toHaveLength(16)
+    expect(texts.filter((t) => t.startsWith('TypeError'))).toHaveLength(10)
+    for (const fn of r.timers.splice(0)) fn()
+    // Only the runtime errors over their limit are counted.
+    expect(r.sent.at(-1)).toEqual({ target: 'worker', type: 'dev.event', kind: 'count', n: 2 })
+    // Their own cap: 20 a second, the rest dropped and never counted.
+    const q = runRelay()
+    q.at(9_000)
+    for (let i = 0; i < 30; i++) q.post({ kind: 'error', text: `[HMR] line ${i}` })
+    expect(q.sent).toHaveLength(20)
+    expect(q.timers).toHaveLength(0)
   })
 
   it("decides exactly as lib/devlog.js's RateLimiter on the same sequence", () => {

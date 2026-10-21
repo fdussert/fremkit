@@ -36,6 +36,13 @@
   /** JSON-escaped text, origin and stack are at most six times longer, plus the envelope. */
   const MAX_DETAIL = 6 * (2 * MAX_TEXT + MAX_STACK) + 256
   const KINDS = ['error', 'up', 'down', 'hot']
+  /**
+   * The dev server clients' own lines (lib/devlog.js DEV_CLIENT_PREFIXES; a test keeps them equal):
+   * a compile with many errors logs one each, which the worker reads as one build entry or drops.
+   * They stay out of the errors' budget, under a cap of their own, and are never counted as over.
+   */
+  const DEV_CLIENT_PREFIXES = ['[webpack-dev-server] ', '[HMR] ']
+  const DEV_PER_SECOND = 20
 
   const forward = (event) => {
     if (!alive()) return
@@ -52,13 +59,16 @@
   let over = 0
   let flushing = false
 
-  const allow = () => {
+  const allow = (list = passed, max = PER_SECOND) => {
     const t = Date.now()
-    while (passed.length > 0 && t - passed[0] >= 1000) passed.shift()
-    if (passed.length >= PER_SECOND) return false
-    passed.push(t)
+    while (list.length > 0 && t - list[0] >= 1000) list.shift()
+    if (list.length >= max) return false
+    list.push(t)
     return true
   }
+  const devPassed = []
+  const isDevClient = (data) =>
+    data.kind === 'error' && typeof data.text === 'string' && DEV_CLIENT_PREFIXES.some((p) => data.text.startsWith(p))
 
   /** lib/devlog.js `clip`: `s` cut to `max` UTF-16 units, never ending on half of a surrogate pair. */
   const clip = (s, max) => {
@@ -108,6 +118,10 @@
     }
     if (data === null || typeof data !== 'object' || !KINDS.includes(data.kind)) return
     const kind = data.kind
+    if (isDevClient(data)) {
+      if (allow(devPassed, DEV_PER_SECOND)) forward(errorOf(data))
+      return
+    }
     if (!allow()) {
       // Errors over the limit are counted; a dev server's signal over it is only a repeat.
       if (kind === 'error') {

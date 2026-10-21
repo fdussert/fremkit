@@ -375,6 +375,12 @@ function cleanBuildText(s) {
  * webpack-dev-server 5's `formatProblem` header, then the message: `ERROR`, `ERROR in <module>`,
  * `ERROR in <module> (<file>)`, each maybe followed by `<line>:<col>`.
  */
+/**
+ * The prefixes of the dev server clients' own console lines, which fremdev/relay.js keeps out of
+ * the errors' rate limit (its copy is checked equal by server/test/companion-fremdev-scripts.test.ts).
+ */
+export const DEV_CLIENT_PREFIXES = ['[webpack-dev-server] ', '[HMR] ']
+
 const WDS_ERROR_RE = /^\[webpack-dev-server\] ERROR(?: in (\S+)(?: \([^)\n]*\))?(?: (\d+):(\d+))?)?[^\n]*(?:\n([\s\S]*))?$/
 /** Next logs its build error as `<file>\nError:   x <message>\n   ,-[<path>:<line>:<col>]…`. */
 const NEXT_BUILD_RE = /^(\.{0,2}\/[^\n]*)\nError:\s+(?:x\s+)?([^\n]*)/
@@ -405,7 +411,7 @@ export function consoleBuild(text) {
     }
     return event
   }
-  if (text.startsWith('[webpack-dev-server] ') || text.startsWith('[HMR] ')) return 'drop'
+  if (DEV_CLIENT_PREFIXES.some((p) => text.startsWith(p))) return 'drop'
   const next = NEXT_BUILD_RE.exec(text)
   if (next) {
     const event = { kind: 'build', text: clip(next[2].trim(), MAX_TEXT) || 'Error', file: next[1].trim(), fromConsole: true }
