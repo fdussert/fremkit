@@ -296,7 +296,11 @@ through `console.error` is no runtime error: webpack-dev-server's `[webpack-dev-
 one as the overlay's, which takes it over with its frame, and which resolves the same way), so a
 build error is still caught with the overlay turned off; the client's status lines (`Errors while
 compiling. Reload prevented.`, any other `[webpack-dev-server]` or `[HMR]` line it logs as an
-error) are no entry at all. Vite's client logs nothing of a compile error. The script reads text and attributes only, through the browser's
+error) are no entry at all. Vite's client logs nothing of a compile error. Each rule applies only
+to its own dev server's tabs (webpack-dev-server's on a webpack tab, Next's on a Next tab, both
+until the kind is known, neither on Vite), Next's only in SWC's shape (`Error:   x …` then a `,-[`
+line), and webpack-dev-server's lines never use up the page's error budget; with several errors in
+one compile, the first stands for them all. Turbopack's console lines are not read. The script reads text and attributes only, through the browser's
 own `textContent`, `shadowRoot` and `contentDocument`, never a property the page defined, and runs
 none of the page's code. It looks again 200 ms after the overlay last changed, says only what changed,
 and at most twice a second: an overlay that re-renders as you type stays one entry (the same

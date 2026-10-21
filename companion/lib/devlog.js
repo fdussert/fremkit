@@ -382,8 +382,11 @@ function cleanBuildText(s) {
 export const DEV_CLIENT_PREFIXES = ['[webpack-dev-server] ', '[HMR] ']
 
 const WDS_ERROR_RE = /^\[webpack-dev-server\] ERROR(?: in (\S+)(?: \([^)\n]*\))?(?: (\d+):(\d+))?)?[^\n]*(?:\n([\s\S]*))?$/
-/** Next logs its build error as `<file>\nError:   x <message>\n   ,-[<path>:<line>:<col>]…`. */
-const NEXT_BUILD_RE = /^(\.{0,2}\/[^\n]*)\nError:\s+(?:x\s+)?([^\n]*)/
+/**
+ * Next 15.5 (webpack) logs its build error in SWC's shape: `<file>\nError:   x <message>\n   ,-[<path>:<line>:<col>]…`.
+ * The `x` and the `,-[` line are required; the place may be cut off by the 300-character clip.
+ */
+const NEXT_BUILD_RE = /^(\.{0,2}\/[^\n]*)\nError:\s+x\s+([^\n]*)\n\s*,-\[/
 const NEXT_PLACE_RE = /,-\[[^\n]*?:(\d+):(\d+)\]/
 
 /**
@@ -392,11 +395,15 @@ const NEXT_PLACE_RE = /,-\[[^\n]*?:(\d+):(\d+)\]/
  * prevented.` and the like, `[HMR] …`), or a `build` event for a compile error it repeats from the
  * overlay (webpack-dev-server's `ERROR in <file> <L:C>`, Next's `<file>\nError: x …`), its text,
  * file and place read the way fremdev/build.js reads the overlay's, so the two fold into one entry
- * (`fromConsole`, reduce in lib/devtabs.js). Vite's client logs none (checked on Vite 7).
+ * (`fromConsole`, reduce in lib/devtabs.js). Vite's client logs none (checked on Vite 7). The rules
+ * follow the tab's dev server (`devServer`): webpack-dev-server's on a `webpack` tab, Next's on a
+ * `next` one, both while it is unknown (null), none on `vite`. Turbopack's console is not read.
  */
-export function consoleBuild(text) {
+export function consoleBuild(text, devServer = null) {
   if (typeof text !== 'string') return null
-  const wds = WDS_ERROR_RE.exec(text)
+  const webpack = devServer === 'webpack' || devServer === null
+  const nextjs = devServer === 'next' || devServer === null
+  const wds = webpack ? WDS_ERROR_RE.exec(text) : null
   if (wds) {
     const event = { kind: 'build', text: cleanBuildText(wds[4] ?? '') || 'ERROR', fromConsole: true }
     if (wds[1] !== undefined) event.file = wds[1]
@@ -411,8 +418,8 @@ export function consoleBuild(text) {
     }
     return event
   }
-  if (DEV_CLIENT_PREFIXES.some((p) => text.startsWith(p))) return 'drop'
-  const next = NEXT_BUILD_RE.exec(text)
+  if (webpack && DEV_CLIENT_PREFIXES.some((p) => text.startsWith(p))) return 'drop'
+  const next = nextjs ? NEXT_BUILD_RE.exec(text) : null
   if (next) {
     const event = { kind: 'build', text: clip(next[2].trim(), MAX_TEXT) || 'Error', file: next[1].trim(), fromConsole: true }
     const at = NEXT_PLACE_RE.exec(text)

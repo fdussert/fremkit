@@ -445,8 +445,8 @@ describe('companion/fremdev.js', () => {
       '[webpack-dev-server] Errors while compiling. Reload prevented.',
       "[webpack-dev-server] ERROR in ./src/index.js 4:15\nModule parse failed: Unexpected token (4:15)\nFile was parsed as module type 'javascript/auto'.\nYou may need an appropriate loader to handle this file type, currently no loaders are configured to process this file. See https://webpack.js.org/concepts#loaders\n  3 | mountPanel()\n> 4 | const broken = ;\n    |                ^\n  5 | ",
     ]
-    expect(pageEvent({ kind: 'error', text: logged[0] })).toBeNull()
-    expect(pageEvent({ kind: 'error', text: logged[1] })).toMatchObject({ kind: 'build', file: './src/index.js', line: 4, col: 16, fromConsole: true })
+    // The page's event stays an error: the tab's reducer, which knows its dev server, tells.
+    expect(pageEvent({ kind: 'error', text: logged[0] })).toEqual({ kind: 'error', text: logged[0] })
     // A page's own build event never says it came from the console.
     expect(pageEvent({ kind: 'build', text: 'x', fromConsole: true })).toEqual({ kind: 'build', text: 'x' })
     for (const text of logged) await f.fremdev.onPageEvent({ kind: 'error', text: text.slice(0, 300) }, devSender())

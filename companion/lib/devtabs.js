@@ -1,5 +1,5 @@
 import { MAX_IN_FLIGHT, SLOW_MS } from './devflight.js'
-import { clip, homePath, isLines, METHODS, methodOf } from './devlog.js'
+import { clip, consoleBuild, homePath, isLines, METHODS, methodOf } from './devlog.js'
 import { cleanPerf, isPerfValue, PERF_METRICS } from './devperf.js'
 
 // One dev tab's state as a pure reducer, and the rows `dev.tabs` carries. The wire shape mirrors
@@ -301,7 +301,12 @@ function perfRegression(tab, event, now) {
  */
 export function reduce(tab, event, now) {
   switch (event.kind) {
-    case 'error':
+    case 'error': {
+      // A dev server client's own line is no runtime error: the compile error it repeats is the
+      // build entry, a status line nothing.
+      const build = consoleBuild(event.text, tab.devServer ?? null)
+      if (build === 'drop') return tab
+      if (build) return reduce(tab, build, now)
       return {
         ...tab,
         ...record({ ...tab, errors: bump(tab.errors, { text: event.text, at: now }) }, {
@@ -315,6 +320,7 @@ export function reduce(tab, event, now) {
         }),
         activity: now,
       }
+    }
     case 'request':
       return {
         ...tab,

@@ -25,7 +25,7 @@
 // for the popup. Nothing Fremdev is sent unless this socket's `ready` said the server speaks it.
 
 import { BUILTIN_PERMISSION_ORIGINS, FREMKIT_EXCLUDES, inOrigins, isDevUrl, parsePattern } from './lib/devhosts.js'
-import { boundBuildLines, boundFrames, clip, consoleBuild, isLines, isNoise, MAX_FRAME, MAX_TEXT, methodOf, pathOf } from './lib/devlog.js'
+import { boundBuildLines, boundFrames, clip, isLines, isNoise, MAX_FRAME, MAX_TEXT, methodOf, pathOf } from './lib/devlog.js'
 import { InFlight, SLOW_MS } from './lib/devflight.js'
 import { editorUrl } from './lib/devopen.js'
 import { PerfMemory, perfValues, perfVerdict } from './lib/devperf.js'
@@ -82,16 +82,12 @@ const cleanPatterns = (list) =>
   Array.isArray(list) ? [...new Set(list.map((p) => parsePattern(p)?.pattern).filter(Boolean))] : []
 
 /**
- * An error event rebuilt: its text, and its origin and stack when they are bounded strings. A
- * dev server client's own line is no runtime error: a compile error it repeats is a `build` event
- * (folded with the overlay's), a status line nothing (consoleBuild).
+ * An error event rebuilt: its text, and its origin and stack when they are bounded strings. Whether
+ * it is a dev server client's own line is the tab's reducer's to tell (consoleBuild in
+ * lib/devlog.js), as it knows the tab's dev server.
  */
 function errorEvent(msg) {
-  const text = clip(typeof msg.text === 'string' ? msg.text : '', MAX_TEXT)
-  const build = consoleBuild(text)
-  if (build === 'drop') return null
-  if (build) return build
-  const event = { kind: 'error', text }
+  const event = { kind: 'error', text: clip(typeof msg.text === 'string' ? msg.text : '', MAX_TEXT) }
   if (typeof msg.origin === 'string' && msg.origin !== '') event.origin = clip(msg.origin, MAX_FRAME)
   if (Array.isArray(msg.stack) && msg.stack.every((f) => typeof f === 'string')) {
     const stack = boundFrames(msg.stack)

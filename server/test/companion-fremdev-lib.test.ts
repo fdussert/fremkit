@@ -1185,6 +1185,29 @@ describe('build entries', () => {
     }
   })
 
+  it("reads a console line by the tab's dev server, and Next's only in SWC's shape", () => {
+    const tabOf = (devServer: string | null) => ({ ...base(), devServer })
+    const kinds = (devServer: string | null, text: string) => reduce(tabOf(devServer), { kind: 'error', text }, 200).history.map((e: { kind: string }) => e.kind)
+    // webpack's rules on a webpack tab or an unknown one, never on Next or Vite.
+    expect(kinds('webpack', WDS_ERROR)).toEqual(['build'])
+    expect(kinds(null, WDS_ERROR)).toEqual(['build'])
+    expect(kinds('next', WDS_ERROR)).toEqual(['error'])
+    expect(kinds('vite', WDS_ERROR)).toEqual(['error'])
+    expect(kinds('webpack', '[HMR] Update failed: ChunkLoadError')).toEqual([])
+    expect(kinds('vite', '[HMR] Update failed: ChunkLoadError')).toEqual(['error'])
+    // Next's on a Next tab or an unknown one.
+    expect(kinds('next', NEXT_ERROR)).toEqual(['build'])
+    expect(kinds(null, NEXT_ERROR)).toEqual(['build'])
+    expect(kinds('webpack', NEXT_ERROR)).toEqual(['error'])
+    expect(kinds('vite', NEXT_ERROR)).toEqual(['error'])
+    // A page's own error that starts with a path is no build error.
+    expect(kinds('next', '/api/users\nError: Request failed with status code 500')).toEqual(['error'])
+    expect(kinds('next', './a.js\nError:   x Bad')).toEqual(['error'])
+    expect(kinds('next', './a.js\nError: Bad\n   ,-[/a.js:1:1]')).toEqual(['error'])
+    // The `,-[` line cut by the clip before its place: a build entry with no line.
+    expect(consoleBuild('./app/page.js\nError:   x Expression expected\n   ,-[/Users/example/a', 'next')).toEqual({ kind: 'build', text: 'Expression expected', file: './app/page.js', fromConsole: true })
+  })
+
   it('folds the console-born and the overlay-read build error into one entry, which resolves', () => {
     const overlay = { kind: 'build', text: WDS_TEXT, file: './src/index.js', line: 4, col: 16, frame: ['> 4 | const broken = ;', '    |                ^'] }
     // The console first (the client logs before build.js's debounce reads the overlay).
