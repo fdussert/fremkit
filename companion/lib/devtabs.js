@@ -1,5 +1,5 @@
 import { MAX_IN_FLIGHT, SLOW_MS } from './devflight.js'
-import { clip, consoleBuild, homePath, isLines, METHODS, methodOf } from './devlog.js'
+import { clip, COMPILE_ERRORS, consoleBuild, homePath, isLines, METHODS, methodOf } from './devlog.js'
 import { cleanPerf, isPerfValue, PERF_METRICS } from './devperf.js'
 
 // One dev tab's state as a pure reducer, and the rows `dev.tabs` carries. The wire shape mirrors
@@ -305,7 +305,13 @@ export function reduce(tab, event, now) {
       // A dev server client's own line is no runtime error: the compile error it repeats is the
       // build entry, a status line nothing.
       const build = consoleBuild(event.text, tab.devServer ?? null)
-      if (build === 'drop') return tab
+      if (build === 'drop') {
+        // A compile's first line: the console-born entry folds no more, the compile's next error
+        // line updates or replaces it.
+        const live = (tab.history ?? []).find(isLive)
+        if (!(typeof event.text === 'string' && event.text.startsWith(COMPILE_ERRORS)) || live?.fromConsole !== true || live.folding !== true) return tab
+        return { ...tab, history: tab.history.map((e) => (e === live ? { ...e, folding: false } : e)) }
+      }
       if (build) return reduce(tab, build, now)
       return {
         ...tab,
@@ -347,14 +353,16 @@ export function reduce(tab, event, now) {
       const newest = (tab.history ?? []).find(isLive)
       // The dev server's client repeats the overlay's error in the console (consoleBuild in
       // lib/devlog.js), with a text clipped shorter and no frame: while an overlay-read entry is
-      // live, that says nothing new. Nor does one while a console-born entry is live: a compile with
-      // several errors logs one `ERROR in` line each, and the first stands for them all until an
-      // overlay read, a build-clear, a hot update or a navigation. The overlay read after a
-      // console-born entry takes it over, with its id, its count and the tally: one problem, one entry.
+      // live, that says nothing new. A compile with several errors logs one `ERROR in` line each:
+      // the first stands for them all (`folding`, until the next compile's `Errors while compiling.`
+      // line clears it), while the next compile's first line updates or replaces it as the overlay's
+      // read would. The overlay read after a console-born entry takes it over, with its id, its count
+      // and the tally: one problem, one entry.
       const fromConsole = event.fromConsole === true
-      if (fromConsole && newest) return tab
+      if (fromConsole && newest && newest.fromConsole !== true) return tab
+      if (fromConsole && newest?.fromConsole === true && newest.folding === true) return tab
       if (!fromConsole && newest?.fromConsole === true) {
-        const adopted = { ...newest, text: event.text, path, line, col, frame, stack, fromConsole: false }
+        const adopted = { ...newest, text: event.text, path, line, col, frame, stack, fromConsole: false, folding: false }
         return {
           ...tab,
           history: tab.history.map((e) => (e === newest ? adopted : e)),
@@ -365,8 +373,10 @@ export function reduce(tab, event, now) {
         }
       }
       if (newest && newest.text === event.text && newest.path === path) {
-        if (newest.line === line && newest.col === col && sameLines(newest.frame, frame) && sameLines(newest.stack, stack)) return tab
-        return { ...tab, history: tab.history.map((e) => (e === newest ? { ...e, path, line, col, frame, stack } : e)) }
+        const folding = fromConsole ? { folding: true } : {}
+        if (newest.line === line && newest.col === col && sameLines(newest.frame, frame) && sameLines(newest.stack, stack) &&
+          (!fromConsole || newest.folding === true)) return tab
+        return { ...tab, history: tab.history.map((e) => (e === newest ? { ...e, path, line, col, frame, stack, ...folding } : e)) }
       }
       // Another error replaces the one shown: one build entry open at a time.
       const base = { ...tab, ...resolveBuilds(tab) }
@@ -382,6 +392,7 @@ export function reduce(tab, event, now) {
           frame,
           stack,
           fromConsole,
+          folding: fromConsole,
           n: 1,
           at: now,
           state: 'open',
@@ -700,7 +711,7 @@ export function restoredTabs(raw) {
       if (typeof t.url !== 'string' || typeof t.host !== 'string' || typeof t.title !== 'string') continue
       if ((t.server !== 'up' && t.server !== 'down') || !Array.isArray(t.history) || t.history.length > HISTORY_MAX) continue
       if (!t.history.every((e) => wireEntry(e) !== null && (e.kind === 'error' ? isFrames(e.stack) : e.kind !== 'build' ||
-        (isFrames(e.frame) && isFrames(e.stack) && (e.fromConsole === undefined || typeof e.fromConsole === 'boolean'))))) continue
+        (isFrames(e.frame) && isFrames(e.stack) && [e.fromConsole, e.folding].every((b) => b === undefined || typeof b === 'boolean'))))) continue
       // An id at or above the next one would come round again while its entry is still listed.
       if (!isId(t.nextId) || !t.history.every((e) => e.id < t.nextId)) continue
       if (!(t.devServer === null || DEV_SERVERS.includes(t.devServer))) continue

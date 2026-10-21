@@ -380,6 +380,8 @@ function cleanBuildText(s) {
  * the errors' rate limit (its copy is checked equal by server/test/companion-fremdev-scripts.test.ts).
  */
 export const DEV_CLIENT_PREFIXES = ['[webpack-dev-server] ', '[HMR] ']
+/** The line webpack-dev-server's client logs before a failed compile's errors (client/index.js, errors()). */
+export const COMPILE_ERRORS = '[webpack-dev-server] Errors while compiling.'
 
 const WDS_ERROR_RE = /^\[webpack-dev-server\] ERROR(?: in (\S+)(?: \([^)\n]*\))?(?: (\d+):(\d+))?)?[^\n]*(?:\n([\s\S]*))?$/
 /**

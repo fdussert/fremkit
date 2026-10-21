@@ -1071,7 +1071,7 @@ describe('build entries', () => {
     expect(same).toBe(tab)
     tab = same
     expect(builds(tab)).toHaveLength(1)
-    expect(tab.history[0]).toEqual({ kind: 'build', id: 1, text: 'Invalid end tag.', path: '/Users/example/app/src/App.vue', line: 12, col: 3, frame: null, stack: null, fromConsole: false, n: 1, at: 200, state: 'open' })
+    expect(tab.history[0]).toEqual({ kind: 'build', id: 1, text: 'Invalid end tag.', path: '/Users/example/app/src/App.vue', line: 12, col: 3, frame: null, stack: null, fromConsole: false, folding: false, n: 1, at: 200, state: 'open' })
     expect(tab.errors).toMatchObject({ total: 1, open: 1, seen: 0, last: { text: 'Invalid end tag.', at: 200 } })
   })
 
@@ -1243,6 +1243,29 @@ describe('build entries', () => {
     expect(two.errors).toMatchObject({ total: 1, open: 1 })
     expect(two.buildTotal).toBe(1)
     expect(consoleBuild('[webpack-dev-server] ERROR in ./src/a.js (./src/a.js) 3:4\nBad')).toMatchObject({ file: './src/a.js', line: 3, col: 5 })
+    // Overlay off, no good compile between two failed ones: each compile's first error line counts.
+    const STATUS = '[webpack-dev-server] Errors while compiling. Reload prevented.'
+    const err = (text: string) => ({ kind: 'error', text })
+    const errB = "[webpack-dev-server] ERROR in ./src/panel.js 2:3\nModule parse failed: Unexpected token (2:3)"
+    let next = reduce(reduce(base(), err(STATUS), 100), err(WDS_ERROR), 110)
+    next = reduce(reduce(next, err(STATUS), 200), err(errB), 210)
+    expect(builds(next).map((e) => [e.state, (e as unknown as { path: string }).path])).toEqual([['open', './src/panel.js'], ['resolved', './src/index.js']])
+    expect(next.buildTotal).toBe(2)
+    expect(next.errors).toMatchObject({ total: 2, open: 1 })
+    // The same error moved: one entry, at its new line.
+    const moved = (l: number) => `[webpack-dev-server] ERROR in ./src/index.js ${l}:15\nModule not found: Error: Can't resolve './x'`
+    let same = reduce(reduce(base(), err(STATUS), 100), err(moved(4)), 110)
+    same = reduce(reduce(same, err(STATUS), 200), err(moved(5)), 210)
+    expect(builds(same)).toEqual([expect.objectContaining({ id: 1, line: 5, col: 16, state: 'open', folding: true })])
+    expect(same.buildTotal).toBe(1)
+    // Within one compile, the second error line still folds; a status line with no console-born entry changes nothing.
+    let one = reduce(reduce(reduce(base(), err(STATUS), 100), err(WDS_ERROR), 110), err(errB), 111)
+    expect(builds(one)).toHaveLength(1)
+    const quiet = reduce(base(), err(STATUS), 100)
+    expect(quiet.history).toEqual([])
+    // An overlay-read entry is left alone by the status line.
+    one = reduce(base(), overlay, 100)
+    expect(reduce(one, err(STATUS), 200)).toBe(one)
     // A runtime error logged after the console's build line keeps the tally's last through the takeover.
     let mixed = reduce(base(), consoleBuild(WDS_ERROR), 200)
     mixed = reduce(mixed, { kind: 'error', text: 'TypeError: later' }, 250)
@@ -1255,6 +1278,8 @@ describe('build entries', () => {
     expect(Object.keys(restoredTabs({ 1: { ...kept, history: [{ ...kept.history[0], fromConsole: 'yes' }] } }))).toEqual([])
     // A wire row never says where an entry came from.
     expect(JSON.stringify(wireTabs([alone]))).not.toContain('fromConsole')
+    expect(JSON.stringify(wireTabs([alone]))).not.toContain('folding')
+    expect(Object.keys(restoredTabs({ 1: { ...alone, history: [{ ...alone.history[0], folding: 1 }] } }))).toEqual([])
   })
 
   it('boundBuildLines keeps 20 frame lines, 30 stack lines, 300 characters each, 6000 in all', () => {

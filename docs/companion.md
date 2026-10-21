@@ -300,7 +300,10 @@ error) are no entry at all. Vite's client logs nothing of a compile error. Each 
 to its own dev server's tabs (webpack-dev-server's on a webpack tab, Next's on a Next tab, both
 until the kind is known, neither on Vite), Next's only in SWC's shape (`Error:   x …` then a `,-[`
 line), and webpack-dev-server's lines never use up the page's error budget; with several errors in
-one compile, the first stands for them all. Turbopack's console lines are not read. The script reads text and attributes only, through the browser's
+one compile, the first stands for them all, and the next failed compile's first error updates or
+replaces it. Turbopack's console lines are not read. A console-born entry resolves with the overlay
+going, a hot update or a reload: with webpack's `hot: false` and `liveReload: false` and no overlay,
+nothing resolves it until the page reloads. The script reads text and attributes only, through the browser's
 own `textContent`, `shadowRoot` and `contentDocument`, never a property the page defined, and runs
 none of the page's code. It looks again 200 ms after the overlay last changed, says only what changed,
 and at most twice a second: an overlay that re-renders as you type stays one entry (the same
