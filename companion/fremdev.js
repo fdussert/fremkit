@@ -25,7 +25,7 @@
 // for the popup. Nothing Fremdev is sent unless this socket's `ready` said the server speaks it.
 
 import { BUILTIN_PERMISSION_ORIGINS, FREMKIT_EXCLUDES, inOrigins, isDevUrl, parsePattern } from './lib/devhosts.js'
-import { boundBuildLines, boundFrames, clip, isNoise, MAX_FRAME, MAX_TEXT, methodOf, pathOf } from './lib/devlog.js'
+import { boundBuildLines, boundFrames, clip, isLines, isNoise, MAX_FRAME, MAX_TEXT, methodOf, pathOf } from './lib/devlog.js'
 import { InFlight, SLOW_MS } from './lib/devflight.js'
 import { editorUrl } from './lib/devopen.js'
 import { PerfMemory, perfValues, perfVerdict } from './lib/devperf.js'
@@ -97,8 +97,6 @@ const MAX_FILE = 1024
 /** The highest line or column a build event carries. */
 const MAX_POS = 10_000_000
 const isPos = (v) => Number.isInteger(v) && v >= 1 && v <= MAX_POS
-
-const isLines = (v) => Array.isArray(v) && v.every((l) => typeof l === 'string')
 
 /**
  * A compile error from fremdev/build.js rebuilt: its text clipped, and its file, line and column

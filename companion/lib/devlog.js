@@ -316,6 +316,9 @@ function parseStack(stack, pageOrigin) {
 
 export { boundFrames, framePlace, MAX_FRAME, MAX_FRAMES, MAX_STACK, parseStack }
 
+/** Whether `v` is a list of strings: a stack, a code frame. */
+export const isLines = (v) => Array.isArray(v) && v.every((l) => typeof l === 'string')
+
 /** A build entry's code frame and stack: at most this many lines, each this long, this long in all. */
 export const MAX_FRAME_LINES = 20
 export const MAX_STACK_LINES = 30

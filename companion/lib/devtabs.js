@@ -1,5 +1,5 @@
 import { MAX_IN_FLIGHT, SLOW_MS } from './devflight.js'
-import { clip, homePath, METHODS, methodOf } from './devlog.js'
+import { clip, homePath, isLines, METHODS, methodOf } from './devlog.js'
 import { cleanPerf, isPerfValue, PERF_METRICS } from './devperf.js'
 
 // One dev tab's state as a pure reducer, and the rows `dev.tabs` carries. The wire shape mirrors
@@ -166,7 +166,6 @@ const bump = (t, last) => ({
 const resolved = (t) => ({ ...t, open: 0, seen: 0 })
 
 const isLive = (e) => e.kind === 'build' && (e.state === 'open' || e.state === 'seen')
-const isLines = (v) => Array.isArray(v) && v.every((l) => typeof l === 'string')
 /** Two lists of lines (or nulls, or a missing one) that say the same. */
 const sameLines = (a, b) => (a ?? null) === (b ?? null) || (isLines(a) && isLines(b) && a.length === b.length && a.every((l, i) => l === b[i]))
 const isLivePerf = (e) => e.kind === 'perf' && (e.state === 'open' || e.state === 'seen')
@@ -458,10 +457,9 @@ function withoutStack(e) {
 
 /**
  * The rows as chrome.storage.session keeps them: every entry's stack (and a build's code frame)
- * dropped. Stacks stay in the
- * worker's memory, for a report; the session copy is rewritten up to twice a second and only has to
- * bring the rows back after the worker was stopped, at which point a report simply has no stacks
- * for what came before.
+ * dropped. Stacks stay in the worker's memory, for a report; the session copy is rewritten up to
+ * twice a second and only has to bring the rows back after the worker was stopped, at which point
+ * a report simply has no stacks for what came before.
  */
 export function sessionTabs(tabs) {
   const out = {}
@@ -653,7 +651,7 @@ export function wireTabs(tabs) {
   return rows
 }
 
-const isFrames = (v) => v === null || v === undefined || (Array.isArray(v) && v.every((f) => typeof f === 'string'))
+const isFrames = (v) => v === null || v === undefined || isLines(v)
 
 /**
  * The rows read back from chrome.storage.session, keeping only well-formed tabs: keyed by their own
