@@ -1243,6 +1243,16 @@ describe('build entries', () => {
     expect(two.errors).toMatchObject({ total: 1, open: 1 })
     expect(two.buildTotal).toBe(1)
     expect(consoleBuild('[webpack-dev-server] ERROR in ./src/a.js (./src/a.js) 3:4\nBad')).toMatchObject({ file: './src/a.js', line: 3, col: 5 })
+    // A runtime error logged after the console's build line keeps the tally's last through the takeover.
+    let mixed = reduce(base(), consoleBuild(WDS_ERROR), 200)
+    mixed = reduce(mixed, { kind: 'error', text: 'TypeError: later' }, 250)
+    mixed = reduce(mixed, overlay, 300)
+    expect(mixed.errors.last).toEqual({ text: 'TypeError: later', at: 250 })
+    expect(builds(mixed)[0]).toMatchObject({ text: WDS_TEXT, fromConsole: false })
+    // A session copy with a fromConsole that is no boolean is not ours.
+    const kept = reduce(base(), consoleBuild(WDS_ERROR), 200)
+    expect(Object.keys(restoredTabs({ 1: kept }))).toEqual(['1'])
+    expect(Object.keys(restoredTabs({ 1: { ...kept, history: [{ ...kept.history[0], fromConsole: 'yes' }] } }))).toEqual([])
     // A wire row never says where an entry came from.
     expect(JSON.stringify(wireTabs([alone]))).not.toContain('fromConsole')
   })

@@ -353,12 +353,15 @@ export function reduce(tab, event, now) {
       // console-born entry takes it over, with its id, its count and the tally: one problem, one entry.
       const fromConsole = event.fromConsole === true
       if (fromConsole && newest) return tab
-      if (!fromConsole && newest?.fromConsole) {
+      if (!fromConsole && newest?.fromConsole === true) {
         const adopted = { ...newest, text: event.text, path, line, col, frame, stack, fromConsole: false }
         return {
           ...tab,
           history: tab.history.map((e) => (e === newest ? adopted : e)),
-          errors: tab.errors.last ? { ...tab.errors, last: { ...tab.errors.last, text: event.text } } : tab.errors,
+          // The tally's last error says the new text only if it is this entry (a runtime error since stays).
+          errors: tab.errors.last && tab.errors.last.text === newest.text && tab.errors.last.at === newest.at
+            ? { ...tab.errors, last: { ...tab.errors.last, text: event.text } }
+            : tab.errors,
         }
       }
       if (newest && newest.text === event.text && newest.path === path) {
@@ -696,7 +699,8 @@ export function restoredTabs(raw) {
       if (!t || typeof t !== 'object' || !Number.isInteger(t.tabId) || String(t.tabId) !== key) continue
       if (typeof t.url !== 'string' || typeof t.host !== 'string' || typeof t.title !== 'string') continue
       if ((t.server !== 'up' && t.server !== 'down') || !Array.isArray(t.history) || t.history.length > HISTORY_MAX) continue
-      if (!t.history.every((e) => wireEntry(e) !== null && (e.kind === 'error' ? isFrames(e.stack) : e.kind !== 'build' || (isFrames(e.frame) && isFrames(e.stack))))) continue
+      if (!t.history.every((e) => wireEntry(e) !== null && (e.kind === 'error' ? isFrames(e.stack) : e.kind !== 'build' ||
+        (isFrames(e.frame) && isFrames(e.stack) && (e.fromConsole === undefined || typeof e.fromConsole === 'boolean'))))) continue
       // An id at or above the next one would come round again while its entry is still listed.
       if (!isId(t.nextId) || !t.history.every((e) => e.id < t.nextId)) continue
       if (!(t.devServer === null || DEV_SERVERS.includes(t.devServer))) continue
