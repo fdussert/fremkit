@@ -259,8 +259,14 @@ light turns red), shown on the Edge with "Build" before its text:
   (`path:line:col`), its code frame (the message itself when that is empty or blank) and its stack.
   An error thrown on a hot update (a Vue file broken while the page is open) has no file in the
   overlay (`unknown file:3:15`) and no frame of its own: the file is then the message's line that is
-  an absolute path (its line and column, else the overlay's, else the message's `(3:15)`), and the
-  frame the message's lines from its first `N |` one;
+  an absolute path, the frame the message's lines from its first `N |` one, and the line and column
+  those of that frame's caret (the file's own, which open in editor uses), else the path line's,
+  else the overlay's, else the message's `(3:15)`. *A known Vite limitation:* for a Vue file,
+  @vitejs/plugin-vue counts the `3:15` from the start of the `<script>` block, not of the file. On a
+  hot update the caret corrects it; on a page loaded with the build already broken the overlay
+  names the real file at that `3:15`, draws its own frame from it (so the frame starts at the wrong
+  lines), and nothing on the page says the real line: the entry keeps Vite's position, and a
+  `<script>` that is not at the top of the file opens a few lines too high;
 - **webpack-dev-server**: the overlay's iframe, only while its heading says *Compiled with
   problems* or *Failed to compile*, and only its first `ERROR` (a warning is no failed build): the
   message, the code frame it ends with (from its first `N |` line), and the file, line and column of

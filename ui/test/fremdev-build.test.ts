@@ -276,18 +276,35 @@ describe('fremdev/build.js', () => {
     // `.frame` is empty, and the message holds the path and the code frame.
     const [overlay] = addOverlay('vite-overlay-hmr.html')
     await settle()
+    // The place is the frame's caret (line 10 of the file, under `;`), not the `3:15` plugin-vue
+    // counts from the `<script>` block's start.
     expect(p.sent()).toEqual([{
       ...BUILD,
       text: '[vue/compiler-sfc] Unexpected token (3:15)',
       file: '/Users/example/app/src/App.vue',
-      line: 3,
-      col: 15,
+      line: 10,
+      col: 16,
       frame: ['8  |  <script setup>', "9  |  const title = 'Scratch Vite'", '10 |  const broken = ;', '   |                 ^', '11 |  </script>', '12 |'],
       stack: expect.arrayContaining(['at constructor (/Users/example/app/node_modules/@babel/parser/lib/index.js:369:19)']),
     }])
+    // Open in editor lands on that line.
+    const jsdomUrl = globalThis.URL
+    globalThis.URL = NodeURL as unknown as typeof URL
+    let lib: Record<string, (...a: unknown[]) => unknown>
+    try {
+      // @ts-expect-error plain JS modules outside ui/, no declarations
+      const [tabs, open] = await Promise.all([import('../../companion/lib/devtabs.js'), import('../../companion/lib/devopen.js')])
+      lib = { ...tabs, ...open }
+    } finally {
+      globalThis.URL = jsdomUrl
+    }
+    const { target: _t, type: _y, ...event } = p.sent()[0]
+    const tab = { ...(lib.reduce(lib.emptyTab(1, 'http://localhost:18174/', 'App', 0), event, 100) as object), devServer: 'vite', serverBase: '/' } as unknown as { history: unknown[] }
+    expect(lib.editorUrl(tab, tab.history[0])).toBe(`http://localhost:18174/__open-in-editor?file=${encodeURIComponent('/Users/example/app/src/App.vue:10:16')}`)
+
     const root = overlay.shadowRoot!
     const body = root.querySelector('.message-body')!
-    // The path's own line and column win over the `(L:C)`.
+    // Without a frame: the path's own line and column win over the `(L:C)`.
     body.textContent = '[plugin] Bad (3:15)\n\n/Users/example/app/src/App.vue:10:17'
     await settle()
     expect(p.sent().at(-1)).toMatchObject({ text: '[plugin] Bad (3:15)', file: '/Users/example/app/src/App.vue', line: 10, col: 17 })
@@ -301,6 +318,29 @@ describe('fremdev/build.js', () => {
     await settle()
     expect(p.sent().at(-1)).toEqual({ ...BUILD, text: '[plugin] Worse (4:2)', line: 4, col: 2, stack: expect.any(Array) })
     expect(JSON.stringify(p.sent())).not.toContain('unknown file')
+  })
+
+  it("takes the place from the caret of babel's or Vue's frame, with one or two spaces after the bar", async () => {
+    vi.useFakeTimers()
+    const p = page()
+    p.run()
+    const [overlay] = addOverlay('vite-overlay-hmr.html')
+    const body = overlay.shadowRoot!.querySelector('.message-body')!
+    const cases: Array<[string, number, number]> = [
+      // babel: `> N | code`, one space.
+      ['Bad (1:1)\n/Users/example/app/a.js\n  6 |   foo()\n> 7 | bar(1 +)\n    |        ^\n  8 | baz()', 7, 8],
+      // Vue: `N  |  code`, two spaces, the code itself indented.
+      ['Bad (1:1)\n/Users/example/app/a.vue\n4  |  <div>\n5  |    {{ x + }}\n   |           ^\n6  |  </div>', 5, 10],
+    ]
+    for (const [message, line, col] of cases) {
+      body.textContent = message
+      await settle()
+      expect(p.sent().at(-1), message).toMatchObject({ line, col })
+    }
+    // A caret under no numbered line: the overlay's `unknown file:3:15` stands.
+    body.textContent = 'Bad (4:2)\n/Users/example/app/a.js\n   ^'
+    await settle()
+    expect(p.sent().at(-1)).toMatchObject({ file: '/Users/example/app/a.js', line: 3, col: 15 })
   })
 
   it('drops the file and the code frame residue from a message, keeping its prefix', async () => {

@@ -204,19 +204,22 @@
     // An error thrown on a hot update (@vitejs/plugin-vue's handleHotUpdate) has no `id`: the
     // overlay names `unknown file`, draws no `.frame`, and the message carries the file on a line of
     // its own and the code frame after it. The file, line and column, and the frame, come from there.
+    const frame = frameText.trim() !== '' ? linesOf(frameText) : frameInMessage(message)
     if (file === '' || file === UNKNOWN_FILE) {
       file = ''
       const named = fileInMessage(message)
-      if (named) {
-        file = named.file
-        if (named.line !== undefined) [line, col] = [named.line, named.col]
-      }
+      // The message's frame numbers the file's own lines (babel's, on the whole file), while the
+      // overlay's `3:15` and the message's `(3:15)` count from the `<script>` block's start
+      // (@vitejs/plugin-vue): the caret's line and column win, then the path line's, then those.
+      const caret = frameText.trim() === '' ? caretPlace(frame) : null
+      if (caret) [line, col] = [caret.line, caret.col]
+      else if (named?.line !== undefined) [line, col] = [named.line, named.col]
+      if (named) file = named.file
       if (line === undefined) {
         const lc = /\((\d+):(\d+)\)/.exec(message)
         if (lc) [line, col] = [pos(lc[1]), pos(lc[2])]
       }
     }
-    const frame = frameText.trim() !== '' ? linesOf(frameText) : frameInMessage(message)
     // A blank message (whitespace only) is none: the frame says it then.
     const more = { fallback: frameText, frame, stack: linesOf(text(root.querySelector(r.stack)), true) }
     return found(message, file, line, col, more) ?? KEEP
@@ -237,6 +240,29 @@
       if (m && m[1].length <= MAX_FILE) return { file: m[1], line: pos(m[2]), col: pos(m[3]) }
     }
     return null
+  }
+
+  /**
+   * `{ line, col }` a code frame points at: the number of the `N |` line above its first caret
+   * line, and the caret's column in that line's code. The code starts after the `|` and the gap
+   * the frame puts there (babel one space, Vue two: the narrowest of its non-empty lines, 1 to 2).
+   * Null without a caret under a numbered line.
+   */
+  function caretPlace(frame) {
+    const at = frame.findIndex((l, i) => i > 0 && CARET_RE.test(l) && /\^/.test(l))
+    if (at === -1) return null
+    const m = /^(\s*>?\s*(\d+)\s*)\|/.exec(frame[at - 1])
+    const bar = frame[at].indexOf('|')
+    if (!m || bar !== m[1].length) return null
+    let gap = 2
+    for (const l of frame) {
+      const n = /^\s*>?\s*\d+\s*\|( *)\S/.exec(l)
+      if (n) gap = Math.min(gap, n[1].length)
+    }
+    gap = Math.max(1, gap)
+    const col = frame[at].indexOf('^') - bar - gap
+    const line = pos(m[2])
+    return line === undefined ? null : { line, col: pos(col) }
   }
 
   /** The code frame a message carries after its first line: from its first `N |` line on. */
