@@ -24,6 +24,8 @@
     "helper:test": "bash scripts/test-helper.sh",
     "ios:build": "bash scripts/build-ios.sh build",
     "ios:test": "bash scripts/build-ios.sh test",
+    "android:build": "bash scripts/build-android.sh build",
+    "android:test": "bash scripts/build-android.sh test",
     "widget:new": "server/node_modules/.bin/tsx server/src/cli/widget.ts new",
     "widget:check": "server/node_modules/.bin/tsx server/src/cli/widget.ts check",
     "widget:preview": "server/node_modules/.bin/tsx server/src/cli/widget.ts preview"

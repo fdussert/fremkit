@@ -40,13 +40,35 @@ tagged `vX.Y.Z`.
 - **Tile icons.** A tile's title can show an icon: a pictogram from the built-in set, or your own
   SVG, PNG or WebP, tinted to the theme or in its own colours. Under **/admin**, select a tile,
   then **Icon**. Fremkit ships no brand logos; the marks you import stay in your installation.
+- **The Fremkit app for Android tablets.** It shows a screen of your dashboard on an Android tablet
+  (Android 9 or later) as the iPad app does: pair it by scanning the QR code in **Settings →
+  Devices**, or by typing the code after checking the four words; it finds the Mac again when its
+  address changes, follows the brightness set for its screen (move the tablet's own slider and
+  yours wins, and the admin follows), runs full screen and keeps the screen on. Its settings,
+  opened over the dashboard with the gesture that opens the admin on the Edge, can pin the app to
+  the screen with Android's screen pinning, or forget the Mac. The APK comes with each release
+  rather than from the Play Store, and needs nothing from Google Play: **Settings → Devices** and the
+  site link to it, and the site shows its signing certificate's fingerprint to check it against.
+  Obtainium can keep it up to date.
+- **Pairing by address when the tablet finds no Mac.** **Settings → Devices** now shows, beside the
+  code, the Mac's addresses to type on a tablet, and the Android app (the iPad app from its next
+  version) has **Enter the Mac's address** under its list of Macs: for networks where the tablet
+  never sees the Mac on its own, such as a Mac on both Wi-Fi and Ethernet. You still check the
+  four words before typing the code.
 
 ### Changed
 
-- **iPad pairing and extra screens are no longer experimental.** **Settings → Devices** pairs an
+- **Paired devices are filed as tablets.** Fremkit now records a paired iPad as a tablet and
+  notes which platform it runs, ready for tablets other than the iPad. Nothing changes for an
+  iPad already paired. Going back to an older version of Fremkit afterwards sets the list of
+  paired devices aside: every iPad and browser extension then has to pair again.
+- **The Devices settings speak of tablets.** Pairing, the empty list and **Remove every tablet**
+  say "tablet" rather than "iPad", since an Android tablet pairs too. A paired screen's own
+  messages still say "iPad" in the iPad app.
+- **Tablet pairing and extra screens are no longer experimental.** **Settings → Devices** pairs an
   iPad running the Fremkit app from the App Store, and links to the app there; the screen
   selector with its **+ Add a screen** is always above the canvas. Importing a layout brings its
-  iPad screens along with the rest.
+  tablet screens along with the rest.
 
 ### Fixed
 

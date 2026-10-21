@@ -48,6 +48,19 @@ Fremkit turns a Corsair Xeneon Edge (a 2560 × 720 touch strip) into a widget da
   values live in the git-ignored `ios/Local.xcconfig` (start from `ios/Local.example.xcconfig`);
   the simulator build needs none. Built and tested with `scripts/build-ios.sh`, which picks Xcode
   over the Command Line Tools by itself.
+- `android/` — the Android app, the iPad app's counterpart, pairing and showing a screen exactly
+  as it does (same routes, same pin, same token; the record says `platform: 'android'`). Gradle,
+  wrapper committed, every version pinned in `android/gradle/libs.versions.toml`.
+  `android/fremkit-kit` is FremkitKit ported file for file to pure Kotlin (no `android.*` import,
+  tested on any JVM); `android/app` is the thin Compose + `WebView` shell over it (camera, NSD,
+  Keystore, window). Nothing from Google Play services, Firebase or ML Kit may reach the APK
+  (`checkNoPlayServices` fails the build). Built, tested and signed with
+  `scripts/build-android.sh`; released only as an asset of the Mac's GitHub release (see
+  [docs/releasing.md](docs/releasing.md#the-android-app)), its signer pinned by
+  `android/signing-cert.sha256`.
+- `test-vectors/devices.json` — the device-pairing protocol's shared vectors (code proof,
+  fingerprint, key hash, links, addresses, frames, page messages), read by the server's tests,
+  FremkitKit's and the Android kit's.
 - `scripts/` — setup, dev, build/install/test of the helper, signing identity, and the
   downloadable app: `build-app.sh` (self-contained, signed `Fremkit.app` with Sparkle and the
   server as a Node single executable), `notarize.sh`, `release.sh` (builds a release and stops
@@ -83,6 +96,11 @@ pnpm helper:build && pnpm helper:install && pnpm helper:test
 pnpm ios:build && pnpm ios:test   # iPad app for the simulator, signed ad hoc; FremkitKit's tests
 pbpaste | FREMKIT_IOS_DEVICE=<udid> scripts/build-ios.sh install --seed   # a pairing link from stdin, never argv
 scripts/build-ios.sh upload       # Release archive to App Store Connect / TestFlight (docs/releasing.md)
+scripts/build-android.sh doctor   # what this Mac lacks to build the Android app; prints, never installs
+pnpm android:test                 # = build-android.sh test: the Android kit's tests and the app's JVM tests
+pnpm android:build                # = build-android.sh build: a debug APK, lint, the no-Play-services check
+FREMKIT_ANDROID_DEVICE=<serial> scripts/build-android.sh install [--seed] | device-test   # a tablet over adb
+scripts/build-android.sh release | verify <apk>   # signed release APK (the owner's key) / check any APK's signer
 ```
 
 **Every request needs the local access secret** (SECURITY.md): a `curl` without
@@ -264,10 +282,27 @@ Each line here was a real hole once. Break one only with the owner's explicit sa
 - **The admin window and the kiosk pin their main frame to their own origin**
   (`AdminOrigin`, `KioskOrigin`), and an origin is trusted for writes only on this server's own
   port (`allowedOrigins`). The iPad's web view does the same (`Dashboard.allowsMainFrame`) and
-  hears the page's messages only from that origin (`Dashboard.isPageOrigin`).
+  hears the page's messages only from that origin (`Dashboard.isPageOrigin`). The Android
+  `WebView` (`DashboardWebView.kt`) pins in `onReceivedSslError`: `proceed()` only for the paired
+  Mac's hosts presenting the paired key, `cancel()` for anything else; every pin change clears the
+  SSL preferences, and restarts the process once a page has loaded (`PinChange.kt`: pooled sockets
+  outlive the decisions). Its main frame goes through `Dashboard.allowsMainFrame` in both
+  `shouldOverrideUrlLoading` and `shouldInterceptRequest`, and it hears messages only from the
+  main frame of the page's origin (`addWebMessageListener` with that origin, `isMainFrame`,
+  `Dashboard.isPageOrigin`).
 - **A typed pairing code travels as a proof bound to the Mac's key** (`codeProof.ts`,
   `CodeProof.swift`), never as itself: the four words are 32 bits and can be ground, the proof
   cannot be relayed to another key. `/api/pair` takes `proof` or the QR's `secret`, nothing else.
+- **The Android release key never enters the repository or argv.** The keystore lives outside the
+  tree (`~/Library/Application Support/Fremkit-release/`, folder 0700, file 0600, refused looser),
+  its password only in the login keychain, read by `build-android.sh release` and handed to
+  `apksigner` on stdin; Gradle never signs a release. Every release APK is checked against
+  `android/signing-cert.sha256` before it is written, and the served asset with `verify`. An
+  agent never runs `create-android-keystore.sh` or `release`.
+- **The shared test vectors are the protocol.** `test-vectors/devices.json` binds the server,
+  FremkitKit and the Android kit to one pairing protocol. Change a vector only with the change that
+  needs it, and with the server's, the Swift and the Kotlin suites green
+  (`pnpm test`, `pnpm ios:test`, `pnpm android:test`).
 - **Commands that act on the Mac take their target from a closed list**: `dock.activate` only
   for an app in the current Dock snapshot; a URL handed to `open` is the parsed `href` that was
   checked, never the raw string.
@@ -287,7 +322,10 @@ Each line here was a real hole once. Break one only with the owner's explicit sa
   external resource changes that function, not a route.
 - **Frames hold widgets only.** The kiosk and admin web views cancel any subframe navigation that
   `WidgetFrames.allows` (`native/Sources/FremkitCore/WidgetFrames.swift`) refuses; a new web view
-  that shows widgets uses it too.
+  that shows widgets uses it too. The Android `WebView` checks frame navigations in
+  `shouldInterceptRequest` with `Dashboard.allowsSubframe` (an empty 403 otherwise); `about:blank`,
+  `srcdoc`, `data:` and `javascript:` frames never reach that hook and rely on the host CSP's
+  `frame-src`, which is why that directive stays as it is.
 - **A settings `preview` is a granted command.** The manifest schema requires its channel in
   `commands`, `grantedManifest` drops one its granted commands do not cover, and `SettingsForm`
   sends one only on a channel `commands` covers. Never add preview channels to anything on their own.
@@ -357,5 +395,6 @@ Each line here was a real hole once. Break one only with the owner's explicit sa
 | change what the editor says about a failing widget | `ui/src/admin/health.ts` (pure, tested), `useHealth.ts` (stores, socket, the fixes), `server/src/providers/health.ts` (the `config:health` channel) |
 | pair a device, the remote listener | `server/src/devices/`, `ui/src/admin/DevicesSection.vue` |
 | change the iPad app | `ios/FremkitKit/Sources/FremkitKit/` (logic, `AppModel.swift` for the screens' state, `PairingFlow.swift` for pairing; test there), `ios/Fremkit/` (`RootView.swift`, `DashboardView.swift` for the web view, `LocalNetwork.swift` for Bonjour), `ui/src/dashboard/native.ts` (what the page tells the app), `scripts/build-ios.sh` |
+| change the Android app | `android/fremkit-kit/src/main/kotlin/app/fremkit/kit/` (logic, the FremkitKit port: `AppModel.kt`, `PairingFlow.kt`, `Dashboard.kt` for the frame and origin rules; test there), `android/app/src/main/kotlin/app/fremkit/android/` (`Root.kt`, `DashboardWebView.kt` for the pinned web view, `LocalNetwork.kt` for NSD), `ui/src/dashboard/native.ts` (what the page tells the app), `scripts/build-android.sh`, `docs/devices.md#android` |
 | demo mode, widget previews | `server/src/demo/` (fakes, seed), `server/src/cli/preview.ts`, `previewProblems` in `server/src/widgets/manifest.ts` (vendored by the Sietch), `ui/src/admin/WidgetPreviewPopover.vue` |
 | export or import a layout | `server/src/share/` (file format, export, import), `ui/src/admin/share.ts`, `shareApply.ts`, `Share*Dialog.vue`, `docs/sharing.md` |

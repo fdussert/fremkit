@@ -280,6 +280,25 @@ peer on the network which widgets are installed, nothing about how they are set 
 the Mac's `/widgets/…`, the same rule as the Edge's kiosk. See
 [docs/devices.md](docs/devices.md).
 
+A paired device may also be an **Android tablet**. It is the same kind of device to the Mac: the
+same routes on the same allow-list, the same token, the same pinned key, the same narrowing to its
+own screen; its record only notes the platform. The app holds its pairing encrypted under a key of
+the Android Keystore, in a file left out of every backup, and connects to nothing but the paired
+Mac (no Play services, no analytics; the WebView's Safe Browsing lookups and metrics are off). Its
+own requests pin the key in a trust manager. Its WebView, which cannot be given a trust manager,
+pins in `onReceivedSslError`: it proceeds only for the paired Mac's hosts presenting the paired
+key, refuses any other certificate error, clears its remembered decisions whenever the pin changes
+and, once a page has loaded, restarts the app's process so that no connection opened under the old
+pin is reused. Two gaps differ from the iPad's, both covered elsewhere. That hook is consulted only
+for a certificate the system does not already trust, so a publicly trusted certificate for the
+Mac's `.local` name or private address would pass without the pin; no public authority issues one,
+the app trusts no user-added authority, and its own check, pinned, runs before every load and
+every 30 seconds. And the frame rule (`/widgets/…` only) is enforced on the frame navigations the
+WebView reports; `about:blank`, `srcdoc` and `data:` frames never reach that hook, and the host
+page's CSP (`frame-src` limited to the Mac's `/widgets/`) is what keeps them out. The page's
+messages to the app (brightness, a revoked device, the settings) are heard only from the page's own
+origin, in its main frame.
+
 ### A browser extension
 
 The [Fremkit Companion](docs/companion.md) extension is the one thing that talks to the server

@@ -82,6 +82,9 @@ public enum PairingStep: Equatable, Sendable {
     case link(PairingLink)
     /// The manual path: the Macs Bonjour found, by name.
     case manualList
+    /// The manual path when Bonjour finds nothing: the user types the Mac's address. The value is
+    /// what the field starts with: empty, or the address that did not answer, to correct it.
+    case manualAddress(String)
     /// The manual path: reading the key of the Mac the user picked.
     case manualKey(MacService)
     /// The manual path: the key's words are shown, the user types the code.
@@ -223,6 +226,11 @@ public final class PairingFlow {
         move(to: .manualList)
     }
 
+    /// The manual path: the user will type the Mac's address, the list being empty or wrong.
+    public func typeAddress() {
+        move(to: .manualAddress(""))
+    }
+
     /// Back to whatever `AppModel` shows; a request in flight is dropped.
     public func cancel() {
         pendingLink = nil
@@ -276,15 +284,19 @@ public final class PairingFlow {
     /// The manual path: the user picked a Mac in the list. Reads its key, to show its words.
     @discardableResult
     public func choose(_ service: MacService) -> Task<Void, Never> {
-        move(to: .manualKey(service))
-        isWorking = true
-        let generation = generation
-        let task = Task { [readKey] in
-            let keyHash = await readKey(service.address, service.port)
-            self.finishReading(keyHash, for: service, generation: generation)
-        }
-        running = task
-        return task
+        read(service, back: .manualList)
+    }
+
+    /// The manual path: the user typed the Mac's address. From there it is the path of a Mac
+    /// picked in the list: the key that answers is read and its words shown, and the code goes as
+    /// a proof bound to that key. Typing adds no trust: comparing the words does. The address
+    /// stands for the Mac's name, where a pick from the list has its service name. Nil when `text`
+    /// is not an address (`TypedAddress`).
+    @discardableResult
+    public func connect(typed text: String) -> Task<Void, Never>? {
+        guard case .manualAddress = step, !isWorking, let address = TypedAddress(typed: text) else { return nil }
+        let service = MacService(name: address.host, address: address.host, port: address.port)
+        return read(service, back: .manualAddress(text.trimmingCharacters(in: .whitespacesAndNewlines)))
     }
 
     /// The manual path: the user typed the code under the words and pressed **Pair**. The key
@@ -316,6 +328,19 @@ public final class PairingFlow {
         self.step = step
     }
 
+    /// Reads `service`'s key; when nothing usable answers, back to `back` with the reason.
+    private func read(_ service: MacService, back: PairingStep) -> Task<Void, Never> {
+        move(to: .manualKey(service))
+        isWorking = true
+        let generation = generation
+        let task = Task { [readKey] in
+            let keyHash = await readKey(service.address, service.port)
+            self.finishReading(keyHash, for: service, back: back, generation: generation)
+        }
+        running = task
+        return task
+    }
+
     private func send(hosts: [String], port: Int, keyHash: String, code: String, secret: String?,
                       macName: String) -> Task<Void, Never> {
         generation += 1
@@ -342,13 +367,13 @@ public final class PairingFlow {
         return task
     }
 
-    private func finishReading(_ keyHash: String?, for service: MacService, generation: Int) {
+    private func finishReading(_ keyHash: String?, for service: MacService, back: PairingStep, generation: Int) {
         guard generation == self.generation else { return }
         running = nil
         isWorking = false
         // A key that has no words cannot be compared, and is not a Fremkit Mac's anyway.
         guard let keyHash, !Fingerprint.words(keyHash: keyHash).isEmpty else {
-            step = .manualList
+            step = back
             problem = .unreachable
             return
         }

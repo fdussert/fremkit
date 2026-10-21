@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- No cleartext anywhere, and the system's anchors only (no user CAs, no debug overrides). The
+     Mac's self-signed key is never an anchor: it is a pin, checked in code (the kit's PinnedTls,
+     and DashboardWebView's onReceivedSslError). -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

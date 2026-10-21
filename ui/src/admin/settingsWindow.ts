@@ -80,7 +80,8 @@ export const SETTINGS_INDEX: readonly SettingsEntry[] = [
   {
     pane: 'devices', id: 'screen.devices', title: 'admin.inspector.screen.devices',
     labels: ['admin.devices.enable', 'admin.devices.removeAll', 'admin.devices.resetCertificate',
-      'admin.devices.appStore', 'admin.devices.extensions', 'admin.devices.companionStore'],
+      'admin.devices.appStore', 'admin.devices.extensions', 'admin.devices.companionStore',
+      'admin.devices.androidApk', 'admin.devices.address'],
   },
   {
     pane: 'about', id: 'screen.about', title: 'admin.inspector.screen.about',

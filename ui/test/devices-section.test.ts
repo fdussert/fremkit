@@ -7,11 +7,11 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
-import type { DeviceStatus, PublicDevice, PublicExtensionDevice, PublicIpadDevice } from '../src/shared/api'
+import type { DeviceStatus, PublicDevice, PublicExtensionDevice, PublicTabletDevice } from '../src/shared/api'
 import type { Config } from '../src/shared/types'
 
-const device = (over: Partial<PublicIpadDevice> = {}): PublicDevice => ({
-  id: 'dev-1', kind: 'ipad', name: 'Kitchen iPad', pairedAt: '2026-10-01T08:00:00.000Z', lastSeen: null,
+const device = (over: Partial<PublicTabletDevice> = {}): PublicDevice => ({
+  id: 'dev-1', kind: 'tablet', platform: 'ios', name: 'Kitchen iPad', pairedAt: '2026-10-01T08:00:00.000Z', lastSeen: null,
   viewport: { width: 1376, height: 1032 }, screenId: null, ...over,
 })
 const extension = (over: Partial<PublicExtensionDevice> = {}): PublicDevice => ({
@@ -100,9 +100,52 @@ describe('the devices section', () => {
     expect(wrapper.find('[data-test="pairing-code"]').text()).toBe('ABCD2345')
     expect(wrapper.find('.qr svg').exists()).toBe(true)
     expect(wrapper.find('[data-test="fingerprint"]').text()).toBe('Fingerprint: aardvark absurd woodlark zulu')
-    expect(wrapper.text()).toContain('If the iPad shows these words, it is this Mac.')
+    expect(wrapper.text()).toContain('If the tablet shows these words, it is this Mac.')
     expect(wrapper.text()).not.toContain('Someone is trying')
     wrapper.unmount()
+  })
+
+  describe('the address to type', () => {
+    async function shown(answer: DeviceStatus, url = 'fremkit://pair?h=mac.example.local&a=192.0.2.20&p=4243&c=ABCD2345&k=x') {
+      deviceApi.getDevices.mockResolvedValue(answer)
+      deviceApi.newPairingCode.mockResolvedValue({ code: 'ABCD2345', expiresAt: Date.now() + 300_000, url })
+      const wrapper = mount(DevicesSection, { attachTo: document.body, global: { stubs } })
+      await flushPromises()
+      return wrapper
+    }
+
+    it('shows the Bonjour name, then the QR code’s address, then the others, beside the code', async () => {
+      const w = await shown(status({ enabled: true, listening: true, addresses: ['192.0.2.10', '192.0.2.20', '198.51.100.4'] }))
+      expect(w.text()).toContain('If the tablet finds no Mac, type one of this Mac’s addresses:')
+      const items = w.findAll('[data-test="pairing-address"] li')
+      expect(items.map((li) => li.text())).toEqual(['mac.example.local', '192.0.2.20', '192.0.2.10', '198.51.100.4'])
+      expect(items.map((li) => li.classes('dim')), 'the others are dimmer: a VPN’s or a virtual machine’s').toEqual([false, false, true, true])
+      w.unmount()
+    })
+
+    it('adds the port only when it is not the usual one', async () => {
+      const w = await shown(status({ enabled: true, listening: true, port: 4300 }), 'fremkit://pair?h=mac.example.local&a=192.0.2.10&p=4300&c=ABCD2345&k=x')
+      expect(w.findAll('[data-test="pairing-address"] li').map((li) => li.text())).toEqual(['mac.example.local:4300', '192.0.2.10:4300'])
+      w.unmount()
+    })
+
+    it('without a Bonjour name nor a QR address, lists the addresses in their order, none dimmer', async () => {
+      const w = await shown(status({ enabled: true, listening: true, host: null, addresses: ['192.0.2.10', '198.51.100.4'] }), 'fremkit://pair?p=4243&c=ABCD2345&k=x')
+      const items = w.findAll('[data-test="pairing-address"] li')
+      expect(items.map((li) => li.text())).toEqual(['192.0.2.10', '198.51.100.4'])
+      expect(items.some((li) => li.classes('dim'))).toBe(false)
+      w.unmount()
+    })
+
+    it('shows nothing when there is no address, nor while pairing is off', async () => {
+      const none = await shown(status({ enabled: true, listening: true, host: null, addresses: [] }))
+      expect(none.find('[data-test="pairing-code"]').exists()).toBe(true)
+      expect(none.find('[data-test="pairing-address"]').exists()).toBe(false)
+      none.unmount()
+      const off = await shown(status())
+      expect(off.find('[data-test="pairing-address"]').exists()).toBe(false)
+      off.unmount()
+    })
   })
 
   describe('which parts show', () => {
@@ -120,7 +163,7 @@ describe('the devices section', () => {
     it('a fresh config: both parts, each with its empty state and its store link', async () => {
       const w = await mountWith(status())
       expect(ipadPart(w)).toBe(true)
-      expect(w.find('[data-test="ipads-none"]').text()).toBe('No paired iPad.')
+      expect(w.find('[data-test="ipads-none"]').text()).toBe('No paired tablet.')
       expect(extPart(w)).toBe(true)
       expect(w.find('[data-test="extensions-none"]').text()).toBe('No browser extension linked.')
       expect(w.find('[data-test="app-store"]').exists()).toBe(true)
@@ -177,15 +220,15 @@ describe('the devices section', () => {
       x.unmount()
     })
 
-    it('Remove every iPad and the certificate reset are the iPad part\'s: an extension alone leaves Remove every iPad off', async () => {
+    it('Remove every tablet and the certificate reset are the tablet part\'s: an extension alone leaves Remove every tablet off', async () => {
       const w = await mountWith(status({ devices: [extension()] }))
-      const removeAll = w.findAll('button').find((b) => b.text() === 'Remove every iPad')
+      const removeAll = w.findAll('button').find((b) => b.text() === 'Remove every tablet')
       expect(removeAll).toBeDefined()
       expect(removeAll?.attributes('disabled')).toBeDefined()
       expect(w.text()).toContain('Browser extensions stay linked.')
       w.unmount()
       const x = await mountWith(status({ devices: [extension(), device()] }))
-      expect(x.findAll('button').find((b) => b.text() === 'Remove every iPad')?.attributes('disabled')).toBeUndefined()
+      expect(x.findAll('button').find((b) => b.text() === 'Remove every tablet')?.attributes('disabled')).toBeUndefined()
       x.unmount()
     })
   })
@@ -369,7 +412,7 @@ describe('the devices section', () => {
     deviceApi.getDevices.mockResolvedValue(status({ devices: [device()] }))
     const wrapper = mount(DevicesSection, { attachTo: document.body, global: { stubs } })
     await flushPromises()
-    expect(wrapper.text()).toContain('This iPad has no screen')
+    expect(wrapper.text()).toContain('This tablet has no screen')
     await wrapper.find('[data-test="create-screen"]').trigger('click')
     expect((document.querySelector('form input') as HTMLInputElement).value).toBe('Kitchen iPad')
     expect(document.querySelector('[data-test="device-size"]')!.textContent).toBe('1376 × 1032 px')

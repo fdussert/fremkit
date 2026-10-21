@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { CODE_PROOF_ITERATIONS, codeProof } from '../src/devices/codeProof.js'
 import {
@@ -11,6 +12,9 @@ import {
   peerKey,
 } from '../src/devices/codes.js'
 
+/** The pairing-protocol vectors shared with FremkitKit and the Android kit. */
+const vectors = JSON.parse(readFileSync(new URL('../../test-vectors/devices.json', import.meta.url), 'utf8'))
+
 function clock(start = 1_000_000) {
   const c = { t: start, now: () => c.t }
   return c
@@ -23,8 +27,8 @@ function other(code: string): string {
 
 describe('PairingCodes', () => {
   it('exposes the agreed constants', () => {
-    expect(CODE_ALPHABET).toBe('ABCDEFGHJKLMNPQRSTUVWXYZ23456789')
-    expect(CODE_LENGTH).toBe(8)
+    expect(CODE_ALPHABET).toBe(vectors.codes.alphabet)
+    expect(CODE_LENGTH).toBe(vectors.codes.length)
     expect(CODE_TTL_MS).toBe(300_000)
     expect(MAX_WRONG_PER_MINUTE).toBe(5)
   })
@@ -296,18 +300,20 @@ describe('PairingCodes', () => {
 })
 
 describe('codeProof', () => {
-  // The same vector as FremkitKit's CodeProofTests: both sides must derive the same proof.
-  it('derives the proof the iPad sends for a typed code, bound to a key', () => {
-    expect(CODE_PROOF_ITERATIONS).toBe(600_000)
-    expect(codeProof('ABCDEFGH', 'n4bQgYhMfWWaL-qgxVrQFaO_TxsrC4Is0V1sFbDwCgg')).toBe('u0OmzfI4qjz-qNwuSnZEHpye4MAjcTzhT3jg2gJVid0')
-    expect(codeProof('ABCDEFGH', 'n4bQgYhMfWWaL-qgxVrQFaO_TxsrC4Is0V1sFbDwCgh')).not.toBe('u0OmzfI4qjz-qNwuSnZEHpye4MAjcTzhT3jg2gJVid0')
+  // The shared vector: the server, FremkitKit and the Android kit must derive the same proof.
+  const { iterations, code, keyHash, proof, anotherKeyHash } = vectors.codeProof
+
+  it('derives the proof the tablet sends for a typed code, bound to a key', () => {
+    expect(CODE_PROOF_ITERATIONS).toBe(iterations)
+    expect(codeProof(code, keyHash)).toBe(proof)
+    expect(codeProof(code, anotherKeyHash)).not.toBe(proof)
   })
 
   it('makes the live code pair only as its proof, never as itself', () => {
     const codes = new PairingCodes()
-    const { code } = codes.issue((c) => codeProof(c, 'n4bQgYhMfWWaL-qgxVrQFaO_TxsrC4Is0V1sFbDwCgg'))
-    expect(codes.consume(code, '192.0.2.1')).toBe('wrong')
-    expect(codes.consume(codeProof(code, 'n4bQgYhMfWWaL-qgxVrQFaO_TxsrC4Is0V1sFbDwCgh'), '192.0.2.1')).toBe('wrong')
-    expect(codes.consume(codeProof(code, 'n4bQgYhMfWWaL-qgxVrQFaO_TxsrC4Is0V1sFbDwCgg'), '192.0.2.1')).toBe('ok')
+    const { code: live } = codes.issue((c) => codeProof(c, keyHash))
+    expect(codes.consume(live, '192.0.2.1')).toBe('wrong')
+    expect(codes.consume(codeProof(live, anotherKeyHash), '192.0.2.1')).toBe('wrong')
+    expect(codes.consume(codeProof(live, keyHash), '192.0.2.1')).toBe('ok')
   })
 })

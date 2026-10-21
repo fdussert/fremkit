@@ -17,11 +17,12 @@ import BaseIcon from '../shared/ui/BaseIcon.vue'
 import { useI18n } from '../shared/i18n'
 import { useConfirm } from '../shared/useConfirm'
 import { COMPANION_STORE_URL, IPAD_APP_STORE_URL } from '../shared/credits'
-import { shortExtensionId, type PublicExtensionDevice, type PublicIpadDevice } from '../shared/api'
+import { shortExtensionId, type PublicExtensionDevice, type PublicTabletDevice } from '../shared/api'
 import type { Screen } from '../shared/types'
 import AddScreenDialog from './AddScreenDialog.vue'
 import { useDevices } from './devices'
 import { useAdminStore } from './store'
+import { ANDROID_APK_URL } from '../shared/credits'
 
 const s = useAdminStore()
 const { t, locale } = useI18n()
@@ -55,7 +56,27 @@ watch(now, (at) => {
   if (live.value && offer.value && at >= offer.value.expiresAt) void devices.newCode()
 })
 
-const qr = computed(() => (offer.value ? renderSVG(offer.value.url, { ecc: 'M', pixelSize: 1 }) : ''))
+/** The remote listener's usual port: an address on it is typed without one. */
+const DEFAULT_PORT = 4243
+/**
+ * What to type on a tablet that finds no Mac on its own (multicast does not cross every network):
+ * the Bonjour name, then the LAN addresses, the QR code's first (the default route's), each with
+ * the port only when it is not the usual one. `main` marks the name and the QR code's address, the
+ * ones most likely to answer; the others (a VPN's, a virtual machine's) are shown dimmer.
+ */
+const typedAddresses = computed<{ text: string; main: boolean }[]>(() => {
+  const st = status.value
+  if (!st) return []
+  let qrAddress: string | null = null
+  try { qrAddress = offer.value ? new URL(offer.value.url).searchParams.get('a') : null } catch { qrAddress = null }
+  const first = qrAddress !== null && st.addresses.includes(qrAddress) ? [qrAddress] : []
+  const port = st.port === DEFAULT_PORT ? '' : `:${st.port}`
+  const main = [...(st.host ? [st.host] : []), ...first]
+  const rest = st.addresses.filter((a) => !first.includes(a))
+  return [...main.map((h) => ({ text: `${h}${port}`, main: true })), ...rest.map((h) => ({ text: `${h}${port}`, main: first.length === 0 }))]
+})
+
+const qr = computed(() => (offer.value ? renderSVG(offer.value.url, { ecc: 'M', pixelSize: 1, border: 4 }) : ''))
 const countdown = computed(() => {
   if (!offer.value) return ''
   const left = Math.max(0, Math.ceil((offer.value.expiresAt - now.value) / 1000))
@@ -63,7 +84,7 @@ const countdown = computed(() => {
 })
 
 const deviceScreens = computed<Screen[]>(() => (s.state.config?.screens ?? []).filter((x) => x.kind === 'device'))
-const list = computed<PublicIpadDevice[]>(() => (status.value?.devices ?? []).filter((d): d is PublicIpadDevice => d.kind === 'ipad'))
+const list = computed<PublicTabletDevice[]>(() => (status.value?.devices ?? []).filter((d): d is PublicTabletDevice => d.kind === 'tablet'))
 const extensions = computed<PublicExtensionDevice[]>(() => (status.value?.devices ?? []).filter((d): d is PublicExtensionDevice => d.kind === 'extension'))
 /**
  * The extension's request, until its expiry even if the next poll is still to come, and never
@@ -95,13 +116,13 @@ function when(iso: string | null): string {
  * Waits for a pending config save first, as `onCreated` does: a device screen made or turned into
  * one a moment ago exists on the server only once that save lands.
  */
-async function pickScreen(device: PublicIpadDevice, value: string): Promise<void> {
+async function pickScreen(device: PublicTabletDevice, value: string): Promise<void> {
   await s.flush()
   await devices.attach(device.id, value === '' ? null : value)
 }
 
 /** The device a screen is being made for, while its dialog is open. */
-const creatingFor = ref<PublicIpadDevice | null>(null)
+const creatingFor = ref<PublicTabletDevice | null>(null)
 /**
  * The server attaches a device only to a device screen it has saved, and `addScreen` saves on a
  * debounce: wait for that save before attaching, or the server answers that no such screen exists.
@@ -123,6 +144,9 @@ async function onCreated(screenId: string): Promise<void> {
       <BaseCheckbox :model-value="enabled" :label="t('admin.devices.enable')"
         @update:model-value="devices.setEnabled($event)" />
       <p class="ro">{{ t('admin.devices.firewall') }}</p>
+      <!-- A download in a browser; the helper's admin window hands it to the default browser rather
+           than replacing the admin with it. -->
+      <p class="ro"><a :href="ANDROID_APK_URL" target="_blank" rel="noopener noreferrer" data-test="android-apk">{{ t('admin.devices.androidApk') }}</a></p>
       <p v-if="portInUse" class="bad" role="alert" data-test="port-in-use">{{ t('admin.devices.portInUse', { port: status?.port ?? '' }) }}</p>
 
       <div v-if="live && offer" class="pair">
@@ -135,6 +159,12 @@ async function onCreated(screenId: string): Promise<void> {
           <template v-if="status?.fingerprint">
             <p class="fingerprint" data-test="fingerprint">{{ t('admin.devices.fingerprint', { words: status.fingerprint.join(' ') }) }}</p>
             <p class="ro">{{ t('admin.devices.fingerprintHelp') }}</p>
+          </template>
+          <template v-if="typedAddresses.length">
+            <p class="ro">{{ t('admin.devices.address') }}</p>
+            <ul class="addresses mono" data-test="pairing-address">
+              <li v-for="a in typedAddresses" :key="a.text" :class="{ dim: !a.main }">{{ a.text }}</li>
+            </ul>
           </template>
           <BaseButton @click="devices.newCode()"><BaseIcon name="refresh-cw" :size="16" />{{ t('admin.devices.newCode') }}</BaseButton>
         </div>
@@ -241,10 +271,13 @@ async function onCreated(screenId: string): Promise<void> {
 .warn { display: flex; gap: var(--space-2); align-items: flex-start; margin: 0 0 var(--space-2); font-size: var(--fs-sm); color: var(--danger); }
 .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .pair { display: flex; gap: var(--space-3); align-items: center; margin-bottom: var(--space-3); }
-/* A white quiet zone whatever the theme: a phone camera reads dark modules on light. */
-.qr { flex: none; width: 168px; height: 168px; padding: 8px; background: #fff; border-radius: var(--radius-sm); }
+/* A white quiet zone whatever the theme: a phone camera reads dark modules on light. The standard's
+   four modules of margin, and modules large enough for a tablet's fixed-focus camera at arm's length. */
+.qr { flex: none; width: 264px; height: 264px; padding: 8px; background: #fff; border-radius: var(--radius-sm); }
 .qr :deep(svg) { display: block; width: 100%; height: 100%; }
 .code { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; }
+.addresses { list-style: none; margin: 0 0 var(--space-2); padding: 0; overflow-wrap: anywhere; color: var(--text); }
+.addresses .dim { font-size: var(--fs-sm); color: var(--text-dim); }
 .fingerprint { margin: 0 0 var(--space-1); letter-spacing: .08em; color: var(--text); }
 .value { margin: 0 0 var(--space-1); font-size: 1.6em; letter-spacing: .12em; color: var(--text); }
 .code :deep(button), .row :deep(button), .device :deep(button), .request :deep(button) { min-height: 44px; }

@@ -6,7 +6,7 @@ import { z } from 'zod'
 /** Owner read/write only: the file holds the hashes of the device tokens. */
 const MODE = 0o600
 
-/** `lastSeen` is written at most this often per device, so a busy iPad does not churn the disk. */
+/** `lastSeen` is written at most this often per device, so a busy tablet does not churn the disk. */
 const TOUCH_INTERVAL_MS = 60_000
 
 export const ViewportSchema = z.object({
@@ -25,9 +25,13 @@ const BaseFields = {
   lastSeen: z.string().nullable(),
 }
 
-const IpadSchema = z.object({
+/** What a tablet runs: the iPad app, or the Android one. */
+export const PlatformSchema = z.enum(['ios', 'android'])
+
+const TabletSchema = z.object({
   ...BaseFields,
-  kind: z.literal('ipad'),
+  kind: z.literal('tablet'),
+  platform: PlatformSchema,
   viewport: ViewportSchema,
   screenId: z.string().nullable(),
 })
@@ -42,24 +46,37 @@ const ExtensionSchema = z.object({
 /** What a caller may hand `createExtension`: the fields the loader would validate on the next start. */
 const ExtensionInputSchema = ExtensionSchema.pick({ name: true, origin: true, installId: true })
 
-const DeviceSchema = z.discriminatedUnion('kind', [IpadSchema, ExtensionSchema])
+const DeviceSchema = z.discriminatedUnion('kind', [TabletSchema, ExtensionSchema])
+
+/** The fields of a tablet before version 3, which knew only the iPad app. */
+const IpadFields = { ...BaseFields, viewport: ViewportSchema, screenId: z.string().nullable() }
+
+/** A version 2 iPad record: a tablet running the iPad app. */
+const V2IpadSchema = z.object({ ...IpadFields, kind: z.literal('ipad') })
+  .transform((d) => ({ ...d, kind: 'tablet' as const, platform: 'ios' as const }))
 
 /** A version 1 record has no `kind`: every one of them is an iPad. */
-const LegacyDeviceSchema = z.object({ ...BaseFields, viewport: ViewportSchema, screenId: z.string().nullable() })
-  .transform((d) => ({ ...d, kind: 'ipad' as const }))
+const V1DeviceSchema = z.object(IpadFields)
+  .transform((d) => ({ ...d, kind: 'tablet' as const, platform: 'ios' as const }))
 
+/**
+ * Version 3 is the only one written. Versions 1 and 2 are read and migrated in memory, so the next
+ * write is version 3: an older Fremkit then reads the file as corrupt and moves it aside.
+ */
 const FileSchema = z.union([
-  z.object({ version: z.literal(2), enabled: z.boolean(), devices: z.array(DeviceSchema) }),
-  z.object({ version: z.literal(1), enabled: z.boolean(), devices: z.array(LegacyDeviceSchema) }),
+  z.object({ version: z.literal(3), enabled: z.boolean(), devices: z.array(DeviceSchema) }),
+  z.object({ version: z.literal(2), enabled: z.boolean(), devices: z.array(z.union([V2IpadSchema, ExtensionSchema])) }),
+  z.object({ version: z.literal(1), enabled: z.boolean(), devices: z.array(V1DeviceSchema) }),
 ])
 
 export type Viewport = z.infer<typeof ViewportSchema>
-export type IpadDevice = z.infer<typeof IpadSchema>
+export type Platform = z.infer<typeof PlatformSchema>
+export type TabletDevice = z.infer<typeof TabletSchema>
 export type ExtensionDevice = z.infer<typeof ExtensionSchema>
-export type Device = IpadDevice | ExtensionDevice
-export type PublicIpadDevice = Omit<IpadDevice, 'tokenHash'>
+export type Device = TabletDevice | ExtensionDevice
+export type PublicTabletDevice = Omit<TabletDevice, 'tokenHash'>
 export type PublicExtensionDevice = Omit<ExtensionDevice, 'tokenHash'>
-export type PublicDevice = PublicIpadDevice | PublicExtensionDevice
+export type PublicDevice = PublicTabletDevice | PublicExtensionDevice
 
 type State = { enabled: boolean; devices: Device[] }
 
@@ -69,7 +86,7 @@ function hashToken(token: string): string {
 
 function toPublic(device: Device): PublicDevice {
   const { tokenHash: _omit, ...rest } = device
-  return rest.kind === 'ipad' ? { ...rest, viewport: { ...rest.viewport } } : { ...rest }
+  return rest.kind === 'tablet' ? { ...rest, viewport: { ...rest.viewport } } : { ...rest }
 }
 
 /**
@@ -159,17 +176,24 @@ export class DeviceStore {
     return this.state.devices.some((d) => d.id === id)
   }
 
-  /** Pairs a device. The token is returned once, here, and only its hash is ever stored. */
+  /**
+   * Pairs a tablet. The token is returned once, here, and only its hash is ever stored. The
+   * platform defaults to the iPad app's, which does not say which it is.
+   */
   async create(
     name: string,
     viewport: Viewport,
     screenId: string | null,
+    platform: Platform = 'ios',
   ): Promise<{ device: PublicDevice; token: string }> {
+    // Parsed like the extension's input: a record the loader would refuse loses every pairing.
+    const checkedPlatform = PlatformSchema.parse(platform)
     return this.enqueue(async () => {
       const token = randomBytes(32).toString('base64url')
-      const device: IpadDevice = {
+      const device: TabletDevice = {
         id: randomUUID(),
-        kind: 'ipad',
+        kind: 'tablet',
+        platform: checkedPlatform,
         name,
         tokenHash: hashToken(token),
         pairedAt: this.now().toISOString(),
@@ -192,7 +216,7 @@ export class DeviceStore {
     installId: string
   }): Promise<{ device: PublicDevice; token: string }> {
     // Parsed before anything is written: a record the loader would refuse makes the next start
-    // move the whole file aside as corrupt, and every paired iPad with it.
+    // move the whole file aside as corrupt, and every paired tablet with it.
     const checked = ExtensionInputSchema.parse(input)
     return this.enqueue(async () => {
       const token = randomBytes(32).toString('base64url')
@@ -249,8 +273,8 @@ export class DeviceStore {
       if (index < 0) return null
       const next: Device = { ...this.state.devices[index] }
       if (patch.name !== undefined) next.name = patch.name
-      // A screen is an iPad's: an extension record keeps only its name.
-      if (patch.screenId !== undefined && next.kind === 'ipad') next.screenId = patch.screenId
+      // A screen is a tablet's: an extension record keeps only its name.
+      if (patch.screenId !== undefined && next.kind === 'tablet') next.screenId = patch.screenId
       const devices = [...this.state.devices]
       devices[index] = next
       await this.commit({ ...this.state, devices })
@@ -266,7 +290,7 @@ export class DeviceStore {
     return this.enqueue(async () => {
       const index = this.state.devices.findIndex((d) => d.id === id)
       const current = this.state.devices[index]
-      if (index < 0 || current.kind !== 'ipad' || current.screenId !== screenId) return false
+      if (index < 0 || current.kind !== 'tablet' || current.screenId !== screenId) return false
       const devices = [...this.state.devices]
       devices[index] = { ...current, screenId: null }
       await this.commit({ ...this.state, devices })
@@ -284,15 +308,15 @@ export class DeviceStore {
   }
 
   /**
-   * Every iPad, and only iPads: what "remove every iPad" and a certificate reset take away. A
-   * browser extension has nothing to do with the TLS key and is removed from its own row. Answers
-   * the ids removed.
+   * Every tablet, of either platform, and only tablets: what "remove every iPad" and a certificate
+   * reset take away. A browser extension has nothing to do with the TLS key and is removed from its
+   * own row. Answers the ids removed.
    */
-  async removeIpads(): Promise<string[]> {
+  async removeTablets(): Promise<string[]> {
     return this.enqueue(async () => {
-      const ids = this.state.devices.filter((d) => d.kind === 'ipad').map((d) => d.id)
+      const ids = this.state.devices.filter((d) => d.kind === 'tablet').map((d) => d.id)
       if (ids.length === 0) return []
-      await this.commit({ ...this.state, devices: this.state.devices.filter((d) => d.kind !== 'ipad') })
+      await this.commit({ ...this.state, devices: this.state.devices.filter((d) => d.kind !== 'tablet') })
       return ids
     })
   }
@@ -340,7 +364,7 @@ export class DeviceStore {
   private async write(state: State): Promise<void> {
     await mkdir(dirname(this.filePath), { recursive: true })
     const tmp = `${this.filePath}.tmp`
-    const body = { version: 2, enabled: state.enabled, devices: state.devices }
+    const body = { version: 3, enabled: state.enabled, devices: state.devices }
     // The mode is given at creation *and* forced afterwards: `writeFile` only applies `mode`
     // when it creates the file, so a leftover temporary from a crashed run would keep its own.
     await writeFile(tmp, JSON.stringify(body, null, 2) + '\n', { encoding: 'utf8', mode: MODE })

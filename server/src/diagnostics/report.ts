@@ -40,7 +40,8 @@ export interface DiagnosticsFacts {
   /** Channels that are watched or have polled; the rest are only counted. */
   providers: { channel: string; watched: boolean; state: string }[]
   idleProviders: number
-  devices: { paired: number; remoteAccess: boolean }
+  /** Counts by kind and platform, never a device's name. */
+  devices: { paired: number; tablets: { ios: number; android: number }; extensions: number; remoteAccess: boolean }
   log: LogSource | null
 }
 
@@ -66,7 +67,8 @@ export function renderReport(f: DiagnosticsFacts): string {
   out.push(`- Screens: ${f.screens.edge + f.screens.device} (edge ${f.screens.edge}, device ${f.screens.device})`)
   out.push(`- Pages: ${f.pages}`)
   out.push(`- Widget instances: ${f.instances}`)
-  out.push(`- Paired devices: ${f.devices.paired} (remote access ${f.devices.remoteAccess ? 'on' : 'off'})`)
+  const d = f.devices
+  out.push(`- Paired devices: ${d.paired} (tablets: ${d.tablets.ios} iOS, ${d.tablets.android} Android; extensions: ${d.extensions}; remote access ${d.remoteAccess ? 'on' : 'off'})`)
   out.push('')
 
   out.push('### Widgets in use', '')
@@ -202,6 +204,9 @@ function pollState(status: ChannelStatus | undefined): string {
 }
 
 /** What the collector needs from the running server. Plain functions, so a test can fake each. */
+/** What the report reads of a paired device: its name, only to redact it, and what it is. */
+export type DiagnosticsDevice = { name: string } & ({ kind: 'tablet'; platform: 'ios' | 'android' } | { kind: 'extension' })
+
 export interface DiagnosticsDeps {
   config: () => Config
   /** Built-in or installed, and the version, of a widget id the catalogue knows. */
@@ -211,7 +216,8 @@ export interface DiagnosticsDeps {
   channelFor: (connection: Connection) => string
   secretsFor: (connection: Connection) => Promise<Record<string, string>>
   channels: () => ChannelStatus[]
-  devices: () => { name: string }[]
+  /** The paired devices; only their kind and platform are reported, their names are redacted. */
+  devices: () => DiagnosticsDevice[]
   remoteAccess: () => boolean
   accessToken: string | null
   log?: (count: number) => Promise<LogSource>
@@ -359,7 +365,15 @@ export async function buildDiagnostics(deps: DiagnosticsDeps): Promise<string> {
     connections,
     providers,
     idleProviders: allChannels.length - active.length,
-    devices: { paired: pairedDevices.length, remoteAccess: deps.remoteAccess() },
+    devices: {
+      paired: pairedDevices.length,
+      tablets: {
+        ios: pairedDevices.filter((d) => d.kind === 'tablet' && d.platform === 'ios').length,
+        android: pairedDevices.filter((d) => d.kind === 'tablet' && d.platform === 'android').length,
+      },
+      extensions: pairedDevices.filter((d) => d.kind === 'extension').length,
+      remoteAccess: deps.remoteAccess(),
+    },
     log: deps.log ? await deps.log(RAW_LOG_LINES).then(compactLog, () => null) : null,
   }
 

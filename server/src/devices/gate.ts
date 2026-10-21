@@ -80,7 +80,7 @@ export function registerRemoteGate(app: FastifyInstance, opts: RemoteGateOptions
     if (access === 'public') return
     // An empty cookie is no cookie.
     const token = readCookie(req.headers.cookie, DEVICE_COOKIE) || null
-    const device = token !== null && token.length <= MAX_TOKEN_LENGTH ? opts.devices.findByToken(token, 'ipad') : null
+    const device = token !== null && token.length <= MAX_TOKEN_LENGTH ? opts.devices.findByToken(token, 'tablet') : null
     if (!device) return refuse(reply, 401, 'devices.unauthorized')
     req.deviceId = device.id
     // Not awaited: a slow or failed `lastSeen` write must not hold up, or fail, the request.
