@@ -1,10 +1,10 @@
 /**
  * @vitest-environment jsdom
  *
- * The admin's experimental features, with no flag left: iPad pairing and extra screens are not
- * one any more (the Devices pane, the screen selector and its "Add a screen" on a fresh config),
- * nor the browser companion; the seven clicks on the version still reveal the block, which says
- * there is nothing to try.
+ * The admin's experimental features, Fremdev's switch alone: iPad pairing and extra screens are
+ * not one any more (the Devices pane, the screen selector and its "Add a screen" on a fresh
+ * config), nor the browser companion; the seven clicks on the version reveal the block, which
+ * holds Fremdev's box, or says there is nothing to try when there is no flag.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
@@ -136,8 +136,8 @@ describe('labsShown', () => {
     expect(labs.labsShown(config({ later: true }, 1))).toBe(true)
   })
 
-  it('has a third switch for Fremdev, which writes its key and leaves the others', async () => {
-    seed(false, 1)
+  it('has a switch for Fremdev, which writes its key alone', async () => {
+    seed(undefined, 1)
     const s = useAdminStore()
     const wrapper = settings('about')
     await flushPromises()
@@ -147,9 +147,11 @@ describe('labsShown', () => {
     const box = wrapper.find('[data-test="labs-fremdev"] input')
     expect(box.exists()).toBe(true)
     await box.setValue(true)
-    expect(s.state.config!.labs).toEqual({ devices: false, fremdev: true })
-    expect(labs.labsCompanion(s.state.config)).toBe(false)
+    expect(s.state.config!.labs).toEqual({ fremdev: true })
     expect(labs.labsFremdev(s.state.config)).toBe(true)
+    // On, the block stays without the clicks, so it can be turned off.
+    labs.resetLabsReveal()
+    expect(labs.labsShown(s.state.config)).toBe(true)
     wrapper.unmount()
   })
 })
@@ -171,7 +173,7 @@ describe('the seven clicks on the version', () => {
     expect(labs.tapVersion(labs.REVEAL_WINDOW_MS + 1 + (labs.REVEAL_TAPS - 1) * 100)).toBe(true)
   })
 
-  it('show the block in About, saying there is nothing to try, focused and without a toast', async () => {
+  it('show the block in About with Fremdev\'s box alone, focused and without a toast', async () => {
     vi.useFakeTimers({ toFake: ['Date'] })
     vi.setSystemTime(new Date('2026-10-19T08:00:00Z'))
     seed({}, 1)
@@ -188,14 +190,29 @@ describe('the seven clicks on the version', () => {
     await version.trigger('click')
     await flushPromises()
     const block = wrapper.find('[data-test="labs"]')
-    // With no box to focus, the block takes the focus: it scrolls into view and is announced.
-    expect(document.activeElement).toBe(block.element)
+    // The first box takes the focus: it scrolls into view and is announced.
+    expect(document.activeElement).toBe(wrapper.find('[data-test="labs-fremdev"] input').element)
     expect(s.state.toast).toBe('')
     expect(block.text()).toMatch(/Experimental features|Fonctions expérimentales/)
-    expect(wrapper.find('[data-test="labs-none"]').text()).toMatch(/No experimental features right now|Aucune fonction expérimentale/)
+    expect(wrapper.find('[data-test="labs-none"]').exists()).toBe(false)
     // Neither iPad pairing nor the companion is behind a switch any more.
+    expect(block.findAll('input')).toHaveLength(1)
+    expect(block.text()).not.toMatch(/iPad|Fremplay/)
+    wrapper.unmount()
+  })
+
+  it('show a block saying there is nothing to try when there is no flag, focused itself', async () => {
+    seed({}, 1)
+    const wrapper = mount(AboutPane, { attachTo: document.body, props: { flags: [] }, global: { stubs } })
+    await flushPromises()
+    const version = wrapper.find('[data-test="version"]')
+    for (let i = 0; i < labs.REVEAL_TAPS; i++) await version.trigger('click')
+    await flushPromises()
+    const block = wrapper.find('[data-test="labs"]')
+    // With no box to focus, the block takes the focus.
+    expect(document.activeElement).toBe(block.element)
+    expect(wrapper.find('[data-test="labs-none"]').text()).toMatch(/No experimental features right now|Aucune fonction expérimentale/)
     expect(block.findAll('input')).toHaveLength(0)
-    expect(block.text()).not.toMatch(/iPad|Fremplay|companion|compagnon/i)
     wrapper.unmount()
   })
 
@@ -226,7 +243,7 @@ describe('the seven clicks on the version', () => {
 })
 
 describe('a flag in the block, as the next one will be', () => {
-  // No flag exists today: this one is given to the pane the way `LAB_FLAGS` will give a real one.
+  // A flag the schema does not have, given to the pane the way `LAB_FLAGS` gives a real one.
   const FLAG = { key: 'later' as never, label: 'admin.inspector.screen.labs', hint: 'admin.inspector.screen.labs.none' }
   const about = () => mount(AboutPane, { attachTo: document.body, props: { flags: [FLAG] }, global: { stubs } })
 

@@ -206,7 +206,7 @@ describe('CompanionDev', () => {
     expect(t.send).not.toHaveBeenCalled()
   })
 
-  it('shows nothing while labs.companion is off', async () => {
+  it('shows nothing while labs.fremdev is off', async () => {
     let on = true
     const t = setup({ enabled: () => on })
     t.dev.connect(A, 'Chrome', ['fremdev'])
@@ -214,7 +214,7 @@ describe('CompanionDev', () => {
     on = false
     expect(t.dev.snapshot()).toEqual({ enabled: false, paired: 2, installs: [] })
     expect(t.dev.focus(A, 7)).toBe(false)
-    const config = { ...DEFAULT_CONFIG, labs: { devices: false, companion: false } } as Config
+    const config = { ...DEFAULT_CONFIG, labs: { fremdev: false } } as Config
     const provider = createDevProvider({ dev: t.dev, config: () => config })
     expect(await provider.commands!.focus({ deviceId: A, tabId: 7, instanceId: 'dev-1' }, LOCAL)).toMatchObject({ ok: false })
     expect(await provider.commands!.clear({ deviceId: A, tabId: 7, instanceId: 'dev-1' }, LOCAL)).toMatchObject({ ok: false })
@@ -223,16 +223,20 @@ describe('CompanionDev', () => {
 })
 
 describe('fremdevEnabled', () => {
-  const labs = (companion: boolean, fremdev: boolean) => ({ labs: { devices: false, companion, fremdev } })
-  it('needs the companion and Fremdev\'s own switch', () => {
-    expect(fremdevEnabled(labs(true, false))).toBe(false)
-    expect(fremdevEnabled(labs(false, true))).toBe(false)
-    expect(fremdevEnabled(labs(true, true))).toBe(true)
+  it('reads Fremdev\'s own switch alone', () => {
+    expect(fremdevEnabled({ labs: { fremdev: false } })).toBe(false)
+    expect(fremdevEnabled({ labs: { fremdev: true } })).toBe(true)
+    expect(fremdevEnabled({} as Pick<Config, 'labs'>)).toBe(false)
+  })
+  it('ignores what a 0.5.0 config still says about labs.companion', () => {
+    const old = (companion: boolean, fremdev: boolean) => ({ labs: { companion, fremdev } } as unknown as Pick<Config, 'labs'>)
+    expect(fremdevEnabled(old(false, true))).toBe(true)
+    expect(fremdevEnabled(old(true, false))).toBe(false)
   })
 })
 
-describe('with the companion on and Fremdev off', () => {
-  const config = { ...DEFAULT_CONFIG, labs: { devices: false, companion: true, fremdev: false } } as Config
+describe('with Fremdev off', () => {
+  const config = { ...DEFAULT_CONFIG, labs: { fremdev: false } } as Config
 
   it('lists nothing, and focus says to turn Fremdev on', async () => {
     const t = setup({ enabled: () => fremdevEnabled(config) })
@@ -249,7 +253,7 @@ describe('with the companion on and Fremdev off', () => {
 })
 
 describe('createDevProvider', () => {
-  const config = { ...DEFAULT_CONFIG, labs: { devices: false, companion: true, fremdev: true } } as Config
+  const config = { ...DEFAULT_CONFIG, labs: { fremdev: true } } as Config
 
   function provider() {
     const t = setup()
@@ -309,7 +313,7 @@ describe('createDevProvider', () => {
 })
 
 describe('Fremdev reports', () => {
-  const config = { ...DEFAULT_CONFIG, labs: { devices: false, companion: true, fremdev: true } } as Config
+  const config = { ...DEFAULT_CONFIG, labs: { fremdev: true } } as Config
   const REPORT = ['fremdev', 'fremdev.report']
 
   function asked(send: ReturnType<typeof setup>['send']) {
@@ -566,7 +570,7 @@ describe('Fremdev features', () => {
 })
 
 describe('Fremdev open in editor', () => {
-  const config = { ...DEFAULT_CONFIG, labs: { devices: false, companion: true, fremdev: true } } as Config
+  const config = { ...DEFAULT_CONFIG, labs: { fremdev: true } } as Config
   const OPEN = ['fremdev', 'fremdev.open']
 
   /** Tab 7 with entries 3 and 4 in its last history. */
@@ -701,7 +705,7 @@ describe('Fremdev open in editor', () => {
 })
 
 describe('Fremdev reload', () => {
-  const config = { ...DEFAULT_CONFIG, labs: { devices: false, companion: true, fremdev: true } } as Config
+  const config = { ...DEFAULT_CONFIG, labs: { fremdev: true } } as Config
   const RELOAD = ['fremdev', 'fremdev.reload']
   const sentReloads = (send: ReturnType<typeof setup>['send']) => send.mock.calls.filter(([, m]) => m.type === 'dev.reload')
 

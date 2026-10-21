@@ -144,7 +144,7 @@ describe('tileIconInScope', () => {
 describe('deviceConfigView', () => {
   it('keeps its screen, the instances it shows, and what drawing it takes', () => {
     const view = deviceConfigView(config(), 'tab-b')
-    expect(Object.keys(view).sort()).toEqual(['locale', 'screens', 'theme', 'version', 'widgets'])
+    expect(Object.keys(view).sort()).toEqual(['labs', 'locale', 'screens', 'theme', 'version', 'widgets'])
     expect(view.screens.map((s) => s.id)).toEqual(['tab-b'])
     expect(Object.keys(view.widgets).sort()).toEqual(['cal-b', 'clock-b', 'docky-b', 'sc-b', 'status-b'])
   })

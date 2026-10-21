@@ -25,7 +25,7 @@
   }
 
   /**
-   * One of 'loading' (no snapshot yet), 'off' (`labs.fremdev` or `labs.companion` off), 'unpaired' (no extension
+   * One of 'loading' (no snapshot yet), 'off' (`labs.fremdev` off), 'unpaired' (no extension
    * record), 'offline' (no install has said hello since Fremkit started), 'moduleOff' (none listed
    * has Fremdev on), 'empty' (no dev tab open) or 'rows'. A listed install that is not connected is
    * the ordinary idle state: the extension closes its socket while no dev tab is open.

@@ -54,9 +54,9 @@ export const DEV_INSTALL_MAX_BYTES = 60_000
 /** A safety net only: every change is pushed through a refresh. */
 export const COMPANION_DEV_INTERVAL_MS = 30_000
 
-/** Fremdev runs only while the companion and its own switch are both on. */
+/** Fremdev runs only while its own experimental switch is on; the companion itself is always on. */
 export function fremdevEnabled(config: Pick<Config, 'labs'>): boolean {
-  return config.labs?.companion === true && config.labs?.fremdev === true
+  return config.labs?.fremdev === true
 }
 
 /** A shot on its row, while the Edge shows it: the thumbnail (null when none came or it did not fit) and until when. */
@@ -66,7 +66,7 @@ export type DevShotView = { thumb: string | null; until: number }
 export type DevRow = DevTab & { shot?: DevShotView }
 
 export type DevSnapshot = {
-  /** `fremdevEnabled`: `labs.companion` and `labs.fremdev` both on; otherwise nothing is listed. */
+  /** `fremdevEnabled`: `labs.fremdev` on; otherwise nothing is listed. */
   enabled: boolean
   /** Extension records, connected or not. */
   paired: number
@@ -309,7 +309,7 @@ export class CompanionDev {
     return install !== undefined && install.on && install.connected && holds(install, FREMDEV_SHOT_MODULE)
   }
 
-  /** `labs.companion` or `labs.fremdev` may have changed: the snapshot says so. */
+  /** `labs.fremdev` may have changed: the snapshot says so. */
   switched(): void {
     this.changed()
   }
