@@ -73,7 +73,11 @@ describe('fremdev/build.js', () => {
     p.run()
     const [overlay] = addOverlay('vite-overlay.html')
     await settle()
-    expect(p.sent()).toEqual([{ ...BUILD, text: 'Invalid end tag.', file: '/Users/example/app/src/App.vue', line: 12, col: 3 }])
+    expect(p.sent()).toEqual([{
+      ...BUILD, text: 'Invalid end tag.', file: '/Users/example/app/src/App.vue', line: 12, col: 3,
+      frame: ['10 |      </button>', '11 |    </main>', '12 |    </section>', '   |     ^', '13 |  </template>', '14 |'],
+      stack: expect.arrayContaining(['at emitError (/Users/example/app/node_modules/@vue/compiler-core/dist/compiler-core.cjs.js:3036:5)']),
+    }])
     overlay.remove()
     await settle()
     expect(p.sent()).toEqual([expect.objectContaining({ kind: 'build' }), CLEAR])
@@ -117,7 +121,7 @@ describe('fremdev/build.js', () => {
     p.run()
     const [portal] = addOverlay('next-build-error.html')
     await settle()
-    expect(p.sent()).toEqual([{ ...BUILD, text: 'Expected \'</\', got \'onClick\'', file: './app/page.js', line: 3, col: 1 }])
+    expect(p.sent()).toEqual([{ ...BUILD, text: 'Expected \'</\', got \'onClick\'', file: './app/page.js', line: 3, col: 1, frame: expect.any(Array), stack: expect.any(Array) }])
     portal.remove()
     await settle()
     expect(p.sent().at(-1)).toEqual(CLEAR)
@@ -230,6 +234,105 @@ describe('fremdev/build.js', () => {
     addOverlay('vite-overlay.html')
     await expect(settle()).resolves.toBeUndefined()
     expect(failing.sendMessage).toHaveBeenCalledTimes(1)
+  })
+
+  it("reads Vite's code frame and stack", async () => {
+    vi.useFakeTimers()
+    const p = page()
+    p.run()
+    addOverlay('vite-overlay-sfc.html')
+    await settle()
+    expect(p.sent()).toEqual([{
+      ...BUILD,
+      text: expect.stringMatching(/^\[vue\/compiler-sfc\] Unexpected token \(3:18\)/),
+      file: '/Users/example/app/src/App.vue',
+      line: 3,
+      col: 18,
+      frame: [
+        '1  |  <script setup>',
+        "2  |  const title = 'Scratch Vite'",
+        '3  |  const broken = 1 +* 2',
+        '   |      ^',
+        '4  |  const other = 3',
+        '5  |  </script>',
+      ],
+      stack: expect.any(Array),
+    }])
+    const stack = p.sent()[0].stack as string[]
+    expect(stack).toHaveLength(10)
+    expect(stack[0]).toBe('at constructor (/Users/example/app/node_modules/@babel/parser/lib/index.js:369:19)')
+  })
+
+  it("reads webpack's code frame from its message, and Next's frame and what follows it", async () => {
+    vi.useFakeTimers()
+    const p = page()
+    p.run()
+    addOverlay('webpack-overlay-compile.html')
+    await settle()
+    const [w] = p.sent()
+    expect(w.text).toMatch(/^Module parse failed: Unexpected token \(2:0\)/)
+    expect(w.frame).toEqual([
+      "  1 | document.body.insertAdjacentHTML((('beforeend', '<h1>Scratch webpack</h1><button id=\"b\">Throw</button>')",
+      "> 2 | document.getElementById('b').addEventListener('click', () => { throw new Error('runtime boom') })",
+      '    | ^',
+      '  3 |',
+    ])
+    expect(w).not.toHaveProperty('stack')
+
+    document.body.innerHTML = ''
+    const q = page()
+    q.run()
+    addOverlay('next-build-error.html')
+    await settle()
+    const [n] = q.sent()
+    expect(n.frame).toEqual([
+      '   ,-[/Users/example/app/app/page.js:3:1]',
+      " 1 | 'use client'",
+      ' 2 | export default function Page() {',
+      " 3 |   return <main>{(<h1>Scratch Next</h1><button onClick={() => { throw new Error('runtime boom') }}>Throw</button></main>",
+      '   :                                               ^^^^^^^',
+      ' 4 | }',
+      '   `----',
+    ])
+    expect(n.stack).toEqual(['Caused by:', 'Syntax Error', 'Import trace for requested module:', './app/page.js'])
+  })
+
+  it('keeps the frame to 20 lines and the stack to 30, 300 characters each, 6 000 in all', async () => {
+    vi.useFakeTimers()
+    const p = page()
+    p.run()
+    const [overlay] = addOverlay('vite-overlay-sfc.html')
+    const root = overlay.shadowRoot!
+    const lines = (n: number, len: number) => Array.from({ length: n }, (_, i) => `${i} |`.padEnd(len, 'x')).join('\n')
+    root.querySelector('.frame')!.textContent = lines(25, 10)
+    root.querySelector('.stack')!.textContent = lines(35, 10)
+    await settle()
+    let last = p.sent().at(-1) as { frame: string[]; stack: string[] }
+    expect(last.frame).toHaveLength(20)
+    expect(last.stack).toHaveLength(30)
+    root.querySelector('.frame')!.textContent = lines(20, 400)
+    root.querySelector('.stack')!.textContent = lines(30, 400)
+    await settle()
+    last = p.sent().at(-1) as { frame: string[]; stack: string[] }
+    // Each line cut to 300: 19 of them and their line breaks fit 6 000, the stack none.
+    expect(last.frame).toHaveLength(19)
+    expect(last.frame.every((l) => l.length === 300)).toBe(true)
+    expect(last).not.toHaveProperty('stack')
+    const value = (name: string) => Number(new RegExp(`const ${name} = ([\\d_]+)`).exec(source)?.[1].replace(/_/g, ''))
+    // lib/devlog.js's boundBuildLines bounds (pinned to the same values in server/test/companion-fremdev-lib.test.ts).
+    expect([value('MAX_FRAME_LINES'), value('MAX_STACK_LINES'), value('MAX_LINE'), value('MAX_EXTRA')]).toEqual([20, 30, 300, 6_000])
+  })
+
+  it('says a changed code frame again for the same message', async () => {
+    vi.useFakeTimers()
+    const p = page()
+    p.run()
+    const [overlay] = addOverlay('vite-overlay-sfc.html')
+    await settle()
+    overlay.shadowRoot!.querySelector('.frame')!.textContent = '4  |  const broken = 1 +* 2\n   |      ^'
+    await settle()
+    expect(p.sent()).toHaveLength(2)
+    expect(p.sent()[1]).toMatchObject({ frame: ['4  |  const broken = 1 +* 2', '   |      ^'] })
   })
 
   it('reads text and attributes only: no page object, no network, the shadow root through the prototype getter', () => {

@@ -97,7 +97,9 @@ export function emptyTab(tabId, url, title, now) {
 // in no tally and never colours the light: it is information, not a fault. A perf entry counts in
 // the requests tally, so it lights the row orange, never red.
 // Entries keep their stack here; the wire drops it. A build entry keeps the file's full `path` here;
-// the wire carries it as `file`, its home folder written `~/` (homePath).
+// the wire carries it as `file`, its home folder written `~/` (homePath). A build entry's code frame
+// and stack (`frame`, `stack`, lists of lines or null) stay here like an error's stack: only a
+// report copied with its stack carries them.
 // state: `open` until the user marks it seen (`clear`), `resolved` once the page reloads or updates
 // (and, for a build entry, once the overlay goes or shows another error).
 
@@ -131,6 +133,7 @@ function record(tab, entry) {
   if (top && top.state === 'open' && sameEntry(top, entry)) {
     const merged = { ...top, n: Math.min(MAX_COUNT, top.n + entry.n), at: entry.at }
     if (entry.kind === 'error') merged.stack = entry.stack
+    if (entry.kind === 'build') Object.assign(merged, { frame: entry.frame, stack: entry.stack })
     return { history: [merged, ...ring.slice(1)], nextId: tab.nextId, errors: tab.errors, requests: tab.requests }
   }
   const id = isId(tab.nextId) ? tab.nextId : 1
@@ -163,6 +166,9 @@ const bump = (t, last) => ({
 const resolved = (t) => ({ ...t, open: 0, seen: 0 })
 
 const isLive = (e) => e.kind === 'build' && (e.state === 'open' || e.state === 'seen')
+const isLines = (v) => Array.isArray(v) && v.every((l) => typeof l === 'string')
+/** Two lists of lines (or nulls, or a missing one) that say the same. */
+const sameLines = (a, b) => (a ?? null) === (b ?? null) || (isLines(a) && isLines(b) && a.length === b.length && a.every((l, i) => l === b[i]))
 const isLivePerf = (e) => e.kind === 'perf' && (e.state === 'open' || e.state === 'seen')
 const isPos = (v) => Number.isInteger(v) && v >= 1 && v <= MAX_POS
 
@@ -321,15 +327,17 @@ export function reduce(tab, event, now) {
       }
     case 'build': {
       // The overlay re-renders as the user types: the same error again is not a new one.
-      // An edit above it moves it: it takes the newest line and column (an editor opened on it
-      // must not land on a stale line), keeping its id, its count and the tally.
+      // An edit above it moves it: it takes the newest line, column, code frame and stack (an
+      // editor opened on it must not land on a stale line), keeping its id, its count and the tally.
       const path = typeof event.file === 'string' ? event.file : null
       const line = isPos(event.line) ? event.line : null
       const col = isPos(event.col) ? event.col : null
+      const frame = isLines(event.frame) ? event.frame : null
+      const stack = isLines(event.stack) ? event.stack : null
       const newest = (tab.history ?? []).find(isLive)
       if (newest && newest.text === event.text && newest.path === path) {
-        if (newest.line === line && newest.col === col) return tab
-        return { ...tab, history: tab.history.map((e) => (e === newest ? { ...e, path, line, col } : e)) }
+        if (newest.line === line && newest.col === col && sameLines(newest.frame, frame) && sameLines(newest.stack, stack)) return tab
+        return { ...tab, history: tab.history.map((e) => (e === newest ? { ...e, path, line, col, frame, stack } : e)) }
       }
       // Another error replaces the one shown: one build entry open at a time.
       const base = { ...tab, ...resolveBuilds(tab) }
@@ -341,6 +349,8 @@ export function reduce(tab, event, now) {
           path,
           line,
           col,
+          frame,
+          stack,
           n: 1,
           at: now,
           state: 'open',
@@ -439,8 +449,16 @@ function wireTally(t, shape) {
 const STATES = ['open', 'seen', 'resolved']
 const statusOf = (s) => Math.max(0, Math.min(599, Math.trunc(s) || 0))
 
+/** An entry without what stays in the worker's memory: an error's stack, a build's frame and stack. */
+function withoutStack(e) {
+  if (e.kind === 'error' && e.stack !== null) return { ...e, stack: null }
+  if (e.kind === 'build' && ((e.frame ?? null) !== null || (e.stack ?? null) !== null)) return { ...e, frame: null, stack: null }
+  return e
+}
+
 /**
- * The rows as chrome.storage.session keeps them: every entry's stack dropped. Stacks stay in the
+ * The rows as chrome.storage.session keeps them: every entry's stack (and a build's code frame)
+ * dropped. Stacks stay in the
  * worker's memory, for a report; the session copy is rewritten up to twice a second and only has to
  * bring the rows back after the worker was stopped, at which point a report simply has no stacks
  * for what came before.
@@ -449,7 +467,7 @@ export function sessionTabs(tabs) {
   const out = {}
   for (const [id, tab] of Object.entries(tabs)) {
     out[id] = Array.isArray(tab.history)
-      ? { ...tab, history: tab.history.map((e) => (e.kind === 'error' && e.stack !== null ? { ...e, stack: null } : e)) }
+      ? { ...tab, history: tab.history.map(withoutStack) }
       : tab
   }
   return out
@@ -651,7 +669,7 @@ export function restoredTabs(raw) {
       if (!t || typeof t !== 'object' || !Number.isInteger(t.tabId) || String(t.tabId) !== key) continue
       if (typeof t.url !== 'string' || typeof t.host !== 'string' || typeof t.title !== 'string') continue
       if ((t.server !== 'up' && t.server !== 'down') || !Array.isArray(t.history) || t.history.length > HISTORY_MAX) continue
-      if (!t.history.every((e) => wireEntry(e) !== null && (e.kind !== 'error' || isFrames(e.stack)))) continue
+      if (!t.history.every((e) => wireEntry(e) !== null && (e.kind === 'error' ? isFrames(e.stack) : e.kind !== 'build' || (isFrames(e.frame) && isFrames(e.stack))))) continue
       // An id at or above the next one would come round again while its entry is still listed.
       if (!isId(t.nextId) || !t.history.every((e) => e.id < t.nextId)) continue
       if (!(t.devServer === null || DEV_SERVERS.includes(t.devServer))) continue

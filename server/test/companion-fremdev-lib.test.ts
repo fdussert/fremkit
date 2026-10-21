@@ -4,9 +4,9 @@ import { describe, expect, it, vi } from 'vitest'
 // @ts-expect-error plain JS module outside server/, no declarations
 import { BUILTIN_PERMISSION_ORIGINS, FREMKIT_EXCLUDES, inOrigins, isDevUrl, parsePattern, releasableOrigins } from '../../companion/lib/devhosts.js'
 // @ts-expect-error plain JS module
-import { boundFrames, errorText, framePlace, homePath, hotReloadSignal, isNoise, MAX_FRAME, MAX_FRAMES, MAX_STACK, MAX_TEXT, METHODS, methodOf, parseStack, pathOf, RateLimiter } from '../../companion/lib/devlog.js'
+import { boundBuildLines, boundFrames, errorText, framePlace, homePath, hotReloadSignal, isNoise, MAX_BUILD_EXTRA, MAX_BUILD_LINE, MAX_FRAME, MAX_FRAME_LINES, MAX_FRAMES, MAX_STACK, MAX_STACK_LINES, MAX_TEXT, METHODS, methodOf, parseStack, pathOf, RateLimiter } from '../../companion/lib/devlog.js'
 // @ts-expect-error plain JS module
-import { emptyTab, fremdevSupport, HISTORY_MAX, reduce, SLOW_MAX, restoredTabs, Throttle, validRow, wireTabs } from '../../companion/lib/devtabs.js'
+import { emptyTab, fremdevSupport, HISTORY_MAX, reduce, SLOW_MAX, restoredTabs, sessionTabs, Throttle, validRow, wireTabs } from '../../companion/lib/devtabs.js'
 // @ts-expect-error plain JS module
 import { hello, devShot, devTabs, modulesMsg, ping } from '../../companion/lib/protocol.js'
 // @ts-expect-error plain JS module
@@ -1071,7 +1071,7 @@ describe('build entries', () => {
     expect(same).toBe(tab)
     tab = same
     expect(builds(tab)).toHaveLength(1)
-    expect(tab.history[0]).toEqual({ kind: 'build', id: 1, text: 'Invalid end tag.', path: '/Users/example/app/src/App.vue', line: 12, col: 3, n: 1, at: 200, state: 'open' })
+    expect(tab.history[0]).toEqual({ kind: 'build', id: 1, text: 'Invalid end tag.', path: '/Users/example/app/src/App.vue', line: 12, col: 3, frame: null, stack: null, n: 1, at: 200, state: 'open' })
     expect(tab.errors).toMatchObject({ total: 1, open: 1, seen: 0, last: { text: 'Invalid end tag.', at: 200 } })
   })
 
@@ -1142,6 +1142,115 @@ describe('build entries', () => {
   it('restores a build entry from the session copy', () => {
     const tab = reduce(base(), build('x'), 200)
     expect(Object.keys(restoredTabs({ 1: tab }))).toEqual(['1'])
+  })
+
+  // The Vite overlay of `[vue/compiler-sfc] Unexpected token (3:15)`, as build.js reads it.
+  const FRAME = [
+    '1  |  <script setup>',
+    "2  |  const title = 'Scratch Vite'",
+    '3  |  const broken = 1 +* 2',
+    '   |                ^',
+    '4  |  const other = 3',
+  ]
+  const STACK = [
+    'at constructor (/Users/Jane Example/app/node_modules/@babel/parser/lib/index.js:369:19)',
+    'at Parser.raise (/Users/Jane Example/app/node_modules/@babel/parser/lib/index.js:6622:19)',
+  ]
+  const framed = (extra: Record<string, unknown> = {}) =>
+    build('[vue/compiler-sfc] Unexpected token (3:15)', { file: '/Users/Jane Example/app/src/App.vue', line: 3, col: 15, frame: FRAME, stack: STACK, ...extra })
+
+  it('boundBuildLines keeps 20 frame lines, 30 stack lines, 300 characters each, 6000 in all', () => {
+    expect([MAX_FRAME_LINES, MAX_STACK_LINES, MAX_BUILD_LINE, MAX_BUILD_EXTRA]).toEqual([20, 30, 300, 6_000])
+    const many = (n: number, len: number) => Array.from({ length: n }, (_, i) => `${i}`.padEnd(len, 'x'))
+    expect(boundBuildLines(many(25, 10), many(35, 10))).toEqual({ frame: many(20, 10), stack: many(30, 10) })
+    // The frame first, then as much of the stack as fits: 20 × 301 = 6020 > 6000.
+    const wide = boundBuildLines(many(20, 400), many(30, 400))
+    expect(wide.frame).toHaveLength(19)
+    expect(wide.frame.every((l: string) => l.length === 300)).toBe(true)
+    expect(wide.stack).toBeUndefined()
+    expect([...wide.frame].join('\n').length).toBeLessThanOrEqual(6_000)
+    const mixed = boundBuildLines(many(10, 300), many(30, 300))
+    expect(mixed.frame).toHaveLength(10)
+    expect(mixed.stack).toHaveLength(9)
+    expect(boundBuildLines([], undefined)).toEqual({})
+    // Never half of a surrogate pair.
+    expect(boundBuildLines(['a'.repeat(299) + '\u{1F600}'], [])).toEqual({ frame: ['a'.repeat(299)] })
+  })
+
+  it('keeps a build entry\'s code frame and stack in the worker, never in dev.tabs nor the session copy', () => {
+    const tab = reduce(base(), framed(), 200)
+    expect(tab.history[0]).toMatchObject({ frame: FRAME, stack: STACK })
+    const [row] = wireTabs([tab])
+    expect(Object.keys(row.history[0]).sort()).toEqual(['at', 'col', 'file', 'id', 'kind', 'line', 'n', 'state', 'text'])
+    expect(JSON.stringify(row)).not.toContain('broken')
+    expect(JSON.stringify(row)).not.toContain('Parser')
+    expect(DevTabSchema.safeParse(row).success).toBe(true)
+    const session = sessionTabs({ 1: tab })[1]
+    expect(session.history[0]).toMatchObject({ kind: 'build', frame: null, stack: null, line: 3 })
+    expect(JSON.stringify(session)).not.toContain('broken')
+    // The session copy comes back, and so does a row from before frames (no such keys).
+    expect(Object.keys(restoredTabs({ 1: session }))).toEqual(['1'])
+    const { frame: _f, stack: _s, ...older } = tab.history[0]
+    expect(Object.keys(restoredTabs({ 1: { ...tab, history: [older] } }))).toEqual(['1'])
+    expect(Object.keys(restoredTabs({ 1: { ...tab, history: [{ ...older, frame: 'x' }] } }))).toEqual([])
+  })
+
+  it('a folded build entry takes the newest code frame and stack', () => {
+    let tab = reduce(base(), framed(), 200)
+    expect(reduce(tab, framed(), 250)).toBe(tab)
+    const moved = ['5  |  const broken = 1 +* 2', '   |                ^']
+    tab = reduce(tab, framed({ frame: moved, stack: undefined }), 300)
+    expect(builds(tab)).toHaveLength(1)
+    expect(tab.history[0]).toMatchObject({ id: 1, n: 1, frame: moved, stack: null, line: 3 })
+    expect(tab.errors).toMatchObject({ total: 1, open: 1 })
+  })
+
+  it('reports a build entry\'s code frame and stack only with the stack, its home folder as ~', () => {
+    const WORDS: Record<string, (...s: unknown[]) => string> = {
+      reportTitle: () => 'Bug report', reportServer: () => 'dev server', reportLines: () => 'Lines.',
+      reportErrors: (open, total) => `Errors (${open} open, ${total} total)`, reportBuild: () => 'Build',
+      stateSeen: () => 'seen', stateResolved: () => 'resolved',
+    }
+    const fmt = (stack: boolean) => ({ stack, now: 9_000, t: (key: string, ...subs: unknown[]) => WORDS[key](...subs), time: (ms: number) => `T${ms}`, date: (ms: number) => `D${ms}` })
+    const tab = reduce(base(), framed({ frame: [...FRAME, '   ,-[/Users/Jane Example/app/src/App.vue:3:15]'] }), 200)
+    expect(buildReport(tab, fmt(true))).toContain([
+      '### Build',
+      '- T200 [vue/compiler-sfc] Unexpected token (3:15)',
+      '  at ~/app/src/App.vue:3:15',
+      '    1  |  <script setup>',
+      "    2  |  const title = 'Scratch Vite'",
+      '    3  |  const broken = 1 +* 2',
+      '       |                ^',
+      '    4  |  const other = 3',
+      '       ,-[~/app/src/App.vue:3:15]',
+      '    at constructor (~/app/node_modules/@babel/parser/lib/index.js:369:19)',
+      '    at Parser.raise (~/app/node_modules/@babel/parser/lib/index.js:6622:19)',
+    ].join('\n'))
+    expect(buildReport(tab, fmt(true))).not.toContain('/Users/')
+    const plain = buildReport(tab, fmt(false))
+    expect(plain).toContain('- T200 [vue/compiler-sfc] Unexpected token (3:15)\n  at ~/app/src/App.vue:3:15')
+    expect(plain).not.toContain('broken')
+    expect(plain).not.toContain('Parser.raise')
+  })
+
+  it('keeps the dev.report message within 60 000 bytes with 20 build entries of the largest frames and stacks', () => {
+    let tab = base()
+    const lines = (n: number, tag: string) => Array.from({ length: n }, (_, i) => `${tag}${String(i).padStart(2, '0')} ${'é'.repeat(196)}`)
+    for (let i = 0; i < 20; i++) {
+      const ev = { kind: 'build', text: `B${String(i).padStart(2, '0')} ${'x'.repeat(290)}`, file: `/Users/example/app/src/${i}.vue`, ...boundBuildLines(lines(MAX_FRAME_LINES + 5, 'F'), lines(MAX_STACK_LINES + 5, 'S')) }
+      expect(ev.frame).toHaveLength(MAX_FRAME_LINES)
+      expect([...ev.frame, ...ev.stack].join('\n').length).toBeLessThanOrEqual(MAX_BUILD_EXTRA)
+      tab = reduce(tab, ev, 1_000 + i)
+    }
+    expect(builds(tab)).toHaveLength(20)
+    const msg = reportMessage('6f1c2a5e-8f0b-4c1d-9a3e-2b7d4e5f6a7b', 1, tab, {
+      stack: true, now: 9_000, t: (key: string) => key, time: (ms: number) => `T${ms}`, date: (ms: number) => `D${ms}`,
+    })
+    expect(msg.text.length).toBeLessThanOrEqual(REPORT_MAX)
+    expect(new TextEncoder().encode(JSON.stringify(msg)).length).toBeLessThanOrEqual(60_000)
+    expect(msg.text).toContain('B19 ')
+    expect(msg.text).toContain('    F19 ')
+    expect(msg.text).not.toContain('B00 ')
   })
 
   it('reports a Build section with ~/ paths', () => {

@@ -450,7 +450,10 @@ nothing else of `labs`. What it holds and what it can do:
   report the user asked for. The hook reads it with V8's native `stack` getter, captured at hook
   start and called with `Reflect.apply`, only when `Error.prepareStackTrace` is absent or
   `undefined` (checked by descriptor, so no page getter runs) and the error's `name` and `message`
-  are plain data strings; otherwise there is no stack.
+  are plain data strings; otherwise there is no stack. A build entry's code frame and stack, read
+  from the dev server's overlay as text (at most 20 and 30 lines of 300 characters, 6000 in all),
+  are kept the same way: not in `dev.tabs`, not in the session copy, only in a report with its
+  stack, home folders written `~`.
 - *The bug report.* The extension builds the text (at most 48 000 characters) and answers the
   server's `dev.report.ask` with `dev.report`; the server waits 5 seconds, then writes it to the
   clipboard through `pbcopy` with the text on stdin, never argv

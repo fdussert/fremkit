@@ -256,13 +256,19 @@ segment (`//x/`, `/../`) is refused, so those URLs can only name the tab's own o
 when it shows a **compile error**, and the tab gets a `build` entry, counted among its errors (the
 light turns red), shown on the Edge with "Build" before its text:
 - **Vite**: the `vite-error-overlay` element's open shadow root, its message, its file
-  (`path:line:col`) and, when the message is empty or blank, its code frame;
+  (`path:line:col`), its code frame (the message itself when that is empty or blank) and its stack;
 - **webpack-dev-server**: the overlay's iframe, only while its heading says *Compiled with
   problems* or *Failed to compile*, and only its first `ERROR` (a warning is no failed build): the
-  message, and the file, line and column of its `ERROR in ./src/index.js 2:0` header (webpack counts
-  columns from 0; the entry counts them from 1);
+  message, the code frame it ends with (from its first `N |` line), and the file, line and column of
+  its `ERROR in ./src/index.js 2:0` header (webpack counts columns from 0; the entry counts them
+  from 1);
 - **Next**: inside `nextjs-portal`'s shadow root, the dialog labelled *Build Error* only: its
-  message, the file its code frame names, and the line and column in that frame.
+  message, the file its code frame names, the line and column in that frame, the frame itself (SWC's
+  `,-[` … `` `---- `` block) and what follows it (*Caused by*, the import trace) as its stack.
+
+The entry's **code frame and stack stay in the extension** like an error's stack: never in what
+the Edge receives nor in the session copy, only in a report copied with its stack. They are kept to
+20 lines of frame and 30 of stack, 300 characters a line and 6000 in all (the frame first).
 
 Runtime errors are the hook's to report: webpack-dev-server's *Uncaught runtime errors* overlay and
 Next's runtime dialog add no entry, so an error is never counted twice, and `nextjs-portal` alone
@@ -299,10 +305,25 @@ light turns hollow); it does not empty the history.
 
 **Copy report** puts a Markdown bug report for that tab on the Mac's clipboard: the page, the open
 issues and the history, at most 48 000 characters (the oldest entries are dropped first, then
-stacks). **Copy with stack** adds each error's stack. From the Edge, the widget sends a `report`
-command; the server asks the extension for the text, waits at most 5 seconds, and writes it to the
-clipboard with `pbcopy`, the text going through its standard input. The extension's popup has the
-same button for each tab, with a *stack* checkbox, and writes the clipboard from the popup itself.
+stacks). **Copy with stack** adds each error's stack, and under each build entry the overlay's code
+frame, its alignment kept, then its stack, indented under the entry with home folders as `~`:
+
+```
+### Build
+- 10:21:05 [vue/compiler-sfc] Unexpected token (3:18)
+  at ~/app/src/App.vue:3:18
+    2  |  const title = 'Scratch Vite'
+    3  |  const broken = 1 +* 2
+       |                  ^
+    4  |  const other = 3
+    at constructor (~/app/node_modules/@babel/parser/lib/index.js:369:19)
+    at Parser.raise (~/app/node_modules/@babel/parser/lib/index.js:6622:19)
+```
+
+From the Edge, the widget sends a `report` command; the server asks the extension for the text,
+waits at most 5 seconds, and writes it to the clipboard with `pbcopy`, the text going through its
+standard input. The extension's popup has the same button for each tab, with a *stack* checkbox,
+and writes the clipboard from the popup itself.
 At most 8 reports can be pending per install. The report is built in the extension and goes nowhere
 else: only to the clipboard, when you press a button. It is available while Fremdev is on and
 `labs.companion` and `labs.fremdev` are ticked, for a tab the extension reported, and only from the

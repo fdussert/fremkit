@@ -20,12 +20,12 @@
 // - navigations and titles: chrome.tabs.onUpdated.
 //
 // State: `chrome.storage.local.fremdev = { on, patterns }` (the options page edits the patterns),
-// `chrome.storage.session.devTabs = { [tabId]: tab }` (stacks dropped), `chrome.storage.session.fremdevPerf`
+// `chrome.storage.session.devTabs = { [tabId]: tab }` (stacks and code frames dropped), `chrome.storage.session.fremdevPerf`
 // (the previous loads' load and LCP, per origin and path) and `chrome.storage.session.fremdevSupport`
 // for the popup. Nothing Fremdev is sent unless this socket's `ready` said the server speaks it.
 
 import { BUILTIN_PERMISSION_ORIGINS, FREMKIT_EXCLUDES, inOrigins, isDevUrl, parsePattern } from './lib/devhosts.js'
-import { boundFrames, clip, isNoise, MAX_FRAME, MAX_TEXT, methodOf, pathOf } from './lib/devlog.js'
+import { boundBuildLines, boundFrames, clip, isNoise, MAX_FRAME, MAX_TEXT, methodOf, pathOf } from './lib/devlog.js'
 import { InFlight, SLOW_MS } from './lib/devflight.js'
 import { editorUrl } from './lib/devopen.js'
 import { PerfMemory, perfValues, perfVerdict } from './lib/devperf.js'
@@ -98,10 +98,13 @@ const MAX_FILE = 1024
 const MAX_POS = 10_000_000
 const isPos = (v) => Number.isInteger(v) && v >= 1 && v <= MAX_POS
 
+const isLines = (v) => Array.isArray(v) && v.every((l) => typeof l === 'string')
+
 /**
  * A compile error from fremdev/build.js rebuilt: its text clipped, and its file, line and column
- * when given. A field that is there but not one (a file that is no bounded string, a line 0) drops
- * the event: build.js never sends one.
+ * when given, its code frame and stack bounded (boundBuildLines). A field that is there but not one
+ * (a file that is no bounded string, a line 0, a frame that is no list of strings) drops the event:
+ * build.js never sends one.
  */
 function buildEvent(msg) {
   if (typeof msg.text !== 'string') return null
@@ -115,7 +118,8 @@ function buildEvent(msg) {
     if (!isPos(msg[key])) return null
     event[key] = msg[key]
   }
-  return event
+  for (const key of ['frame', 'stack']) if (msg[key] !== undefined && !isLines(msg[key])) return null
+  return { ...event, ...boundBuildLines(msg.frame, msg.stack) }
 }
 
 /**

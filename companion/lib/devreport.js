@@ -5,7 +5,8 @@ import { clip, homePath, pathOf } from './devlog.js'
 // what the popup copies. Pure: the words, the time and the date are the caller's (chrome.i18n and
 // the browser's locale in the worker), so a test reads the exact text.
 //
-// The tab is lib/devtabs.js's internal one, stacks included: they leave the worker only here. Full
+// The tab is lib/devtabs.js's internal one, stacks included (an error's stack, a build's code frame
+// and stack): they leave the worker only here, and only in a report copied with its stack. Full
 // paths stay in the worker too: every text, origin, frame and path is written with its home folder
 // as `~` (homePath) before it is clipped.
 
@@ -53,6 +54,11 @@ function entryLines(e, { stack, t, time }) {
       if (typeof e.path === 'string' && e.path !== '') {
         const pos = isPos(e.line) ? `:${e.line}${isPos(e.col) ? `:${e.col}` : ''}` : ''
         out.push(`  at ${homeLine(e.path)}${pos}`)
+      }
+      // The overlay's code frame, its alignment kept, then its stack: with the stack only.
+      if (stack) {
+        for (const l of Array.isArray(e.frame) ? e.frame : []) out.push(`    ${homeLine(l, Infinity)}`)
+        for (const l of Array.isArray(e.stack) ? e.stack : []) out.push(`    ${homeLine(l, Infinity)}`)
       }
       return out
     }

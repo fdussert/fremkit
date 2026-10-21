@@ -316,6 +316,38 @@ function parseStack(stack, pageOrigin) {
 
 export { boundFrames, framePlace, MAX_FRAME, MAX_FRAMES, MAX_STACK, parseStack }
 
+/** A build entry's code frame and stack: at most this many lines, each this long, this long in all. */
+export const MAX_FRAME_LINES = 20
+export const MAX_STACK_LINES = 30
+export const MAX_BUILD_LINE = 300
+export const MAX_BUILD_EXTRA = 6_000
+
+/**
+ * `{ frame?, stack? }` of a build event within the bounds fremdev/build.js keeps too: each line
+ * clipped to MAX_BUILD_LINE, at most MAX_FRAME_LINES and MAX_STACK_LINES of them, and the frame then
+ * the stack kept while each line and its line break fit MAX_BUILD_EXTRA. An empty list is left out.
+ */
+export function boundBuildLines(frame, stack) {
+  const out = {}
+  let left = MAX_BUILD_EXTRA
+  const take = (lines, max) => {
+    const kept = []
+    for (const l of lines ?? []) {
+      if (kept.length >= max) break
+      const cut = clip(l, MAX_BUILD_LINE)
+      if (cut.length + 1 > left) break
+      kept.push(cut)
+      left -= cut.length + 1
+    }
+    return kept
+  }
+  const f = take(frame, MAX_FRAME_LINES)
+  if (f.length > 0) out.frame = f
+  const s = take(stack, MAX_STACK_LINES)
+  if (s.length > 0) out.stack = s
+  return out
+}
+
 /** The request methods reported as themselves; any other reads `OTHER`. The one list: devtabs.js reads it too. */
 export const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS']
 

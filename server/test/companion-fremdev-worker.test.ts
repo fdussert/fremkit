@@ -225,6 +225,21 @@ describe('companion/fremdev.js', () => {
     expect(pageEvent({ kind: 'build-clear', text: 'ignored', tabId: 3 })).toEqual({ kind: 'build-clear' })
   })
 
+  it("bounds a build event's code frame and stack, and drops one that is not a list of strings", () => {
+    expect(pageEvent({ kind: 'build', text: 'x', frame: ['1 | a', '  | ^'], stack: ['at f (/a.js:1:2)'] }))
+      .toEqual({ kind: 'build', text: 'x', frame: ['1 | a', '  | ^'], stack: ['at f (/a.js:1:2)'] })
+    expect(pageEvent({ kind: 'build', text: 'x', frame: [], stack: [] })).toEqual({ kind: 'build', text: 'x' })
+    const big = pageEvent({ kind: 'build', text: 'x', frame: Array.from({ length: 40 }, () => 'f'.repeat(400)), stack: Array.from({ length: 40 }, () => 's'.repeat(400)) })
+    expect(big.frame.length).toBeLessThanOrEqual(20)
+    expect([...big.frame, ...(big.stack ?? [])].every((l: string) => l.length <= 300)).toBe(true)
+    expect([...big.frame, ...(big.stack ?? [])].join('\n').length).toBeLessThanOrEqual(6000)
+    const long = pageEvent({ kind: 'build', text: 'x', stack: Array.from({ length: 40 }, (_, i) => `at f${i}`) })
+    expect(long.stack).toHaveLength(30)
+    for (const bad of [{ frame: 'a' }, { frame: ['a', 1] }, { stack: { 0: 'a', length: 1 } }, { stack: [null] }]) {
+      expect(pageEvent({ kind: 'build', text: 'x', ...bad }), JSON.stringify(bad)).toBeNull()
+    }
+  })
+
   it('rebuilds a devserver event from a known kind and a bounded base', () => {
     expect(pageEvent({ kind: 'devserver', server: 'vite', base: '/app/', tabId: 3 })).toEqual({ kind: 'devserver', server: 'vite', base: '/app/' })
     expect(pageEvent({ kind: 'devserver', server: 'next', base: '/' })).toEqual({ kind: 'devserver', server: 'next', base: '/' })
@@ -420,6 +435,26 @@ describe('companion/fremdev.js', () => {
     await f.later()
     expect(f.rows()['7'].history[0].state).toBe('resolved')
     expect(f.rows()['7'].errors).toMatchObject({ total: 1, open: 0 })
+  })
+
+  it("keeps a build entry's code frame and stack for the report with its stack, never in dev.tabs or the session copy", async () => {
+    const f = await makeFremdev()
+    f.fremdev.onReady({ type: 'ready', protocol: 2, modules: { fremplay: true, fremdev: true } })
+    await f.fremdev.onPageEvent({
+      kind: 'build', text: '[vue/compiler-sfc] Unexpected token (3:15)', file: '/Users/example/app/src/App.vue', line: 3, col: 15,
+      frame: ['3  |  const broken = 1 +* 2', '   |                ^'], stack: ['at Parser.raise (/Users/example/app/node_modules/p.js:1:2)'],
+    }, devSender())
+    await f.later()
+    expect(JSON.stringify(f.sent)).toContain('Unexpected token')
+    expect(JSON.stringify(f.sent)).not.toContain('broken')
+    expect(JSON.stringify(f.sent)).not.toContain('Parser.raise')
+    expect(JSON.stringify(f.store.session)).not.toContain('broken')
+    expect(JSON.stringify(f.store.session)).not.toContain('Parser.raise')
+    const withStack = await f.fremdev.report(7, true)
+    expect(withStack).toContain('  at ~/app/src/App.vue:3:15\n    3  |  const broken = 1 +* 2\n       |                ^\n    at Parser.raise (~/app/node_modules/p.js:1:2)')
+    const plain = await f.fremdev.report(7, false)
+    expect(plain).toContain('Unexpected token (3:15)')
+    expect(plain).not.toContain('broken')
   })
 
   it('announces fremdev.report only while on', async () => {
