@@ -295,7 +295,8 @@ overlay that shows but has nothing to read yet changes nothing. A different erro
 before it; the overlay going away (`build-clear`), a reload or a hot update resolves it, and one the
 history's 20 entries pushed out stops counting. What is sent is the message clipped to 300
 characters, the file as the overlay names it (an absolute path under Vite, `./src/…` under webpack
-and Next) and its line and column.
+and Next) and its line and column. A line and column the overlay gives without a file are kept on
+their own (the report then says `at 3:15`).
 
 **Home folders read `~`.** Whatever leaves the extension (the Edge, the report, the popup) writes a
 home folder `/Users/<name>/` as `~/`: in the page's title, an error's text, origin and stack frames,

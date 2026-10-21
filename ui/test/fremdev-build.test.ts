@@ -136,6 +136,18 @@ describe('fremdev/build.js', () => {
     }
   })
 
+  it("keeps a line and column with no file: Next's dialog whose frame names no file link", async () => {
+    vi.useFakeTimers()
+    const p = page()
+    p.run()
+    const [portal] = addOverlay('next-build-error.html')
+    portal.shadowRoot!.querySelector('[data-nextjs-codeframe] .code-frame-link [data-text]')!.textContent = ''
+    await settle()
+    const [sent] = p.sent()
+    expect(sent).toMatchObject({ ...BUILD, text: 'Expected \'</\', got \'onClick\'', line: 3, col: 1 })
+    expect(sent).not.toHaveProperty('file')
+  })
+
   it('sends one message for an overlay that re-renders 50 times in a second, and a second for a new text', async () => {
     vi.useFakeTimers()
     const p = page()
