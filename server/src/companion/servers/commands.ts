@@ -286,13 +286,22 @@ export interface ServerCommandsOptions {
   started?(entry: ManagedEntry, replaced: ServerRow): void
 }
 
-/** Waits until nothing listens on `ports`, polling lsof, for `PORT_FREE_MS` at most. */
+/**
+ * Waits until nothing listens on `ports`, polling lsof, for `PORT_FREE_MS` of real time at most:
+ * measured with the clock, since a slow lsof makes each round longer than its pause.
+ */
 async function portsFree(sys: Pick<ServersSystem, 'runLsofListen'>, ports: number[]): Promise<boolean> {
-  for (let waited = 0; ; waited += PORT_POLL_MS) {
-    const held = new Set(parseLsofListen(await sys.runLsofListen()).flatMap((l) => l.ports))
+  const since = Date.now()
+  const left = () => PORT_FREE_MS - (Date.now() - since)
+  const pause = (ms: number) => new Promise<null>((resolve) => { const t = setTimeout(() => resolve(null), ms); t.unref?.() })
+  for (;;) {
+    // An lsof still running when the time is up does not stretch the wait.
+    const out = await Promise.race([sys.runLsofListen(), pause(Math.max(0, left()))])
+    if (out === null) return false
+    const held = new Set(parseLsofListen(out).flatMap((l) => l.ports))
     if (!ports.some((port) => held.has(port))) return true
-    if (waited >= PORT_FREE_MS) return false
-    await new Promise((resolve) => { const t = setTimeout(resolve, PORT_POLL_MS); t.unref?.() })
+    if (left() <= 0) return false
+    await pause(Math.min(PORT_POLL_MS, left()))
   }
 }
 

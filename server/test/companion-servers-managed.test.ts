@@ -296,13 +296,15 @@ const NEW_VITE: Proc = { pid: 2001, ppid: 2000, pgid: 2000, start: CHILD_START, 
 
 function world(initial: Proc[], o: { dataDir: string; scanner?: string | null; procargs?: string; spawned?: Proc[]; t?: { now: number }; takePort?: boolean }) {
   let procs = [...initial]
+  /** Tests change these mid-command: the provider copied `sys` when it was made. */
+  const hooks = { lsofDelayMs: 0, procargs: null as Promise<void> | null }
   const signals: Array<[number, string]> = []
   const spawns: Array<{ file: string; args: string[]; options: SpawnOptions }> = []
   const line = (p: Proc) => `${p.pid} ${p.ppid ?? 1} ${p.pgid ?? p.pid} ${p.uid ?? UID} ${p.start ?? START} 01:02:03 1.5 120000 ${p.comm}`
   const sys: ServersSystem = {
     uid: UID,
     home: HOME,
-    runLsofListen: async () => procs.filter((p) => p.ports?.length).map((p) => [`p${p.pid}`, `c${p.comm.split('/').pop()}`, `u${p.uid ?? UID}`, ...p.ports!.map((n) => `n*:${n}`)].join('\n')).join('\n') + '\n',
+    runLsofListen: async () => (hooks.lsofDelayMs > 0 ? new Promise((r) => setTimeout(r, hooks.lsofDelayMs)) : Promise.resolve()).then(() => procs.filter((p) => p.ports?.length).map((p) => [`p${p.pid}`, `c${p.comm.split('/').pop()}`, `u${p.uid ?? UID}`, ...p.ports!.map((n) => `n*:${n}`)].join('\n')).join('\n') + '\n'),
     runPsStats: async () => [{ pid: 1, ppid: 0, comm: '/sbin/launchd', uid: 0 } as Proc, ...(procs.some((p) => p.pid === SELF) ? [] : [FREMKIT]), ...procs].map(line).join('\n') + '\n',
     runPsArgs: async (pids) => procs.filter((p) => pids.includes(p.pid)).map((p) => `${p.pid} ${p.args ?? p.comm}`).join('\n') + '\n',
     runLsofCwd: async (pids) => procs.filter((p) => pids.includes(p.pid) && p.cwd).map((p) => `p${p.pid}\nfcwd\nn${p.cwd}`).join('\n') + '\n',
@@ -335,7 +337,7 @@ function world(initial: Proc[], o: { dataDir: string; scanner?: string | null; p
   })
   let provider = make()
   return {
-    sys, signals, spawns, runScanner,
+    sys, signals, spawns, runScanner, hooks,
     get provider() { return provider },
     set: (next: Proc[]) => { procs = next },
     get: () => procs,
@@ -355,7 +357,7 @@ async function restart(w: ReturnType<typeof world>, id: string) {
 
 describe('companion:servers restart', () => {
   let savedMask = 0
-  beforeEach(() => { vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'] }); savedMask = process.umask(0o077) })
+  beforeEach(() => { vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date'] }); savedMask = process.umask(0o077) })
   afterEach(() => { vi.useRealTimers(); process.umask(savedMask); vi.restoreAllMocks() })
 
   it('replays the launch root: procargs of pnpm, its own folder, kill, then spawn; the environment goes nowhere else', async () => {
@@ -526,7 +528,16 @@ describe('companion:servers restart', () => {
   it('refuses when the port is still taken 5 s after the kill, and spawns nothing', async () => {
     const w = world([SHELL, PNPM, VITE], { dataDir: tmp(), takePort: true })
     await w.poll()
-    expect(await restart(w, viteId)).toEqual({ ok: false, error: msg('companion.serversPortBusy') })
+    // A slow lsof: each round takes 2 s; the wait still ends 5 s after it began.
+    const p = w.run('restart', viteId)
+    await vi.advanceTimersByTimeAsync(KILL_GRACE_MS)
+    w.hooks.lsofDelayMs = 2_000
+    const t0 = Date.now()
+    let settledAt = 0
+    void p.then(() => { settledAt = Date.now() })
+    await vi.advanceTimersByTimeAsync(10_000)
+    expect(await p).toEqual({ ok: false, error: msg('companion.serversPortBusy') })
+    expect(settledAt - t0).toBeLessThanOrEqual(6_000)
     expect(w.spawns).toEqual([])
   })
 })
