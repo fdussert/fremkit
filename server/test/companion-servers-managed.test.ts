@@ -317,7 +317,7 @@ const NEW_VITE: Proc = { pid: 2001, ppid: 2000, pgid: 2000, start: CHILD_START, 
 function world(initial: Proc[], o: { dataDir: string; scanner?: string | null; procargs?: string; spawned?: Proc[]; t?: { now: number }; takePort?: boolean; survivesTerm?: boolean }) {
   let procs = [...initial]
   /** Tests change these mid-command: the provider copied `sys` when it was made. */
-  const hooks = { lsofDelayMs: 0, procargs: null as Promise<void> | null, killFails: false }
+  const hooks = { lsofDelayMs: 0, procargs: null as Promise<void> | null, killFails: false, onSpawn: null as (() => void) | null }
   const signals: Array<[number, string]> = []
   const spawns: Array<{ file: string; args: string[]; options: SpawnOptions }> = []
   const line = (p: Proc) => `${p.pid} ${p.ppid ?? 1} ${p.pgid ?? p.pid} ${p.uid ?? UID} ${p.start ?? START} 01:02:03 1.5 120000 ${p.comm}`
@@ -343,6 +343,7 @@ function world(initial: Proc[], o: { dataDir: string; scanner?: string | null; p
   const runScanner = vi.fn(async (_scanner: string, _args: string[]) => (hooks.procargs ? await hooks.procargs : undefined, o.procargs ?? JSON.stringify({ type: 'procargs', exe: '/opt/homebrew/bin/node', argv: ARGV, env: ENV })))
   const spawn: SpawnFn = (file, args, options) => {
     spawns.push({ file, args, options })
+    hooks.onSpawn?.()
     procs.push(...(o.spawned ?? [NEW_PNPM]))
     return fakeChild((o.spawned ?? [NEW_PNPM])[0].pid)
   }
@@ -563,6 +564,19 @@ describe('companion:servers restart', () => {
     expect(await p).toEqual({ ok: false, error: msg('companion.serversStopped') })
     expect(w.spawns).toEqual([])
     expect(w.get().map((x) => x.pid)).toContain(1002)
+  })
+
+  it('a kill during the spawn stops the server just started', async () => {
+    const w = world([SHELL, PNPM, VITE], { dataDir: tmp(), spawned: [NEW_PNPM, NEW_VITE] })
+    await w.poll()
+    let k: Promise<{ ok: boolean; error?: string }> | undefined
+    w.hooks.onSpawn = () => { k = w.run('kill', viteId) }
+    expect(await restart(w, viteId)).toEqual({ ok: true })
+    await vi.advanceTimersByTimeAsync(KILL_GRACE_MS + 100)
+    expect(await k).toEqual({ ok: true })
+    expect(w.signals).toContainEqual([-2000, 'SIGTERM'])
+    expect(w.get().map((x) => x.pid)).not.toContain(2000)
+    expect((await w.poll()).rows.filter((r) => r.managed)).toEqual([])
   })
 
   it('two rows of one launch root restarted together spawn it once', async () => {

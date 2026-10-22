@@ -324,6 +324,10 @@ export function createServerCommands(opts: ServerCommandsOptions): Record<string
     killSent: boolean
     /** Past the last check: the spawn is happening and can no longer be cancelled. */
     spawning: boolean
+    /** Resolves when the restart is over, with the server it started, if any. */
+    done: Promise<ManagedEntry | null>
+    finish(entry: ManagedEntry | null): void
+    entry?: ManagedEntry
   }
   const jobs = new Set<Job>()
   /** Launch roots a kill command is still settling, by `pid:start`. */
@@ -430,6 +434,7 @@ export function createServerCommands(opts: ServerCommandsOptions): Record<string
         return true
       })
       opts.started?.(entry, row)
+      job.entry = entry
     } catch {
       return job.cancelled ? stopped() : failed('companion.serversRestartFailed')
     }
@@ -450,6 +455,21 @@ export function createServerCommands(opts: ServerCommandsOptions): Record<string
     return hit
   }
 
+  /** Kills what a restart past its last check started, once it has started it. */
+  async function stopStarted(job: Job): Promise<Result> {
+    const entry = await job.done
+    if (!entry) return { ok: true }
+    let outcome: KillOutcome
+    try {
+      outcome = await killer.kill({ id: `${entry.pid}:${entry.start}`, pid: entry.pid })
+    } catch {
+      return failed('companion.serversKillFailed')
+    }
+    if (!outcome.ok) return failed(outcome.error)
+    await opts.managed?.forget(entry)
+    return { ok: true }
+  }
+
   return {
     kill: command(async (row) => {
       if (row.system) return failed('companion.serversNotAllowed')
@@ -459,6 +479,9 @@ export function createServerCommands(opts: ServerCommandsOptions): Record<string
         await opts.managed?.forget(owner)
         return { ok: true }
       }
+      // A restart already spawning: the stop goes to the server it is starting.
+      const spawning = [...jobs].find((j) => j.spawning && matches(j, row.id, null))
+      if (spawning) return stopStarted(spawning)
       // Before any await: a restart of this row or its root never spawns after this.
       const cancelled = cancelRestarts(row.id, null)
       // The old server stopped already when the restart had sent its kill, or when it is gone.
@@ -487,7 +510,9 @@ export function createServerCommands(opts: ServerCommandsOptions): Record<string
       // row's restart frees its own place.
       if (!managed.hasRoom() && !opts.managedOf?.(row.id)) return failed('companion.serversBusy')
       if ([...jobs].some((j) => j.rowId === row.id || j.treeIds.has(row.id)) || killer.pending(row.id)) return failed('companion.serversBusy')
-      const job: Job = { rowId: row.id, rootKey: null, treeIds: new Set(), cancelled: false, killSent: false, spawning: false }
+      let finish!: (entry: ManagedEntry | null) => void
+      const done = new Promise<ManagedEntry | null>((resolve) => { finish = resolve })
+      const job: Job = { rowId: row.id, rootKey: null, treeIds: new Set(), cancelled: false, killSent: false, spawning: false, done, finish }
       jobs.add(job)
       try {
         return await restartServer(job, row, scanner, managed, read)
@@ -495,6 +520,7 @@ export function createServerCommands(opts: ServerCommandsOptions): Record<string
         return failed('companion.serversRestartFailed')
       } finally {
         jobs.delete(job)
+        job.finish(job.entry ?? null)
       }
     }),
     open: command(async (row) => open([`http://localhost:${row.ports[0]}/`])),
