@@ -190,6 +190,11 @@ export function isSystemProcess(p: ProcInfo): boolean {
   return ['/System/', '/usr/', '/bin/', '/sbin/', '/Library/Apple/'].some((d) => c.startsWith(d))
 }
 
+/** Fremkit Helper, which supervises this server: never listed, never signalled. */
+export function isHelper(p: Pick<ProcInfo, 'comm'>): boolean {
+  return basename(p.comm) === 'FremkitHelper'
+}
+
 export function isDockerHolder(p: ProcInfo): boolean {
   const name = basename(p.comm)
   return name.startsWith('com.docker.') || name === 'vpnkit-bridge'

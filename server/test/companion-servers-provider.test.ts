@@ -51,6 +51,8 @@ function fakeSystem(procs: Proc[], extra: Partial<ServersSystem> = {}) {
     }),
     runDockerPorts: vi.fn(async () => { calls.push('docker'); return '' }),
     readPackageName: vi.fn(async () => null),
+    kill: vi.fn(() => { throw new Error('no signal in a listing test') }),
+    runOpen: vi.fn(async () => undefined),
     ...extra,
   }
   return { sys, calls }

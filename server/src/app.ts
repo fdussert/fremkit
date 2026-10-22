@@ -88,7 +88,7 @@ import { deviceRoutes } from './devices/routes.js'
 import { REMOTE_PORT } from './devices/listener.js'
 import type { Advertiser } from './devices/bonjour.js'
 import { createCompanion, type Companion } from './companion/index.js'
-import { createServersProvider } from './companion/servers/provider.js'
+import { COMPANION_SERVERS_CHANNEL, createServersProvider } from './companion/servers/provider.js'
 import { PairingViewers } from './companion/viewers.js'
 import { COMPANION_CHANNEL } from './companion/provider.js'
 import type { Exec } from './secrets/keychain.js'
@@ -323,6 +323,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
       dataDir: opts.dataDir,
       scanner: process.env.FREMKIT_SCANNER && isAbsolute(process.env.FREMKIT_SCANNER) ? process.env.FREMKIT_SCANNER : null,
       tabLights: () => companion?.tabLights() ?? new Map(),
+      refresh: () => registry.refresh(COMPANION_SERVERS_CHANNEL),
     }))
   }
   if (demo) {

@@ -13,8 +13,9 @@ import { basename } from 'node:path'
 import type { Config } from '../../config/schema.js'
 import type { Provider } from '../../providers/types.js'
 import { fremdevEnabled } from '../dev.js'
-import { displayCommand, detectTool, isDevRuntime, isDockerHolder, isSystemProcess, parseLsofCwd, parseLsofListen, parsePs, selfTree, type ProcInfo } from './list.js'
+import { displayCommand, detectTool, isDevRuntime, isDockerHolder, isHelper, isSystemProcess, parseLsofCwd, parseLsofListen, parsePs, selfTree, type ProcInfo } from './list.js'
 import { createServersSystem, type ServersSystem } from './system.js'
+import { createServerCommands } from './commands.js'
 import { homeToTilde } from '../../home-tilde.js'
 
 export const COMPANION_SERVERS_CHANNEL = 'companion:servers'
@@ -66,9 +67,10 @@ export interface ServersOptions {
   system?: Partial<ServersSystem>
   selfPid?: number
   now?: () => number
+  /** Polls the channel again: the registry's `refresh`, called 1 s after each command. */
+  refresh?: () => void
 }
 
-const HELPER_NAME = 'FremkitHelper'
 const RANK: Record<TabLight, number> = { red: 0, orange: 1, green: 2 }
 
 /** How long the container names from `docker ps` are reused while the holders' ports stay the same. */
@@ -148,6 +150,10 @@ export function createServersProvider(opts: ServersOptions): Provider<ServersSna
   const selfPid = opts.selfPid ?? process.pid
   let last: ServerRow[] = []
   let byId = new Map<string, ServerRow>()
+  /** The real working folder of each row of the last snapshot: what Reveal opens, never published. */
+  let folders = new Map<string, string>()
+  /** Filled by `listRows`, read once the snapshot is cut. */
+  let polledFolders = new Map<string, string>()
   const now = opts.now ?? Date.now
   /** The last `docker ps` names, with the holders' ports they were asked for. */
   let dockerNames: { key: string; at: number; names: Map<number, string> } | null = null
@@ -173,7 +179,7 @@ export function createServersProvider(opts: ServersOptions): Provider<ServersSna
     const own = selfTree(selfPid, stats)
     const kept = listeners.filter((l) => {
       const p = stats.get(l.pid)
-      return p !== undefined && p.uid === sys.uid && !own.has(l.pid) && basename(p.comm) !== HELPER_NAME
+      return p !== undefined && p.uid === sys.uid && !own.has(l.pid) && !isHelper(p)
     })
     if (kept.length === 0) return []
 
@@ -195,11 +201,13 @@ export function createServersProvider(opts: ServersOptions): Provider<ServersSna
     const holders = kept.filter((l) => isDockerHolder(procs.get(l.pid)!))
     const docker = holders.length > 0 ? await containerNames(holders.flatMap((l) => l.ports)) : null
     const lights = opts.tabLights()
+    polledFolders = new Map()
 
     const rows = await Promise.all(kept.map(async (l): Promise<ServerRow> => {
       const p = procs.get(l.pid)!
       const cwd = cwds.get(l.pid) ?? null
       const dev = isDevRuntime(p, cwd)
+      if (cwd !== null) polledFolders.set(`${p.pid}:${p.start}`, cwd)
       let tab: TabLight | null = null
       for (const port of l.ports) {
         const light = lights.get(port)
@@ -248,12 +256,14 @@ export function createServersProvider(opts: ServersOptions): Provider<ServersSna
     if (!fremdevEnabled(opts.config())) {
       last = []
       byId = new Map()
+      folders = new Map()
       return { enabled: false, rows: [], canRestart: canRestart() }
     }
     try {
       const snap = capSnapshot({ enabled: true, rows: await listRows(), canRestart: canRestart() })
       last = snap.rows
       byId = new Map(last.map((r) => [r.id, r]))
+      folders = new Map(last.flatMap((r) => { const f = polledFolders.get(r.id); return f === undefined ? [] : [[r.id, f] as const] }))
       return snap
     } catch {
       return { enabled: true, rows: last, canRestart: canRestart(), error: 'unavailable' }
@@ -265,7 +275,14 @@ export function createServersProvider(opts: ServersOptions): Provider<ServersSna
     intervalMs: SERVERS_INTERVAL_MS,
     // The registry never starts a poll while one is running (its inFlight/pollAgain).
     poll: snapshot,
-    commands: {},
+    commands: createServerCommands({
+      sys,
+      selfPid,
+      config: opts.config,
+      lookup: (id) => byId.get(id) ?? null,
+      folderOf: (id) => folders.get(id) ?? null,
+      refresh: opts.refresh,
+    }),
     lookup: (id) => byId.get(id) ?? null,
   }
 }

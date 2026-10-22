@@ -12,6 +12,7 @@ import { localEnv, resolveDockerBinary } from '../../providers/local-operations.
 
 export const LSOF = '/usr/sbin/lsof'
 export const PS = '/bin/ps'
+export const OPEN = '/usr/bin/open'
 
 /** The most a `package.json` may weigh for its `name` to be read. */
 export const PACKAGE_JSON_MAX_BYTES = 64 * 1024
@@ -46,6 +47,10 @@ export interface ServersSystem {
   runDockerPorts(): Promise<string>
   /** `name` from `<folder>/package.json` (at most `PACKAGE_JSON_MAX_BYTES`, cached by mtime), else null. */
   readPackageName(folder: string): Promise<string | null>
+  /** `process.kill`: a negative pid signals the process group. */
+  kill(pid: number, signal: NodeJS.Signals): void
+  /** `/usr/bin/open <args>`; rejects when open fails. */
+  runOpen(args: string[]): Promise<void>
 }
 
 /**
@@ -71,6 +76,13 @@ function packageName(raw: string): string | null {
   }
 }
 
+/** `/usr/bin/open`, failing on any non-zero exit (unlike `execText`, which keeps lsof's exit 1). */
+function runOpen(args: string[], env: NodeJS.ProcessEnv): Promise<void> {
+  return new Promise((resolve, reject) => {
+    execFile(OPEN, args, { env, timeout: TIMEOUT_MS, shell: false }, (error) => (error ? reject(new Error('unavailable')) : resolve()))
+  })
+}
+
 export function createServersSystem(exec: ExecFn = execText, env: NodeJS.ProcessEnv = process.env): ServersSystem {
   const base = localEnv(env)
   // `lstart` follows the locale: under C it is the five words `parsePs` expects.
@@ -93,6 +105,8 @@ export function createServersSystem(exec: ExecFn = execText, env: NodeJS.Process
       const list = pidList(pids)
       return list ? exec(LSOF, ['-a', '-p', list, '-d', 'cwd', '-Fn'], opts(base)) : ''
     },
+    kill: (pid, signal) => { process.kill(pid, signal) },
+    runOpen: (args) => runOpen(args, base),
     runDockerPorts: async () => exec(await resolveDockerBinary(), ['ps', '--format', '{{.Names}}\t{{.Ports}}'], opts(base)),
     async readPackageName(folder) {
       const path = join(folder, 'package.json')
