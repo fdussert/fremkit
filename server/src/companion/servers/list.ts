@@ -63,39 +63,30 @@ function etimeToSec(etime: string): number {
 }
 
 /**
- * Where `comm` ends and `args` begins in `comm= args=`. A path may hold spaces
- * (`/Applications/Visual Studio Code.app/…`), and ps pads nothing, so the split is found from the
- * args: they begin with argv[0], which is the executable's path or its basename. The shortest
- * leading run of words for which that holds is the comm; when argv[0] was rewritten (a process
- * title) the first word is.
+ * Two `ps` outputs run with `LC_ALL=C` and merged by pid. macOS cuts `comm` to 16 characters
+ * unless it is the last column, so the stats come with `comm=` last
+ * (`-o pid=,ppid=,pgid=,uid=,lstart=,etime=,%cpu=,rss=,comm=`, full path, spaces allowed) and the
+ * command lines from `-o pid=,args=`. `lstart` is five words.
  */
-function splitCommArgs(rest: string): { comm: string; args: string } {
-  const words = rest.split(' ')
-  for (let k = 1; k < words.length; k++) {
-    const comm = words.slice(0, k).join(' ')
-    const args = words.slice(k).join(' ').trimStart()
-    const name = basename(comm)
-    const startsWith = (p: string) => args === p || args.startsWith(p + ' ')
-    if (startsWith(comm) || startsWith(name)) return { comm, args }
+export function parsePs(statsOut: string, argsOut: string): Map<number, ProcInfo> {
+  const argsByPid = new Map<number, string>()
+  for (const raw of argsOut.split('\n')) {
+    const m = /^\s*(\d+)\s+(.*)$/.exec(raw)
+    if (m) argsByPid.set(Number(m[1]), m[2].trim())
   }
-  return { comm: words[0] ?? '', args: words.slice(1).join(' ') }
-}
-
-/** `ps -o pid=,ppid=,pgid=,uid=,lstart=,etime=,%cpu=,rss=,comm=,args=` run with `LC_ALL=C` (lstart is five words). */
-export function parsePs(out: string): Map<number, ProcInfo> {
   const procs = new Map<number, ProcInfo>()
-  for (const raw of out.split('\n')) {
+  for (const raw of statsOut.split('\n')) {
     const line = raw.trim()
     if (!line) continue
     const m = /^(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\S+\s+\S+\s+\d+\s+[\d:]+\s+\d{4})\s+(\S+)\s+([\d.]+)\s+(\d+)\s+(.+)$/.exec(line)
     if (!m) continue
     const etimeSec = etimeToSec(m[6])
     if (Number.isNaN(etimeSec)) continue
-    const { comm, args } = splitCommArgs(m[9])
     const pid = Number(m[1])
+    const comm = m[9].trim()
     procs.set(pid, {
       pid, ppid: Number(m[2]), pgid: Number(m[3]), uid: Number(m[4]),
-      start: m[5].replace(/\s+/g, ' '), etimeSec, cpu: Number(m[7]), rssKb: Number(m[8]), comm, args,
+      start: m[5].replace(/\s+/g, ' '), etimeSec, cpu: Number(m[7]), rssKb: Number(m[8]), comm, args: argsByPid.get(pid) ?? comm,
     })
   }
   return procs
@@ -112,26 +103,42 @@ export function parseLsofCwd(out: string): Map<number, string> {
   return cwds
 }
 
-/** `[word, label]`: the first rule whose regex finds the word among the command's words wins. */
+/** `[name, label]`: matched against argv[0]'s basename and the script argument, extension stripped. */
 const TOOLS: Array<[RegExp, string]> = [
-  [/^vite(\.js)?$/, 'Vite'],
+  [/^vite$/, 'Vite'],
   [/^next(-server)?$/, 'Next'],
   [/^webpack(-dev-server)?$/, 'webpack'],
   [/^(storybook|start-storybook)$/, 'Storybook'],
   [/^astro$/, 'Astro'],
-  [/^nuxt(i)?$/, 'Nuxt'],
+  [/^nuxti?$/, 'Nuxt'],
   [/^remix(-serve)?$/, 'Remix'],
   [/^(rails|puma)$/, 'Rails'],
+  [/^manage\.py$/, 'Django'],
   [/^uvicorn$/, 'uvicorn'],
   [/^flask$/, 'Flask'],
 ]
 
+const MODULE_TOOLS: Record<string, string> = { 'http.server': 'http.server', uvicorn: 'uvicorn', flask: 'Flask' }
+
+function words(p: { args: string }): string[] {
+  return p.args.split(/\s+/).filter(Boolean)
+}
+
+/** The first argument after argv[0] that is not an option: a runtime's script (`node <script>`). */
+function scriptArg(w: string[]): string {
+  return w.slice(1).find((x) => !x.startsWith('-')) ?? ''
+}
+
+function stem(path: string): string {
+  return basename(path).replace(/\.(c|m)?(js|ts)$/, '').replace(/-cli$/, '')
+}
+
 function knownTool(args: string, comm: string): string | null {
-  const words = args.split(/\s+/).filter(Boolean)
-  const names = words.map((w) => basename(w))
+  const w = words({ args })
+  const names = [basename(w[0] ?? ''), basename(scriptArg(w)), stem(scriptArg(w))]
   for (const [re, label] of TOOLS) if (names.some((n) => re.test(n))) return label
-  if (names.includes('runserver')) return 'Django'
-  if (/\bhttp\.server\b/.test(args)) return 'http.server'
+  const m = w.indexOf('-m')
+  if (m >= 0 && w[m + 1] && MODULE_TOOLS[w[m + 1]]) return MODULE_TOOLS[w[m + 1]]
   const exe = basename(comm).toLowerCase()
   if (exe === 'dotnet') return '.NET'
   if (exe === 'php' || exe === 'php-fpm') return 'PHP'
@@ -156,7 +163,7 @@ export function isDevRuntime(p: ProcInfo, cwd: string | null): boolean {
 export function isSystemProcess(p: ProcInfo): boolean {
   const c = p.comm
   if (c.startsWith('/usr/local/')) return false
-  return c.startsWith('/System/') || c.startsWith('/usr/') || c.startsWith('/Library/Apple/')
+  return ['/System/', '/usr/', '/bin/', '/sbin/', '/Library/Apple/'].some((d) => c.startsWith(d))
 }
 
 export function isDockerHolder(p: ProcInfo): boolean {
@@ -164,29 +171,29 @@ export function isDockerHolder(p: ProcInfo): boolean {
   return name.startsWith('com.docker.') || name === 'vpnkit-bridge'
 }
 
-const PACKAGE_RUNNERS = new Set(['npm', 'npx', 'pnpm', 'pnpx', 'yarn', 'bun', 'bunx', 'turbo', 'nx', 'concurrently'])
-const SCRIPT_RUNTIMES = new Set(['node', 'deno'])
+const RUNNER_NAMES = new Set(['npm', 'npx', 'pnpm', 'pnpx', 'yarn', 'bunx', 'turbo', 'nx', 'concurrently'])
+const SCRIPT_RUNTIMES = new Set(['node', 'deno', 'bun'])
 const SHELLS = new Set(['sh', 'bash', 'zsh', 'dash'])
 
-function words(p: ProcInfo): string[] {
-  return p.args.split(/\s+/).filter(Boolean)
-}
-
-/** Names a package manager or runner: its own executable, argv[0], or (for node/deno) the script it runs. */
+/**
+ * A package manager or runner: its own executable (or argv[0]), or a node/deno/bun running one as
+ * its script, the first non-option argument. A runner's name elsewhere in the arguments
+ * (`node agent.js -p "pnpm dev"`) does not count: that is an agent, not a runner.
+ */
 function isRunner(p: ProcInfo): boolean {
-  const exe = basename(p.comm)
   const w = words(p)
-  const argv0 = w.length > 0 ? basename(w[0]) : ''
-  if (PACKAGE_RUNNERS.has(exe) || PACKAGE_RUNNERS.has(argv0)) return true
-  if (SCRIPT_RUNTIMES.has(exe) || SCRIPT_RUNTIMES.has(argv0)) {
-    return w.slice(1).some((x) => PACKAGE_RUNNERS.has(basename(x).replace(/(-cli)?\.(c|m)?js$/, '')))
-  }
-  return false
+  const exe = basename(p.comm)
+  const argv0 = basename(w[0] ?? '')
+  if (RUNNER_NAMES.has(exe) || RUNNER_NAMES.has(argv0)) return true
+  if (!SCRIPT_RUNTIMES.has(exe) && !SCRIPT_RUNTIMES.has(argv0)) return false
+  const script = scriptArg(w)
+  if (RUNNER_NAMES.has(stem(script))) return true
+  return (exe === 'bun' || argv0 === 'bun') && (script === 'run' || script === 'x')
 }
 
 function isScriptShell(p: ProcInfo): boolean {
   const w = words(p)
-  return SHELLS.has(basename(p.comm).replace(/^-/, '')) && w.slice(1).includes('-c')
+  return SHELLS.has(basename(p.comm).replace(/^-/, '')) && w.slice(1).some((x) => /^-[a-zA-Z]*c[a-zA-Z]*$/.test(x))
 }
 
 /**
@@ -227,4 +234,37 @@ export function selfTree(selfPid: number, procs: Map<number, ProcInfo>): Set<num
     }
   }
   return tree
+}
+
+const SENSITIVE = /token|secret|key|password|pass|auth|cred/i
+
+/**
+ * What a row shows of its command. A dev row keeps its arguments with the value of any sensitive
+ * long option (`--token x`, `--token=x`) or `KEY=VALUE` argument hidden; any other program shows
+ * its name only, since its arguments are not ours to publish.
+ */
+export function displayCommand(p: ProcInfo, dev: boolean): string {
+  if (!dev) return basename(p.comm)
+  const w = p.args.split(/\s+/).filter(Boolean)
+  const out: string[] = []
+  for (let i = 0; i < w.length; i++) {
+    const x = w[i]
+    const eq = x.indexOf('=')
+    if (x.startsWith('--')) {
+      const name = eq >= 0 ? x.slice(0, eq) : x
+      if (SENSITIVE.test(name)) {
+        if (eq >= 0) out.push(`${name}=•••`)
+        else {
+          out.push(x)
+          if (w[i + 1] !== undefined && !w[i + 1].startsWith('-')) { out.push('•••'); i++ }
+        }
+        continue
+      }
+    } else if (eq > 0 && /^[A-Za-z_][A-Za-z0-9_]*$/.test(x.slice(0, eq)) && SENSITIVE.test(x.slice(0, eq))) {
+      out.push(`${x.slice(0, eq)}=•••`)
+      continue
+    }
+    out.push(x)
+  }
+  return out.join(' ')
 }

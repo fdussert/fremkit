@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-  detectTool, isDevRuntime, isDockerHolder, isSystemProcess, launchRoot, parseLsofCwd, parseLsofListen, parsePs, selfTree,
+  detectTool, displayCommand, isDevRuntime, isDockerHolder, isSystemProcess, launchRoot, parseLsofCwd, parseLsofListen, parsePs, selfTree,
   type ProcInfo,
 } from '../src/companion/servers/list.js'
 
@@ -20,30 +20,34 @@ describe('parseLsofListen', () => {
 })
 
 describe('parsePs', () => {
-  const out = [
-    '  501     1   501   501 Wed Oct 22 09:01:02 2026       05:12   0.0  1024 /usr/local/bin/node node /x/node_modules/.bin/vite --port 18173',
-    '  502   501   502   501 Wed Oct 22 09:01:03 2026    01:02:03  12.5 20480 /opt/homebrew/bin/pnpm pnpm dev',
-    '  503   501   503   501 Thu Oct  2 10:00:00 2026  3-04:05:06   0.1   512 /Applications/Visual Studio Code.app/Contents/MacOS/Electron /Applications/Visual Studio Code.app/Contents/MacOS/Electron --type=x',
-    '  504   501   504   501 Wed Oct 22 09:01:03 2026       00:09   0.0   512 /usr/local/bin/node node: renamed title',
+  const stats = [
+    '  501     1   501   501 Wed Oct 22 09:01:02 2026       05:12   0.0  1024 /opt/homebrew/Cellar/node/22.1.0/bin/node',
+    '  502   501   502   501 Wed Oct 22 09:01:03 2026    01:02:03  12.5 20480 /opt/homebrew/bin/pnpm',
+    '  503   501   503   501 Thu Oct  2 10:00:00 2026  3-04:05:06   0.1   512 /Applications/Visual Studio Code.app/Contents/Frameworks/Code Helper.app/Contents/MacOS/Code Helper',
   ].join('\n')
-  it('reads fields, lstart and etime forms', () => {
-    const m = parsePs(out)
-    expect(m.get(501)).toMatchObject({ ppid: 1, pgid: 501, uid: 501, start: 'Wed Oct 22 09:01:02 2026', etimeSec: 312, cpu: 0, rssKb: 1024, comm: '/usr/local/bin/node', args: 'node /x/node_modules/.bin/vite --port 18173' })
+  const argsOut = [
+    '  501 node /x/node_modules/.bin/vite --port 18173',
+    '  502 pnpm dev',
+    '  503 /Applications/Visual Studio Code.app/Contents/Frameworks/Code Helper.app/Contents/MacOS/Code Helper --type=utility',
+  ].join('\n')
+  it('merges stats and args by pid, with etime forms', () => {
+    const m = parsePs(stats, argsOut)
+    expect(m.get(501)).toMatchObject({ ppid: 1, pgid: 501, uid: 501, start: 'Wed Oct 22 09:01:02 2026', etimeSec: 312, cpu: 0, rssKb: 1024, comm: '/opt/homebrew/Cellar/node/22.1.0/bin/node', args: 'node /x/node_modules/.bin/vite --port 18173' })
     expect(m.get(502)?.etimeSec).toBe(3723)
     expect(m.get(502)?.cpu).toBe(12.5)
     expect(m.get(503)?.etimeSec).toBe(3 * 86400 + 4 * 3600 + 5 * 60 + 6)
     expect(m.get(503)?.start).toBe('Thu Oct 2 10:00:00 2026')
   })
-  it('copes with a comm holding spaces', () => {
-    const p = parsePs(out).get(503)!
-    expect(p.comm).toBe('/Applications/Visual Studio Code.app/Contents/MacOS/Electron')
-    expect(p.args).toBe('/Applications/Visual Studio Code.app/Contents/MacOS/Electron --type=x')
+  it('keeps a full comm path with spaces', () => {
+    const p = parsePs(stats, argsOut).get(503)!
+    expect(p.comm).toBe('/Applications/Visual Studio Code.app/Contents/Frameworks/Code Helper.app/Contents/MacOS/Code Helper')
+    expect(p.args.endsWith('--type=utility')).toBe(true)
   })
-  it('takes the first word as comm when argv[0] was rewritten', () => {
-    expect(parsePs(out).get(504)).toMatchObject({ comm: '/usr/local/bin/node', args: 'node: renamed title' })
+  it('falls back to comm when a pid has no args line', () => {
+    expect(parsePs(stats, '').get(502)?.args).toBe('/opt/homebrew/bin/pnpm')
   })
   it('skips lines it cannot read', () => {
-    expect(parsePs('garbage\n').size).toBe(0)
+    expect(parsePs('garbage\n', 'x').size).toBe(0)
   })
 })
 
@@ -63,6 +67,8 @@ describe('detectTool', () => {
     expect(detectTool('python3 -m http.server 8000', '/usr/bin/python3')).toBe('http.server')
     expect(detectTool('python manage.py runserver', '/usr/bin/python')).toBe('Django')
     expect(detectTool('dotnet run', '/usr/local/share/dotnet/dotnet')).toBe('.NET')
+    expect(detectTool('node app.js --name vite', '/usr/local/bin/node')).toBe('node')
+    expect(detectTool('python3 -m uvicorn app:app', '/usr/bin/python3')).toBe('uvicorn')
     expect(detectTool('/opt/thing/serve', '/opt/thing/serve')).toBe('serve')
   })
 })
@@ -88,6 +94,8 @@ describe('isSystemProcess and isDockerHolder', () => {
     expect(isSystemProcess(proc(1, 0, '/usr/libexec/rapportd'))).toBe(true)
     expect(isSystemProcess(proc(1, 0, '/System/Applications/Notes.app/Contents/MacOS/Notes'))).toBe(true)
     expect(isSystemProcess(proc(1, 0, '/Library/Apple/usr/libexec/x'))).toBe(true)
+    expect(isSystemProcess(proc(1, 0, '/bin/zsh'))).toBe(true)
+    expect(isSystemProcess(proc(1, 0, '/sbin/launchd'))).toBe(true)
     expect(isSystemProcess(proc(1, 0, '/usr/local/bin/node'))).toBe(false)
     expect(isSystemProcess(proc(1, 0, '/opt/homebrew/bin/node'))).toBe(false)
   })
@@ -137,9 +145,27 @@ describe('launchRoot', () => {
     const t = tree(proc(70, 1, '/bin/zsh', '-zsh'), proc(71, 70, '/usr/local/bin/node', 'node /x/node_modules/.bin/turbo run dev'), proc(72, 71, '/usr/local/bin/node', 'node /x/node_modules/.bin/concurrently a b'), proc(73, 72, '/usr/local/bin/node', 'node vite'))
     expect(launchRoot(73, t)).toBe(71)
   })
-  it('survives a parent cycle', () => {
-    const t = tree(proc(80, 81, '/opt/homebrew/bin/pnpm', 'pnpm'), proc(81, 80, '/opt/homebrew/bin/pnpm', 'pnpm'))
-    expect(() => launchRoot(80, t)).not.toThrow()
+  it('survives a parent cycle, a missing parent and a pid that is its own parent', () => {
+    const pnpm = (pid: number, ppid: number) => proc(pid, ppid, '/opt/homebrew/bin/pnpm', 'pnpm')
+    expect(launchRoot(80, tree(pnpm(80, 81), pnpm(81, 80)))).toBe(81)
+    expect(launchRoot(82, tree(proc(82, 999, '/opt/x/x')))).toBe(82)
+    expect(launchRoot(83, tree(pnpm(83, 83)))).toBe(83)
+  })
+  it('does not take an agent for a runner because its arguments name one', () => {
+    const t1 = tree(proc(90, 1, '/usr/local/bin/node', 'node /opt/agent/cli.js -p start pnpm dev'), proc(91, 90, '/usr/local/bin/node', 'node vite'))
+    expect(launchRoot(91, t1)).toBe(91)
+    const t2 = tree(proc(92, 1, '/usr/local/bin/node', 'node harness.js --package-manager pnpm'), proc(93, 92, '/usr/local/bin/node', 'node vite'))
+    expect(launchRoot(93, t2)).toBe(93)
+  })
+  it('bun is a runner only for run/x or a runner script', () => {
+    const t = tree(proc(94, 1, '/opt/homebrew/bin/bun', 'bun agent.ts'), proc(95, 94, '/opt/homebrew/bin/pnpm', 'pnpm dev'), proc(96, 95, '/usr/local/bin/node', 'node vite'))
+    expect(launchRoot(96, t)).toBe(95)
+    const t2 = tree(proc(97, 1, '/bin/zsh', '-zsh'), proc(98, 97, '/opt/homebrew/bin/bun', 'bun run dev'), proc(99, 98, '/opt/homebrew/bin/bun', 'bun vite'))
+    expect(launchRoot(99, t2)).toBe(98)
+  })
+  it('treats combined shell flags like -c', () => {
+    const t = tree(proc(60, 1, '/bin/zsh', '-zsh'), proc(61, 60, '/opt/homebrew/bin/npm', 'npm run dev'), proc(62, 61, '/bin/sh', 'sh -ec vite'), proc(63, 62, '/usr/local/bin/node', 'node vite'))
+    expect(launchRoot(63, t)).toBe(61)
   })
 })
 
@@ -147,5 +173,16 @@ describe('selfTree', () => {
   it('holds the pid and all descendants', () => {
     const t = tree(proc(1, 0, 'a'), proc(100, 1, 'b'), proc(101, 100, 'c'), proc(102, 101, 'd'), proc(200, 1, 'e'))
     expect([...selfTree(100, t)].sort()).toEqual([100, 101, 102])
+  })
+})
+
+describe('displayCommand', () => {
+  it('shows a non-dev row by program name only', () => {
+    expect(displayCommand(proc(1, 0, '/opt/homebrew/bin/cloudflared', 'cloudflared tunnel run --token abc'), false)).toBe('cloudflared')
+  })
+  it('hides sensitive values on a dev row', () => {
+    expect(displayCommand(proc(1, 0, '/usr/local/bin/node', 'node server.js --api-key=abc PORT=3000'), true)).toBe('node server.js --api-key=••• PORT=3000')
+    expect(displayCommand(proc(1, 0, '/usr/local/bin/node', 'API_TOKEN=abc vite'), true)).toBe('API_TOKEN=••• vite')
+    expect(displayCommand(proc(1, 0, '/usr/local/bin/node', 'node s.js --password abc --port 1'), true)).toBe('node s.js --password ••• --port 1')
   })
 })
