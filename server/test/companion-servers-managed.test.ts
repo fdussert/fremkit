@@ -1,5 +1,5 @@
 import { EventEmitter } from 'node:events'
-import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync, appendFileSync, existsSync, utimesSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync, appendFileSync, existsSync, utimesSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { spawn as realSpawn, type SpawnOptions } from 'node:child_process'
@@ -163,6 +163,28 @@ describe('managed server spawn', () => {
     expect(readFileSync(file, 'utf8')).not.toContain(SENTINEL)
     expect(readFileSync(file, 'utf8')).not.toContain('pnpm')
     expect(logs.join('\n')).not.toContain(SENTINEL)
+  })
+
+  it('saves one after another, and a failed save after a good spawn keeps the server and writes it later', async () => {
+    const dataDir = tmp()
+    let next = 3000
+    const managed = createManagedServers({ dataDir, home: HOME, spawn: () => fakeChild(next++) })
+    const launch = { exe: '/bin/x', argv: ['x'], cwd: '/tmp', env: {}, ports: [1] }
+    await Promise.all([managed.start(launch, async () => CHILD_START), managed.start(launch, async () => CHILD_START), managed.start(launch, async () => CHILD_START)])
+    const file = join(dataDir, 'servers', 'managed.json')
+    const pids = () => (JSON.parse(readFileSync(file, 'utf8')) as Array<{ pid: number }>).map((e) => e.pid).sort()
+    expect(pids()).toEqual([3000, 3001, 3002])
+
+    // managed.json cannot be replaced (a folder sits there): the spawn still counts.
+    rmSync(file)
+    mkdirSync(join(file, 'blocker'), { recursive: true })
+    const entry = await managed.start(launch, async () => CHILD_START)
+    expect(managed.list()).toContain(entry)
+    rmSync(file, { recursive: true })
+    const stats = parsePs([3000, 3001, 3002, 3003].map((pid) => `${pid} ${SELF} ${pid} ${UID} ${CHILD_START} 01:00 0.0 1000 /bin/x`).join('\n') + '\n', '')
+    await managed.reconcile(stats)
+    expect(pids()).toEqual([3000, 3001, 3002, 3003])
+    expect(readdirSync(join(dataDir, 'servers')).filter((n) => n.includes('.tmp'))).toEqual([])
   })
 
   it('puts the umask back even when spawn throws', async () => {

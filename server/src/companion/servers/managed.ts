@@ -200,6 +200,9 @@ export function createManagedServers(opts: { dataDir: string; home: string; now?
   let tracked: Tracked[] = []
   let loading: Promise<void> | null = null
   let lastSweep = -Infinity
+  /** Saves run one after another; `dirty` when the last one failed, so the next reconcile writes again. */
+  let saving: Promise<void> = Promise.resolve()
+  let dirty = false
 
   async function ensureDir(): Promise<void> {
     await mkdir(dir, { recursive: true, mode: 0o700 })
@@ -207,13 +210,24 @@ export function createManagedServers(opts: { dataDir: string; home: string; now?
     await chmod(dir, 0o700)
   }
 
-  async function save(): Promise<void> {
-    await ensureDir()
-    const body = JSON.stringify(tracked.map(({ entry: e }) => ({ pid: e.pid, start: e.start, log: e.log, ports: e.ports, startedAt: e.startedAt }))) + '\n'
-    const tmp = `${file}.tmp`
-    await writeFile(tmp, body, { mode: 0o600 })
-    await chmod(tmp, 0o600)
-    await rename(tmp, file)
+  /** Writes the set as it is when this save's turn comes, through a tmp file of its own. */
+  function save(): Promise<void> {
+    const write = async () => {
+      await ensureDir()
+      const body = JSON.stringify(tracked.map(({ entry: e }) => ({ pid: e.pid, start: e.start, log: e.log, ports: e.ports, startedAt: e.startedAt }))) + '\n'
+      const tmp = `${file}.${randomBytes(4).toString('hex')}.tmp`
+      try {
+        await writeFile(tmp, body, { mode: 0o600 })
+        await chmod(tmp, 0o600)
+        await rename(tmp, file)
+      } catch (error) {
+        await unlink(tmp).catch(() => undefined)
+        throw error
+      }
+    }
+    const done = saving.then(write, write)
+    saving = done.then(() => { dirty = false }, () => { dirty = true })
+    return done
   }
 
   const ready = () => {
@@ -267,7 +281,9 @@ export function createManagedServers(opts: { dataDir: string; home: string; now?
       tracked.push(t)
       if (tracked.length > MAX_ENTRIES) tracked.shift()
       t.entry.start = (await readStart(child.pid).catch(() => null)) ?? ''
-      await save()
+      // The child runs whatever the disk says: a failed save leaves it remembered in memory, and
+      // the next reconcile writes it again (`dirty`). Only a restart of Fremkit before then loses it.
+      await save().catch(() => undefined)
       return t.entry
     },
 
@@ -292,7 +308,7 @@ export function createManagedServers(opts: { dataDir: string; home: string; now?
         }
         return true
       })
-      if (changed) await save().catch(() => undefined)
+      if (changed || dirty) await save().catch(() => undefined)
     },
 
     async forget(entry) {
