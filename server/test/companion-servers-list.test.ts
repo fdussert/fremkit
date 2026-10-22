@@ -69,6 +69,7 @@ describe('detectTool', () => {
     expect(detectTool('dotnet run', '/usr/local/share/dotnet/dotnet')).toBe('.NET')
     expect(detectTool('node app.js --name vite', '/usr/local/bin/node')).toBe('node')
     expect(detectTool('python3 -m uvicorn app:app', '/usr/bin/python3')).toBe('uvicorn')
+    expect(detectTool('-m flask', '/usr/bin/python3')).toBe('Flask')
     expect(detectTool('foo -m flask', '/opt/bin/foo')).toBe('foo')
     expect(detectTool('/opt/thing/serve', '/opt/thing/serve')).toBe('serve')
   })
@@ -177,6 +178,7 @@ describe('launchRoot', () => {
     ['/usr/local/bin/node', 'node --require ./npm.js agent.js'],
     ['/opt/homebrew/bin/bun', 'bun --cwd /Users/someone/code/nx agent.ts'],
     ['/usr/local/bin/node', 'node --env-file ./pnpm agent.js'],
+    ['/opt/homebrew/bin/deno', 'deno -r ./agent.ts pnpm dev'],
   ])('an option value is not the script: %s', (comm, args) => {
     const t = tree(proc(120, 1, comm, args), proc(121, 120, '/usr/local/bin/node', 'node vite'))
     expect(launchRoot(121, t)).toBe(121)
@@ -206,5 +208,17 @@ describe('displayCommand', () => {
   it('masks a value that starts with a dash and credentials in URLs', () => {
     expect(displayCommand(proc(1, 0, '/usr/local/bin/node', 'node s.js --token -abc'), true)).toBe('node s.js --token •••')
     expect(displayCommand(proc(1, 0, '/usr/local/bin/node', 'node s.js --db postgres://bob:pw@db.example.com/x --hook https://tok@example.com/h'), true)).toBe('node s.js --db postgres://bob:•••@db.example.com/x --hook https://•••@example.com/h')
+  })
+  it('masks the whole userinfo, query secrets and scheme-less credentials', () => {
+    const d = (a: string) => displayCommand(proc(1, 0, '/usr/local/bin/node', a), true)
+    expect(d('node s.js postgres://bob:p@ss@h/db')).toBe('node s.js postgres://bob:•••@h/db')
+    expect(d('node s.js postgres://bob:pa/ss@h/db')).toBe('node s.js postgres://bob:•••@h/db')
+    expect(d('node s.js https://h/x?token=abc&page=2')).toBe('node s.js https://h/x?token=•••&page=2')
+    expect(d('node s.js bob:pw@host:5432')).toBe('node s.js bob:•••@host:5432')
+  })
+  it('does not over-mask', () => {
+    const d = (a: string) => displayCommand(proc(1, 0, '/usr/local/bin/node', a), true)
+    expect(d('node s.js --token --port 1')).toBe('node s.js --token --port 1')
+    expect(d('node --no-auth server.js')).toBe('node --no-auth server.js')
   })
 })

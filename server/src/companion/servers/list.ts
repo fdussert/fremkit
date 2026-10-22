@@ -127,9 +127,10 @@ function words(p: { args: string }): string[] {
 const VALUE_OPTIONS = new Set(['-r', '--require', '--import', '--loader', '--experimental-loader', '--env-file', '--cwd', '--title', '-m', '-C', '--conditions', '--config'])
 
 /** The first argument after argv[0] that is not an option or the value of one that takes a separate value: a runtime's script. */
-function scriptArg(w: string[]): string {
+function scriptArg(w: string[], exe = ''): string {
+  const deno = exe === 'deno' || basename(w[0] ?? '') === 'deno' // deno's -r is --reload, a flag
   for (let i = 1; i < w.length; i++) {
-    if (VALUE_OPTIONS.has(w[i])) { i++; continue }
+    if (VALUE_OPTIONS.has(w[i]) && !(deno && w[i] === '-r')) { i++; continue }
     if (!w[i].startsWith('-')) return w[i]
   }
   return ''
@@ -141,10 +142,11 @@ function stem(path: string): string {
 
 function knownTool(args: string, comm: string): string | null {
   const w = words({ args })
-  const names = [basename(w[0] ?? ''), basename(scriptArg(w)), stem(scriptArg(w))]
+  const script = scriptArg(w, basename(comm))
+  const names = [basename(w[0] ?? ''), basename(script), stem(script)]
   for (const [re, label] of TOOLS) if (names.some((n) => re.test(n))) return label
   const m = w.indexOf('-m')
-  if (m >= 0 && /^python(\d+(\.\d+)*)?$/i.test(basename(w[0] ?? '')) && w[m + 1] && MODULE_TOOLS[w[m + 1]]) return MODULE_TOOLS[w[m + 1]]
+  if (m >= 0 && [basename(w[0] ?? ''), basename(comm)].some((n) => /^python(\d+(\.\d+)*)?$/i.test(n)) && w[m + 1] && MODULE_TOOLS[w[m + 1]]) return MODULE_TOOLS[w[m + 1]]
   const exe = basename(comm).toLowerCase()
   if (exe === 'dotnet') return '.NET'
   if (exe === 'php' || exe === 'php-fpm') return 'PHP'
@@ -192,7 +194,7 @@ function isRunner(p: ProcInfo): boolean {
   const argv0 = basename(w[0] ?? '')
   if (RUNNER_NAMES.has(exe) || RUNNER_NAMES.has(argv0)) return true
   if (!SCRIPT_RUNTIMES.has(exe) && !SCRIPT_RUNTIMES.has(argv0)) return false
-  const script = scriptArg(w)
+  const script = scriptArg(w, exe)
   if (RUNNER_NAMES.has(stem(script))) return true
   return (exe === 'bun' || argv0 === 'bun') && (script === 'x' || (script === 'run' && isScriptName(w)))
 }
@@ -265,11 +267,11 @@ export function displayCommand(p: ProcInfo, dev: boolean): string {
     const eq = x.indexOf('=')
     if (x.startsWith('--')) {
       const name = eq >= 0 ? x.slice(0, eq) : x
-      if (SENSITIVE.test(name)) {
+      if (SENSITIVE.test(name) && !name.startsWith('--no-')) {
         if (eq >= 0) out.push(`${name}=•••`)
         else {
           out.push(x)
-          if (w[i + 1] !== undefined) { out.push('•••'); i++ }
+          if (w[i + 1] !== undefined && !w[i + 1].startsWith('--')) { out.push('•••'); i++ }
         }
         continue
       }
@@ -282,7 +284,15 @@ export function displayCommand(p: ProcInfo, dev: boolean): string {
   return out.join(' ')
 }
 
-/** `scheme://user:pass@host` to `scheme://user:•••@host`, `scheme://token@host` to `scheme://•••@host`. */
+/**
+ * Credentials in one argument: the userinfo of a URL (everything up to the last `@`, so a password
+ * holding `@` or `/` does not leak), a scheme-less `user:pass@host`, and sensitive query values.
+ */
 function maskUrl(x: string): string {
-  return x.replace(/([a-z][a-z0-9+.-]*:\/\/)([^/\s@:]*)(:[^/\s@]*)?@/gi, (_m, scheme: string, user: string, pass?: string) => pass !== undefined ? `${scheme}${user}:•••@` : `${scheme}•••@`)
+  let out = x.replace(/^([a-z][a-z0-9+.-]*:\/\/)(.*)@/i, (_m, scheme: string, info: string) => {
+    const colon = info.indexOf(':')
+    return colon >= 0 ? `${scheme}${info.slice(0, colon)}:•••@` : `${scheme}•••@`
+  })
+  if (out === x && !x.includes('://')) out = x.replace(/^([^\s:@/=]+):[^\s@]*@(?=[^\s@]+$)/, '$1:•••@')
+  return out.replace(/([?&;])([^=&#\s]*(?:token|secret|key|password|pass|auth|cred)[^=&#\s]*)=[^&#\s]*/gi, '$1$2=•••')
 }
