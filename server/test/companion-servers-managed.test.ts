@@ -294,7 +294,7 @@ const viteId = `1002:${START}`
 const NEW_PNPM: Proc = { pid: 2000, ppid: SELF, pgid: 2000, start: CHILD_START, comm: '/opt/homebrew/bin/node', args: 'node /opt/homebrew/bin/pnpm dev --title my app', cwd: `${HOME}/code/shop` }
 const NEW_VITE: Proc = { pid: 2001, ppid: 2000, pgid: 2000, start: CHILD_START, comm: '/opt/homebrew/bin/node', args: `node ${HOME}/code/shop/node_modules/.bin/vite --port 5173`, cwd: `${HOME}/code/shop/web`, ports: [5173] }
 
-function world(initial: Proc[], o: { dataDir: string; scanner?: string | null; procargs?: string; spawned?: Proc[]; t?: { now: number }; takePort?: boolean }) {
+function world(initial: Proc[], o: { dataDir: string; scanner?: string | null; procargs?: string; spawned?: Proc[]; t?: { now: number }; takePort?: boolean; survivesTerm?: boolean }) {
   let procs = [...initial]
   /** Tests change these mid-command: the provider copied `sys` when it was made. */
   const hooks = { lsofDelayMs: 0, procargs: null as Promise<void> | null }
@@ -312,13 +312,14 @@ function world(initial: Proc[], o: { dataDir: string; scanner?: string | null; p
     readPackageName: async () => null,
     kill: vi.fn((pid: number, signal: NodeJS.Signals) => {
       signals.push([pid, signal])
+      if (o.survivesTerm && signal === 'SIGTERM') return
       procs = procs.filter((p) => (pid < 0 ? (p.pgid ?? p.pid) !== -pid : p.pid !== pid))
       // Something else picks the port up the moment it is let go.
       if (o.takePort && !procs.some((p) => p.pid === 1800)) procs.push({ ...API, pid: 1800, ports: [5173] })
     }),
     runOpen: vi.fn(async () => undefined),
   }
-  const runScanner = vi.fn(async (_scanner: string, _args: string[]) => o.procargs ?? JSON.stringify({ type: 'procargs', exe: '/opt/homebrew/bin/node', argv: ARGV, env: ENV }))
+  const runScanner = vi.fn(async (_scanner: string, _args: string[]) => (hooks.procargs ? await hooks.procargs : undefined, o.procargs ?? JSON.stringify({ type: 'procargs', exe: '/opt/homebrew/bin/node', argv: ARGV, env: ENV })))
   const spawn: SpawnFn = (file, args, options) => {
     spawns.push({ file, args, options })
     procs.push(...(o.spawned ?? [NEW_PNPM]))
@@ -490,6 +491,71 @@ describe('companion:servers restart', () => {
     expect(await restart(w, viteId)).toEqual({ ok: false, error: msg('companion.serversBusy') })
     expect(w.signals).toEqual([])
     expect(w.spawns).toEqual([])
+  })
+
+  it('a kill during the restart’s preparation wins: no spawn', async () => {
+    const w = world([SHELL, PNPM, VITE], { dataDir: tmp(), survivesTerm: true })
+    await w.poll()
+    let release!: () => void
+    w.hooks.procargs = new Promise((r) => { release = r })
+    const p = w.run('restart', viteId)
+    await vi.advanceTimersByTimeAsync(0)
+    const k = w.run('kill', viteId)
+    await vi.advanceTimersByTimeAsync(0)
+    release()
+    await vi.advanceTimersByTimeAsync(KILL_GRACE_MS + 6_000)
+    expect(await k).toEqual({ ok: true })
+    expect(await p).toEqual({ ok: false, error: msg('companion.serversStopped') })
+    expect(w.spawns).toEqual([])
+    expect(w.signals).toEqual([[-1001, 'SIGTERM'], [-1001, 'SIGKILL']])
+  })
+
+  it('a kill during the port wait wins: no spawn, and the kill says ok', async () => {
+    const w = world([SHELL, PNPM, VITE], { dataDir: tmp(), takePort: true })
+    await w.poll()
+    const p = w.run('restart', viteId)
+    await vi.advanceTimersByTimeAsync(KILL_GRACE_MS + 500)
+    expect(w.signals).toEqual([[-1001, 'SIGTERM']])
+    const k = w.run('kill', viteId)
+    await vi.advanceTimersByTimeAsync(0)
+    // The port comes free while the restart still waits.
+    w.set(w.get().filter((x) => x.pid !== 1800))
+    await vi.advanceTimersByTimeAsync(6_000)
+    expect(await k).toEqual({ ok: true })
+    expect(await p).toEqual({ ok: false, error: msg('companion.serversStopped') })
+    expect(w.spawns).toEqual([])
+  })
+
+  it('two rows of one launch root restarted together spawn it once', async () => {
+    const api: Proc = { pid: 1003, ppid: 1001, pgid: 1001, comm: '/opt/homebrew/bin/node', args: 'node api/server.js', cwd: `${HOME}/code/shop/api`, ports: [3001] }
+    const w = world([SHELL, PNPM, VITE, api], { dataDir: tmp() })
+    await w.poll()
+    const p1 = w.run('restart', viteId)
+    const p2 = w.run('restart', `1003:${START}`)
+    await vi.advanceTimersByTimeAsync(KILL_GRACE_MS + 6_000)
+    const results = [await p1, await p2]
+    expect(results).toContainEqual({ ok: true })
+    expect(results).toContainEqual({ ok: false, error: msg('companion.serversBusy') })
+    expect(w.spawns).toHaveLength(1)
+    expect(w.spawns[0].options.cwd).toBe(`${HOME}/code/shop`)
+  })
+
+  it('refuses a second restart of a row, or one while its kill settles', async () => {
+    const w = world([SHELL, PNPM, VITE], { dataDir: tmp(), survivesTerm: true })
+    await w.poll()
+    const p1 = w.run('restart', viteId)
+    const p2 = w.run('restart', viteId)
+    expect(await p2).toEqual({ ok: false, error: msg('companion.serversBusy') })
+    await vi.advanceTimersByTimeAsync(KILL_GRACE_MS + 6_000)
+    expect(await p1).toEqual({ ok: true })
+    const w2 = world([SHELL, PNPM, VITE], { dataDir: tmp(), survivesTerm: true })
+    await w2.poll()
+    const k = w2.run('kill', viteId)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(await w2.run('restart', viteId)).toEqual({ ok: false, error: msg('companion.serversBusy') })
+    await vi.advanceTimersByTimeAsync(KILL_GRACE_MS + 100)
+    expect(await k).toEqual({ ok: true })
+    expect(w2.spawns).toEqual([])
   })
 
   it('refuses without the scanner, and the snapshot says so', async () => {

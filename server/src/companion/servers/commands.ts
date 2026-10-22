@@ -310,7 +310,16 @@ export function createServerCommands(opts: ServerCommandsOptions): Record<string
   const failed = (key: MessageKey): Result => ({ ok: false, error: tr(locale(), key) })
   const deps: KillDeps = { sys: opts.sys, selfPid: opts.selfPid, managed: () => opts.managed?.list() ?? [] }
   const killer = opts.killer ?? createKiller(deps)
-  const restarts = new Map<string, Promise<Result>>()
+  /**
+   * The restarts in flight. Keyed on the row asked for, then on the launch root it resolved to
+   * (`pid:start`), with the ids of that root's tree so a kill of any of its rows finds it. A kill
+   * cancels the restart of its row or root before the spawn: a stop always wins.
+   */
+  type Job = { rowId: string; rootKey: string | null; treeIds: Set<string>; cancelled: boolean; spawning: boolean }
+  const jobs = new Set<Job>()
+  /** Launch roots a kill command is still settling, by `pid:start`. */
+  const stopping = new Set<string>()
+  const jobOf = (key: string) => [...jobs].find((j) => j.rootKey === key)
 
   function later(): void {
     if (!opts.refresh) return
@@ -354,10 +363,21 @@ export function createServerCommands(opts: ServerCommandsOptions): Record<string
    * the listener's), every port its tree holds. Refused before anything is signalled when any of
    * that cannot be read; then the kill, the wait for the ports, and the spawn.
    */
-  async function restartServer(row: ServerRow, scanner: string, managed: ManagedServers, read: NonNullable<ServerCommandsOptions['readProcArgs']>): Promise<Result> {
+  async function restartServer(job: Job, row: ServerRow, scanner: string, managed: ManagedServers, read: NonNullable<ServerCommandsOptions['readProcArgs']>): Promise<Result> {
+    const stopped = () => failed('companion.serversStopped')
     const resolved = await resolveTarget(row, deps)
     if ('error' in resolved) return failed(resolved.error)
+    if (job.cancelled) return stopped()
     const { procs, root } = resolved
+    // One restart per launch root, none while a kill of it settles. Checked and taken with no
+    // await in between, so two rows of one root asked at once spawn it once.
+    const rootKey = `${root.pid}:${root.start}`
+    if (jobOf(rootKey) || stopping.has(rootKey)) return failed('companion.serversBusy')
+    job.rootKey = rootKey
+    for (const pid of selfTree(root.pid, procs)) {
+      const p = procs.get(pid)
+      if (p) job.treeIds.add(`${p.pid}:${p.start}`)
+    }
     const cwd = parseLsofCwd(await opts.sys.runLsofCwd([root.pid])).get(root.pid)
     if (!cwd || !cwd.startsWith('/')) return failed('companion.serversNoFolder')
     const tree = selfTree(root.pid, procs)
@@ -371,6 +391,7 @@ export function createServerCommands(opts: ServerCommandsOptions): Record<string
     }
     // What procargs read is the root's still: its pid did not change hands meanwhile.
     if ((await readStart(root.pid)) !== root.start) return failed('companion.serversUnknown')
+    if (job.cancelled) return stopped()
 
     const owner = opts.managedOf?.(row.id) ?? null
     let outcome: KillOutcome
@@ -381,16 +402,41 @@ export function createServerCommands(opts: ServerCommandsOptions): Record<string
     }
     if (!outcome.ok) return failed(outcome.error)
     if (owner) await managed.forget(owner)
-    if (outcome.root.pid !== root.pid || outcome.root.start !== root.start) return failed('companion.serversRestartFailed')
-    await outcome.settled
-    if (!(await portsFree(opts.sys, ports))) return failed('companion.serversPortBusy')
-    try {
-      const entry = await managed.start({ exe: launch.exe, argv: launch.argv, cwd, env: launch.env, ports }, readStart)
-      opts.started?.(entry, row)
-    } catch {
+    if (outcome.root.pid !== root.pid || outcome.root.start !== root.start) {
+      // Reachable only when the chain above the listener changed between the restart's ps and the
+      // kill's (the root exited and the listener was reparented, or a runner appeared above it):
+      // the kill went to the root it found then. Let it finish before saying so.
+      await outcome.settled
       return failed('companion.serversRestartFailed')
     }
+    await outcome.settled
+    if (job.cancelled) return stopped()
+    if (!(await portsFree(opts.sys, ports))) return failed('companion.serversPortBusy')
+    try {
+      // Checked again right before the spawn, with no await between the check and the call.
+      const entry = await managed.start({ exe: launch.exe, argv: launch.argv, cwd, env: launch.env, ports }, readStart, () => {
+        if (job.cancelled) return false
+        job.spawning = true
+        return true
+      })
+      opts.started?.(entry, row)
+    } catch {
+      return job.cancelled ? stopped() : failed('companion.serversRestartFailed')
+    }
     return { ok: true }
+  }
+
+  /** Cancels the restarts a kill of `row` (or of its root, `rootKey`) stops; true when one was. */
+  function cancelRestarts(rowId: string, rootKey: string | null): boolean {
+    let any = false
+    for (const j of jobs) {
+      if (j.spawning) continue
+      if (j.rowId === rowId || j.treeIds.has(rowId) || (rootKey !== null && j.rootKey === rootKey)) {
+        j.cancelled = true
+        any = true
+      }
+    }
+    return any
   }
 
   return {
@@ -402,14 +448,24 @@ export function createServerCommands(opts: ServerCommandsOptions): Record<string
         await opts.managed?.forget(owner)
         return { ok: true }
       }
+      // Before any await: a restart of this row or its root never spawns after this.
+      const cancelled = cancelRestarts(row.id, null)
       let outcome: KillOutcome
       try {
         outcome = await killer.kill(row)
       } catch {
-        return failed('companion.serversKillFailed')
+        return cancelled ? { ok: true } : failed('companion.serversKillFailed')
       }
-      if (outcome.ok && owner) await opts.managed?.forget(owner)
-      return outcome.ok ? { ok: true } : failed(outcome.error)
+      if (outcome.ok) {
+        const key = `${outcome.root.pid}:${outcome.root.start}`
+        cancelRestarts(row.id, key)
+        stopping.add(key)
+        void outcome.settled.finally(() => stopping.delete(key))
+        if (owner) await opts.managed?.forget(owner)
+        return { ok: true }
+      }
+      // The restart being cancelled had already stopped it: the stop is done all the same.
+      return cancelled ? { ok: true } : failed(outcome.error)
     }),
     restart: command(async (row) => {
       const { scanner, managed, readProcArgs: read } = opts
@@ -418,12 +474,16 @@ export function createServerCommands(opts: ServerCommandsOptions): Record<string
       // Every remembered server alive: no room, refused before anything is signalled. A managed
       // row's restart frees its own place.
       if (!managed.hasRoom() && !opts.managedOf?.(row.id)) return failed('companion.serversBusy')
-      const running = restarts.get(row.id)
-      if (running) return running
-      if (killer.pending(row.id)) return failed('companion.serversBusy')
-      const job = restartServer(row, scanner, managed, read).catch(() => failed('companion.serversRestartFailed')).finally(() => restarts.delete(row.id))
-      restarts.set(row.id, job)
-      return job
+      if ([...jobs].some((j) => j.rowId === row.id || j.treeIds.has(row.id)) || killer.pending(row.id)) return failed('companion.serversBusy')
+      const job: Job = { rowId: row.id, rootKey: null, treeIds: new Set(), cancelled: false, spawning: false }
+      jobs.add(job)
+      try {
+        return await restartServer(job, row, scanner, managed, read)
+      } catch {
+        return failed('companion.serversRestartFailed')
+      } finally {
+        jobs.delete(job)
+      }
     }),
     open: command(async (row) => open([`http://localhost:${row.ports[0]}/`])),
     // A system program's folder is not the user's project, nor is a non-dev program's: Open only,

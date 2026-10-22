@@ -177,8 +177,9 @@ export interface ManagedServers {
   /**
    * Spawns `launch.exe` with `launch.argv.slice(1)` and `argv0` `launch.argv[0]`, its folder and its environment, detached, no
    * shell, its output on a new log; `readStart` gives the child's `lstart` for its identity.
+   * `proceed` is asked synchronously right before the spawn; false rejects with nothing spawned.
    */
-  start(launch: Launch, readStart: (pid: number) => Promise<string | null>): Promise<ManagedEntry>
+  start(launch: Launch, readStart: (pid: number) => Promise<string | null>, proceed?: () => boolean): Promise<ManagedEntry>
   /** The exit code Fremkit saw (null for a signal), undefined while it runs or when it was not watched. */
   exitCode(entry: ManagedEntry): number | null | undefined
   /**
@@ -273,7 +274,7 @@ export function createManagedServers(opts: {
     list: () => tracked.map((t) => t.entry),
     hasRoom,
 
-    async start(launch, readStart) {
+    async start(launch, readStart, proceed) {
       await ready()
       // Room is made from the gone only, the oldest first: a living server is never forgotten,
       // since forgetting it would hide it inside Fremkit's tree.
@@ -283,6 +284,8 @@ export function createManagedServers(opts: {
         tracked = tracked.filter((t) => t !== oldest)
       }
       await ensureDir()
+      // From here to the spawn nothing awaits: what `proceed` said still holds when it runs.
+      if (proceed && !proceed()) throw new Error('cancelled')
       const startedAt = now()
       const log = join(dir, `server-${startedAt}-${randomBytes(4).toString('hex')}.log`)
       const fd = openSync(log, 'a', 0o600)
