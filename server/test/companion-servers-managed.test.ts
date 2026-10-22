@@ -187,6 +187,29 @@ describe('managed server spawn', () => {
     expect(readdirSync(join(dataDir, 'servers')).filter((n) => n.includes('.tmp'))).toEqual([])
   })
 
+  it('reads the start time again when it was missed, and stops a child it can never identify', async () => {
+    const dataDir = tmp()
+    const kill = vi.fn()
+    let next = 4000
+    const managed = createManagedServers({ dataDir, home: HOME, spawn: () => fakeChild(next++), selfPid: SELF, kill })
+    const launch = { exe: '/bin/x', argv: ['x'], cwd: '/tmp', env: {}, ports: [1] }
+    const found = await managed.start(launch, async () => null)
+    const lost = await managed.start(launch, async () => { throw new Error('ps') })
+    expect(found.start).toBe('')
+    // ps shows 4000 as Fremkit's child now; 4001 not at all.
+    await managed.reconcile(parsePs(`4000 ${SELF} 4000 ${UID} ${CHILD_START} 01:00 0.0 1000 /bin/x\n`, ''))
+    expect(found.start).toBe(CHILD_START)
+    const saved = JSON.parse(readFileSync(join(dataDir, 'servers', 'managed.json'), 'utf8')) as Array<{ pid: number; start: string }>
+    expect(saved.find((e) => e.pid === 4000)!.start).toBe(CHILD_START)
+    expect(kill.mock.calls).toEqual([[-4001, 'SIGKILL'], [4001, 'SIGKILL']])
+    expect(managed.list().map((e) => e.pid)).toContain(4001)
+    expect(managedState({ alive: false, listening: false, tail: [], startedAt: lost.startedAt, now: Date.now(), exitCode: managed.exitCode(lost) })).toBe('failed')
+    // Never a second time, and never a pid that is not Fremkit's child.
+    await managed.reconcile(parsePs(`4001 1 4001 ${UID} ${CHILD_START} 01:00 0.0 1000 /bin/x\n`, ''))
+    expect(kill).toHaveBeenCalledTimes(2)
+    expect(lost.start).toBe('')
+  })
+
   it('puts the umask back even when spawn throws', async () => {
     const managed = createManagedServers({ dataDir: tmp(), home: HOME, spawn: () => { throw new Error('nope') } })
     await expect(managed.start({ exe: '/bin/x', argv: ['x'], cwd: '/tmp', env: {}, ports: [1] }, async () => null)).rejects.toThrow()

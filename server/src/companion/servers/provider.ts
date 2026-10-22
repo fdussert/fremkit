@@ -170,7 +170,7 @@ export function createServersProvider(opts: ServersOptions): Provider<ServersSna
   const now = opts.now ?? Date.now
   /** The last `docker ps` names, with the holders' ports they were asked for. */
   let dockerNames: { key: string; at: number; names: Map<number, string> } | null = null
-  const managed = createManagedServers({ dataDir: opts.dataDir, home: sys.home, now, spawn: opts.spawn })
+  const managed = createManagedServers({ dataDir: opts.dataDir, home: sys.home, now, spawn: opts.spawn, selfPid, kill: sys.kill })
   /** By log path: a managed server's last row, in memory only. */
   const labels = new Map<string, Label>()
   /** The managed server each row of the last snapshot belongs to; filled by `listRows`. */

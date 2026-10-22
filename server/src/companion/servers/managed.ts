@@ -190,13 +190,33 @@ export interface ManagedServers {
   maintain(): Promise<void>
 }
 
-type Tracked = { entry: ManagedEntry; exitCode?: number | null; goneAt?: number; loaded: boolean }
+type Tracked = {
+  entry: ManagedEntry
+  exitCode?: number | null
+  goneAt?: number
+  loaded: boolean
+  /** Spawned by this Fremkit, which still holds its handle: until 'exit', the pid cannot be anyone else's. */
+  child?: boolean
+  /** Its start time could not be read, and it was stopped for it. */
+  unidentified?: boolean
+}
 
-export function createManagedServers(opts: { dataDir: string; home: string; now?: () => number; spawn?: SpawnFn }): ManagedServers {
+export function createManagedServers(opts: {
+  dataDir: string
+  home: string
+  now?: () => number
+  spawn?: SpawnFn
+  /** Fremkit's pid: the parent a child whose start time was missed must show. */
+  selfPid?: number
+  /** `process.kill`, for a child that can never be identified. */
+  kill?: (pid: number, signal: NodeJS.Signals) => void
+}): ManagedServers {
   const dir = join(opts.dataDir, SERVERS_DIR)
   const file = join(dir, MANAGED_FILE)
   const now = opts.now ?? Date.now
   const spawn: SpawnFn = opts.spawn ?? (nodeSpawn as unknown as SpawnFn)
+  const selfPid = opts.selfPid ?? process.pid
+  const kill = opts.kill ?? ((pid: number, signal: NodeJS.Signals) => { process.kill(pid, signal) })
   let tracked: Tracked[] = []
   let loading: Promise<void> | null = null
   let lastSweep = -Infinity
@@ -276,7 +296,7 @@ export function createManagedServers(opts: { dataDir: string; home: string; now?
         throw new Error('spawn failed')
       }
       child.unref()
-      const t: Tracked = { entry: { pid: child.pid, start: '', log, ports: [...launch.ports], startedAt }, loaded: false }
+      const t: Tracked = { entry: { pid: child.pid, start: '', log, ports: [...launch.ports], startedAt }, loaded: false, child: true }
       child.once('exit', (code: number | null) => { t.exitCode = code })
       tracked.push(t)
       if (tracked.length > MAX_ENTRIES) tracked.shift()
@@ -293,6 +313,25 @@ export function createManagedServers(opts: { dataDir: string; home: string; now?
       await ready()
       const t0 = now()
       let changed = false
+      // A start time `ps` missed right after the spawn: read it again, once, from this ps. Without
+      // one the server is invisible and cannot be killed through Fremkit, so a child still
+      // unidentified is stopped (its group, then itself) and stays red. Safe to signal: no 'exit'
+      // yet means Fremkit has not reaped it, so the pid is still that child's.
+      for (const t of tracked) {
+        if (t.entry.start !== '' || !t.child || t.unidentified || t.exitCode !== undefined) continue
+        const p = procs.get(t.entry.pid)
+        if (p && p.ppid === selfPid) {
+          t.entry.start = p.start
+          changed = true
+          continue
+        }
+        t.unidentified = true
+        if (t.entry.pid > 1) {
+          for (const target of [-t.entry.pid, t.entry.pid]) {
+            try { kill(target, 'SIGKILL') } catch { /* gone already */ }
+          }
+        }
+      }
       tracked = tracked.filter((t) => {
         if (isAlive(t.entry, procs)) {
           t.loaded = false
