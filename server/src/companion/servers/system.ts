@@ -76,14 +76,22 @@ function packageName(raw: string): string | null {
   }
 }
 
+/** The slice of `execFile` `/usr/bin/open` goes through, injectable for tests. */
+export type ExecFileFn = (
+  file: string,
+  args: string[],
+  opts: { env: NodeJS.ProcessEnv; timeout: number; shell: false },
+  callback: (error: Error | null) => void,
+) => void
+
 /** `/usr/bin/open`, failing on any non-zero exit (unlike `execText`, which keeps lsof's exit 1). */
-function runOpen(args: string[], env: NodeJS.ProcessEnv): Promise<void> {
+export function runOpen(args: string[], env: NodeJS.ProcessEnv, run: ExecFileFn = execFile): Promise<void> {
   return new Promise((resolve, reject) => {
-    execFile(OPEN, args, { env, timeout: TIMEOUT_MS, shell: false }, (error) => (error ? reject(new Error('unavailable')) : resolve()))
+    run(OPEN, args, { env, timeout: TIMEOUT_MS, shell: false }, (error) => (error ? reject(new Error('unavailable')) : resolve()))
   })
 }
 
-export function createServersSystem(exec: ExecFn = execText, env: NodeJS.ProcessEnv = process.env): ServersSystem {
+export function createServersSystem(exec: ExecFn = execText, env: NodeJS.ProcessEnv = process.env, openFile: ExecFileFn = execFile): ServersSystem {
   const base = localEnv(env)
   // `lstart` follows the locale: under C it is the five words `parsePs` expects.
   const psEnv: NodeJS.ProcessEnv = { ...base, LC_ALL: 'C' }
@@ -106,7 +114,7 @@ export function createServersSystem(exec: ExecFn = execText, env: NodeJS.Process
       return list ? exec(LSOF, ['-a', '-p', list, '-d', 'cwd', '-Fn'], opts(base)) : ''
     },
     kill: (pid, signal) => { process.kill(pid, signal) },
-    runOpen: (args) => runOpen(args, base),
+    runOpen: (args) => runOpen(args, base, openFile),
     runDockerPorts: async () => exec(await resolveDockerBinary(), ['ps', '--format', '{{.Names}}\t{{.Ports}}'], opts(base)),
     async readPackageName(folder) {
       const path = join(folder, 'package.json')

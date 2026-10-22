@@ -12,7 +12,7 @@ import {
   type ServerRow,
   type ServersSnapshot,
 } from '../src/companion/servers/provider.js'
-import { createServersSystem, type ExecFn, type ServersSystem } from '../src/companion/servers/system.js'
+import { createServersSystem, type ExecFileFn, type ExecFn, type ServersSystem } from '../src/companion/servers/system.js'
 import { devTabLights } from '../src/companion/dev.js'
 
 const HOME = '/Users/tester'
@@ -329,6 +329,20 @@ describe('servers system runners', () => {
     expect(await sys.runPsArgs([])).toBe('')
     expect(await sys.runLsofCwd([])).toBe('')
     expect(calls).toEqual([])
+  })
+
+  it('runs /usr/bin/open by absolute path with an argument list, failing on a non-zero exit', async () => {
+    const seen: Array<{ file: string; args: string[]; shell: unknown }> = []
+    let fail = false
+    const openFile: ExecFileFn = (file, args, opts, cb) => {
+      seen.push({ file, args, shell: opts.shell })
+      cb(fail ? Object.assign(new Error('exit 1'), { code: 1 }) : null)
+    }
+    const sys = createServersSystem(exec, {}, openFile)
+    await expect(sys.runOpen(['-R', '/Users/tester/code/shop'])).resolves.toBeUndefined()
+    expect(seen).toEqual([{ file: '/usr/bin/open', args: ['-R', '/Users/tester/code/shop'], shell: false }])
+    fail = true
+    await expect(sys.runOpen(['http://localhost:5173/'])).rejects.toThrow('unavailable')
   })
 })
 

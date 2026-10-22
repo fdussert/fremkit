@@ -5,7 +5,12 @@
  * refused, and signals the server's launch root (`launchRoot`): its process group when that group
  * is the server's own, else the root's tree pid by pid (`killGroup`).
  *
- * `killServer` is the kill flow on its own, for the restart to reuse.
+ * Fremkit itself is never signalled, nor anything above it: a runner that started both Fremkit and
+ * the server (`concurrently`, `turbo dev`, `pnpm -r dev`) is not the server's to take down, so the
+ * root is narrowed to the highest process on the way to the listener that is not Fremkit's
+ * ancestor (`narrowRoot`).
+ *
+ * `createKiller` is the kill flow on its own, for the restart to reuse.
  */
 
 import { z } from 'zod'
@@ -24,25 +29,56 @@ export const COMMAND_REFRESH_MS = 1_000
 
 export type KillTarget = { pgid: number } | { pids: number[] }
 
-/** A process Fremkit may signal: this account's, not Fremkit's tree, not the helper, not the system's, not Docker's. */
-function signallable(p: ProcInfo, uid: number, self: Set<number>): boolean {
-  return p.uid === uid && !self.has(p.pid) && !isHelper(p) && !isSystemProcess(p) && !isDockerHolder(p)
+/**
+ * What a kill must never signal: Fremkit's own tree (`selfTree`) and every ancestor of Fremkit up
+ * to launchd, since killing a parent can take Fremkit with it (`tsx watch` above the server).
+ */
+export function protectedPids(selfPid: number, procs: Map<number, ProcInfo>): Set<number> {
+  const set = selfTree(selfPid, procs)
+  for (let cur = procs.get(selfPid)?.ppid; cur !== undefined && cur >= 1 && !set.has(cur); cur = procs.get(cur)?.ppid) set.add(cur)
+  return set
+}
+
+/** A process Fremkit may signal: this account's, not protected, not the helper, not the system's, not Docker's. */
+function signallable(p: ProcInfo, uid: number, guarded: Set<number>): boolean {
+  return p.uid === uid && !guarded.has(p.pid) && !isHelper(p) && !isSystemProcess(p) && !isDockerHolder(p)
+}
+
+/**
+ * The launch root, moved down toward the listener while it is an ancestor of Fremkit: the highest
+ * process on the listener's chain whose subtree no longer holds Fremkit. The listener itself when
+ * nothing above it qualifies.
+ */
+export function narrowRoot(root: number, listener: number, procs: Map<number, ProcInfo>, guarded: Set<number>): number {
+  const path: number[] = []
+  for (let cur: number | undefined = listener; cur !== undefined && !path.includes(cur); cur = procs.get(cur)?.ppid) {
+    path.push(cur)
+    if (cur === root) break
+  }
+  if (path[path.length - 1] !== root) return listener
+  for (let i = path.length - 1; i >= 0; i--) if (!guarded.has(path[i])) return path[i]
+  return listener
 }
 
 /**
  * What a kill of `root` signals. Its process group, when the group is its own job: another group
  * than its parent's (a shell's job, not an IDE or agent that spawned it without job control), than
- * Fremkit's, and holding nothing of Fremkit's tree, of the system or of another account. Otherwise
- * the root and its descendants, pid by pid, those Fremkit may signal only.
+ * Fremkit's or its ancestors', and holding nothing protected, of the system or of another account.
+ * Otherwise the root and its descendants, pid by pid, those Fremkit may signal only. `guarded` is
+ * `protectedPids`.
  */
-export function killGroup(root: ProcInfo, procs: Map<number, ProcInfo>, self: Set<number>): KillTarget {
+export function killGroup(root: ProcInfo, procs: Map<number, ProcInfo>, guarded: Set<number>): KillTarget {
   const parent = procs.get(root.ppid)
-  const ownGroups = new Set([...self].map((pid) => procs.get(pid)?.pgid).filter((g): g is number => g !== undefined))
+  const ownGroups = new Set([...guarded].map((pid) => procs.get(pid)?.pgid).filter((g): g is number => g !== undefined))
   const members = [...procs.values()].filter((p) => p.pgid === root.pgid)
   const ownJob = root.pgid > 1 && parent !== undefined && parent.pgid !== root.pgid && !ownGroups.has(root.pgid)
-    && members.every((m) => signallable(m, root.uid, self))
+    && members.every((m) => signallable(m, root.uid, guarded))
   if (ownJob) return { pgid: root.pgid }
+  return { pids: rootTree(root, procs, guarded) }
+}
 
+/** `root` and its descendants, breadth first, those Fremkit may signal only. */
+function rootTree(root: ProcInfo, procs: Map<number, ProcInfo>, guarded: Set<number>): number[] {
   const children = new Map<number, number[]>()
   for (const p of procs.values()) {
     const list = children.get(p.ppid)
@@ -59,7 +95,7 @@ export function killGroup(root: ProcInfo, procs: Map<number, ProcInfo>, self: Se
     tree.push(pid)
     queue.push(...(children.get(pid) ?? []).sort((a, b) => a - b))
   }
-  return { pids: tree.filter((pid) => signallable(procs.get(pid)!, root.uid, self)) }
+  return tree.filter((pid) => signallable(procs.get(pid)!, root.uid, guarded))
 }
 
 export type KillOutcome = { ok: true; settled: Promise<void> } | { ok: false; error: MessageKey }
@@ -88,29 +124,42 @@ function send(sys: KillDeps['sys'], pid: number, signal: NodeJS.Signals): boolea
   }
 }
 
+/** One pid, never 0, 1 or a negative number (which would be a group). */
+function sendPid(sys: KillDeps['sys'], pid: number, signal: NodeJS.Signals): boolean {
+  return Number.isInteger(pid) && pid > 1 ? send(sys, pid, signal) : false
+}
+
+/** A process group, never 0, 1 or Fremkit's own; refused when Fremkit's group is not known. */
+function sendGroup(sys: KillDeps['sys'], pgid: number, ownPgid: number | undefined, signal: NodeJS.Signals): boolean {
+  return Number.isInteger(pgid) && pgid > 1 && ownPgid !== undefined && pgid !== ownPgid ? send(sys, -pgid, signal) : false
+}
+
 /**
  * Kills the server a row names: refused unless `ps` still shows its pid with the row's start time,
- * and unless both it and its launch root are processes Fremkit may signal. TERM now; after
- * `KILL_GRACE_MS`, KILL to whatever is still alive with the same start time (`settled` resolves
- * then). Refused rows send nothing.
+ * and unless both it and its (narrowed) launch root are processes Fremkit may signal. TERM now;
+ * after `KILL_GRACE_MS`, KILL to whatever is still alive with the same start time (`settled`
+ * resolves then). Refused rows send nothing.
  */
 export async function killServer(row: Pick<ServerRow, 'id' | 'pid'>, deps: KillDeps): Promise<KillOutcome> {
   const { sys, selfPid } = deps
   const procs = await readProcs(sys, row.pid)
   const p = procs.get(row.pid)
   if (!p || `${p.pid}:${p.start}` !== row.id) return { ok: false, error: 'companion.serversUnknown' }
-  const self = selfTree(selfPid, procs)
-  if (!signallable(p, sys.uid, self)) return { ok: false, error: 'companion.serversNotAllowed' }
-  const root = procs.get(launchRoot(p.pid, procs))!
-  if (!signallable(root, sys.uid, self)) return { ok: false, error: 'companion.serversNotAllowed' }
+  const guarded = protectedPids(selfPid, procs)
+  if (!signallable(p, sys.uid, guarded)) return { ok: false, error: 'companion.serversNotAllowed' }
+  const root = procs.get(narrowRoot(launchRoot(p.pid, procs), p.pid, procs, guarded))!
+  if (!signallable(root, sys.uid, guarded)) return { ok: false, error: 'companion.serversNotAllowed' }
 
-  const target = killGroup(root, procs, self)
+  const ownPgid = procs.get(selfPid)?.pgid
+  let target = killGroup(root, procs, guarded)
+  // Fremkit's group unknown (it is missing from ps): never a group kill.
+  if ('pgid' in target && ownPgid === undefined) target = { pids: rootTree(root, procs, guarded) }
   const watched = 'pgid' in target
     ? [...procs.values()].filter((m) => m.pgid === target.pgid)
     : target.pids.map((pid) => procs.get(pid)!)
   const sent = 'pgid' in target
-    ? send(sys, -target.pgid, 'SIGTERM')
-    : target.pids.map((pid) => send(sys, pid, 'SIGTERM')).some(Boolean)
+    ? sendGroup(sys, target.pgid, ownPgid, 'SIGTERM')
+    : target.pids.map((pid) => sendPid(sys, pid, 'SIGTERM')).some(Boolean)
   if (!sent) return { ok: false, error: 'companion.serversKillFailed' }
 
   const settled = new Promise<void>((resolve) => {
@@ -122,23 +171,49 @@ export async function killServer(row: Pick<ServerRow, 'id' | 'pid'>, deps: KillD
   return { ok: true, settled }
 }
 
-/** KILL to the processes TERM left alive: the same pid with the same start, nothing else. */
+/** KILL to the processes TERM left alive: the same pid with the same start, still signallable, nothing else. */
 async function escalate(sys: KillDeps['sys'], selfPid: number, target: KillTarget, watched: ProcInfo[]): Promise<void> {
   const now = parsePs(await sys.runPsStats(), '')
-  const alive = watched.filter((w) => now.get(w.pid)?.start === w.start)
+  const guarded = protectedPids(selfPid, now)
+  const alive = watched.filter((w) => {
+    const cur = now.get(w.pid)
+    return cur !== undefined && cur.start === w.start && signallable(cur, sys.uid, guarded)
+  })
   if (alive.length === 0) return
   if ('pgid' in target) {
     // The group again, as it is now: still the same job, still nothing we must not touch.
-    const self = selfTree(selfPid, now)
     const members = [...now.values()].filter((m) => m.pgid === target.pgid)
-    const stillOurs = alive.some((w) => now.get(w.pid)!.pgid === target.pgid) && members.every((m) => signallable(m, sys.uid, self))
-    if (stillOurs) {
-      send(sys, -target.pgid, 'SIGKILL')
-      return
-    }
+    const stillOurs = alive.some((w) => now.get(w.pid)!.pgid === target.pgid) && members.every((m) => signallable(m, sys.uid, guarded))
+    if (stillOurs && sendGroup(sys, target.pgid, now.get(selfPid)?.pgid, 'SIGKILL')) return
   }
-  for (const w of alive) send(sys, w.pid, 'SIGKILL')
+  for (const w of alive) sendPid(sys, w.pid, 'SIGKILL')
 }
+
+export interface ServerKiller {
+  /** Kills the row's server; while a kill of that row is still settling, its outcome instead of a second TERM. */
+  kill(row: Pick<ServerRow, 'id' | 'pid'>): Promise<KillOutcome>
+  /** The kill of that row still settling, if any: what a restart awaits. */
+  pending(id: string): Promise<KillOutcome> | undefined
+}
+
+/** `killServer` with one kill in flight per row, until its escalation has run. */
+export function createKiller(deps: KillDeps): ServerKiller {
+  const inFlight = new Map<string, Promise<KillOutcome>>()
+  return {
+    kill(row) {
+      const running = inFlight.get(row.id)
+      if (running) return running
+      const outcome = killServer(row, deps)
+      inFlight.set(row.id, outcome)
+      void outcome
+        .then((o) => (o.ok ? o.settled : undefined), () => undefined)
+        .finally(() => { if (inFlight.get(row.id) === outcome) inFlight.delete(row.id) })
+      return outcome
+    },
+    pending: (id) => inFlight.get(id),
+  }
+}
+
 
 const CommandSchema = z.strictObject({
   // The host stamps it on every widget command.
@@ -158,11 +233,14 @@ export interface ServerCommandsOptions {
   folderOf(id: string): string | null
   /** Polls the channel again (the registry's `refresh`). */
   refresh?: () => void
+  /** One kill in flight per row; made here when not given, so a restart can share it. */
+  killer?: ServerKiller
 }
 
 export function createServerCommands(opts: ServerCommandsOptions): Record<string, (payload: unknown, ctx?: CommandContext) => Promise<Result>> {
   const locale = () => opts.config().locale
   const failed = (key: MessageKey): Result => ({ ok: false, error: tr(locale(), key) })
+  const killer = opts.killer ?? createKiller({ sys: opts.sys, selfPid: opts.selfPid })
 
   function later(): void {
     if (!opts.refresh) return
@@ -204,14 +282,17 @@ export function createServerCommands(opts: ServerCommandsOptions): Record<string
       if (row.system) return failed('companion.serversNotAllowed')
       let outcome: KillOutcome
       try {
-        outcome = await killServer(row, { sys: opts.sys, selfPid: opts.selfPid })
+        outcome = await killer.kill(row)
       } catch {
         return failed('companion.serversKillFailed')
       }
       return outcome.ok ? { ok: true } : failed(outcome.error)
     }),
     open: command(async (row) => open([`http://localhost:${row.ports[0]}/`])),
+    // A system program's folder is not the user's project, nor is a non-dev program's: Open only,
+    // and Kill for the latter.
     reveal: command(async (row) => {
+      if (row.system || !row.dev) return failed('companion.serversNotAllowed')
       const folder = opts.folderOf(row.id)
       if (folder === null || !folder.startsWith('/')) return failed('companion.serversNoFolder')
       return open(['-R', folder])
