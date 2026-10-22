@@ -55,3 +55,32 @@ echo "==> FremkitCoreTests"
 
 echo "==> running"
 "$TEST_OUT/FremkitCoreTests"
+
+# fremkit-scan procargs, end to end on a real process (this shell): exit 0, one line of the
+# procargs type, nothing on stderr. The line carries this shell's environment: it is checked
+# in a variable and never printed.
+echo "==> fremkit-scan procargs"
+"$SWIFTC" -sdk "$SDK" -target "$TARGET" -swift-version "$SWIFT_VERSION" \
+    -module-name FremkitScan \
+    native/Sources/FremkitScan/main.swift \
+    -I "$TESTING_OUT" -L "$TESTING_OUT" -lFremkitCore \
+    -o "$TEST_OUT/fremkit-scan"
+procargs_err="$TEST_OUT/procargs.stderr"
+procargs_status=0
+procargs_out=$("$TEST_OUT/fremkit-scan" procargs "$$" 2>"$procargs_err") || procargs_status=$?
+procargs_lines=$(printf '%s\n' "$procargs_out" | grep -c '' || true)
+if [ "$procargs_status" -ne 0 ]; then
+    echo "error: fremkit-scan procargs \$\$ exited $procargs_status" >&2
+    exit 1
+fi
+if [ "$procargs_lines" != "1" ] || ! printf '%s' "$procargs_out" | grep -q '"type":"procargs"'; then
+    echo "error: fremkit-scan procargs \$\$ did not print one procargs line ($procargs_lines lines)" >&2
+    exit 1
+fi
+if [ -s "$procargs_err" ]; then
+    echo "error: fremkit-scan procargs \$\$ wrote to stderr" >&2
+    exit 1
+fi
+rm -f "$procargs_err"
+unset procargs_out
+echo "procargs: one line, exit 0, stderr empty"
