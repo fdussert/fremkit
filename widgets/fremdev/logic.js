@@ -324,15 +324,15 @@
   }
 
   /**
-   * The rows the segment draws, by port: the dev runtimes and the servers Fremkit restarted, every
-   * listener with `showAll`. Each a copy with its `key` (`serverKey`, or the id appended when two
+   * The rows the segment draws, by port: the dev runtimes, the servers Fremkit restarted and
+   * Docker's port holders (a container is a dev server too), every listener with `showAll`. Each a copy with its `key` (`serverKey`, or the id appended when two
    * rows share one: a parent and a child both listed on one port).
    */
   function serverRows(snap, showAll) {
     if (!snap || typeof snap !== 'object' || snap.enabled === false || !Array.isArray(snap.rows)) return []
     var rows = snap.rows.filter(function (r) {
       return r && typeof r === 'object' && Array.isArray(r.ports) && typeof r.ports[0] === 'number' &&
-        (showAll === true || r.dev === true || r.managed === true)
+        (showAll === true || r.dev === true || r.managed === true || !!r.docker)
     }).map(function (r) {
       var row = {}
       for (var k in r) if (Object.prototype.hasOwnProperty.call(r, k)) row[k] = r[k]

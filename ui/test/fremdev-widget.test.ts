@@ -450,5 +450,60 @@ describe('the Fremdev widget page: the Servers segment', () => {
 
   it('leaves the compact tile as it was: the sum, no segments', () => {
     expect(html).toMatch(/html\.compact \.stage \.pane,html\.compact \.stage \.segs\{display:none\}/)
+    // What that rule hides holds every list and sentence; the sum stays outside it.
+    load()
+    const pane = document.querySelector('#stage > .pane')!
+    for (const id of ['msg', 'list', 'snote', 'slist']) expect(pane.contains(document.getElementById(id))).toBe(true)
+    expect(pane.contains(document.getElementById('sum'))).toBe(false)
+  })
+
+  it('lists Docker\'s port holders with the default settings', () => {
+    const w = load()
+    w.publish(snapshot([]))
+    w.servers(servers([server(2, 5432, { dev: false, docker: 'db' })]))
+    showServers()
+    expect(srows()).toHaveLength(1)
+    expect(srowOf(5432).querySelector('.project')!.textContent).toBe('Docker → db')
+    expect(document.querySelector('#segServers')!.textContent).toBe('Servers (1)')
+  })
+
+  it('says "Confirm?" once, on the button, and forgets it when the row folds', async () => {
+    vi.useFakeTimers()
+    const w = load()
+    w.publish(snapshot([]))
+    w.servers(servers([server(1, 3000)]))
+    showServers()
+    const top = () => srowOf(3000).querySelector<HTMLElement>('.top')!
+    top().click()
+    button(srowOf(3000), 'kill').click()
+    expect(srowOf(3000).querySelector<HTMLElement>('.status')!.hidden).toBe(true)
+    expect(srowOf(3000).textContent!.split('Confirm?')).toHaveLength(2)
+    top().click()
+    top().click()
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(button(srowOf(3000), 'kill').textContent).toBe('Kill')
+    button(srowOf(3000), 'kill').click()
+    expect(w.F.sendCommand).not.toHaveBeenCalled()
+  })
+
+  it('drops an armed button and a refusal when another process takes the row\'s key', async () => {
+    vi.useFakeTimers()
+    const w = load()
+    w.publish(snapshot([]))
+    w.servers(servers([server(1, 3000, { project: 'p' })]))
+    showServers()
+    srowOf(3000).querySelector<HTMLElement>('.top')!.click()
+    w.F.sendCommand.mockImplementationOnce(() => Promise.resolve({ ok: false, error: 'Refused' }))
+    button(srowOf(3000), 'open').click()
+    await vi.advanceTimersByTimeAsync(0)
+    button(srowOf(3000), 'kill').click()
+    expect(srowOf(3000).querySelector('.status')!.textContent).toBe('Refused')
+    expect(button(srowOf(3000), 'kill').textContent).toBe('Confirm?')
+    // Its twin (same project, same port) is now the one listed under that key.
+    w.servers(servers([server(2, 3000, { project: 'p' })]))
+    expect(srowOf(3000).querySelector<HTMLElement>('.status')!.hidden).toBe(true)
+    expect(button(srowOf(3000), 'kill').textContent).toBe('Kill')
+    button(srowOf(3000), 'kill').click()
+    expect(w.F.sendCommand).toHaveBeenCalledTimes(1)
   })
 })

@@ -1,7 +1,7 @@
 { "id": "fremdev",
   "name": { "fr": "Fremdev", "en": "Fremdev" },
   "version": "1.0.0",
-  "description": { "fr": "Les erreurs de vos onglets de développement", "en": "The errors of your development tabs" },
+  "description": { "fr": "Les erreurs de vos onglets de développement et vos serveurs de dev", "en": "The errors of your development tabs and your dev servers" },
   "category": "dev",
   "icon": "code", "minSize": [8, 4], "defaultSize": [20, 8],
   "compact": { "width": 2 },

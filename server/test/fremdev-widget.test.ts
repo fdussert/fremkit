@@ -85,7 +85,7 @@ describe('the fremdev manifest', () => {
     expect(entry.source).toBe('builtin')
     const m = entry.manifest
     expect(m.name).toEqual({ fr: 'Fremdev', en: 'Fremdev' })
-    expect(m.description).toEqual({ fr: 'Les erreurs de vos onglets de développement', en: 'The errors of your development tabs' })
+    expect(m.description).toEqual({ fr: 'Les erreurs de vos onglets de développement et vos serveurs de dev', en: 'The errors of your development tabs and your dev servers' })
     expect(m.category).toBe('dev')
     expect(m.icon).toBe('code')
     expect(m.subscriptions).toEqual([COMPANION_DEV_CHANNEL, COMPANION_SERVERS_CHANNEL])
@@ -451,7 +451,7 @@ describe('fremdev/logic.js: the Servers segment', () => {
     for (const bad of [-1, NaN, '1024', null]) expect(formatMem(bad)).toBe('')
   })
 
-  it('serverRows: hides non-dev rows unless showAll, never a managed one, sorted by port', async () => {
+  it('serverRows: hides non-dev rows unless showAll, never a managed one nor a Docker holder, sorted by port', async () => {
     const { serverRows } = await loadLogic()
     const snap = servers([
       server(3, 8080, { dev: false, project: 'ControlCenter', system: true }),
@@ -461,6 +461,8 @@ describe('fremdev/logic.js: the Servers segment', () => {
     ])
     expect(serverRows(snap, false).map((r) => r.pid)).toEqual([1, 2, 4])
     expect(serverRows(snap, true).map((r) => r.pid)).toEqual([1, 2, 4, 3])
+    // Docker's port holder is no dev runtime, and still listed by default.
+    expect(serverRows(servers([server(5, 5432, { dev: false, docker: 'db' })]), false).map((r) => r.pid)).toEqual([5])
     expect(serverRows(null, true)).toEqual([])
     expect(serverRows({ enabled: false, rows: [server(1, 3000)] }, true)).toEqual([])
     expect(serverRows({ enabled: true, rows: 'x' }, true)).toEqual([])
@@ -509,6 +511,7 @@ describe('fremdev/logic.js: the Servers segment', () => {
     expect(serversStateOf(servers([]), false)).toBe('empty')
     expect(serversStateOf(servers([server(1, 3000, { dev: false })]), false)).toBe('empty')
     expect(serversStateOf(servers([server(1, 3000, { dev: false })]), true)).toBe('rows')
+    expect(serversStateOf(servers([server(1, 5432, { dev: false, docker: 'db' })]), false)).toBe('rows')
     // An error code the widget does not know reads as the generic one.
     expect(serversStateOf(servers([], { error: 'weird' }), false)).toBe('unavailable')
   })

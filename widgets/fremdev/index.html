@@ -793,8 +793,7 @@
     /** Sends the command for the row's current id; a kill or restart holds the row busy until answered. */
     function sendServer(entry, name) {
       var key = entry.key, st = stateFor(key)
-      clearTimeout(st.armTimer)
-      st.armed = null
+      disarm(st)
       clearTimeout(st.errorTimer)
       st.error = null
       var token = {}, long = name === 'kill' || name === 'restart'
@@ -912,8 +911,16 @@
       return entry
     }
 
+    /** Lets go of an armed Kill or Restart, so a later single touch never acts. */
+    function disarm(st) {
+      clearTimeout(st.armTimer)
+      st.armed = null
+    }
+
     function toggleServer(entry) {
       sUnfolded = sUnfolded === entry.key ? null : entry.key
+      // A fold forgets an armed button: unfolded again, the row asks for two touches again.
+      Object.keys(sState).forEach(function (k) { if (k !== sUnfolded) disarm(sState[k]) })
       Object.keys(sDrawn).forEach(function (k) { paintServer(sDrawn[k]) })
       if (sUnfolded === entry.key && entry.el.scrollIntoView) entry.el.scrollIntoView({ block: 'nearest' })
     }
@@ -922,7 +929,6 @@
     function statusOf(row, st) {
       if (st && st.busy) return { text: Fremkit.t(st.busy === 'restart' ? L.restarting : L.killing), failed: false }
       if (st && st.error) return { text: st.error, failed: true }
-      if (st && st.armed) return { text: Fremkit.t(L.confirm), failed: false }
       if (row.state === 'starting') return { text: Fremkit.t(L.starting), failed: false }
       if (row.state === 'failed') return { text: Fremkit.t(L.failed), failed: true }
       if (row.portBusy) return { text: Fremkit.t(L.portBusy), failed: true }
@@ -996,6 +1002,14 @@
       rows.forEach(function (row, i) {
         var entry = sDrawn[row.key] || createServer(row.key)
         next[row.key] = entry
+        // Another process under this key (one of two twins went, or a server Fremkit restarted now
+        // listens): what was armed or refused was for the other one. A command in flight keeps it.
+        var st = sState[row.key]
+        if (st && !st.busy && entry.row && entry.row.id !== row.id) {
+          disarm(st)
+          clearTimeout(st.errorTimer)
+          st.error = null
+        }
         entry.row = row
         if (slist.children[i] !== entry.el) slist.insertBefore(entry.el, slist.children[i] || null)
       })
