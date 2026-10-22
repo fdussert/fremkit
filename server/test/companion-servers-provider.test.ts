@@ -271,7 +271,7 @@ describe('capSnapshot', () => {
   function row(i: number): ServerRow {
     return {
       id: `${i}:${START}`, pid: i, ports: [3000 + i], project: `p${i}`, tool: 'Vite', uptimeSec: 1, cpu: 0, rssKb: 1,
-      folder: '~/x', command: 'node vite', dev: true, system: false, docker: null, managed: true, state: 'up', portBusy: false, tab: null,
+      folder: '~/x', command: 'node vite', dev: true, system: false, browser: false, docker: null, managed: true, gone: false, state: 'up', portBusy: false, tab: null,
       log: Array.from({ length: 20 }, (_, j) => `${j}`.padEnd(300, 'x')),
     }
   }
