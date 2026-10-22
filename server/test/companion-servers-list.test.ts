@@ -269,6 +269,23 @@ describe('maskSecrets', () => {
     }
   })
 
+  it('takes the sensitive word as a part of the name, and an unquoted value to the end of the line or the brace', () => {
+    for (const [line, out] of [
+      [`passWord: ${S}`, 'passWord: •••'],
+      [`apiKey: ${S}`, 'apiKey: •••'],
+      [`x-auth-token: ${S}`, 'x-auth-token: •••'],
+      [`client.secret: ${S}`, 'client.secret: •••'],
+      [`DB_CREDENTIALS: ${S}`, 'DB_CREDENTIALS: •••'],
+      [`API_KEY: ${S} with ${S}more words`, 'API_KEY: •••'],
+      [`{ apiKey: ${S} ${S}, port: 3 }`, '{ apiKey: •••, port: 3 }'],
+      [`{ "token": "${S}", port: 3 }`, '{ "token": "•••", port: 3 }'],
+    ] as const) {
+      expect(maskSecrets(line)).toBe(out)
+      expect(maskSecrets(line)).not.toContain(S)
+    }
+    for (const line of ['Tests passed: 12', 'monkey: 3', 'keyboard: us', 'tokenizer: ready', 'bypassed: 2']) expect(maskSecrets(line)).toBe(line)
+  })
+
   it('leaves ordinary lines, URLs and timestamps alone', () => {
     for (const line of ['  ➜  Local: http://localhost:5173/', '10:42:01 ready in 312 ms', 'PORT: 3000', 'compiled 12 modules']) expect(maskSecrets(line)).toBe(line)
   })

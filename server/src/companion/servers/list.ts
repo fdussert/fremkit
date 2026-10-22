@@ -314,14 +314,8 @@ export function displayCommand(p: ProcInfo, dev: boolean): string {
 export function maskSecrets(text: string): string {
   return text
     .replace(/\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+/gi, '$1 •••')
-    // `NAME: value` in its printed forms: util.inspect (`SECRET_TOKEN: 'x',`), JSON
-    // (`"SECRET_TOKEN":"x"`), YAML or dotenv-ish (`API_KEY: x`); a quoted value keeps its quotes.
-    .replace(/(["']?)\b([A-Za-z_][A-Za-z0-9_.-]*)\1(\s*:\s*)("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|[^\s,'"}\]]+)/g,
-      (all: string, q: string, name: string, sep: string, value: string) => {
-        if (!SENSITIVE.test(name) || value.startsWith('//')) return all
-        const quote = value[0] === '"' || value[0] === "'" ? value[0] : ''
-        return `${q}${name}${q}${sep}${quote}•••${quote}`
-      })
+    // `NAME: value` in its printed forms: util.inspect, JSON, YAML or dotenv-ish (`maskColonValues`).
+    .split('\n').map(maskColonValues).join('\n')
     .replace(/\S+/g, (word) => {
       const x = maskUrl(word)
       const eq = x.indexOf('=')
@@ -330,6 +324,55 @@ export function maskSecrets(text: string): string {
       if (/^[A-Za-z_][A-Za-z0-9_.-]*$/.test(name) && SENSITIVE.test(name) && !name.startsWith('no-')) return `${x.slice(0, eq)}=•••`
       return x
     })
+}
+
+/** One part of a name that marks it secret: `API_KEY`, `apiKey`, `x-auth-token`, `passWord`, `db.credentials`. */
+const SENSITIVE_PART = /^(token|secret|key|apikey|password|passwd|pass|passphrase|auth|authorization|cred|creds|credential|credentials)s?$/i
+
+/**
+ * Whether a name holds a sensitive word as one of its parts, split on `_`, `-`, `.` and camelCase
+ * boundaries; a word merely containing one (`passed`, `monkey`, `keyboard`, `tokenizer`) does not
+ * count. Used for `NAME: value`, where the name is often a plain word of a log line.
+ */
+function sensitiveName(name: string): boolean {
+  return name.split(/[_.-]+/).flatMap((part) => part.split(/(?<=[a-z0-9])(?=[A-Z])/)).some((part) => SENSITIVE_PART.test(part))
+}
+
+/**
+ * `NAME: value` with a sensitive name, in one line: util.inspect (`SECRET_TOKEN: 'x',`), JSON
+ * (`"SECRET_TOKEN":"x"`), YAML or dotenv-ish (`API_KEY: x`). A quoted value keeps its quotes; an
+ * unquoted one is hidden to the end of the line, or to the next `,` or `}` inside braces, so a
+ * value with spaces never shows its tail.
+ */
+function maskColonValues(line: string): string {
+  const re = /(["']?)\b([A-Za-z_][A-Za-z0-9_.-]*)\1(\s*:\s*)/g
+  let out = ''
+  let last = 0
+  for (let m = re.exec(line); m !== null; m = re.exec(line)) {
+    const start = m.index + m[0].length
+    const rest = line.slice(start)
+    if (!sensitiveName(m[2]) || rest === '' || rest.startsWith('//')) continue
+    let end: number
+    let mask: string
+    const quote = rest[0]
+    if (quote === '"' || quote === "'") {
+      let i = 1
+      while (i < rest.length && rest[i] !== quote) i += rest[i] === '\\' ? 2 : 1
+      end = start + Math.min(i + 1, rest.length)
+      mask = i < rest.length ? `${quote}•••${quote}` : `${quote}•••`
+    } else {
+      const before = line.slice(0, m.index)
+      const inBraces = (before.match(/\{/g)?.length ?? 0) > (before.match(/\}/g)?.length ?? 0)
+      const stop = inBraces ? rest.search(/[,}]/) : -1
+      // Inside braces the space before the `,` or `}` stays, as the value's own spacing.
+      end = stop < 0 ? line.length : start + stop - (rest.slice(0, stop).length - rest.slice(0, stop).trimEnd().length)
+      mask = '•••'
+    }
+    out += line.slice(last, start) + mask
+    last = end
+    re.lastIndex = Math.max(end, re.lastIndex)
+  }
+  return out + line.slice(last)
 }
 
 /**
