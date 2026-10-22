@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DEFAULT_CONFIG, type Config } from '../src/config/schema.js'
 import { tr } from '../src/i18n.js'
 import { createServersProvider, type ServersSnapshot } from '../src/companion/servers/provider.js'
-import { KILL_GRACE_MS } from '../src/companion/servers/commands.js'
+import { createKiller, KILL_GRACE_MS } from '../src/companion/servers/commands.js'
 import {
   busyPorts, cleanLogLine, createManagedServers, cutBack, LOG_CUT_BYTES, LOG_KEEP_BYTES, LOG_RETAIN_MS, managedState,
   MANAGED_MAX, readLogTail, START_TIMEOUT_MS, type SpawnFn,
@@ -229,6 +229,26 @@ describe('managed server spawn', () => {
     expect(pids).not.toContain(5003)
     expect(pids).toContain(5007)
     expect(pids).toContain(5000)
+  })
+
+  it('sweeps on startup a log nobody refers to, a day after it was last written', async () => {
+    const dataDir = tmp()
+    const dir = join(dataDir, 'servers')
+    mkdirSync(dir, { recursive: true, mode: 0o700 })
+    writeFileSync(join(dir, 'managed.json'), '[]\n')
+    const stale = join(dir, 'server-1-abcdef01.log')
+    const fresh = join(dir, 'server-2-abcdef02.log')
+    const other = join(dir, 'notes.txt')
+    for (const f of [stale, fresh, other]) writeFileSync(f, 'x\n')
+    const day = Date.now() / 1000 - LOG_RETAIN_MS / 1000 - 60
+    utimesSync(stale, day, day)
+    utimesSync(other, day, day)
+    const managed = createManagedServers({ dataDir, home: HOME })
+    await managed.ready()
+    await managed.maintain()
+    expect(existsSync(stale)).toBe(false)
+    expect(existsSync(fresh)).toBe(true)
+    expect(existsSync(other)).toBe(true)
   })
 
   it('puts the umask back even when spawn throws', async () => {
@@ -556,6 +576,24 @@ describe('companion:servers restart', () => {
     await vi.advanceTimersByTimeAsync(KILL_GRACE_MS + 100)
     expect(await k).toEqual({ ok: true })
     expect(w2.spawns).toEqual([])
+  })
+
+  it('after a reload, a pid recycled with another start is not managed, not exempted, not killable', async () => {
+    const dataDir = tmp()
+    const log = join(dataDir, 'servers', 'server-1-0badc0de.log')
+    mkdirSync(join(dataDir, 'servers'), { recursive: true, mode: 0o700 })
+    writeFileSync(log, 'old run\n')
+    const entry = { pid: 2000, start: CHILD_START, log, ports: [5173], startedAt: 1 }
+    writeFileSync(join(dataDir, 'servers', 'managed.json'), JSON.stringify([entry]))
+    // Pid 2000 is now another of Fremkit's children, started at another time.
+    const stranger: Proc = { ...NEW_VITE, pid: 2000, ppid: SELF, pgid: 2000, start: START }
+    const w = world([stranger], { dataDir })
+    const snap = await w.poll()
+    expect(snap.rows).toEqual([])
+    expect(JSON.parse(readFileSync(join(dataDir, 'servers', 'managed.json'), 'utf8'))).toEqual([])
+    const killer = createKiller({ sys: w.sys, selfPid: SELF, managed: () => [entry] })
+    expect(await killer.kill({ id: `2000:${START}`, pid: 2000 })).toEqual({ ok: false, error: 'companion.serversNotAllowed' })
+    expect(w.signals).toEqual([])
   })
 
   it('refuses without the scanner, and the snapshot says so', async () => {
