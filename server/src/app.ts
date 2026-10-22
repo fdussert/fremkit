@@ -3,7 +3,7 @@ import fastifyStatic from '@fastify/static'
 import fastifyWebsocket from '@fastify/websocket'
 import { homedir } from 'node:os'
 import { shippedPaths } from './paths.js'
-import { join } from 'node:path'
+import { isAbsolute, join } from 'node:path'
 import { access, mkdir, readFile } from 'node:fs/promises'
 import { ConfigStore } from './config/store.js'
 import { ConfigHistory } from './config/history.js'
@@ -88,6 +88,7 @@ import { deviceRoutes } from './devices/routes.js'
 import { REMOTE_PORT } from './devices/listener.js'
 import type { Advertiser } from './devices/bonjour.js'
 import { createCompanion, type Companion } from './companion/index.js'
+import { createServersProvider } from './companion/servers/provider.js'
 import { PairingViewers } from './companion/viewers.js'
 import { COMPANION_CHANNEL } from './companion/provider.js'
 import type { Exec } from './secrets/keychain.js'
@@ -316,6 +317,13 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     // A paired device may set only its own screen's brightness: see mayCommandBrightness. Read
     // at command time, so a device moved to another screen (or unpaired) is judged as it is now.
     registry.register(createBrightnessProvider(brightness, brightnessChanged, (id) => deviceService.deviceScreenOf(id)))
+    // Fremdev's server list. The companion is built further down: its tab lights are read lazily.
+    registry.register(createServersProvider({
+      config: () => store.get(),
+      dataDir: opts.dataDir,
+      scanner: process.env.FREMKIT_SCANNER && isAbsolute(process.env.FREMKIT_SCANNER) ? process.env.FREMKIT_SCANNER : null,
+      tabLights: () => companion?.tabLights() ?? new Map(),
+    }))
   }
   if (demo) {
     // The demo has its own `brightness` channel; the service above still serves the routes and

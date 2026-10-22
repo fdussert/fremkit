@@ -5,6 +5,8 @@ import { findInstance, type InstanceLookup } from '../config/instances.js'
 import { resolveServices, type ServiceResult } from '../providers/service-status.js'
 import { buildView, findNode, type DiskNode } from '../providers/disk-map-tree.js'
 import { codexProviders } from './codex.js'
+import { fremdevEnabled } from '../companion/dev.js'
+import { COMPANION_SERVERS_CHANNEL, SERVERS_INTERVAL_MS, type ServerRow, type ServersSnapshot } from '../companion/servers/provider.js'
 import {
   DEMO_APPS, DEMO_CLIPBOARD, DEMO_PROCESSES, DEMO_SESSIONS, DEMO_TRACKS,
   clamp, coverArt, round1, wander,
@@ -61,6 +63,7 @@ export function createDemoProviders(opts: DemoProviderOptions): Provider[] {
     mutedeckProvider(now),
     { channel: 'cleanshot', commands: { run: ACTED } },
     rtkProvider(now),
+    serversProvider(now, opts.config),
     { channel: 'shortcuts', commands: { open: ACTED } },
     serviceStatusProvider(now, opts.instances ?? ((id) => findInstance(opts.config(), id))),
   ]
@@ -492,6 +495,49 @@ function dockerProvider(now: () => number): Provider {
         stale: false, error: null, updatedAt: t,
       }
     },
+  }
+}
+
+/**
+ * Fremdev's server list: three dev servers, the Storybook one restarted by Fremkit with its output.
+ * Behind `labs.fremdev` like the real one; every command answers `ok` and changes nothing.
+ */
+function serversProvider(now: () => number, config: () => Config): Provider<ServersSnapshot> {
+  const startedAt = now()
+  const row = (pid: number, port: number, project: string, tool: string, command: string, ageSec: number, cpu: number, rssKb: number): ServerRow => ({
+    id: `${pid}:Wed Oct 22 09:00:00 2026`, pid, ports: [port], project, tool, uptimeSec: ageSec, cpu, rssKb,
+    folder: `~/code/${project}`, command, dev: true, system: false, docker: null,
+    managed: false, state: 'up', portBusy: false, tab: null, log: [],
+  })
+  return {
+    channel: COMPANION_SERVERS_CHANNEL,
+    intervalMs: SERVERS_INTERVAL_MS,
+    poll: async () => {
+      if (!fremdevEnabled(config())) return { enabled: false, rows: [], canRestart: true }
+      const t = now()
+      const age = Math.round((t - startedAt) / 1000)
+      const cpu = (base: number, phase: number) => round1(clamp(wander(t, base, base * 0.8, 20_000, phase), 0, 100))
+      return {
+        enabled: true,
+        canRestart: true,
+        rows: [
+          { ...row(41_002, 3000, 'storefront', 'Next', 'node ~/code/storefront/node_modules/.bin/next dev', 7_200 + age, cpu(3, 0), 412_000), tab: 'orange' },
+          { ...row(41_010, 5173, 'dashboard', 'Vite', 'node ~/code/dashboard/node_modules/.bin/vite', 2_700 + age, cpu(1.2, 1), 168_000), tab: 'green' },
+          {
+            ...row(41_020, 6006, 'design-system', 'Storybook', 'node ~/code/design-system/node_modules/.bin/storybook dev -p 6006', 600 + age, cpu(2, 2), 296_000),
+            managed: true,
+            log: [
+              '@storybook/cli v8.4.2',
+              'info => Starting manager..',
+              'info => Starting preview..',
+              'info Using tsconfig paths for react-docgen',
+              '╭ Storybook 8.4.2 for react-vite started — Local: http://localhost:6006/',
+            ],
+          },
+        ],
+      }
+    },
+    commands: { kill: ACTED, restart: ACTED, open: ACTED, reveal: ACTED },
   }
 }
 

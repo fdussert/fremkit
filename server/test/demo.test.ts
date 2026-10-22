@@ -41,6 +41,7 @@ vi.mock('../src/dock/provider.js', async (orig) => ({ ...(await orig<object>()),
 vi.mock('../src/providers/disk-map.js', async (orig) => ({ ...(await orig<object>()), createDiskMapProvider: spy('disk-map') }))
 vi.mock('../src/providers/shortcuts.js', async (orig) => ({ ...(await orig<object>()), createShortcutsProvider: spy('shortcuts') }))
 vi.mock('../src/providers/service-status.js', async (orig) => ({ ...(await orig<object>()), createServiceStatusProvider: spy('service-status') }))
+vi.mock('../src/companion/servers/provider.js', async (orig) => ({ ...(await orig<object>()), createServersProvider: spy('companion-servers') }))
 vi.mock('../src/brightness/provider.js', async (orig) => ({ ...(await orig<object>()), createBrightnessProvider: spy('brightness') }))
 vi.mock('../src/providers/calendar.js', async (orig) => ({ ...(await orig<object>()), createCalendarProvider: spy('calendar') }))
 vi.mock('../src/apps/icons.js', async (orig) => ({ ...(await orig<object>()), AppIcons: spy('app-icons') }))
@@ -154,6 +155,23 @@ describe('demo mode', () => {
     const probe = await status.commands!.probe({ instanceId: 'service-status-1' }) as { ok: boolean; results: unknown[] }
     expect(probe.ok).toBe(true)
     expect(probe.results).toHaveLength(4)
+  })
+
+  it("acts out Fremdev's server list behind its switch, and its commands change nothing", async () => {
+    const off = ConfigSchema.parse(demoConfig())
+    const offServers = createDemoProviders({ config: () => off }).find((p) => p.channel === 'companion:servers')!
+    expect(await offServers.poll!()).toEqual({ enabled: false, rows: [], canRestart: true })
+    const config = ConfigSchema.parse({ ...demoConfig(), labs: { fremdev: true } })
+    const servers = createDemoProviders({ config: () => config }).find((p) => p.channel === 'companion:servers')!
+    type Snap = { enabled: boolean; canRestart: boolean; rows: Array<{ id: string; ports: number[]; tool: string; managed: boolean; log: string[] }> }
+    const before = (await servers.poll!()) as Snap
+    expect(before.enabled).toBe(true)
+    expect(before.canRestart).toBe(true)
+    expect(before.rows.map((r) => [r.ports[0], r.tool])).toEqual([[3000, 'Next'], [5173, 'Vite'], [6006, 'Storybook']])
+    expect(before.rows.find((r) => r.managed)!.log).toHaveLength(5)
+    const id = before.rows[0].id
+    for (const name of ['kill', 'restart', 'open', 'reveal']) expect(await servers.commands![name]({ id })).toEqual({ ok: true })
+    expect(((await servers.poll!()) as Snap).rows.map((r) => r.id)).toEqual(before.rows.map((r) => r.id))
   })
 
   it("acts out the Sietch widgets' channels: Codex, local models, MuteDeck", async () => {

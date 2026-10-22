@@ -304,6 +304,30 @@ describe('a paired socket', () => {
     registry.stop()
   })
 
+  it("refuses Fremdev's server list to a paired socket, even with fremdev on its screen", async () => {
+    const { hub, paired, registry, setPolicy } = pairedSetup()
+    const acted: unknown[] = []
+    registry.register({ channel: 'companion:servers', intervalMs: 5000, commands: { kill: async (p) => { acted.push(p); return { ok: true } } } })
+    hub.broadcast('companion:servers', { enabled: true, rows: [{ id: '1:x', pid: 1 }], canRestart: true })
+    // What the policy would build for a screen holding the fremdev widget.
+    setPolicy({ 'dev-a': { subscriptions: ['companion:dev', 'companion:servers'], commands: ['companion:dev', 'companion:servers'] } })
+    const socket = paired('dev-a')
+    socket.receive({ type: 'subscribe', channel: 'companion:servers' })
+    socket.receive({ type: 'command', id: 'c1', channel: 'companion:servers', name: 'kill', payload: { id: '1:x' } })
+    await new Promise((r) => setTimeout(r, 0))
+    expect(socket.sent).toEqual([REFUSED, { ...REFUSED, id: 'c1' }])
+    expect(acted).toEqual([])
+    expect((registry as any).states.get('companion:servers').subscribers).toBe(0)
+    // A broadcast after the refusal never reaches it either.
+    hub.broadcast('companion:servers', { enabled: true, rows: [], canRestart: true })
+    expect(socket.sent).toHaveLength(2)
+    const local = new FakeSocket()
+    hub.attach(local, { loopback: true, paired: false })
+    local.receive({ type: 'subscribe', channel: 'companion:servers' })
+    expect(local.sent).toEqual([{ type: 'data', channel: 'companion:servers', data: { enabled: true, rows: [], canRestart: true } }])
+    registry.stop()
+  })
+
   it('is not heard once closed, even before the close handshake ends', async () => {
     const { hub, count, focused, attach, registry } = pairedSetup()
     const socket = attach(new LingeringSocket(), 'dev-a')

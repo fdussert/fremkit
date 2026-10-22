@@ -5,4 +5,4 @@
   "category": "dev",
   "icon": "code", "minSize": [8, 4], "defaultSize": [20, 8],
   "compact": { "width": 2 },
-  "subscriptions": ["companion:dev"], "commands": ["companion:dev"] }
+  "subscriptions": ["companion:dev", "companion:servers"], "commands": ["companion:dev", "companion:servers"] }

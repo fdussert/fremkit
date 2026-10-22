@@ -528,6 +528,35 @@ const OpenCommandSchema = DevCommandSchema.extend({ entryId: z.number().int().mi
 
 type Result = { ok: true } | { ok: false; error: string }
 
+/** A loopback host's port: `localhost`, `127.0.0.1`, `[::1]` or `*.localhost`, with an explicit port. */
+function loopbackPort(host: string): number | null {
+  const m = /^(localhost|[a-z0-9._-]+\.localhost|127\.0\.0\.1|\[::1\]):(\d{1,5})$/i.exec(host)
+  if (!m) return null
+  const port = Number(m[2])
+  return port >= 1 && port <= 65535 ? port : null
+}
+
+/**
+ * The light of the dev tabs open on this Mac's loopback, by port, for the server list
+ * (`companion:servers`): red for an open error or a server that does not answer, orange for an
+ * open failed request, green otherwise; the worst when several tabs share a port. Seen or not
+ * does not matter here: the server row only says how its tab is.
+ */
+export function devTabLights(snapshot: DevSnapshot): Map<number, 'red' | 'orange' | 'green'> {
+  const rank = { red: 0, orange: 1, green: 2 } as const
+  const lights = new Map<number, 'red' | 'orange' | 'green'>()
+  for (const install of snapshot.installs) {
+    for (const tab of install.tabs) {
+      const port = loopbackPort(tab.host)
+      if (port === null) continue
+      const light = tab.errors.open > 0 || tab.server === 'down' ? 'red' : tab.requests.open > 0 ? 'orange' : 'green'
+      const before = lights.get(port)
+      if (before === undefined || rank[light] < rank[before]) lights.set(port, light)
+    }
+  }
+  return lights
+}
+
 export interface DevProviderOptions {
   dev: CompanionDev
   config: () => Config

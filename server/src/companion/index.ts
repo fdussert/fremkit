@@ -9,7 +9,7 @@ import type { ConfigStore } from '../config/store.js'
 import type { DeviceStore } from '../devices/store.js'
 import type { Pasteboard } from '../providers/clipboard.js'
 import type { ProviderRegistry } from '../providers/registry.js'
-import { COMPANION_DEV_CHANNEL, CompanionDev, createDevProvider, fremdevEnabled } from './dev.js'
+import { COMPANION_DEV_CHANNEL, CompanionDev, createDevProvider, devTabLights, fremdevEnabled } from './dev.js'
 import { CompanionPairing } from './pairing.js'
 import { PairingLock } from './lock.js'
 import { companionOrigins, EXTENSION_IDS_ENV } from './protocol.js'
@@ -47,6 +47,8 @@ export interface Companion {
   session: CompanionSession
   dev: CompanionDev
   sockets: CompanionSockets
+  /** The Fremdev light of the loopback dev tabs, by port: what `companion:servers` shows on a row. */
+  tabLights(): ReadonlyMap<number, 'red' | 'orange' | 'green'>
   close(): void
 }
 
@@ -130,5 +132,5 @@ export async function createCompanion(opts: CompanionOptions): Promise<Companion
   }
   app.addHook('onClose', async () => { close() })
 
-  return { provider, pairing, session, dev, sockets, close }
+  return { provider, pairing, session, dev, sockets, tabLights: () => devTabLights(dev.snapshot()), close }
 }

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { readFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import { COMPANION_DEV_CHANNEL } from '../src/companion/dev.js'
+import { COMPANION_SERVERS_CHANNEL } from '../src/companion/servers/provider.js'
 import { WidgetCatalog } from '../src/widgets/catalog.js'
 
 /**
@@ -69,7 +70,7 @@ const snap = (installs: unknown[], over: { enabled?: boolean; paired?: number } 
   ({ enabled: over.enabled ?? true, paired: over.paired ?? 1, installs })
 
 describe('the fremdev manifest', () => {
-  it('the fremdev manifest subscribes to and commands companion:dev', async () => {
+  it('the fremdev manifest subscribes to and commands companion:dev and companion:servers', async () => {
     const cat = new WidgetCatalog(SHIPPED)
     await cat.scan()
     expect(cat.errors.filter((e) => e.id === 'fremdev')).toEqual([])
@@ -80,8 +81,8 @@ describe('the fremdev manifest', () => {
     expect(m.description).toEqual({ fr: 'Les erreurs de vos onglets de développement', en: 'The errors of your development tabs' })
     expect(m.category).toBe('dev')
     expect(m.icon).toBe('code')
-    expect(m.subscriptions).toEqual([COMPANION_DEV_CHANNEL])
-    expect(m.commands).toEqual([COMPANION_DEV_CHANNEL])
+    expect(m.subscriptions).toEqual([COMPANION_DEV_CHANNEL, COMPANION_SERVERS_CHANNEL])
+    expect(m.commands).toEqual([COMPANION_DEV_CHANNEL, COMPANION_SERVERS_CHANNEL])
     expect(m.minSize).toEqual([8, 4])
     expect(m.defaultSize).toEqual([20, 8])
     expect(m.compact).toEqual({ width: 2 })
