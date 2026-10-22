@@ -13,6 +13,11 @@
 //   {"type":"waiting","path":null}            that open is over: answered, refused, or given up
 //   {"type":"done","tree":{…},"stats":{…}}                                 the last line
 //   {"type":"cancelled"} after SIGTERM/SIGINT, {"type":"error","code":"…"} when the root fails.
+//
+// `fremkit-scan procargs <pid>` is the other form: it takes nothing but the pid and prints one line,
+//   {"type":"procargs","exe":"/abs/path","argv":["…"],"env":{"KEY":"value"}}
+// or {"type":"error","code":"no-such-process"|"denied"|"failed"} with a non-zero exit. The line
+// carries the environment, which may hold secrets: it goes to stdout only, never to stderr.
 // The tree's nodes are documented in FremkitCore/DiskTree.swift.
 //
 // A "waiting" path is relative to the root like the others, [] for the root itself. An open nobody
@@ -38,13 +43,30 @@ func fail(_ code: String, _ status: Int32) -> Never {
     exit(status)
 }
 
-let arguments: DiskScanArguments
+let command: ScanCommand
 do {
-    arguments = try DiskScanArguments.parse(CommandLine.arguments.dropFirst())
+    command = try ScanCommand.parse(CommandLine.arguments.dropFirst())
 } catch {
-    FileHandle.standardError.write(Data("fremkit-scan: \(error)\n\(DiskScanArguments.usage)\n".utf8))
+    let usage = (error is ProcArgsParseError) ? ScanCommand.procargsUsage : DiskScanArguments.usage
+    FileHandle.standardError.write(Data("fremkit-scan: \(error)\n\(usage)\n".utf8))
     exit(64)
 }
+
+// procargs: one line on stdout, nothing on stderr. The environment can hold secrets, so it goes to
+// the pipe the server reads and nowhere else.
+if case let .procargs(pid) = command {
+    do {
+        emit(try ProcArgs.read(pid: pid).jsonLine)
+        exit(0)
+    } catch let error as ProcArgsError {
+        emit(error.jsonLine)
+        exit(1)
+    } catch {
+        emit(ProcArgsError.failed.jsonLine)
+        exit(1)
+    }
+}
+guard case let .disk(arguments) = command else { exit(64) }
 
 // Low priority: the scan must not make the Mac stutter. Disk I/O is throttled behind everyone
 // else's, and the thread runs at utility QoS.
