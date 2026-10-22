@@ -459,6 +459,13 @@ export function createServerCommands(opts: ServerCommandsOptions): Record<string
   async function stopStarted(job: Job): Promise<Result> {
     const entry = await job.done
     if (!entry) return { ok: true }
+    // ps missed its start, so no `pid:start` names it; Fremkit still holds the unreaped child, the
+    // gate managed.ts uses for its own stop of an unidentified child.
+    if (entry.start === '') {
+      if (!opts.managed?.stopChild(entry, KILL_GRACE_MS)) return failed('companion.serversKillFailed')
+      await opts.managed.forget(entry)
+      return { ok: true }
+    }
     let outcome: KillOutcome
     try {
       outcome = await killer.kill({ id: `${entry.pid}:${entry.start}`, pid: entry.pid })

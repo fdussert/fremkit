@@ -317,7 +317,7 @@ const NEW_VITE: Proc = { pid: 2001, ppid: 2000, pgid: 2000, start: CHILD_START, 
 function world(initial: Proc[], o: { dataDir: string; scanner?: string | null; procargs?: string; spawned?: Proc[]; t?: { now: number }; takePort?: boolean; survivesTerm?: boolean }) {
   let procs = [...initial]
   /** Tests change these mid-command: the provider copied `sys` when it was made. */
-  const hooks = { lsofDelayMs: 0, procargs: null as Promise<void> | null, killFails: false, onSpawn: null as (() => void) | null }
+  const hooks = { lsofDelayMs: 0, procargs: null as Promise<void> | null, killFails: false, onSpawn: null as (() => void) | null, psHide: [] as number[] }
   const signals: Array<[number, string]> = []
   const spawns: Array<{ file: string; args: string[]; options: SpawnOptions }> = []
   const line = (p: Proc) => `${p.pid} ${p.ppid ?? 1} ${p.pgid ?? p.pid} ${p.uid ?? UID} ${p.start ?? START} 01:02:03 1.5 120000 ${p.comm}`
@@ -325,7 +325,7 @@ function world(initial: Proc[], o: { dataDir: string; scanner?: string | null; p
     uid: UID,
     home: HOME,
     runLsofListen: async () => (hooks.lsofDelayMs > 0 ? new Promise((r) => setTimeout(r, hooks.lsofDelayMs)) : Promise.resolve()).then(() => procs.filter((p) => p.ports?.length).map((p) => [`p${p.pid}`, `c${p.comm.split('/').pop()}`, `u${p.uid ?? UID}`, ...p.ports!.map((n) => `n*:${n}`)].join('\n')).join('\n') + '\n'),
-    runPsStats: async () => [{ pid: 1, ppid: 0, comm: '/sbin/launchd', uid: 0 } as Proc, ...(procs.some((p) => p.pid === SELF) ? [] : [FREMKIT]), ...procs].map(line).join('\n') + '\n',
+    runPsStats: async () => [{ pid: 1, ppid: 0, comm: '/sbin/launchd', uid: 0 } as Proc, ...(procs.some((p) => p.pid === SELF) ? [] : [FREMKIT]), ...procs.filter((p) => !hooks.psHide.includes(p.pid))].map(line).join('\n') + '\n',
     runPsArgs: async (pids) => procs.filter((p) => pids.includes(p.pid)).map((p) => `${p.pid} ${p.args ?? p.comm}`).join('\n') + '\n',
     runLsofCwd: async (pids) => procs.filter((p) => pids.includes(p.pid) && p.cwd).map((p) => `p${p.pid}\nfcwd\nn${p.cwd}`).join('\n') + '\n',
     runDockerPorts: async () => '',
@@ -576,6 +576,23 @@ describe('companion:servers restart', () => {
     expect(await k).toEqual({ ok: true })
     expect(w.signals).toContainEqual([-2000, 'SIGTERM'])
     expect(w.get().map((x) => x.pid)).not.toContain(2000)
+    expect((await w.poll()).rows.filter((r) => r.managed)).toEqual([])
+  })
+
+  it('a kill during the spawn stops the new server by pid when ps missed its start', async () => {
+    const w = world([SHELL, PNPM, VITE], { dataDir: tmp(), spawned: [NEW_PNPM, NEW_VITE], survivesTerm: true })
+    await w.poll()
+    let k: Promise<{ ok: boolean; error?: string }> | undefined
+    w.hooks.onSpawn = () => { w.hooks.psHide = [2000, 2001]; k = w.run('kill', viteId) }
+    expect(await restart(w, viteId)).toEqual({ ok: true })
+    await vi.advanceTimersByTimeAsync(0)
+    expect(await k).toEqual({ ok: true })
+    expect(w.signals).toContainEqual([-2000, 'SIGTERM'])
+    // It ignores TERM: KILL follows after the grace, still by its own group.
+    await vi.advanceTimersByTimeAsync(KILL_GRACE_MS + 100)
+    expect(w.signals).toContainEqual([-2000, 'SIGKILL'])
+    expect(w.get().map((x) => x.pid)).not.toContain(2000)
+    w.hooks.psHide = []
     expect((await w.poll()).rows.filter((r) => r.managed)).toEqual([])
   })
 

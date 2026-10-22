@@ -189,6 +189,12 @@ export interface ManagedServers {
   reconcile(procs: Map<number, ProcInfo>): Promise<void>
   /** Killed or dismissed through Fremkit: no row any more. Its log goes a day later. */
   forget(entry: ManagedEntry): Promise<void>
+  /**
+   * Stops a server this Fremkit spawned and has not seen exit, by pid: its group, then itself; TERM
+   * now, KILL after `graceMs` unless it exited. For a child whose start time was never read, which
+   * the pid-and-start kill cannot name. False, sending nothing, for anything else.
+   */
+  stopChild(entry: ManagedEntry, graceMs: number): boolean
   /** Cuts back the logs past 1 MB; deletes, once a minute at most, logs nobody refers to after a day. */
   maintain(): Promise<void>
 }
@@ -262,6 +268,18 @@ export function createManagedServers(opts: {
       } catch { /* none yet, or unreadable: nothing to remember */ }
     })()
     return loading
+  }
+
+  /**
+   * Signals a child by pid, only while it is provably ours: spawned here and no 'exit' yet, so not
+   * reaped, so its pid cannot belong to anyone else.
+   */
+  function signalChild(t: Tracked, signal: NodeJS.Signals): boolean {
+    if (!t.child || t.exitCode !== undefined || t.entry.pid <= 1) return false
+    for (const target of [-t.entry.pid, t.entry.pid]) {
+      try { kill(target, signal) } catch { /* gone already, or not a group */ }
+    }
+    return true
   }
 
   const gone = (t: Tracked) => t.goneAt !== undefined || t.exitCode !== undefined || t.unidentified === true
@@ -341,11 +359,7 @@ export function createManagedServers(opts: {
           continue
         }
         t.unidentified = true
-        if (t.entry.pid > 1) {
-          for (const target of [-t.entry.pid, t.entry.pid]) {
-            try { kill(target, 'SIGKILL') } catch { /* gone already */ }
-          }
-        }
+        signalChild(t, 'SIGKILL')
       }
       tracked = tracked.filter((t) => {
         if (isAlive(t.entry, procs)) {
@@ -369,6 +383,15 @@ export function createManagedServers(opts: {
       const before = tracked.length
       tracked = tracked.filter((t) => t.entry !== entry && t.entry.log !== entry.log)
       if (tracked.length !== before) await save().catch(() => undefined)
+    },
+
+    stopChild(entry, graceMs) {
+      const t = find(entry)
+      if (!t || !signalChild(t, 'SIGTERM')) return false
+      // Held by the closure, not the set: forgetting the entry must not cancel the KILL.
+      const timer = setTimeout(() => { signalChild(t, 'SIGKILL') }, graceMs)
+      timer.unref?.()
+      return true
     },
 
     async maintain() {
