@@ -486,6 +486,13 @@ export function createServerCommands(opts: ServerCommandsOptions): Record<string
         if (owner) await opts.managed?.forget(owner)
         return { ok: true }
       }
+      // One whose start time is still being read: ps cannot name it, yet it runs and holds its
+      // port. Stopped by pid while Fremkit still holds the unreaped child, then forgotten.
+      if (owner && opts.managed?.pending(owner)) {
+        if (!opts.managed.stopChild(owner, KILL_GRACE_MS)) return failed('companion.serversKillFailed')
+        await opts.managed.forget(owner)
+        return { ok: true }
+      }
       if (owner && !isAlive(owner, parsePs(await opts.sys.runPsStats(), ''))) {
         await opts.managed?.forget(owner)
         return { ok: true }

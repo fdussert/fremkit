@@ -541,6 +541,36 @@ describe('companion:servers restart', () => {
     expect(w.signals).toEqual([])
   })
 
+  it('stops a server whose start time is still unknown when its row is killed, never just forgets it', async () => {
+    const w = world([SHELL, PNPM, VITE], { dataDir: tmp() })
+    await w.poll()
+    // The restart's own read of the new child's start time hangs (a slow ps): its entry has none yet.
+    let release!: () => void
+    const gate = new Promise<void>((r) => { release = r })
+    w.hooks.onSpawn = () => { w.hooks.psGate = gate }
+    const restarting = w.run('restart', viteId)
+    const calls = w.hooks.psCalls
+    await vi.advanceTimersByTimeAsync(KILL_GRACE_MS + 6_000)
+    // The log and its folder are real files: let their I/O run up to the spawn.
+    for (let i = 0; i < 500 && w.hooks.psCalls === calls; i++) await new Promise((r) => setImmediate(r))
+    for (let i = 0; i < 500 && w.spawns.length === 0; i++) await new Promise((r) => setImmediate(r))
+    for (let i = 0; i < 50; i++) await new Promise((r) => setImmediate(r))
+    expect(w.spawns).toHaveLength(1)
+    expect(w.hooks.psCalls).toBeGreaterThan(calls)
+    w.hooks.psGate = null
+    w.hooks.onSpawn = null
+    const row = (await w.poll()).rows.find((r) => r.pid === 2000)!
+    expect(row).toMatchObject({ managed: true, state: 'starting', gone: false })
+    w.signals.length = 0
+    expect(await w.run('kill', row.id)).toEqual({ ok: true })
+    expect(w.signals[0]).toEqual([-2000, 'SIGTERM'])
+    // KILL after the grace, to whatever is left of it.
+    await vi.advanceTimersByTimeAsync(KILL_GRACE_MS + 100)
+    expect(w.signals).toContainEqual([-2000, 'SIGKILL'])
+    release()
+    await restarting
+  })
+
   it('turns a server that never listens red after 30 s', async () => {
     const t = { now: 1_000_000 }
     const w = world([SHELL, PNPM, VITE], { dataDir: tmp(), t })
