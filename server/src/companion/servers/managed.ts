@@ -142,7 +142,9 @@ export function busyPorts(entry: ManagedEntry, tail: string[]): number[] {
   const ports = new Set(entry.ports)
   for (const line of tail) {
     if (!PORT_IN_USE.test(line)) continue
-    for (const m of line.matchAll(/(?:port |:)(\d{2,5})\b/gi)) {
+    // A port after an address (`:::3000`, `127.0.0.1:3000`, `[::1]:3000`, `localhost:3000`,
+    // `*:3000`) or after `port `/`PORT=`; never the pieces of a timestamp (`10:42:01`).
+    for (const m of line.matchAll(/(?:(?:localhost|\b\d{1,3}(?:\.\d{1,3}){3}|\]|::|\*):|\bport[ =]+)(\d{1,5})\b/gi)) {
       const port = Number(m[1])
       if (port >= 1 && port <= 65535) ports.add(port)
     }

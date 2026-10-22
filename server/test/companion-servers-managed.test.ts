@@ -9,7 +9,7 @@ import { tr } from '../src/i18n.js'
 import { createServersProvider, type ServersSnapshot } from '../src/companion/servers/provider.js'
 import { KILL_GRACE_MS } from '../src/companion/servers/commands.js'
 import {
-  cleanLogLine, createManagedServers, cutBack, LOG_CUT_BYTES, LOG_KEEP_BYTES, LOG_RETAIN_MS, managedState,
+  busyPorts, cleanLogLine, createManagedServers, cutBack, LOG_CUT_BYTES, LOG_KEEP_BYTES, LOG_RETAIN_MS, managedState,
   readLogTail, START_TIMEOUT_MS, type SpawnFn,
 } from '../src/companion/servers/managed.js'
 import { parsePs } from '../src/companion/servers/list.js'
@@ -78,6 +78,15 @@ describe('managed server logs', () => {
     writeFileSync(log, 'small\n')
     expect(await cutBack(log)).toBe(false)
     expect(readFileSync(log, 'utf8')).toBe('small\n')
+  })
+
+  it('names the busy ports from addresses and `port N`, never from a timestamp', () => {
+    const entry = { pid: 2000, start: CHILD_START, log: '/x.log', ports: [5173], startedAt: 0 }
+    expect(busyPorts(entry, ['10:42:01 Error: listen EADDRINUSE: address already in use :::3000']).sort()).toEqual([3000, 5173])
+    expect(busyPorts(entry, ['[10:42:01] EADDRINUSE 127.0.0.1:8080']).sort()).toEqual([5173, 8080])
+    expect(busyPorts(entry, ['2026-10-22 10:42:01 port 4000 is already in use']).sort()).toEqual([4000, 5173])
+    expect(busyPorts(entry, ['EADDRINUSE localhost:4001 PORT=4002']).sort()).toEqual([4001, 4002, 5173])
+    expect(busyPorts(entry, ['10:42:01 ready'])).toEqual([5173])
   })
 
   it('decides the state: listening is up, a port in use or a death is failed, a clean exit leaves', () => {
