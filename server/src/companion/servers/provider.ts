@@ -15,6 +15,7 @@ import type { Provider } from '../../providers/types.js'
 import { fremdevEnabled } from '../dev.js'
 import { displayCommand, detectTool, isDevRuntime, isDockerHolder, isSystemProcess, parseLsofCwd, parseLsofListen, parsePs, selfTree, type ProcInfo } from './list.js'
 import { createServersSystem, type ServersSystem } from './system.js'
+import { homeToTilde } from '../../home-tilde.js'
 
 export const COMPANION_SERVERS_CHANNEL = 'companion:servers'
 export const SERVERS_INTERVAL_MS = 5_000
@@ -70,16 +71,8 @@ export interface ServersOptions {
 const HELPER_NAME = 'FremkitHelper'
 const RANK: Record<TabLight, number> = { red: 0, orange: 1, green: 2 }
 
-function escapeRegExp(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-}
-
-/** Every occurrence of the home folder as a path written `~`. */
-export function homeRewrite(text: string, home: string): string {
-  const h = home.replace(/\/+$/, '')
-  if (h.length <= 1) return text
-  return text.replace(new RegExp(`${escapeRegExp(h)}(?=/|\\s|$)`, 'g'), '~')
-}
+/** How long the container names from `docker ps` are reused while the holders' ports stay the same. */
+export const DOCKER_NAMES_TTL_MS = 30_000
 
 /**
  * Folders whose files macOS guards behind a privacy prompt: a `package.json` there is never read,
@@ -108,27 +101,46 @@ export function parseDockerPorts(out: string): Map<number, string> {
   return byPort
 }
 
-const bytes = (snap: ServersSnapshot) => Buffer.byteLength(JSON.stringify(snap), 'utf8')
+const bytes = (value: unknown) => Buffer.byteLength(JSON.stringify(value), 'utf8')
+
+/** The rows kept first when some must go: dev or managed ones, then by port. */
+function keepOrder(a: ServerRow, b: ServerRow): number {
+  const rank = (r: ServerRow) => (r.dev || r.managed ? 0 : 1)
+  return rank(a) - rank(b) || a.ports[0] - b.ports[0] || a.pid - b.pid
+}
+const byPort = (a: ServerRow, b: ServerRow) => a.ports[0] - b.ports[0] || a.pid - b.pid
 
 /**
- * Under `SERVERS_MAX_BYTES`: at most 40 rows and 20 log lines of 300 characters each; then the
- * oldest log lines go, from the longest log first; then rows from the end.
+ * Under `SERVERS_MAX_BYTES`: at most 40 rows (non-dev, unmanaged ones go first, then the highest
+ * ports) and 20 log lines of 300 characters each; then the oldest log lines go, from the longest
+ * log first; then rows, in the same order as the 40-row cut. Each row is measured once and again
+ * only when its log is cut: the total is the empty snapshot plus the rows and their commas, which
+ * is exactly what `JSON.stringify` writes.
  */
 export function capSnapshot(snap: ServersSnapshot): ServersSnapshot {
-  const rows = snap.rows.slice(0, SERVERS_MAX_ROWS).map((r) => ({
+  const rows = [...snap.rows].sort(keepOrder).slice(0, SERVERS_MAX_ROWS).map((r) => ({
     ...r,
     log: r.log.slice(-SERVERS_LOG_LINES).map((l) => l.slice(0, SERVERS_LOG_LINE_CHARS)),
   }))
-  const out: ServersSnapshot = { ...snap, rows }
-  while (bytes(out) > SERVERS_MAX_BYTES) {
-    let longest: ServerRow | null = null
-    for (const r of rows) if (r.log.length > 0 && (!longest || r.log.length > longest.log.length)) longest = r
-    if (!longest) break
+  const sizes = rows.map((r) => bytes(r))
+  const base = bytes({ ...snap, rows: [] })
+  let total = base + sizes.reduce((a, b) => a + b, 0) + Math.max(0, rows.length - 1)
+  while (total > SERVERS_MAX_BYTES) {
+    let longest = -1
+    for (let i = 0; i < rows.length; i++) if (rows[i].log.length > 0 && (longest < 0 || rows[i].log.length > rows[longest].log.length)) longest = i
+    if (longest < 0) break
     // A handful of lines per round: a full snapshot needs a few dozen rounds, not hundreds.
-    longest.log = longest.log.slice(Math.min(5, longest.log.length))
+    const r = rows[longest]
+    r.log = r.log.slice(Math.min(5, r.log.length))
+    const size = bytes(r)
+    total += size - sizes[longest]
+    sizes[longest] = size
   }
-  while (rows.length > 0 && bytes(out) > SERVERS_MAX_BYTES) rows.pop()
-  return out
+  while (rows.length > 0 && total > SERVERS_MAX_BYTES) {
+    total -= sizes.pop()! + (rows.length > 1 ? 1 : 0)
+    rows.pop()
+  }
+  return { ...snap, rows: rows.sort(byPort) }
 }
 
 export function createServersProvider(opts: ServersOptions): Provider<ServersSnapshot> & { lookup(id: string): ServerRow | null } {
@@ -136,12 +148,15 @@ export function createServersProvider(opts: ServersOptions): Provider<ServersSna
   const selfPid = opts.selfPid ?? process.pid
   let last: ServerRow[] = []
   let byId = new Map<string, ServerRow>()
-  let inFlight: Promise<ServersSnapshot> | null = null
+  const now = opts.now ?? Date.now
+  /** The last `docker ps` names, with the holders' ports they were asked for. */
+  let dockerNames: { key: string; at: number; names: Map<number, string> } | null = null
 
   const canRestart = () => opts.scanner !== null
 
   async function project(p: ProcInfo, cwd: string | null): Promise<string> {
-    if (!cwd || cwd === '/') return basename(p.comm)
+    // The home folder's basename is the account's name: never a project's.
+    if (!cwd || cwd === '/' || cwd.replace(/\/+$/, '') === sys.home.replace(/\/+$/, '')) return basename(p.comm)
     if (!isProtected(cwd, sys.home)) {
       const name = await sys.readPackageName(cwd)
       if (name) return name
@@ -177,14 +192,8 @@ export function createServersProvider(opts: ServersOptions): Provider<ServersSna
     const procs = parsePs(statsText, argsText)
     const cwds = parseLsofCwd(cwdText)
 
-    let docker: Map<number, string> | null = null
-    if (kept.some((l) => isDockerHolder(procs.get(l.pid)!))) {
-      try {
-        docker = parseDockerPorts(await sys.runDockerPorts())
-      } catch {
-        docker = new Map()
-      }
-    }
+    const holders = kept.filter((l) => isDockerHolder(procs.get(l.pid)!))
+    const docker = holders.length > 0 ? await containerNames(holders.flatMap((l) => l.ports)) : null
     const lights = opts.tabLights()
 
     const rows = await Promise.all(kept.map(async (l): Promise<ServerRow> => {
@@ -205,11 +214,11 @@ export function createServersProvider(opts: ServersOptions): Provider<ServersSna
         uptimeSec: p.etimeSec,
         cpu: p.cpu,
         rssKb: p.rssKb,
-        folder: cwd === null ? null : homeRewrite(cwd, sys.home),
-        command: homeRewrite(displayCommand(p, dev), sys.home),
+        folder: cwd === null ? null : homeToTilde(cwd, sys.home),
+        command: homeToTilde(displayCommand(p, dev), sys.home),
         dev,
         system: isSystemProcess(p),
-        docker: docker ? (l.ports.map((port) => docker!.get(port)).find((n) => n !== undefined) ?? 'Docker') : null,
+        docker: docker && isDockerHolder(p) ? (l.ports.map((port) => docker.get(port)).find((n) => n !== undefined) ?? 'Docker') : null,
         managed: false,
         state: 'up',
         portBusy: false,
@@ -217,7 +226,22 @@ export function createServersProvider(opts: ServersOptions): Provider<ServersSna
         log: [],
       }
     }))
-    return rows.sort((a, b) => a.ports[0] - b.ports[0] || a.pid - b.pid)
+    return rows.sort(byPort)
+  }
+
+  /** Docker's container names by host port: asked again when the holders' ports change, or after 30 s. */
+  async function containerNames(ports: number[]): Promise<Map<number, string>> {
+    const key = [...new Set(ports)].sort((a, b) => a - b).join(',')
+    const t = now()
+    if (dockerNames && dockerNames.key === key && t - dockerNames.at < DOCKER_NAMES_TTL_MS) return dockerNames.names
+    let names: Map<number, string>
+    try {
+      names = parseDockerPorts(await sys.runDockerPorts())
+    } catch {
+      names = new Map()
+    }
+    dockerNames = { key, at: t, names }
+    return names
   }
 
   async function snapshot(): Promise<ServersSnapshot> {
@@ -239,11 +263,8 @@ export function createServersProvider(opts: ServersOptions): Provider<ServersSna
   return {
     channel: COMPANION_SERVERS_CHANNEL,
     intervalMs: SERVERS_INTERVAL_MS,
-    poll() {
-      // A slow lsof never stacks a second run behind the first.
-      inFlight ??= snapshot().finally(() => { inFlight = null })
-      return inFlight
-    },
+    // The registry never starts a poll while one is running (its inFlight/pollAgain).
+    poll: snapshot,
     commands: {},
     lookup: (id) => byId.get(id) ?? null,
   }

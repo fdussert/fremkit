@@ -56,7 +56,7 @@ function fakeSystem(procs: Proc[], extra: Partial<ServersSystem> = {}) {
   return { sys, calls }
 }
 
-function provider(procs: Proc[], opts: { extra?: Partial<ServersSystem>; config?: () => Config; tabLights?: Map<number, 'red' | 'orange' | 'green'>; scanner?: string | null } = {}) {
+function provider(procs: Proc[], opts: { extra?: Partial<ServersSystem>; config?: () => Config; tabLights?: Map<number, 'red' | 'orange' | 'green'>; scanner?: string | null; now?: () => number } = {}) {
   const { sys, calls } = fakeSystem(procs, opts.extra)
   const p = createServersProvider({
     config: opts.config ?? on,
@@ -65,6 +65,7 @@ function provider(procs: Proc[], opts: { extra?: Partial<ServersSystem>; config?
     tabLights: () => opts.tabLights ?? new Map(),
     system: sys,
     selfPid: SELF,
+    ...(opts.now ? { now: opts.now } : {}),
   })
   return { p, sys, calls }
 }
@@ -155,6 +156,51 @@ describe('companion:servers provider', () => {
     expect(none).not.toHaveBeenCalled()
   })
 
+  it('names only the Docker holder: a dev row beside it, or on a port Docker lists, stays null', async () => {
+    const runDockerPorts = vi.fn(async () => 'web-1\t0.0.0.0:8080->80/tcp\napi-1\t0.0.0.0:5173->5173/tcp\n')
+    const { p } = provider([VITE, { pid: 3001, comm: '/Applications/Docker.app/Contents/MacOS/com.docker.backend', ports: [8080] }], { extra: { runDockerPorts } })
+    const rows = (await poll(p)).rows
+    expect(rows.find((r) => r.pid === 1001)!.docker).toBeNull()
+    expect(rows.find((r) => r.pid === 3001)!.docker).toBe('web-1')
+  })
+
+  it("reuses Docker's names for 30 s while the holders' ports stay the same", async () => {
+    let t = 0
+    let ports = [8080]
+    const runDockerPorts = vi.fn(async () => 'web-1\t0.0.0.0:8080->80/tcp\n')
+    const holder = { pid: 3001, comm: '/Applications/Docker.app/Contents/MacOS/com.docker.backend', get ports() { return ports } } as unknown as Proc
+    const { p } = provider([holder], { extra: { runDockerPorts }, now: () => t })
+    await poll(p)
+    t = 29_000
+    await poll(p)
+    expect(runDockerPorts).toHaveBeenCalledTimes(1)
+    ports = [8080, 9090]
+    await poll(p)
+    expect(runDockerPorts).toHaveBeenCalledTimes(2)
+    t = 60_000
+    await poll(p)
+    expect(runDockerPorts).toHaveBeenCalledTimes(3)
+  })
+
+  it('never names a project after the home folder, which is the account name', async () => {
+    const readPackageName = vi.fn(async () => null)
+    const { p } = provider([{ pid: 4001, comm: '/opt/homebrew/bin/python3', args: 'python3 -m http.server 8000', cwd: HOME, ports: [8000] }], { extra: { readPackageName } })
+    const row = (await poll(p)).rows[0]
+    expect(row.project).toBe('python3')
+    expect(row.folder).toBe('~')
+  })
+
+  it('writes the home folder as ~ before any punctuation, and masks secrets in a dev command', async () => {
+    const { p } = provider([{
+      pid: 5001, comm: '/opt/homebrew/bin/node', cwd: `${HOME}/code/api`, ports: [3000],
+      args: `node ${HOME}/code/api/server.js --token abc123 DATABASE_URL=postgres://u:p@db.example.com/x X=${HOME}:/bin --root=(${HOME}),'${HOME}'`,
+    }])
+    const command = (await poll(p)).rows[0].command
+    expect(command).toBe("node ~/code/api/server.js --token ••• DATABASE_URL=postgres://u:•••@db.example.com/x X=~:/bin --root=(~),'~'")
+    expect(command).not.toContain('abc123')
+    expect(command).not.toContain('tester')
+  })
+
   it('says Docker when the container is not found or docker fails', async () => {
     const { p } = provider([{ pid: 3001, comm: '/usr/local/bin/vpnkit-bridge', ports: [7000] }], { extra: { runDockerPorts: async () => { throw new Error('unavailable') } } })
     expect((await poll(p)).rows[0].docker).toBe('Docker')
@@ -221,6 +267,17 @@ describe('capSnapshot', () => {
     expect(snap.rows.some((r) => r.log.length < 20)).toBe(true)
   })
 
+  it('cuts to 40 rows keeping dev and managed ones first, then the lowest ports, sorted by port', () => {
+    const other = (i: number): ServerRow => ({ ...row(i), dev: false, managed: false, log: [] })
+    const devRow = (i: number): ServerRow => ({ ...row(i), managed: false, log: [] })
+    const rows = [...Array.from({ length: 30 }, (_, i) => other(i)), ...Array.from({ length: 30 }, (_, i) => devRow(100 + i))]
+    const snap = capSnapshot({ enabled: true, canRestart: true, rows })
+    expect(snap.rows).toHaveLength(40)
+    expect(snap.rows.filter((r) => r.dev)).toHaveLength(30)
+    expect(snap.rows.filter((r) => !r.dev).map((r) => r.pid)).toEqual(Array.from({ length: 10 }, (_, i) => i))
+    expect(snap.rows.map((r) => r.ports[0])).toEqual([...snap.rows.map((r) => r.ports[0])].sort((a, b) => a - b))
+  })
+
   it('clips a log to its last 20 lines of 300 characters', () => {
     const long = { ...row(1), log: Array.from({ length: 30 }, (_, j) => `${j}:`.padEnd(400, 'y')) }
     const snap = capSnapshot({ enabled: true, canRestart: true, rows: [long] })
@@ -260,7 +317,7 @@ describe('servers system runners', () => {
     await sys.runLsofListen()
     await sys.runLsofCwd([7, 8])
     expect(calls.map((c) => [c.file, c.args])).toEqual([
-      ['/usr/sbin/lsof', ['-nP', '-iTCP', '-sTCP:LISTEN', '-F', 'pcuLn']],
+      ['/usr/sbin/lsof', ['-nP', '-a', '-u', String(sys.uid), '-iTCP', '-sTCP:LISTEN', '-F', 'pcuLn']],
       ['/usr/sbin/lsof', ['-a', '-p', '7,8', '-d', 'cwd', '-Fn']],
     ])
   })

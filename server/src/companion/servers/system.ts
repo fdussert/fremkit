@@ -30,7 +30,7 @@ export interface ServersSystem {
   uid: number
   /** The home folder, published as `~`. */
   home: string
-  /** `lsof -nP -iTCP -sTCP:LISTEN -F pcuLn`. */
+  /** `lsof -nP -a -u <uid> -iTCP -sTCP:LISTEN -F pcuLn`: this account's listeners only. */
   runLsofListen(): Promise<string>
   /**
    * `ps -ax -o pid=,ppid=,pgid=,uid=,lstart=,etime=,%cpu=,rss=,comm=`: every process, so the
@@ -79,10 +79,11 @@ export function createServersSystem(exec: ExecFn = execText, env: NodeJS.Process
   const cache = new Map<string, { mtimeMs: number; name: string | null }>()
   const pidList = (pids: number[]) => pids.filter((p) => Number.isInteger(p) && p > 0).join(',')
 
+  const uid = process.getuid?.() ?? -1
   return {
-    uid: process.getuid?.() ?? -1,
+    uid,
     home: homedir(),
-    runLsofListen: () => exec(LSOF, ['-nP', '-iTCP', '-sTCP:LISTEN', '-F', 'pcuLn'], opts(base)),
+    runLsofListen: () => exec(LSOF, ['-nP', '-a', '-u', String(uid), '-iTCP', '-sTCP:LISTEN', '-F', 'pcuLn'], opts(base)),
     runPsStats: () => exec(PS, ['-ax', '-o', 'pid=,ppid=,pgid=,uid=,lstart=,etime=,%cpu=,rss=,comm='], opts(psEnv)),
     runPsArgs: async (pids) => {
       const list = pidList(pids)
