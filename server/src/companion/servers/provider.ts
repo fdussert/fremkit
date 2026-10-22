@@ -92,6 +92,8 @@ const RANK: Record<TabLight, number> = { red: 0, orange: 1, green: 2 }
 
 /** How long the container names from `docker ps` are reused while the holders' ports stay the same. */
 export const DOCKER_NAMES_TTL_MS = 30_000
+/** How long an empty `docker ps` answer is reused: Docker may still be starting its containers. */
+export const DOCKER_EMPTY_TTL_MS = 5_000
 
 /**
  * Folders whose files macOS guards behind a privacy prompt: a `package.json` there is never read,
@@ -340,13 +342,14 @@ export function createServersProvider(opts: ServersOptions): Provider<ServersSna
 
   /**
    * Docker's container names by host port: asked again when the holders' ports change, or after
-   * 30 s. Only an answer naming something is kept: a failed `docker ps`, or an empty one while a
-   * holder is listed (Docker still starting its containers), is asked again on the next poll.
+   * 30 s. An empty answer while a holder is listed (Docker still starting its containers) is kept
+   * 5 s only, and a failed `docker ps` not at all.
    */
   async function containerNames(ports: number[]): Promise<Map<number, string>> {
     const key = [...new Set(ports)].sort((a, b) => a - b).join(',')
     const t = now()
-    if (dockerNames && dockerNames.key === key && t - dockerNames.at < DOCKER_NAMES_TTL_MS) return dockerNames.names
+    const ttl = dockerNames?.names.size === 0 ? DOCKER_EMPTY_TTL_MS : DOCKER_NAMES_TTL_MS
+    if (dockerNames && dockerNames.key === key && t - dockerNames.at < ttl) return dockerNames.names
     let names: Map<number, string>
     try {
       names = parseDockerPorts(await sys.runDockerPorts())
@@ -354,7 +357,7 @@ export function createServersProvider(opts: ServersOptions): Provider<ServersSna
       dockerNames = null
       return new Map()
     }
-    dockerNames = names.size > 0 ? { key, at: t, names } : null
+    dockerNames = { key, at: t, names }
     return names
   }
 

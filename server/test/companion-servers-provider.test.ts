@@ -7,6 +7,7 @@ import {
   capSnapshot,
   COMPANION_SERVERS_CHANNEL,
   createServersProvider,
+  DOCKER_EMPTY_TTL_MS,
   SERVERS_INTERVAL_MS,
   SERVERS_MAX_BYTES,
   type ServerRow,
@@ -208,15 +209,22 @@ describe('companion:servers provider', () => {
     expect((await poll(p)).rows[0].docker).toBe('Docker')
   })
 
-  it('asks Docker again on the next poll after a failure or an empty answer, never caching either', async () => {
+  it('asks Docker again on the next poll after a failure, and 5 s after an empty answer', async () => {
     let answer: () => string = () => { throw new Error('unavailable') }
     const runDockerPorts = vi.fn(async () => answer())
-    const { p } = provider([{ pid: 3001, comm: '/Applications/Docker.app/Contents/MacOS/com.docker.backend', ports: [8080] }], { extra: { runDockerPorts } })
+    let t = 1_000_000
+    const { p } = provider([{ pid: 3001, comm: '/Applications/Docker.app/Contents/MacOS/com.docker.backend', ports: [8080] }], { extra: { runDockerPorts }, now: () => t })
     expect((await poll(p)).rows[0].docker).toBe('Docker')
     // Docker answers, but has nothing yet (it is still starting its containers).
     answer = () => ''
     expect((await poll(p)).rows[0].docker).toBe('Docker')
+    expect(runDockerPorts).toHaveBeenCalledTimes(2)
     answer = () => 'web-1\t0.0.0.0:8080->80/tcp\n'
+    // An empty answer is kept 5 s, not 30: the next poll within it reuses it.
+    t += DOCKER_EMPTY_TTL_MS - 1
+    expect((await poll(p)).rows[0].docker).toBe('Docker')
+    expect(runDockerPorts).toHaveBeenCalledTimes(2)
+    t += 1
     expect((await poll(p)).rows[0].docker).toBe('web-1')
     expect(runDockerPorts).toHaveBeenCalledTimes(3)
     // A real answer is reused.
