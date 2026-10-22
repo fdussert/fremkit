@@ -37,7 +37,7 @@ interface Logic {
   formatMem(kb: unknown, locale?: string): string
   serverRows(snapshot: unknown, showAll: boolean): Array<{ id: string; pid: number; key: string; ports: number[]; project: string }>
   serverKey(row: unknown): string
-  serverActions(row: unknown, canRestart: boolean): { open: boolean; reveal: boolean; kill: boolean; restart: boolean }
+  serverActions(row: unknown, canRestart: boolean): { open: boolean; reveal: boolean; kill: boolean; restart: boolean; dismiss: boolean }
   serverLight(row: unknown): 'green' | 'grey' | 'red'
   serversStateOf(snapshot: unknown, showAll: boolean): string
 }
@@ -468,6 +468,10 @@ describe('fremdev/logic.js: the Servers segment', () => {
     expect(serverRows({ enabled: true, rows: 'x' }, true)).toEqual([])
     // A row without ports is dropped rather than sorted on undefined.
     expect(serverRows(servers([server(1, 3000, { ports: [] }), null]), true)).toEqual([])
+    // Except a gone managed row, which still needs its Dismiss: kept, sorted first.
+    const gone = serverRows(servers([server(2, 3000), server(1, 0, { ports: [], managed: true, gone: true, state: 'failed' })]), false)
+    expect(gone.map((r) => r.pid)).toEqual([1, 2])
+    expect(gone[0].key).toBe('id:' + gone[0].id)
   })
 
   it('serverKey: the project and first port, so a managed row keeps its key from root to listener', async () => {
@@ -485,13 +489,16 @@ describe('fremdev/logic.js: the Servers segment', () => {
 
   it('serverActions: Open but Docker, Finder on dev non-system rows, Kill on neither system nor Docker, Restart when the server can', async () => {
     const { serverActions } = await loadLogic()
-    expect(serverActions(server(1, 3000), true)).toEqual({ open: true, reveal: true, kill: true, restart: true })
-    expect(serverActions(server(1, 3000), false)).toEqual({ open: true, reveal: true, kill: true, restart: false })
-    expect(serverActions(server(1, 3000, { dev: false }), true)).toEqual({ open: true, reveal: false, kill: true, restart: false })
-    expect(serverActions(server(1, 3000, { system: true }), true)).toEqual({ open: true, reveal: false, kill: false, restart: false })
-    expect(serverActions(server(1, 3000, { docker: 'db' }), true)).toEqual({ open: false, reveal: false, kill: false, restart: false })
-    expect(serverActions(server(1, 3000, { dev: false, docker: 'Docker' }), true)).toEqual({ open: false, reveal: false, kill: false, restart: false })
-    expect(serverActions(null, true)).toEqual({ open: false, reveal: false, kill: false, restart: false })
+    expect(serverActions(server(1, 3000), true)).toEqual({ open: true, reveal: true, kill: true, restart: true, dismiss: false })
+    expect(serverActions(server(1, 3000), false)).toEqual({ open: true, reveal: true, kill: true, restart: false, dismiss: false })
+    expect(serverActions(server(1, 3000, { dev: false }), true)).toEqual({ open: true, reveal: false, kill: true, restart: false, dismiss: false })
+    expect(serverActions(server(1, 3000, { system: true }), true)).toEqual({ open: true, reveal: false, kill: false, restart: false, dismiss: false })
+    expect(serverActions(server(1, 3000, { docker: 'db' }), true)).toEqual({ open: false, reveal: false, kill: false, restart: false, dismiss: false })
+    expect(serverActions(server(1, 3000, { dev: false, docker: 'Docker' }), true)).toEqual({ open: false, reveal: false, kill: false, restart: false, dismiss: false })
+    expect(serverActions(null, true)).toEqual({ open: false, reveal: false, kill: false, restart: false, dismiss: false })
+
+    // A server Fremkit started that is gone: only Dismiss, nothing that acts on a process or a port.
+    expect(serverActions(server(1, 3000, { managed: true, state: 'failed', gone: true }), true)).toEqual({ open: false, reveal: false, kill: false, restart: false, dismiss: true })
   })
 
   it('serverLight: green when up, grey while starting, red when failed or holding a port a restart wanted', async () => {

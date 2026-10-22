@@ -54,6 +54,8 @@ export type ServerRow = {
   /** A Docker Desktop port holder: the container's name, or 'Docker' when it is not known. */
   docker: string | null
   managed: boolean
+  /** A server Fremkit started whose process is gone: its row stays until dismissed (a kill), and nothing else acts on it. */
+  gone: boolean
   state: 'up' | 'starting' | 'failed'
   /** Holds a port a server Fremkit restarted failed on. */
   portBusy: boolean
@@ -121,9 +123,9 @@ const bytes = (value: unknown) => Buffer.byteLength(JSON.stringify(value), 'utf8
 /** The rows kept first when some must go: dev or managed ones, then by port. */
 function keepOrder(a: ServerRow, b: ServerRow): number {
   const rank = (r: ServerRow) => (r.dev || r.managed ? 0 : 1)
-  return rank(a) - rank(b) || a.ports[0] - b.ports[0] || a.pid - b.pid
+  return rank(a) - rank(b) || (a.ports[0] ?? 0) - (b.ports[0] ?? 0) || a.pid - b.pid
 }
-const byPort = (a: ServerRow, b: ServerRow) => a.ports[0] - b.ports[0] || a.pid - b.pid
+const byPort = (a: ServerRow, b: ServerRow) => (a.ports[0] ?? 0) - (b.ports[0] ?? 0) || a.pid - b.pid
 
 /**
  * Under `SERVERS_MAX_BYTES`: at most 40 rows (non-dev, unmanaged ones go first, then the highest
@@ -269,6 +271,7 @@ export function createServersProvider(opts: ServersOptions): Provider<ServersSna
         system: isSystemProcess(p),
         docker: docker && isDockerHolder(p) ? (l.ports.map((port) => docker.get(port)).find((n) => n !== undefined) ?? 'Docker') : null,
         managed: false,
+        gone: false,
         state: 'up',
         portBusy: false,
         tab,
@@ -292,7 +295,8 @@ export function createServersProvider(opts: ServersOptions): Provider<ServersSna
     for (const e of entries) {
       const tail = await readLogTail(e.log, sys.home)
       // A child whose start time is still being read is starting, not gone.
-      const state = managedState({ alive: isAlive(e, stats) || managed.pending(e), listening: listening.has(e), tail, startedAt: e.startedAt, now: now(), exitCode: managed.exitCode(e) })
+      const alive = isAlive(e, stats) || managed.pending(e)
+      const state = managedState({ alive, listening: listening.has(e), tail, startedAt: e.startedAt, now: now(), exitCode: managed.exitCode(e) })
       if (state === 'drop') {
         await managed.forget(e)
         continue
@@ -302,10 +306,11 @@ export function createServersProvider(opts: ServersOptions): Provider<ServersSna
       if (!listed) {
         const label = labels.get(e.log)
         const row: ServerRow = {
-          id: `${e.pid}:${e.start}`, pid: e.pid, ports: e.ports.length > 0 ? [...e.ports] : [0],
+          // The ports it was to take, as they are: none is none, never a made-up port.
+          id: `${e.pid}:${e.start}`, pid: e.pid, ports: [...e.ports],
           project: label?.project ?? '', tool: label?.tool ?? '', uptimeSec: 0, cpu: 0, rssKb: 0,
           folder: label?.folder ?? null, command: label?.command ?? '', dev: true, system: false, docker: null,
-          managed: true, state, portBusy: false, tab: null, log: [],
+          managed: true, gone: !alive, state, portBusy: false, tab: null, log: [],
         }
         rows.push(row)
         polledManaged.set(row.id, e)

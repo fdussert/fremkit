@@ -504,6 +504,11 @@ describe('companion:servers restart', () => {
     expect(failed).toMatchObject({ pid: 2000, state: 'failed', ports: [5173] })
     expect(failed.log).toContain('Error: listen EADDRINUSE: address already in use :::5173')
     expect(snap.rows.find((r) => r.pid === 1800)).toMatchObject({ portBusy: true, managed: false })
+    // Gone: said so, with the ports it had and no fake one; Open, Finder and Restart refused.
+    expect(failed.gone).toBe(true)
+    expect(snap.rows.filter((r) => !r.managed).every((r) => r.gone === false)).toBe(true)
+    for (const name of ['open', 'reveal', 'restart']) expect((await w.run(name, failed.id)).ok).toBe(false)
+    expect(w.sys.runOpen).not.toHaveBeenCalled()
     await w.poll()
     expect(w.spawns).toHaveLength(1)
     // Kill on the red row dismisses it.

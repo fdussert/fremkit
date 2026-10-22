@@ -642,7 +642,8 @@ can be lost. The server outlives a restart of Fremkit, which remembers it in `se
 deleted after 24 hours. The row turns red when the server's output says that its port is taken
 (`EADDRINUSE`, *address already in use*, *port 3000 is in use*) or when it exits with an error; in
 the port case the row of the program holding that port lights up too. Kill on a Fremkit-started
-server stops it, and dismisses its red row when it was gone already.
+server stops it. Once its process is gone, its red row offers **Dismiss** alone, which removes it:
+no Open, Finder or Restart, since there is no process, port or folder left to act on.
 
 *A stop always wins over a restart.* If you press Kill while a restart is waiting for the port, the
 restart is cancelled, and if it had already started the new server, that one is stopped. A second

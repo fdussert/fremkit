@@ -331,14 +331,16 @@
   function serverRows(snap, showAll) {
     if (!snap || typeof snap !== 'object' || snap.enabled === false || !Array.isArray(snap.rows)) return []
     var rows = snap.rows.filter(function (r) {
-      return r && typeof r === 'object' && Array.isArray(r.ports) && typeof r.ports[0] === 'number' &&
-        (showAll === true || r.dev === true || r.managed === true || !!r.docker)
+      if (!r || typeof r !== 'object' || !Array.isArray(r.ports)) return false
+      // A gone managed row may have no port left; it is still listed, for its Dismiss.
+      if (typeof r.ports[0] !== 'number' && !(r.managed === true && r.gone === true)) return false
+      return showAll === true || r.dev === true || r.managed === true || !!r.docker
     }).map(function (r) {
       var row = {}
       for (var k in r) if (Object.prototype.hasOwnProperty.call(r, k)) row[k] = r[k]
       return row
     })
-    rows.sort(function (a, b) { return a.ports[0] - b.ports[0] || (a.pid || 0) - (b.pid || 0) })
+    rows.sort(function (a, b) { return (a.ports[0] || 0) - (b.ports[0] || 0) || (a.pid || 0) - (b.pid || 0) })
     var used = {}
     rows.forEach(function (row) {
       var key = serverKey(row)
@@ -353,17 +355,20 @@
    * Which buttons an unfolded row offers. The server decides again for each command; this only
    * hides what it would refuse. Docker's port holders get none; Finder for a dev program's folder;
    * Kill for what is neither the system's nor Docker's; Restart for a dev program when the server
-   * can read a command line back (`canRestart`: the helper's scanner is there).
+   * can read a command line back (`canRestart`: the helper's scanner is there). A server Fremkit
+   * started that is gone (`gone`) gets Dismiss alone: there is no process, port or folder to act on.
    */
   function serverActions(row, canRestart) {
-    var none = { open: false, reveal: false, kill: false, restart: false }
+    var none = { open: false, reveal: false, kill: false, restart: false, dismiss: false }
     if (!row || typeof row !== 'object' || row.docker) return none
+    if (row.managed === true && row.gone === true) return { open: false, reveal: false, kill: false, restart: false, dismiss: true }
     var dev = row.dev === true, system = row.system === true
     return {
       open: true,
       reveal: dev && !system,
       kill: !system,
-      restart: canRestart === true && dev && !system
+      restart: canRestart === true && dev && !system,
+      dismiss: false
     }
   }
 

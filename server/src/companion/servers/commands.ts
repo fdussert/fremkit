@@ -481,7 +481,11 @@ export function createServerCommands(opts: ServerCommandsOptions): Record<string
     kill: command(async (row) => {
       if (row.system) return failed('companion.serversNotAllowed')
       const owner = opts.managedOf?.(row.id) ?? null
-      // A server Fremkit started that is gone already: its red row is dismissed.
+      // A server Fremkit started that is gone already: its red row is dismissed, nothing signalled.
+      if (row.gone) {
+        if (owner) await opts.managed?.forget(owner)
+        return { ok: true }
+      }
       if (owner && !isAlive(owner, parsePs(await opts.sys.runPsStats(), ''))) {
         await opts.managed?.forget(owner)
         return { ok: true }
@@ -510,6 +514,7 @@ export function createServerCommands(opts: ServerCommandsOptions): Record<string
       return stoppedAnyway(outcome.error) ? { ok: true } : failed(outcome.error)
     }),
     restart: command(async (row) => {
+      if (row.gone) return failed('companion.serversUnknown')
       const { scanner, managed, readProcArgs: read } = opts
       if (!scanner || !managed || !read) return failed('companion.serversNoRestart')
       if (row.system || !row.dev) return failed('companion.serversNotAllowed')
@@ -530,10 +535,12 @@ export function createServerCommands(opts: ServerCommandsOptions): Record<string
         job.finish(job.entry ?? null)
       }
     }),
-    open: command(async (row) => open([`http://localhost:${row.ports[0]}/`])),
+    // A gone server's port is nobody's, or someone else's now.
+    open: command(async (row) => (row.gone || row.ports.length === 0 ? failed('companion.serversUnknown') : open([`http://localhost:${row.ports[0]}/`]))),
     // A system program's folder is not the user's project, nor is a non-dev program's: Open only,
     // and Kill for the latter.
     reveal: command(async (row) => {
+      if (row.gone) return failed('companion.serversUnknown')
       if (row.system || !row.dev) return failed('companion.serversNotAllowed')
       const folder = opts.folderOf(row.id)
       if (folder === null || !folder.startsWith('/')) return failed('companion.serversNoFolder')

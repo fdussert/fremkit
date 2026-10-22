@@ -297,6 +297,7 @@
     reveal: { fr: 'Finder', en: 'Finder' },
     restart: { fr: 'Redémarrer', en: 'Restart' },
     kill: { fr: 'Arrêter', en: 'Kill' },
+    dismiss: { fr: 'Retirer', en: 'Dismiss' },
     confirm: { fr: 'Confirmer ?', en: 'Confirm?' },
     restarting: { fr: 'Redémarrage…', en: 'Restarting…' },
     killing: { fr: 'Arrêt…', en: 'Stopping…' },
@@ -823,7 +824,8 @@
       }
       var asked
       try {
-        asked = Fremkit.sendCommand(SCHANNEL, name, { id: entry.row.id })
+        // Dismissing a gone server is a kill the server answers by forgetting it.
+        asked = Fremkit.sendCommand(SCHANNEL, name === 'dismiss' ? 'kill' : name, { id: entry.row.id })
       } catch (e) { done(null); return }
       Promise.resolve(asked).then(done, function () { done(null) })
     }
@@ -846,7 +848,7 @@
       sendServer(entry, name)
     }
 
-    var ACTIONS = ['open', 'reveal', 'restart', 'kill']
+    var ACTIONS = ['open', 'reveal', 'restart', 'kill', 'dismiss']
 
     function createServer(key) {
       var entry = { key: key, row: null, logText: null, buttons: {} }
