@@ -354,7 +354,7 @@
   /**
    * Which buttons an unfolded row offers. The server decides again for each command; this only
    * hides what it would refuse. Docker's port holders get none; Finder for a dev program's folder;
-   * Kill for what is neither the system's nor Docker's; Restart for a dev program when the server
+   * Kill for what is neither the system's, Docker's nor a browser; Restart for a dev program when the server
    * can read a command line back (`canRestart`: the helper's scanner is there). A server Fremkit
    * started that is gone (`gone`) gets Dismiss alone: there is no process, port or folder to act on.
    */
@@ -366,7 +366,8 @@
     return {
       open: true,
       reveal: dev && !system,
-      kill: !system,
+      // A browser is never stopped from here (the server refuses it too).
+      kill: !system && row.browser !== true,
       restart: canRestart === true && dev && !system,
       dismiss: false
     }

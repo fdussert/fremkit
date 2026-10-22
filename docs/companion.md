@@ -606,6 +606,9 @@ Kill and Restart are refused, by the server and not only by the widget, for:
   yours), `/bin/`, `/sbin/` or `/Library/Apple/`, as `ps` shows it. These rows get Open only. The
   rule is the path, not a code signature: an Apple-made app installed elsewhere (in `/Applications`)
   is not recognised, and only the two-touch confirmation stands between a finger and it.
+- browsers and their helpers, by their application bundle (Google Chrome, Chromium, Microsoft Edge,
+  Brave, Arc, Vivaldi, Opera, Firefox, Safari, and their Beta, Canary or Nightly channels): a browser
+  with a debugging port listens, and stopping it would close every tab. These rows get Open only;
 - Docker's port holders (no action at all).
 
 A non-dev row (with the setting on) can be killed, with the same checks, but not restarted nor shown

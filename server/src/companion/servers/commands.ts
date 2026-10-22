@@ -24,7 +24,7 @@ import { INSTANCE_ID_MAX, type Config } from '../../config/schema.js'
 import { tr, type MessageKey } from '../../i18n.js'
 import type { CommandContext } from '../../providers/types.js'
 import { fremdevEnabled } from '../dev.js'
-import { isDockerHolder, isHelper, isSystemProcess, launchRoot, parseLsofCwd, parseLsofListen, parsePs, selfTree, type ProcInfo } from './list.js'
+import { isBrowser, isDockerHolder, isHelper, isSystemProcess, launchRoot, parseLsofCwd, parseLsofListen, parsePs, selfTree, type ProcInfo } from './list.js'
 import { isAlive, managedRootOf, type ManagedEntry, type ManagedServers } from './managed.js'
 import type { ProcArgs } from './procargs.js'
 import type { ServerRow } from './provider.js'
@@ -50,9 +50,9 @@ export function protectedPids(selfPid: number, procs: Map<number, ProcInfo>): Se
   return set
 }
 
-/** A process Fremkit may signal: this account's, not protected, not the helper, not the system's, not Docker's. */
+/** A process Fremkit may signal: this account's, not protected, not the helper, not the system's, not Docker's, not a browser. */
 function signallable(p: ProcInfo, uid: number, guarded: Set<number>): boolean {
-  return p.uid === uid && !guarded.has(p.pid) && !isHelper(p) && !isSystemProcess(p) && !isDockerHolder(p)
+  return p.uid === uid && !guarded.has(p.pid) && !isHelper(p) && !isSystemProcess(p) && !isDockerHolder(p) && !isBrowser(p)
 }
 
 /**
@@ -479,7 +479,7 @@ export function createServerCommands(opts: ServerCommandsOptions): Record<string
 
   return {
     kill: command(async (row) => {
-      if (row.system) return failed('companion.serversNotAllowed')
+      if (row.system || row.browser) return failed('companion.serversNotAllowed')
       const owner = opts.managedOf?.(row.id) ?? null
       // A server Fremkit started that is gone already: its red row is dismissed, nothing signalled.
       if (row.gone) {
@@ -517,7 +517,7 @@ export function createServerCommands(opts: ServerCommandsOptions): Record<string
       if (row.gone) return failed('companion.serversUnknown')
       const { scanner, managed, readProcArgs: read } = opts
       if (!scanner || !managed || !read) return failed('companion.serversNoRestart')
-      if (row.system || !row.dev) return failed('companion.serversNotAllowed')
+      if (row.system || row.browser || !row.dev) return failed('companion.serversNotAllowed')
       // Every remembered server alive: no room, refused before anything is signalled. A managed
       // row's restart frees its own place.
       if (!managed.hasRoom() && !opts.managedOf?.(row.id)) return failed('companion.serversBusy')

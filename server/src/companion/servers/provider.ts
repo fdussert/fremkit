@@ -18,7 +18,7 @@ import { basename } from 'node:path'
 import type { Config } from '../../config/schema.js'
 import type { Provider } from '../../providers/types.js'
 import { fremdevEnabled } from '../dev.js'
-import { displayCommand, detectTool, isDevRuntime, isDockerHolder, isHelper, isSystemProcess, parseLsofCwd, parseLsofListen, parsePs, selfTree, type ProcInfo } from './list.js'
+import { displayCommand, detectTool, isBrowser, isDevRuntime, isDockerHolder, isHelper, isSystemProcess, parseLsofCwd, parseLsofListen, parsePs, selfTree, type ProcInfo } from './list.js'
 import { createServersSystem, type ServersSystem } from './system.js'
 import { createServerCommands } from './commands.js'
 import { homeToTilde } from '../../home-tilde.js'
@@ -51,6 +51,8 @@ export type ServerRow = {
   command: string
   dev: boolean
   system: boolean
+  /** A browser or its helper (`isBrowser`): Open only. */
+  browser: boolean
   /** A Docker Desktop port holder: the container's name, or 'Docker' when it is not known. */
   docker: string | null
   managed: boolean
@@ -269,6 +271,7 @@ export function createServersProvider(opts: ServersOptions): Provider<ServersSna
         command: homeToTilde(displayCommand(p, dev), sys.home),
         dev,
         system: isSystemProcess(p),
+        browser: isBrowser(p),
         docker: docker && isDockerHolder(p) ? (l.ports.map((port) => docker.get(port)).find((n) => n !== undefined) ?? 'Docker') : null,
         managed: false,
         gone: false,
@@ -309,7 +312,7 @@ export function createServersProvider(opts: ServersOptions): Provider<ServersSna
           // The ports it was to take, as they are: none is none, never a made-up port.
           id: `${e.pid}:${e.start}`, pid: e.pid, ports: [...e.ports],
           project: label?.project ?? '', tool: label?.tool ?? '', uptimeSec: 0, cpu: 0, rssKb: 0,
-          folder: label?.folder ?? null, command: label?.command ?? '', dev: true, system: false, docker: null,
+          folder: label?.folder ?? null, command: label?.command ?? '', dev: true, system: false, browser: false, docker: null,
           managed: true, gone: !alive, state, portBusy: false, tab: null, log: [],
         }
         rows.push(row)

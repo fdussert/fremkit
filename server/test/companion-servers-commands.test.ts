@@ -157,6 +157,43 @@ describe('companion:servers commands: who may ask', () => {
     expect(w.signals).toEqual([[-1400, 'SIGTERM']])
   })
 
+  it('never kills a browser or its helpers, whatever the row says, but opens it', async () => {
+    const browsers = [
+      '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+      '/Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Framework.framework/Versions/130.0.0.0/Helpers/Google Chrome Helper.app/Contents/MacOS/Google Chrome Helper',
+      '/Applications/Chromium.app/Contents/MacOS/Chromium',
+      '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge',
+      '/Applications/Brave Browser.app/Contents/MacOS/Brave Browser',
+      '/Applications/Arc.app/Contents/MacOS/Arc',
+      '/Applications/Vivaldi.app/Contents/MacOS/Vivaldi',
+      '/Applications/Opera.app/Contents/MacOS/Opera',
+      '/Applications/Firefox.app/Contents/MacOS/firefox',
+      `${HOME}/Applications/Safari.app/Contents/MacOS/Safari`,
+    ]
+    for (const comm of browsers) {
+      const browser: Proc = { pid: 1450, pgid: 1450, comm, args: `${comm} --remote-debugging-port=9222`, cwd: '/', ports: [9222] }
+      const w = world([browser])
+      const snap = await w.poll()
+      expect(snap.rows[0]).toMatchObject({ browser: true, dev: false })
+      const id = `1450:${START}`
+      expect(await w.run('kill', id)).toEqual({ ok: false, error: msg('companion.serversNotAllowed') })
+      expect(w.signals).toEqual([])
+      expect(await w.run('open', id)).toEqual({ ok: true })
+    }
+    // A program merely named like one is not a browser.
+    const w = world([{ pid: 1451, pgid: 1451, comm: '/Applications/Arcade.app/Contents/MacOS/Arcade', cwd: '/', ports: [9333] }])
+    expect((await w.poll()).rows[0].browser).toBe(false)
+  })
+
+  it('never signals a browser found under a killed root', async () => {
+    // A dev server whose runner also started a debug Chrome: the tree is killed pid by pid, minus the browser.
+    const chrome: Proc = { pid: 1004, ppid: 1001, pgid: 1004, comm: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' }
+    const w = world([SHELL, { ...PNPM, pgid: 1000 }, { ...VITE, pgid: 1000 }, chrome])
+    await w.poll()
+    expect(await w.run('kill', viteId)).toEqual({ ok: true })
+    expect(w.signals.some(([pid]) => Math.abs(pid) === 1004)).toBe(false)
+  })
+
   it('gives a Docker holder no action at all', async () => {
     const w = world([DOCKER])
     await w.poll()

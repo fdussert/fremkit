@@ -506,7 +506,7 @@ function serversProvider(now: () => number, config: () => Config): Provider<Serv
   const startedAt = now()
   const row = (pid: number, port: number, project: string, tool: string, command: string, ageSec: number, cpu: number, rssKb: number): ServerRow => ({
     id: `${pid}:Wed Oct 22 09:00:00 2026`, pid, ports: [port], project, tool, uptimeSec: ageSec, cpu, rssKb,
-    folder: `~/code/${project}`, command, dev: true, system: false, docker: null,
+    folder: `~/code/${project}`, command, dev: true, system: false, browser: false, docker: null,
     managed: false, gone: false, state: 'up', portBusy: false, tab: null, log: [],
   })
   return {

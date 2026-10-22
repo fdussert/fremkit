@@ -497,6 +497,8 @@ describe('fremdev/logic.js: the Servers segment', () => {
     expect(serverActions(server(1, 3000, { dev: false, docker: 'Docker' }), true)).toEqual({ open: false, reveal: false, kill: false, restart: false, dismiss: false })
     expect(serverActions(null, true)).toEqual({ open: false, reveal: false, kill: false, restart: false, dismiss: false })
 
+    // A browser: Open only, the server refuses its kill too.
+    expect(serverActions(server(1, 9222, { dev: false, browser: true }), true)).toEqual({ open: true, reveal: false, kill: false, restart: false, dismiss: false })
     // A server Fremkit started that is gone: only Dismiss, nothing that acts on a process or a port.
     expect(serverActions(server(1, 3000, { managed: true, state: 'failed', gone: true }), true)).toEqual({ open: false, reveal: false, kill: false, restart: false, dismiss: true })
   })

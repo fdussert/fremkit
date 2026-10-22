@@ -207,6 +207,17 @@ export function isSystemProcess(p: ProcInfo): boolean {
   return ['/System/', '/usr/', '/bin/', '/sbin/', '/Library/Apple/'].some((d) => c.startsWith(d))
 }
 
+/** The browsers, by their app bundle: a channel (` Beta`, ` Canary`, ` Nightly`…) has the same name and more. */
+const BROWSER_APP = /^(Google Chrome|Chromium|Microsoft Edge|Brave Browser|Arc|Vivaldi|Opera|Firefox|Safari)( [^/]*)?\.app$/i
+
+/**
+ * A browser or one of its helpers (they sit inside its bundle): Open only, never a kill. A browser
+ * with a debugging port listens, and stopping it from the Edge would close every tab.
+ */
+export function isBrowser(p: Pick<ProcInfo, 'comm'>): boolean {
+  return p.comm.split('/').some((part) => BROWSER_APP.test(part))
+}
+
 /** Fremkit Helper, which supervises this server: never listed, never signalled. */
 export function isHelper(p: Pick<ProcInfo, 'comm'>): boolean {
   return basename(p.comm) === 'FremkitHelper'

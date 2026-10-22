@@ -542,7 +542,8 @@ nothing else of `labs`. What it holds and what it can do:
   - *Kill safety.* Only this account's processes; never Fremkit's tree, never any ancestor of Fremkit
     (a root that contains Fremkit is narrowed toward the listener until it does not), never
     `FremkitHelper`, never a program under `/System/`, `/usr/` (but `/usr/local/`), `/bin/`, `/sbin/`
-    or `/Library/Apple/`, never a Docker Desktop port holder; refused outright when Fremkit itself is
+    or `/Library/Apple/`, never a Docker Desktop port holder, never a browser or its helpers (by
+    their app bundle, `isBrowser`); refused outright when Fremkit itself is
     missing from `ps`. The launch root (`launchRoot`) is climbed only through package managers and
     runners by their own name, or node/deno/bun by their script argument, never by a word elsewhere in
     their arguments, so an editor, a terminal, tmux, launchd or an agent above a server is never taken
