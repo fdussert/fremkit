@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-  detectTool, displayCommand, isDevRuntime, isDockerHolder, isSystemProcess, launchRoot, parseLsofCwd, parseLsofListen, parsePs, selfTree,
+  detectTool, displayCommand, isDevRuntime, maskSecrets, isDockerHolder, isSystemProcess, launchRoot, parseLsofCwd, parseLsofListen, parsePs, selfTree,
   type ProcInfo,
 } from '../src/companion/servers/list.js'
 
@@ -249,5 +249,27 @@ describe('displayCommand', () => {
     const d = (a: string) => displayCommand(proc(1, 0, '/usr/local/bin/node', a), true)
     expect(d('node s.js --token --port 1')).toBe('node s.js --token --port 1')
     expect(d('node --no-auth server.js')).toBe('node --no-auth server.js')
+  })
+})
+
+describe('maskSecrets', () => {
+  const S = 's3cr3t'
+  it('masks a sensitive name followed by a colon: util.inspect, JSON, YAML and dotenv forms', () => {
+    for (const [line, out] of [
+      [`  SECRET_TOKEN: '${S}',`, `  SECRET_TOKEN: '•••',`],
+      [`{ SECRET_TOKEN: "${S}", PORT: '3000' }`, `{ SECRET_TOKEN: "•••", PORT: '3000' }`],
+      [`{"SECRET_TOKEN":"${S}","PORT":"3000"}`, `{"SECRET_TOKEN":"•••","PORT":"3000"}`],
+      [`API_KEY: ${S}`, 'API_KEY: •••'],
+      [`  password: ${S}`, '  password: •••'],
+      [`SECRET_TOKEN=${S}`, 'SECRET_TOKEN=•••'],
+      [`export API_KEY="${S}"`, 'export API_KEY=•••'],
+    ] as const) {
+      expect(maskSecrets(line)).toBe(out)
+      expect(maskSecrets(line)).not.toContain(S)
+    }
+  })
+
+  it('leaves ordinary lines, URLs and timestamps alone', () => {
+    for (const line of ['  ➜  Local: http://localhost:5173/', '10:42:01 ready in 312 ms', 'PORT: 3000', 'compiled 12 modules']) expect(maskSecrets(line)).toBe(line)
   })
 })

@@ -308,11 +308,20 @@ export function displayCommand(p: ProcInfo, dev: boolean): string {
 /**
  * A line of a server's output with what `displayCommand` hides hidden there too, its spacing kept:
  * URL credentials, the value of a sensitive `KEY=value` or `--key=value` word, and a bearer or basic
- * credential. A dev server may print its `DATABASE_URL` or its whole environment.
+ * credential, and a sensitive name followed by a colon. A dev server may print its `DATABASE_URL` or
+ * its whole environment.
  */
 export function maskSecrets(text: string): string {
   return text
     .replace(/\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+/gi, '$1 •••')
+    // `NAME: value` in its printed forms: util.inspect (`SECRET_TOKEN: 'x',`), JSON
+    // (`"SECRET_TOKEN":"x"`), YAML or dotenv-ish (`API_KEY: x`); a quoted value keeps its quotes.
+    .replace(/(["']?)\b([A-Za-z_][A-Za-z0-9_.-]*)\1(\s*:\s*)("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|[^\s,'"}\]]+)/g,
+      (all: string, q: string, name: string, sep: string, value: string) => {
+        if (!SENSITIVE.test(name) || value.startsWith('//')) return all
+        const quote = value[0] === '"' || value[0] === "'" ? value[0] : ''
+        return `${q}${name}${q}${sep}${quote}•••${quote}`
+      })
     .replace(/\S+/g, (word) => {
       const x = maskUrl(word)
       const eq = x.indexOf('=')
