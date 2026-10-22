@@ -338,7 +338,11 @@ export function createServersProvider(opts: ServersOptions): Provider<ServersSna
     for (const key of labels.keys()) if (!logs.has(key)) labels.delete(key)
   }
 
-  /** Docker's container names by host port: asked again when the holders' ports change, or after 30 s. */
+  /**
+   * Docker's container names by host port: asked again when the holders' ports change, or after
+   * 30 s. Only an answer naming something is kept: a failed `docker ps`, or an empty one while a
+   * holder is listed (Docker still starting its containers), is asked again on the next poll.
+   */
   async function containerNames(ports: number[]): Promise<Map<number, string>> {
     const key = [...new Set(ports)].sort((a, b) => a - b).join(',')
     const t = now()
@@ -347,9 +351,10 @@ export function createServersProvider(opts: ServersOptions): Provider<ServersSna
     try {
       names = parseDockerPorts(await sys.runDockerPorts())
     } catch {
-      names = new Map()
+      dockerNames = null
+      return new Map()
     }
-    dockerNames = { key, at: t, names }
+    dockerNames = names.size > 0 ? { key, at: t, names } : null
     return names
   }
 

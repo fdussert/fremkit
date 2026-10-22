@@ -208,6 +208,22 @@ describe('companion:servers provider', () => {
     expect((await poll(p)).rows[0].docker).toBe('Docker')
   })
 
+  it('asks Docker again on the next poll after a failure or an empty answer, never caching either', async () => {
+    let answer: () => string = () => { throw new Error('unavailable') }
+    const runDockerPorts = vi.fn(async () => answer())
+    const { p } = provider([{ pid: 3001, comm: '/Applications/Docker.app/Contents/MacOS/com.docker.backend', ports: [8080] }], { extra: { runDockerPorts } })
+    expect((await poll(p)).rows[0].docker).toBe('Docker')
+    // Docker answers, but has nothing yet (it is still starting its containers).
+    answer = () => ''
+    expect((await poll(p)).rows[0].docker).toBe('Docker')
+    answer = () => 'web-1\t0.0.0.0:8080->80/tcp\n'
+    expect((await poll(p)).rows[0].docker).toBe('web-1')
+    expect(runDockerPorts).toHaveBeenCalledTimes(3)
+    // A real answer is reused.
+    expect((await poll(p)).rows[0].docker).toBe('web-1')
+    expect(runDockerPorts).toHaveBeenCalledTimes(3)
+  })
+
   it("lights a row with the Fremdev tab on one of its ports, the worst first", async () => {
     const { p } = provider([VITE, { pid: 1100, comm: '/opt/homebrew/bin/node', args: 'node s.js', ports: [3000, 3001] }], {
       tabLights: new Map([[5173, 'orange'], [3000, 'green'], [3001, 'red']]),
