@@ -285,13 +285,15 @@ export function displayCommand(p: ProcInfo, dev: boolean): string {
 }
 
 /**
- * Credentials in one argument: the userinfo of a URL (everything up to the last `@`, so a password
- * holding `@` or `/` does not leak), a scheme-less `user:pass@host`, and sensitive query values.
+ * Credentials in one argument: the userinfo of a URL starting the word or following an `=`
+ * (`DATABASE_URL=…`, `--db=…`), taken as everything up to the last `@` before the first `?` or `#`
+ * so a password holding `@` or `/` does not leak while an `@` in the query keeps the host; a
+ * scheme-less `user:pass@host`; and sensitive query values.
  */
 function maskUrl(x: string): string {
-  let out = x.replace(/^([a-z][a-z0-9+.-]*:\/\/)(.*)@/i, (_m, scheme: string, info: string) => {
+  let out = x.replace(/(^|=)([a-z][a-z0-9+.-]*:\/\/)([^?#]*)@/i, (_m, lead: string, scheme: string, info: string) => {
     const colon = info.indexOf(':')
-    return colon >= 0 ? `${scheme}${info.slice(0, colon)}:•••@` : `${scheme}•••@`
+    return colon >= 0 ? `${lead}${scheme}${info.slice(0, colon)}:•••@` : `${lead}${scheme}•••@`
   })
   if (out === x && !x.includes('://')) out = x.replace(/^([^\s:@/=]+):[^\s@]*@(?=[^\s@]+$)/, '$1:•••@')
   return out.replace(/([?&;])([^=&#\s]*(?:token|secret|key|password|pass|auth|cred)[^=&#\s]*)=[^&#\s]*/gi, '$1$2=•••')

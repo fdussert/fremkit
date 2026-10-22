@@ -216,6 +216,18 @@ describe('displayCommand', () => {
     expect(d('node s.js https://h/x?token=abc&page=2')).toBe('node s.js https://h/x?token=•••&page=2')
     expect(d('node s.js bob:pw@host:5432')).toBe('node s.js bob:•••@host:5432')
   })
+  it('masks a URL that follows an equals sign', () => {
+    const d = (a: string) => displayCommand(proc(1, 0, '/usr/local/bin/node', a), true)
+    expect(d('DATABASE_URL=postgres://bob:pw@h/db node s.js')).toBe('DATABASE_URL=postgres://bob:•••@h/db node s.js')
+    expect(d('node s.js --db=postgres://bob:pw@h')).toBe('node s.js --db=postgres://bob:•••@h')
+    expect(d('node s.js --hook=https://tok@example.com/h')).toBe('node s.js --hook=https://•••@example.com/h')
+  })
+  it('keeps the host when only the query or fragment holds an @', () => {
+    const d = (a: string) => displayCommand(proc(1, 0, '/usr/local/bin/node', a), true)
+    expect(d('node s.js https://h/x?email=a@b.com')).toBe('node s.js https://h/x?email=a@b.com')
+    expect(d('node s.js https://h/x#a@b.com')).toBe('node s.js https://h/x#a@b.com')
+    expect(d('node s.js https://bob:pw@h/x?email=a@b.com&token=t')).toBe('node s.js https://bob:•••@h/x?email=a@b.com&token=•••')
+  })
   it('does not over-mask', () => {
     const d = (a: string) => displayCommand(proc(1, 0, '/usr/local/bin/node', a), true)
     expect(d('node s.js --token --port 1')).toBe('node s.js --token --port 1')
