@@ -306,6 +306,10 @@ Each line here was a real hole once. Break one only with the owner's explicit sa
   FremkitKit and the Android kit to one pairing protocol. Change a vector only with the change that
   needs it, and with the server's, the Swift and the Kotlin suites green
   (`pnpm test`, `pnpm ios:test`, `pnpm android:test`).
+- **A process Fremkit may signal** is this account's, in the current snapshot with the same start
+  time, and never Fremkit's tree or any ancestor of it, the helper, a macOS program or Docker's
+  (`server/src/companion/servers/commands.ts`). A restart's environment lives in one `spawn` call and
+  nowhere else.
 - **Commands that act on the Mac take their target from a closed list**: `dock.activate` only
   for an app in the current Dock snapshot; a URL handed to `open` is the parsed `href` that was
   checked, never the raw string.
@@ -384,7 +388,7 @@ Each line here was a real hole once. Break one only with the owner's explicit sa
 | change the marketplace | `server/src/marketplace/` (registry client, installer, consent), `ui/src/admin/marketplace.ts` and `MarketplacePanel.vue`, `docs/marketplace.md` |
 | add a connection type | **A coded type is the exception, and has to earn it.** One auth header on HTTP(S) is a `connection` the widget *declares* in its own manifest — no release of Fremkit per service; see `docs/writing-widgets.md`. Write code only for what a declaration cannot express: a session handshake, a protocol that is not HTTP, OAuth, a local binary. Nothing else counts — "it already has a provider" does not, and neither does "a picker would be nice" (a declared connection feeds no `pick`; the widget lists ids instead). Homey was coded and should not have been: two widgets on one Homey meant two connections, and a Homey invalidates the previous API key when a new one is issued, so the second key broke the first. If it does earn it: `server/src/connections/types/ics.ts` (simplest) or `github.ts` (fullest), register in `types/index.ts`, document in `docs/connections.md` |
 | add a provider | `server/src/providers/calendar.ts` (polling) or `shortcuts.ts` (commands only), register in `providers/index.ts` |
-| change the companion extension, Fremplay or Fremdev | `companion/` (`fremdev.js`, `fremdev/`, `lib/dev*.js`), `server/src/companion/` (`dev.ts`, `protocol.ts`), `widgets/fremplay`, `widgets/fremdev`, `docs/companion.md` |
+| change the companion extension, Fremplay or Fremdev | `companion/` (`fremdev.js`, `fremdev/`, `lib/dev*.js`), `server/src/companion/` (`dev.ts`, `protocol.ts`; `servers/` for the server list and its kill and restart), `widgets/fremplay`, `widgets/fremdev`, `docs/companion.md` |
 | change the admin | `ui/src/admin/store.ts` (state), `Canvas.vue`/`EditOverlay.vue` (editing), `SettingsForm.vue` (setting types), `ConnectionsInspector.vue`; right-click menus in `ui/src/shared/ui/contextMenu.ts` + `ContextMenu.vue` and the menu builders beside the component that opens them |
 | change the settings window (a screen's settings, the app's) | `ui/src/admin/settings/SettingsWindow.vue` (sidebar, search), one `*Pane.vue` per pane beside it, `ui/src/admin/settingsWindow.ts` (the panes, the section → pane routing `revealSection` relies on, and the search index: a new field's label goes into `SETTINGS_INDEX` or the search will not find it). A long panel with a fixed header and expand/collapse all is `shared/ui/ScrollPanel.vue` |
 | add an editor command or shortcut | A command goes into the menu builder it belongs to (`canvasMenu.ts`, `menus.ts`): the ⌘K palette reads those menus (`paletteCommands.ts`), so it appears there too; only what no menu holds is written in `paletteCommands.ts`. A key goes into `ui/src/admin/shortcuts.ts`, which the key handler in `App.vue`, the `?` sheet and the menus' hints all read |

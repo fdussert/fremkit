@@ -537,6 +537,127 @@ The report lists the regressions under *Performance*.
 An install that reads performance lists `fremdev.perf`; an older one sends no values, and its rows
 read none.
 
+### Dev servers
+
+The Fremdev widget has a second segment, **Servers**, beside **Tabs**: the TCP servers listening on
+this Mac that look like dev servers, one row each, sorted by port. It needs no extension: it is
+Fremkit's own server reading the Mac, behind the same experimental switch (`labs.fremdev`), and with
+the switch off it runs nothing and the commands are refused.
+
+**What is listed.** Every 5 seconds while the widget is on screen (and 1 second after any action),
+Fremkit asks `lsof` for the listening sockets of your account and `ps` for the processes behind them.
+Other accounts' servers are never listed, nor are Fremkit's own processes and the helper. A row shows
+a light (green: it answers; grey: Fremkit restarted it and it is starting; red: Fremkit restarted it
+and it exited or printed an error), its port or ports, the project, the tool, how long it has been up,
+its CPU and memory, and the light of the Fremdev tab open on that port, if any.
+
+- *Which listeners are dev servers.* A node, bun, deno, Python, Ruby, PHP, Java or .NET program, a
+  Go or Rust binary built under the folder it runs from, or any command that runs a tool Fremkit
+  knows (Vite, Next, webpack, Storybook, Astro, Nuxt, Remix, Rails, Django, Flask, uvicorn, `python
+  -m http.server`…). The tool column names it, else the program. Other listeners (AirPlay, a
+  database, an app) are hidden, unless the widget's setting **Show every listening program** is on:
+  they then appear with **Open** and **Kill** only. Apps' helper processes (Stream Deck, an editor's
+  helpers) never count as dev servers.
+- *The project* is the `name` in the `package.json` of the process's folder (read when it is at most
+  64 KB), else the folder's name. Under `~/Documents`, `~/Desktop`, `~/Downloads` and iCloud Drive the
+  file is not read and the folder's name is used, so that polling never makes macOS ask for Fremkit
+  Helper's access to them. The folder is shown with the home folder as `~`.
+- *Docker.* A port published by Docker Desktop is one row, "Docker → <container name>" (the name comes
+  from one `docker ps` while such a row exists), with no action: it says who holds the port, and
+  stopping the container is for Docker's own tools (or a registry widget).
+- *The command line* of a dev row is shown with the value of any option or `KEY=value` argument whose
+  name contains `token`, `secret`, `key`, `password`, `pass`, `auth` or `cred` replaced by `•••`, and
+  the password of a URL hidden; the line of any other program is its name only. The environment, and
+  the command as a list of arguments, are never published.
+
+Tap a row to unfold it: its command and folder, the buttons **Open**, **Finder**, **Restart** and
+**Kill** (56 px), and, for a server Fremkit restarted, its last 20 lines of output with the colours
+stripped.
+
+**Open** opens `http://localhost:<first port>/` in your default browser; **Finder** shows the
+folder selected in its parent (dev rows only).
+
+**Kill** stops what you typed, not just the process listening. A `pnpm dev` is several processes
+(pnpm, then node running Vite), so Fremkit walks up from the listener while its parent is a package
+manager or a runner (npm, npx, pnpm, yarn, bunx, turbo, nx, concurrently, an `sh -c` they run, and
+node, deno or bun running one of those tools as their script). It stops at anything else: your
+shell, a terminal, tmux, an editor, an agent, launchd, so a server started by an editor task or an
+agent never takes its parent with it. That *launch root* gets a polite stop (SIGTERM) and, three
+seconds later, a forced one (SIGKILL) to whatever is still alive. The signal goes to the root's
+process group when that group is its own job (a different group from its parent's, from Fremkit's
+and from Fremkit's ancestors', holding nothing protected); otherwise to the root and its descendants,
+one pid at a time. Your terminal shows the job ended.
+
+Kill and Restart are refused, by the server and not only by the widget, for:
+
+- anything not in the current list, or a pid that has another start time than the row (a recycled
+  pid);
+- Fremkit itself, its children, **and everything above it** (a runner that also started Fremkit, such
+  as `concurrently` or `tsx watch` in a development setup, is never signalled: the launch root is
+  narrowed down toward the server until it no longer contains Fremkit, so such a runner's other
+  branches keep running);
+- the helper, and other accounts' processes;
+- macOS's own programs: an executable under `/System/`, `/usr/` (except `/usr/local/`, which is
+  yours), `/bin/`, `/sbin/` or `/Library/Apple/`, as `ps` shows it. These rows get Open only. The
+  rule is the path, not a code signature: an Apple-made app installed elsewhere (in `/Applications`)
+  is not recognised, and only the two-touch confirmation stands between a finger and it.
+- Docker's port holders (no action at all).
+
+A non-dev row (with the setting on) can be killed, with the same checks, but not restarted nor shown
+in the Finder. **Kill** and **Restart** take **two touches**: the button turns into *Confirm?* for
+3 seconds, and does nothing if it is not touched again.
+
+**Restart** stops a server as above and starts the same command again, from the same folder, with the
+same environment. `ps` joins arguments with spaces and cannot be replayed, so Fremkit reads them
+exactly, at the moment you press the button, with `fremkit-scan procargs <pid>` (the helper's scanner,
+using the system's process-arguments query): the program's path, the full argument list, its
+environment, and the launch root's own folder. The command is not run through a shell. It waits up to
+5 seconds for the ports to be free, then starts it. Because the scanner belongs to the helper,
+**Restart is not available without it** (a server started by hand with `pnpm dev` from a terminal,
+with no helper): the row answers *Fremkit cannot restart this server*. It is also refused, with that
+same message, when:
+
+- the process's environment cannot be read (macOS hides it for some system binaries) or holds a value
+  that is not text: replaying a changed environment would be worse than not restarting;
+- the folder cannot be read, or the process changed while it was read.
+
+Nothing is stopped in any of these cases. A restart takes 4 to 8 seconds; the row says so while it
+works.
+
+*The server then belongs to Fremkit.* It runs as Fremkit's child (Fremkit itself runs under the helper), in its own process group, with a
+**Fremkit** badge on its row. Its output (stdout and stderr) is written to
+`<data folder>/servers/server-<time>-<id>.log` (folder 0700, file 0600), and the last 20 lines (300
+characters each, with anything that looks like a secret hidden) are shown in its unfolded row. A log
+past 1 MB is cut back to its last 512 KB; a few lines written during the cut can be lost. The server
+outlives a restart of Fremkit, which remembers it in `servers/managed.json` (pid, start time, log
+path, ports: no command, no environment). The log of a server that is gone is deleted after 24 hours.
+The row turns red when the server's output says that its port is taken (`EADDRINUSE`, *address already
+in use*, *port 3000 is in use*) or when it exits with an error; in the port case the row of the program
+holding that port lights up too. Kill on a Fremkit-started server stops it, and dismisses its red row
+when it was gone already.
+
+*A stop always wins over a restart.* If you press Kill while a restart is waiting for the port, the
+restart is cancelled, and if it had already started the new server, that one is stopped. A second
+Restart on the same root while the first is going is refused (*Not now: try again in a moment*).
+
+**Known limits**
+
+- A tool that quits when its standard input closes (esbuild's watch mode, some `--watch` modes)
+  exits right after a restart, because Fremkit starts the server with no terminal and standard input
+  on `/dev/null`; its row turns red. Start those from your terminal.
+- The restarted server's output is no longer in your terminal, only in the row and in its log file;
+  and `Ctrl-C` in the terminal that first ran it no longer stops it (use Kill).
+- The restarted server descends from Fremkit Helper, so macOS may ask **once** whether Fremkit Helper may
+  access a protected folder (Documents, Desktop, Downloads, an external volume) or the local network,
+  when the server touches one. Allow it under *System Settings → Privacy & Security*; Fremkit does not
+  work around it.
+- A server whose launch root is a runner that also runs Fremkit is stopped from its own branch only.
+- A server started through an unusual runner form (a shell wrapper of your own) is stopped one level
+  below the whole command: the safe direction. A Restart then replays that child, not the runner.
+- Not for paired devices (an iPad or an Android tablet never gets the list, nor can it send a command)
+  nor for registry widgets.
+- Processes of other accounts, UDP sockets and containers' internals are out of scope.
+
 ### The hook in the page
 
 To see a page's errors, Fremdev registers a small script that runs in the page's own world, before

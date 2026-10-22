@@ -518,6 +518,50 @@ nothing else of `labs`. What it holds and what it can do:
   capability with the protocol still at 2, so it widens nothing for a 0.5.0 server. A page's own
   text can be sensitive (an error message can quote data): it stays on this Mac, but it is displayed
   on the Edge.
+- *The server list* (`server/src/companion/servers/`, channel `companion:servers`, docs/companion.md
+  *Dev servers*). It reads the Mac's processes and can signal some of them, so it is held tighter than
+  the rest of Fremdev. The channel is in the `companion` family: built-in widgets only, never a paired
+  device (`LOCAL_ONLY_CHANNELS` and `BUILTIN_ONLY_CHANNELS` name the family, and every command refuses
+  anything but `ctx.loopback`), gated by `fremdevEnabled`.
+  - *Programs run*, every one by absolute path through `execFile` with an argument list, a timeout, no
+    shell and `localEnv()` (a stripped environment with the system folders first in `PATH`, not the
+    server's own): `/usr/sbin/lsof` (this account's listeners; each pid's folder), `/bin/ps` with
+    `LC_ALL=C` (two calls: the numbers, and the command lines of the listeners and their parents),
+    `/usr/bin/open` (`http://localhost:<port>/`, or `-R <folder>`, built from the snapshot's port or
+    folder and never from a string a widget sent), `docker ps` through `resolveDockerBinary()` (only
+    while a Docker row exists), and `fremkit-scan procargs <pid>` by the path the helper passes in
+    `FREMKIT_SCANNER`, only for a restart. No command line carries a secret.
+  - *A command names* a row id (`pid:start`) of the last snapshot, nothing else. Before a signal the
+    server runs `ps` again and refuses a pid whose start time changed or that is no longer listed.
+  - *Kill safety.* Only this account's processes; never Fremkit's tree, never any ancestor of Fremkit
+    (a root that contains Fremkit is narrowed toward the listener until it does not), never
+    `FremkitHelper`, never a program under `/System/`, `/usr/` (but `/usr/local/`), `/bin/`, `/sbin/`
+    or `/Library/Apple/`, never a Docker Desktop port holder; refused outright when Fremkit itself is
+    missing from `ps`. The launch root (`launchRoot`) is climbed only through package managers and
+    runners by their own name, or node/deno/bun by their script argument, never by a word elsewhere in
+    their arguments, so an editor, a terminal, tmux, launchd or an agent above a server is never taken
+    down. A process group is signalled only when it is the root's own job and holds nothing protected,
+    of the system or of another account; otherwise pid by pid. TERM, then KILL after 3 seconds. The
+    widget's two touches are a convenience: the server enforces all of this.
+  - *The environment of a restart.* `procargs` writes one JSON line (the executable, the exact argv
+    and the environment) on its standard output, never on a command line. It is read at the moment of
+    the restart, held in that call's variables for the one `spawn` (no shell, `argv0` kept, stdin
+    `/dev/null`) and dropped: never published, logged, put in `managed.json` or the log, or on argv,
+    and the scanner's errors name a code, not content. An environment macOS hides, or one that is not
+    valid text, refuses the restart rather than replaying a different one.
+  - *Masking.* A published command line keeps the arguments of a dev row only, with the value of an
+    option or `KEY=value` argument named like `token`, `secret`, `key`, `password`, `pass`, `auth` or
+    `cred`, and a URL's credentials, replaced by `•••`; any other program shows its name alone. A log
+    line (the last 20, 300 characters each) is masked the same way, plus `Bearer`/`Basic` values and
+    `KEY: value` and JSON forms, since a dev server may print its environment. It is best effort on
+    free text, like a tab's console message: a secret of an unusual shape shows on the Edge. The home
+    folder reads `~`.
+  - *`<dataDir>/servers/`* holds the output of the servers Fremkit restarted, which is whatever they
+    print, and `managed.json` (pid, start time, log path, ports, start). The folder is 0700 (tightened
+    at start) and its files 0600; the child's umask is 022 only around its `spawn`, so its build output
+    is not 0600. Logs of servers that are gone are deleted after 24 hours, and a log past 1 MB is cut
+    to its last 512 KB. The folder is **not** in backups (`backup/routes.ts` packs the config,
+    backgrounds and tile icons only) nor in diagnostics, and no route serves it.
 
 **What a local program can do.** A process running as you can read the access secret and anything
 else; it is out of scope, as under *Known limits*. One running as another account, or anything that
