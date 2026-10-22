@@ -548,7 +548,8 @@ nothing else of `labs`. What it holds and what it can do:
     the restart, held in that call's variables for the one `spawn` (no shell, `argv0` kept, stdin
     `/dev/null`) and dropped: never published, logged, put in `managed.json` or the log, or on argv,
     and the scanner's errors name a code, not content. An environment macOS hides, or one that is not
-    valid text, refuses the restart rather than replaying a different one.
+    valid text, refuses the restart rather than replaying a different one. `procargs` refuses another account's process (`denied`), and Restart needs the
+    same uid anyway.
   - *Masking.* A published command line keeps the arguments of a dev row only, with the value of an
     option or `KEY=value` argument named like `token`, `secret`, `key`, `password`, `pass`, `auth` or
     `cred`, and a URL's credentials, replaced by `•••`; any other program shows its name alone. A log
@@ -557,8 +558,9 @@ nothing else of `labs`. What it holds and what it can do:
     free text, like a tab's console message: a secret of an unusual shape shows on the Edge. The home
     folder reads `~`.
   - *`<dataDir>/servers/`* holds the output of the servers Fremkit restarted, which is whatever they
-    print, and `managed.json` (pid, start time, log path, ports, start). The folder is 0700 (tightened
-    at start) and its files 0600; the child's umask is 022 only around its `spawn`, so its build output
+    print, and `managed.json` (pid, process start time, log path, ports, and the time Fremkit started it). The
+    folder is created 0700 and its files 0600; `tightenDataDir` walks the data folder at start,
+    including `servers/`, and strips group and other bits from anything older; the child's umask is 022 only around its `spawn`, so its build output
     is not 0600. Logs of servers that are gone are deleted after 24 hours, and a log past 1 MB is cut
     to its last 512 KB. The folder is **not** in backups (`backup/routes.ts` packs the config,
     backgrounds and tile icons only) nor in diagnostics, and no route serves it.
