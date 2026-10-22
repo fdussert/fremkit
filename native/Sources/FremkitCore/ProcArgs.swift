@@ -60,29 +60,37 @@ public enum ProcArgsParseError: Error, Equatable, CustomStringConvertible {
 public struct ProcArgs: Codable, Equatable {
     public let exe: String
     public let argv: [String]
-    public let env: [String: String]
+    /// nil when the kernel returned no environment at all, which is how it answers for Apple's platform
+    /// binaries: "hidden" is not the same as "empty".
+    public let env: [String: String]?
 
-    public init(exe: String, argv: [String], env: [String: String]) {
+    public init(exe: String, argv: [String], env: [String: String]?) {
         self.exe = exe
         self.argv = argv
         self.env = env
     }
 
-    /// `{"type":"procargs","exe":…,"argv":[…],"env":{…}}`, env keys sorted for a stable line.
+    /// `{"type":"procargs","exe":…,"argv":[…],"env":{…}}`, env keys sorted for a stable line;
+    /// `"env":null` when the kernel hid the environment.
     public var jsonLine: String {
         let args = argv.map { DiskScanJSON.string($0) }.joined(separator: ",")
-        let vars = env.keys.sorted().map { "\(DiskScanJSON.string($0)):\(DiskScanJSON.string(env[$0]!))" }.joined(separator: ",")
-        return "{\"type\":\"procargs\",\"exe\":\(DiskScanJSON.string(exe)),\"argv\":[\(args)],\"env\":{\(vars)}}"
+        let vars: String
+        if let env {
+            vars = "{" + env.keys.sorted().map { "\(DiskScanJSON.string($0)):\(DiskScanJSON.string(env[$0]!))" }.joined(separator: ",") + "}"
+        } else {
+            vars = "null"
+        }
+        return "{\"type\":\"procargs\",\"exe\":\(DiskScanJSON.string(exe)),\"argv\":[\(args)],\"env\":\(vars)}"
     }
 
     public static func read(pid: pid_t) throws -> ProcArgs {
-        var maxSize = 0
-        var size = MemoryLayout<Int>.size
+        var maxSize: Int32 = 0
+        var size = MemoryLayout<Int32>.size
         var argmax = [CTL_KERN, KERN_ARGMAX]
         guard sysctl(&argmax, 2, &maxSize, &size, nil, 0) == 0, maxSize > 0 else { throw ProcArgsError.failed }
 
-        var buffer = [UInt8](repeating: 0, count: maxSize)
-        var length = maxSize
+        var buffer = [UInt8](repeating: 0, count: Int(maxSize))
+        var length = Int(maxSize)
         var mib: [Int32] = [CTL_KERN, KERN_PROCARGS2, pid]
         if sysctl(&mib, 3, &buffer, &length, nil, 0) != 0 {
             // The kernel answers EINVAL both for a pid that is gone and for one it will not show a
@@ -94,43 +102,52 @@ public struct ProcArgs: Codable, Equatable {
         return try parse(Array(buffer[0..<length]), pid: pid)
     }
 
-    /// KERN_PROCARGS2: argc (Int32), the exec path, NUL padding, argc NUL-terminated arguments,
-    /// then NUL-terminated `KEY=VALUE` strings.
+    /// KERN_PROCARGS2: argc (Int32), the exec path, NUL padding up to a multiple of 8 bytes counted
+    /// from the path's start, argc NUL-terminated arguments, then NUL-terminated `KEY=VALUE` strings.
+    ///
+    /// The padding is skipped by its computed length, never "all NULs", so an empty argument (even
+    /// argv[0]) is not mistaken for padding. A buffer that does not fit that layout is refused.
     static func parse(_ bytes: [UInt8], pid: pid_t) throws -> ProcArgs {
         guard bytes.count > MemoryLayout<Int32>.size else { throw ProcArgsError.failed }
         let argc = bytes.withUnsafeBytes { Int($0.loadUnaligned(as: Int32.self)) }
+        guard argc >= 0 else { throw ProcArgsError.failed }
         var index = MemoryLayout<Int32>.size
 
-        func nextString() -> String? {
-            guard index < bytes.count else { return nil }
-            var end = index
-            while end < bytes.count && bytes[end] != 0 { end += 1 }
-            let value = String(decoding: bytes[index..<end], as: UTF8.self)
+        /// The next NUL-terminated string; nil when the buffer ends first. Bytes that are not UTF-8
+        /// are refused rather than replaced, so the caller never replays a different byte string.
+        func nextString() throws -> String? {
+            guard index < bytes.count, let end = bytes[index...].firstIndex(of: 0) else { return nil }
+            guard let value = String(bytes: bytes[index..<end], encoding: .utf8) else { throw ProcArgsError.failed }
             index = end + 1
             return value
         }
 
-        guard let path = nextString() else { throw ProcArgsError.failed }
-        while index < bytes.count && bytes[index] == 0 { index += 1 }
+        let pathStart = index
+        guard let path = try nextString() else { throw ProcArgsError.failed }
+        let padding = (8 - (index - pathStart) % 8) % 8
+        guard index + padding <= bytes.count, bytes[index..<index + padding].allSatisfy({ $0 == 0 }) else {
+            throw ProcArgsError.failed
+        }
+        index += padding
+
         var argv: [String] = []
-        for _ in 0..<max(argc, 0) {
-            guard let argument = nextString() else { break }
+        for _ in 0..<argc {
+            guard let argument = try nextString() else { throw ProcArgsError.failed }
             argv.append(argument)
         }
-        // The kernel may pad between the last argument and the environment with more NULs.
-        while index < bytes.count && bytes[index] == 0 { index += 1 }
         var env: [String: String] = [:]
-        while let entry = nextString(), !entry.isEmpty {
+        // The first empty string ends the environment: what follows is the buffer's trailing padding.
+        while let entry = try nextString(), !entry.isEmpty {
             guard let equals = entry.firstIndex(of: "=") else { continue }
             env[String(entry[..<equals])] = String(entry[entry.index(after: equals)...])
         }
-        return ProcArgs(exe: executablePath(pid: pid) ?? path, argv: argv, env: env)
+        return ProcArgs(exe: executablePath(pid: pid) ?? path, argv: argv, env: env.isEmpty ? nil : env)
     }
 
     private static func executablePath(pid: pid_t) -> String? {
         var buffer = [CChar](repeating: 0, count: 4 * Int(MAXPATHLEN))
         let count = proc_pidpath(pid, &buffer, UInt32(buffer.count))
         guard count > 0 else { return nil }
-        return String(cString: buffer)
+        return String(decoding: buffer[0..<Int(count)].map { UInt8(bitPattern: $0) }, as: UTF8.self)
     }
 }

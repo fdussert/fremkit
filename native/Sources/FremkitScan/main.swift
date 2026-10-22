@@ -16,6 +16,8 @@
 //
 // `fremkit-scan procargs <pid>` is the other form: it takes nothing but the pid and prints one line,
 //   {"type":"procargs","exe":"/abs/path","argv":["…"],"env":{"KEY":"value"}}
+// where "env":null means the kernel hid the environment (Apple's platform binaries), as opposed to
+// {} for a process that has none.
 // or {"type":"error","code":"no-such-process"|"denied"|"failed"} with a non-zero exit. The line
 // carries the environment, which may hold secrets: it goes to stdout only, never to stderr.
 // The tree's nodes are documented in FremkitCore/DiskTree.swift.

@@ -45,7 +45,11 @@ let scanSuites: [(String, () -> XCTestCase, [TestMethod])] = [
         ("testReadsTheCurrentProcess", { try ($0 as! ProcArgsTests).testReadsTheCurrentProcess() }),
         ("testAnArgumentWithASpaceStaysOneElement", { try ($0 as! ProcArgsTests).testAnArgumentWithASpaceStaysOneElement() }),
         ("testAMissingProcessThrows", { ($0 as! ProcArgsTests).testAMissingProcessThrows() }),
-        ("testAProcessOfAnotherUserIsDenied", { ($0 as! ProcArgsTests).testAProcessOfAnotherUserIsDenied() }),
+        ("testAProcessOfAnotherUserIsDenied", { try ($0 as! ProcArgsTests).testAProcessOfAnotherUserIsDenied() }),
         ("testTheOutputLineEscapesAndKeepsTheShape", { try ($0 as! ProcArgsTests).testTheOutputLineEscapesAndKeepsTheShape() }),
+        ("testParseKeepsEmptyArgumentsInPlace", { try ($0 as! ProcArgsTests).testParseKeepsEmptyArgumentsInPlace() }),
+        ("testParseRefusesWhatDoesNotFitTheLayout", { ($0 as! ProcArgsTests).testParseRefusesWhatDoesNotFitTheLayout() }),
+        ("testParseRefusesBytesThatAreNotUTF8", { ($0 as! ProcArgsTests).testParseRefusesBytesThatAreNotUTF8() }),
+        ("testParseReportsAHiddenEnvironmentAsNil", { try ($0 as! ProcArgsTests).testParseReportsAHiddenEnvironmentAsNil() }),
     ]),
 ]
