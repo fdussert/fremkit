@@ -34,8 +34,8 @@ export const LOG_LINE_CHARS = 300
 /** What a server prints when its port is taken (Node, Python, Vite, Next…). */
 export const PORT_IN_USE = /EADDRINUSE|address already in use|port \d+ is (already )?in use/i
 
-/** The most `managed.json` remembers: more than anyone restarts, a bound all the same. */
-const MAX_ENTRIES = 64
+/** The most servers remembered at once: more than anyone restarts, a bound all the same. */
+export const MANAGED_MAX = 64
 /** What the tail reads from the end of a log. */
 const TAIL_BYTES = 64 * 1024
 const SWEEP_EVERY_MS = 60_000
@@ -172,6 +172,8 @@ export interface ManagedServers {
   /** Reads `managed.json` once. */
   ready(): Promise<void>
   list(): ManagedEntry[]
+  /** A server can be added: fewer than `MANAGED_MAX`, or one of them is gone and can make room. */
+  hasRoom(): boolean
   /**
    * Spawns `launch.exe` with `launch.argv.slice(1)` and `argv0` `launch.argv[0]`, its folder and its environment, detached, no
    * shell, its output on a new log; `readStart` gives the child's `lstart` for its identity.
@@ -253,7 +255,7 @@ export function createManagedServers(opts: {
   const ready = () => {
     loading ??= (async () => {
       try {
-        const parsed = z.array(Entry).max(MAX_ENTRIES).safeParse(JSON.parse(await readFile(file, 'utf8')))
+        const parsed = z.array(Entry).max(MANAGED_MAX).safeParse(JSON.parse(await readFile(file, 'utf8')))
         // Only logs of our own folder: a hand-edited file never points the tail or the sweep elsewhere.
         if (parsed.success) tracked = parsed.data.filter((e) => e.log.startsWith(dir + '/') && LOG_NAME.test(e.log.slice(dir.length + 1))).map((entry) => ({ entry, loaded: true }))
       } catch { /* none yet, or unreadable: nothing to remember */ }
@@ -261,14 +263,25 @@ export function createManagedServers(opts: {
     return loading
   }
 
+  const gone = (t: Tracked) => t.goneAt !== undefined || t.exitCode !== undefined || t.unidentified === true
+  const hasRoom = () => tracked.length < MANAGED_MAX || tracked.some(gone)
+
   const find = (entry: ManagedEntry) => tracked.find((t) => t.entry === entry || t.entry.log === entry.log)
 
   return {
     ready,
     list: () => tracked.map((t) => t.entry),
+    hasRoom,
 
     async start(launch, readStart) {
       await ready()
+      // Room is made from the gone only, the oldest first: a living server is never forgotten,
+      // since forgetting it would hide it inside Fremkit's tree.
+      if (tracked.length >= MANAGED_MAX) {
+        const oldest = tracked.filter(gone).sort((a, b) => a.entry.startedAt - b.entry.startedAt)[0]
+        if (!oldest) throw new Error('full')
+        tracked = tracked.filter((t) => t !== oldest)
+      }
       await ensureDir()
       const startedAt = now()
       const log = join(dir, `server-${startedAt}-${randomBytes(4).toString('hex')}.log`)
@@ -299,7 +312,6 @@ export function createManagedServers(opts: {
       const t: Tracked = { entry: { pid: child.pid, start: '', log, ports: [...launch.ports], startedAt }, loaded: false, child: true }
       child.once('exit', (code: number | null) => { t.exitCode = code })
       tracked.push(t)
-      if (tracked.length > MAX_ENTRIES) tracked.shift()
       t.entry.start = (await readStart(child.pid).catch(() => null)) ?? ''
       // The child runs whatever the disk says: a failed save leaves it remembered in memory, and
       // the next reconcile writes it again (`dirty`). Only a restart of Fremkit before then loses it.

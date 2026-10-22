@@ -10,7 +10,7 @@ import { createServersProvider, type ServersSnapshot } from '../src/companion/se
 import { KILL_GRACE_MS } from '../src/companion/servers/commands.js'
 import {
   busyPorts, cleanLogLine, createManagedServers, cutBack, LOG_CUT_BYTES, LOG_KEEP_BYTES, LOG_RETAIN_MS, managedState,
-  readLogTail, START_TIMEOUT_MS, type SpawnFn,
+  MANAGED_MAX, readLogTail, START_TIMEOUT_MS, type SpawnFn,
 } from '../src/companion/servers/managed.js'
 import { parsePs } from '../src/companion/servers/list.js'
 import type { ServersSystem } from '../src/companion/servers/system.js'
@@ -208,6 +208,27 @@ describe('managed server spawn', () => {
     await managed.reconcile(parsePs(`4001 1 4001 ${UID} ${CHILD_START} 01:00 0.0 1000 /bin/x\n`, ''))
     expect(kill).toHaveBeenCalledTimes(2)
     expect(lost.start).toBe('')
+  })
+
+  it('makes room by forgetting the oldest gone server, never a living one', async () => {
+    const dataDir = tmp()
+    let next = 5000
+    const managed = createManagedServers({ dataDir, home: HOME, spawn: () => fakeChild(next++), selfPid: SELF })
+    const launch = { exe: '/bin/x', argv: ['x'], cwd: '/tmp', env: {}, ports: [1] }
+    for (let i = 0; i < MANAGED_MAX; i++) await managed.start(launch, async () => CHILD_START)
+    expect(managed.hasRoom()).toBe(false)
+    await expect(managed.start(launch, async () => CHILD_START)).rejects.toThrow()
+    expect(managed.list()).toHaveLength(MANAGED_MAX)
+    // 5003 and 5007 die; the oldest of them goes first.
+    const ps = (gone: number[]) => parsePs(managed.list().filter((e) => !gone.includes(e.pid)).map((e) => `${e.pid} ${SELF} ${e.pid} ${UID} ${CHILD_START} 01:00 0.0 1000 /bin/x`).join('\n') + '\n', '')
+    await managed.reconcile(ps([5003, 5007]))
+    expect(managed.hasRoom()).toBe(true)
+    await managed.start(launch, async () => CHILD_START)
+    const pids = managed.list().map((e) => e.pid)
+    expect(pids).toHaveLength(MANAGED_MAX)
+    expect(pids).not.toContain(5003)
+    expect(pids).toContain(5007)
+    expect(pids).toContain(5000)
   })
 
   it('puts the umask back even when spawn throws', async () => {
@@ -453,6 +474,20 @@ describe('companion:servers restart', () => {
     w.restartFremkit()
     const snap = await w.poll()
     expect(snap.rows.find((r) => r.pid === 2001)).toMatchObject({ managed: true, state: 'up', log: ['ready'] })
+  })
+
+  it('refuses a restart, killing nothing, while every remembered server is alive', async () => {
+    const dataDir = tmp()
+    const full: Proc[] = Array.from({ length: MANAGED_MAX }, (_, i) => ({ pid: 5000 + i, start: CHILD_START, comm: '/bin/x', cwd: '/tmp' }))
+    mkdirSync(join(dataDir, 'servers'), { recursive: true, mode: 0o700 })
+    writeFileSync(join(dataDir, 'servers', 'managed.json'), JSON.stringify(full.map((p, i) => ({
+      pid: p.pid, start: CHILD_START, log: join(dataDir, 'servers', `server-${i + 1}-0000000${i % 10}.log`), ports: [20000 + i], startedAt: i,
+    }))))
+    const w = world([SHELL, PNPM, VITE, ...full], { dataDir })
+    await w.poll()
+    expect(await restart(w, viteId)).toEqual({ ok: false, error: msg('companion.serversBusy') })
+    expect(w.signals).toEqual([])
+    expect(w.spawns).toEqual([])
   })
 
   it('refuses without the scanner, and the snapshot says so', async () => {

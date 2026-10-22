@@ -406,6 +406,9 @@ export function createServerCommands(opts: ServerCommandsOptions): Record<string
       const { scanner, managed, readProcArgs: read } = opts
       if (!scanner || !managed || !read) return failed('companion.serversNoRestart')
       if (row.system || !row.dev) return failed('companion.serversNotAllowed')
+      // Every remembered server alive: no room, refused before anything is signalled. A managed
+      // row's restart frees its own place.
+      if (!managed.hasRoom() && !opts.managedOf?.(row.id)) return failed('companion.serversBusy')
       const running = restarts.get(row.id)
       if (running) return running
       if (killer.pending(row.id)) return failed('companion.serversBusy')
