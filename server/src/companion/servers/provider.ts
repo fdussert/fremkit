@@ -194,10 +194,12 @@ export function createServersProvider(opts: ServersOptions): Provider<ServersSna
     polledManaged = new Map()
     const listeners = parseLsofListen(await sys.runLsofListen())
     if (listeners.length === 0 && managed.list().length === 0) return []
+    // Taken before ps starts: a child spawned while it runs is not judged from its output.
+    const mark = managed.psMark()
     const statsText = await sys.runPsStats()
     // Every process, once: the listeners' parents (the launch root) and Fremkit's own descendants.
     const stats = parsePs(statsText, '')
-    await managed.reconcile(stats)
+    await managed.reconcile(stats, mark)
     await managed.maintain()
     const entries = managed.list()
     const alive = entries.filter((e) => isAlive(e, stats))
@@ -289,7 +291,8 @@ export function createServersProvider(opts: ServersOptions): Provider<ServersSna
     const busy: Array<{ owner: ManagedEntry; ports: number[] }> = []
     for (const e of entries) {
       const tail = await readLogTail(e.log, sys.home)
-      const state = managedState({ alive: isAlive(e, stats), listening: listening.has(e), tail, startedAt: e.startedAt, now: now(), exitCode: managed.exitCode(e) })
+      // A child whose start time is still being read is starting, not gone.
+      const state = managedState({ alive: isAlive(e, stats) || managed.pending(e), listening: listening.has(e), tail, startedAt: e.startedAt, now: now(), exitCode: managed.exitCode(e) })
       if (state === 'drop') {
         await managed.forget(e)
         continue

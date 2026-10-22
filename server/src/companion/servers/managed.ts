@@ -183,10 +183,17 @@ export interface ManagedServers {
   /** The exit code Fremkit saw (null for a signal), undefined while it runs or when it was not watched. */
   exitCode(entry: ManagedEntry): number | null | undefined
   /**
-   * Against the current `ps`: drops what was gone across a restart of Fremkit, what exited 0, and
-   * what has been gone for a day (its log too).
+   * The spawn count so far: taken right before a `ps` is started and handed to `reconcile` with
+   * its output, it says which children that `ps` began after.
    */
-  reconcile(procs: Map<number, ProcInfo>): Promise<void>
+  psMark(): number
+  /**
+   * Against the current `ps` (`mark`: `psMark()` taken before it started): drops what was gone
+   * across a restart of Fremkit, what exited 0, and what has been gone for a day (its log too).
+   */
+  reconcile(procs: Map<number, ProcInfo>, mark: number): Promise<void>
+  /** Spawned, its start time not known yet and not given up on: a row says starting, not failed. */
+  pending(entry: ManagedEntry): boolean
   /** Killed or dismissed through Fremkit: no row any more. Its log goes a day later. */
   forget(entry: ManagedEntry): Promise<void>
   /**
@@ -208,6 +215,10 @@ type Tracked = {
   child?: boolean
   /** Its start time could not be read, and it was stopped for it. */
   unidentified?: boolean
+  /** Its place in the spawn count: a `ps` whose mark is lower began before it existed. */
+  seq?: number
+  /** `readStart` answered (or failed): until then nothing is judged from a `ps` missing it. */
+  startRead?: boolean
 }
 
 export function createManagedServers(opts: {
@@ -232,6 +243,8 @@ export function createManagedServers(opts: {
   /** Saves run one after another; `dirty` when the last one failed, so the next reconcile writes again. */
   let saving: Promise<void> = Promise.resolve()
   let dirty = false
+  /** Spawns so far (`psMark`). */
+  let spawns = 0
 
   async function ensureDir(): Promise<void> {
     await mkdir(dir, { recursive: true, mode: 0o700 })
@@ -307,6 +320,8 @@ export function createManagedServers(opts: {
       const startedAt = now()
       const log = join(dir, `server-${startedAt}-${randomBytes(4).toString('hex')}.log`)
       const fd = openSync(log, 'a', 0o600)
+      // Counted before the call: a `ps` marked from here on may have begun after the spawn.
+      const seq = ++spawns
       let child: ReturnType<SpawnFn>
       try {
         // The server runs under 077; the child would write 0600 build output under it.
@@ -330,10 +345,11 @@ export function createManagedServers(opts: {
         throw new Error('spawn failed')
       }
       child.unref()
-      const t: Tracked = { entry: { pid: child.pid, start: '', log, ports: [...launch.ports], startedAt }, loaded: false, child: true }
+      const t: Tracked = { entry: { pid: child.pid, start: '', log, ports: [...launch.ports], startedAt }, loaded: false, child: true, seq }
       child.once('exit', (code: number | null) => { t.exitCode = code })
       tracked.push(t)
       t.entry.start = (await readStart(child.pid).catch(() => null)) ?? ''
+      t.startRead = true
       // The child runs whatever the disk says: a failed save leaves it remembered in memory, and
       // the next reconcile writes it again (`dirty`). Only a restart of Fremkit before then loses it.
       await save().catch(() => undefined)
@@ -342,16 +358,26 @@ export function createManagedServers(opts: {
 
     exitCode: (entry) => find(entry)?.exitCode,
 
-    async reconcile(procs) {
+    psMark: () => spawns,
+
+    pending: (entry) => {
+      const t = find(entry)
+      return !!t && t.entry.start === '' && !!t.child && !t.unidentified && t.exitCode === undefined
+    },
+
+    async reconcile(procs, mark) {
       await ready()
       const t0 = now()
       let changed = false
       // A start time `ps` missed right after the spawn: read it again, once, from this ps. Without
       // one the server is invisible and cannot be killed through Fremkit, so a child still
       // unidentified is stopped (its group, then itself) and stays red. Safe to signal: no 'exit'
-      // yet means Fremkit has not reaped it, so the pid is still that child's.
+      // yet means Fremkit has not reaped it, so the pid is still that child's. Judged only once
+      // `readStart` has answered, and only from a `ps` begun after the spawn: an older one cannot
+      // show the child, and a pid it shows is someone else's.
       for (const t of tracked) {
         if (t.entry.start !== '' || !t.child || t.unidentified || t.exitCode !== undefined) continue
+        if (!t.startRead || t.seq === undefined || mark < t.seq) continue
         const p = procs.get(t.entry.pid)
         if (p && p.ppid === selfPid) {
           t.entry.start = p.start

@@ -182,7 +182,7 @@ describe('managed server spawn', () => {
     expect(managed.list()).toContain(entry)
     rmSync(file, { recursive: true })
     const stats = parsePs([3000, 3001, 3002, 3003].map((pid) => `${pid} ${SELF} ${pid} ${UID} ${CHILD_START} 01:00 0.0 1000 /bin/x`).join('\n') + '\n', '')
-    await managed.reconcile(stats)
+    await managed.reconcile(stats, managed.psMark())
     expect(pids()).toEqual([3000, 3001, 3002, 3003])
     expect(readdirSync(join(dataDir, 'servers')).filter((n) => n.includes('.tmp'))).toEqual([])
   })
@@ -197,7 +197,7 @@ describe('managed server spawn', () => {
     const lost = await managed.start(launch, async () => { throw new Error('ps') })
     expect(found.start).toBe('')
     // ps shows 4000 as Fremkit's child now; 4001 not at all.
-    await managed.reconcile(parsePs(`4000 ${SELF} 4000 ${UID} ${CHILD_START} 01:00 0.0 1000 /bin/x\n`, ''))
+    await managed.reconcile(parsePs(`4000 ${SELF} 4000 ${UID} ${CHILD_START} 01:00 0.0 1000 /bin/x\n`, ''), managed.psMark())
     expect(found.start).toBe(CHILD_START)
     const saved = JSON.parse(readFileSync(join(dataDir, 'servers', 'managed.json'), 'utf8')) as Array<{ pid: number; start: string }>
     expect(saved.find((e) => e.pid === 4000)!.start).toBe(CHILD_START)
@@ -205,9 +205,36 @@ describe('managed server spawn', () => {
     expect(managed.list().map((e) => e.pid)).toContain(4001)
     expect(managedState({ alive: false, listening: false, tail: [], startedAt: lost.startedAt, now: Date.now(), exitCode: managed.exitCode(lost) })).toBe('failed')
     // Never a second time, and never a pid that is not Fremkit's child.
-    await managed.reconcile(parsePs(`4001 1 4001 ${UID} ${CHILD_START} 01:00 0.0 1000 /bin/x\n`, ''))
+    await managed.reconcile(parsePs(`4001 1 4001 ${UID} ${CHILD_START} 01:00 0.0 1000 /bin/x\n`, ''), managed.psMark())
     expect(kill).toHaveBeenCalledTimes(2)
     expect(lost.start).toBe('')
+  })
+
+  it('judges a child unidentified only with a ps begun after its spawn and after its start was read', async () => {
+    const kill = vi.fn()
+    const managed = createManagedServers({ dataDir: tmp(), home: HOME, spawn: () => fakeChild(4100), selfPid: SELF, kill })
+    const launch = { exe: '/bin/x', argv: ['x'], cwd: '/tmp', env: {}, ports: [1] }
+    const empty = parsePs('', '')
+    const before = managed.psMark()
+    let readStart!: (start: string | null) => void
+    const started = managed.start(launch, () => new Promise((r) => { readStart = r }))
+    await vi.waitFor(() => expect(managed.list()).toHaveLength(1))
+    // A fresh ps while the start is still being read: not judged yet.
+    await managed.reconcile(empty, managed.psMark())
+    expect(kill).not.toHaveBeenCalled()
+    readStart(null)
+    const entry = await started
+    expect(entry.start).toBe('')
+    // A ps begun before the spawn cannot show the child: never a reason to stop it.
+    await managed.reconcile(empty, before)
+    expect(kill).not.toHaveBeenCalled()
+    expect(managed.exitCode(entry)).toBeUndefined()
+    // Nor can it name it: a pid that ps showed before the spawn is someone else's.
+    await managed.reconcile(parsePs(`4100 ${SELF} 4100 ${UID} ${START} 01:00 0.0 1000 /bin/y\n`, ''), before)
+    expect(entry.start).toBe('')
+    // A ps begun after it, still without it: stopped.
+    await managed.reconcile(empty, managed.psMark())
+    expect(kill.mock.calls).toEqual([[-4100, 'SIGKILL'], [4100, 'SIGKILL']])
   })
 
   it('makes room by forgetting the oldest gone server, never a living one', async () => {
@@ -221,7 +248,7 @@ describe('managed server spawn', () => {
     expect(managed.list()).toHaveLength(MANAGED_MAX)
     // 5003 and 5007 die; the oldest of them goes first.
     const ps = (gone: number[]) => parsePs(managed.list().filter((e) => !gone.includes(e.pid)).map((e) => `${e.pid} ${SELF} ${e.pid} ${UID} ${CHILD_START} 01:00 0.0 1000 /bin/x`).join('\n') + '\n', '')
-    await managed.reconcile(ps([5003, 5007]))
+    await managed.reconcile(ps([5003, 5007]), managed.psMark())
     expect(managed.hasRoom()).toBe(true)
     await managed.start(launch, async () => CHILD_START)
     const pids = managed.list().map((e) => e.pid)
@@ -282,7 +309,7 @@ describe('managed server spawn', () => {
     const stats = parsePs(`2000 1 2000 ${UID} ${CHILD_START} 01:00 0.0 1000 /bin/x\n`, '')
     const reloaded = createManagedServers({ dataDir, home: HOME, now: () => t })
     await reloaded.ready()
-    await reloaded.reconcile(stats)
+    await reloaded.reconcile(stats, reloaded.psMark())
     expect(reloaded.list().map((e) => e.pid)).toEqual([2000])
     expect(reloaded.list()[0].log).toBe(alive.log)
     const saved = JSON.parse(readFileSync(join(dataDir, 'servers', 'managed.json'), 'utf8')) as Array<{ pid: number }>
@@ -317,7 +344,7 @@ const NEW_VITE: Proc = { pid: 2001, ppid: 2000, pgid: 2000, start: CHILD_START, 
 function world(initial: Proc[], o: { dataDir: string; scanner?: string | null; procargs?: string; spawned?: Proc[]; t?: { now: number }; takePort?: boolean; survivesTerm?: boolean }) {
   let procs = [...initial]
   /** Tests change these mid-command: the provider copied `sys` when it was made. */
-  const hooks = { lsofDelayMs: 0, procargs: null as Promise<void> | null, killFails: false, onSpawn: null as (() => void) | null, psHide: [] as number[] }
+  const hooks = { lsofDelayMs: 0, procargs: null as Promise<void> | null, killFails: false, onSpawn: null as (() => void) | null, psHide: [] as number[], psGate: null as Promise<void> | null, psCalls: 0 }
   const signals: Array<[number, string]> = []
   const spawns: Array<{ file: string; args: string[]; options: SpawnOptions }> = []
   const line = (p: Proc) => `${p.pid} ${p.ppid ?? 1} ${p.pgid ?? p.pid} ${p.uid ?? UID} ${p.start ?? START} 01:02:03 1.5 120000 ${p.comm}`
@@ -325,7 +352,14 @@ function world(initial: Proc[], o: { dataDir: string; scanner?: string | null; p
     uid: UID,
     home: HOME,
     runLsofListen: async () => (hooks.lsofDelayMs > 0 ? new Promise((r) => setTimeout(r, hooks.lsofDelayMs)) : Promise.resolve()).then(() => procs.filter((p) => p.ports?.length).map((p) => [`p${p.pid}`, `c${p.comm.split('/').pop()}`, `u${p.uid ?? UID}`, ...p.ports!.map((n) => `n*:${n}`)].join('\n')).join('\n') + '\n'),
-    runPsStats: async () => [{ pid: 1, ppid: 0, comm: '/sbin/launchd', uid: 0 } as Proc, ...(procs.some((p) => p.pid === SELF) ? [] : [FREMKIT]), ...procs.filter((p) => !hooks.psHide.includes(p.pid))].map(line).join('\n') + '\n',
+    // What ps sees is taken when it is called; `psGate` holds the answer back (a slow ps).
+    runPsStats: async () => {
+      hooks.psCalls++
+      const out = [{ pid: 1, ppid: 0, comm: '/sbin/launchd', uid: 0 } as Proc, ...(procs.some((p) => p.pid === SELF) ? [] : [FREMKIT]), ...procs.filter((p) => !hooks.psHide.includes(p.pid))].map(line).join('\n') + '\n'
+      const gate = hooks.psGate
+      if (gate) await gate
+      return out
+    },
     runPsArgs: async (pids) => procs.filter((p) => pids.includes(p.pid)).map((p) => `${p.pid} ${p.args ?? p.comm}`).join('\n') + '\n',
     runLsofCwd: async (pids) => procs.filter((p) => pids.includes(p.pid) && p.cwd).map((p) => `p${p.pid}\nfcwd\nn${p.cwd}`).join('\n') + '\n',
     runDockerPorts: async () => '',
@@ -475,6 +509,31 @@ describe('companion:servers restart', () => {
     // Kill on the red row dismisses it.
     expect(await w.run('kill', failed.id)).toEqual({ ok: true })
     expect((await w.poll()).rows.filter((r) => r.managed)).toEqual([])
+  })
+
+  it('never stops a fresh server over a poll whose ps began before the spawn', async () => {
+    const w = world([SHELL, PNPM, VITE], { dataDir: tmp() })
+    await w.poll()
+    // A poll's ps starts now, before the restart, and answers only after the spawn.
+    let release!: () => void
+    w.hooks.psGate = new Promise((r) => { release = r })
+    const calls = w.hooks.psCalls
+    const stale = w.poll()
+    for (let i = 0; i < 100 && w.hooks.psCalls === calls; i++) await Promise.resolve()
+    expect(w.hooks.psCalls).toBe(calls + 1)
+    w.hooks.psGate = null
+    // ps misses the new child's start: the restart's entry has none yet.
+    w.hooks.psHide = [2000]
+    expect(await restart(w, viteId)).toEqual({ ok: true })
+    w.signals.length = 0
+    release()
+    await stale
+    expect(w.signals.filter(([pid]) => Math.abs(pid) === 2000)).toEqual([])
+    // The next poll's ps began after the spawn and shows it: identified, starting.
+    w.hooks.psHide = []
+    const row = (await w.poll()).rows.find((r) => r.pid === 2000)!
+    expect(row).toMatchObject({ managed: true, state: 'starting' })
+    expect(w.signals).toEqual([])
   })
 
   it('turns a server that never listens red after 30 s', async () => {
