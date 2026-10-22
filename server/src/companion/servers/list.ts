@@ -124,9 +124,15 @@ function words(p: { args: string }): string[] {
   return p.args.split(/\s+/).filter(Boolean)
 }
 
-/** The first argument after argv[0] that is not an option: a runtime's script (`node <script>`). */
+const VALUE_OPTIONS = new Set(['-r', '--require', '--import', '--loader', '--experimental-loader', '--env-file', '--cwd', '--title', '-m', '-C', '--conditions', '--config'])
+
+/** The first argument after argv[0] that is not an option or the value of one that takes a separate value: a runtime's script. */
 function scriptArg(w: string[]): string {
-  return w.slice(1).find((x) => !x.startsWith('-')) ?? ''
+  for (let i = 1; i < w.length; i++) {
+    if (VALUE_OPTIONS.has(w[i])) { i++; continue }
+    if (!w[i].startsWith('-')) return w[i]
+  }
+  return ''
 }
 
 function stem(path: string): string {
@@ -138,7 +144,7 @@ function knownTool(args: string, comm: string): string | null {
   const names = [basename(w[0] ?? ''), basename(scriptArg(w)), stem(scriptArg(w))]
   for (const [re, label] of TOOLS) if (names.some((n) => re.test(n))) return label
   const m = w.indexOf('-m')
-  if (m >= 0 && w[m + 1] && MODULE_TOOLS[w[m + 1]]) return MODULE_TOOLS[w[m + 1]]
+  if (m >= 0 && /^python(\d+(\.\d+)*)?$/i.test(basename(w[0] ?? '')) && w[m + 1] && MODULE_TOOLS[w[m + 1]]) return MODULE_TOOLS[w[m + 1]]
   const exe = basename(comm).toLowerCase()
   if (exe === 'dotnet') return '.NET'
   if (exe === 'php' || exe === 'php-fpm') return 'PHP'
@@ -188,7 +194,14 @@ function isRunner(p: ProcInfo): boolean {
   if (!SCRIPT_RUNTIMES.has(exe) && !SCRIPT_RUNTIMES.has(argv0)) return false
   const script = scriptArg(w)
   if (RUNNER_NAMES.has(stem(script))) return true
-  return (exe === 'bun' || argv0 === 'bun') && (script === 'run' || script === 'x')
+  return (exe === 'bun' || argv0 === 'bun') && (script === 'x' || (script === 'run' && isScriptName(w)))
+}
+
+/** `bun run <word>` where the word is a package.json script name, not a file. */
+function isScriptName(w: string[]): boolean {
+  const i = w.indexOf('run')
+  const name = w.slice(i + 1).find((x) => !x.startsWith('-')) ?? ''
+  return name !== '' && !name.includes('/') && !/\.(c|m)?[jt]sx?$/.test(name)
 }
 
 function isScriptShell(p: ProcInfo): boolean {
@@ -245,7 +258,7 @@ const SENSITIVE = /token|secret|key|password|pass|auth|cred/i
  */
 export function displayCommand(p: ProcInfo, dev: boolean): string {
   if (!dev) return basename(p.comm)
-  const w = p.args.split(/\s+/).filter(Boolean)
+  const w = p.args.split(/\s+/).filter(Boolean).map(maskUrl)
   const out: string[] = []
   for (let i = 0; i < w.length; i++) {
     const x = w[i]
@@ -256,7 +269,7 @@ export function displayCommand(p: ProcInfo, dev: boolean): string {
         if (eq >= 0) out.push(`${name}=•••`)
         else {
           out.push(x)
-          if (w[i + 1] !== undefined && !w[i + 1].startsWith('-')) { out.push('•••'); i++ }
+          if (w[i + 1] !== undefined) { out.push('•••'); i++ }
         }
         continue
       }
@@ -267,4 +280,9 @@ export function displayCommand(p: ProcInfo, dev: boolean): string {
     out.push(x)
   }
   return out.join(' ')
+}
+
+/** `scheme://user:pass@host` to `scheme://user:•••@host`, `scheme://token@host` to `scheme://•••@host`. */
+function maskUrl(x: string): string {
+  return x.replace(/([a-z][a-z0-9+.-]*:\/\/)([^/\s@:]*)(:[^/\s@]*)?@/gi, (_m, scheme: string, user: string, pass?: string) => pass !== undefined ? `${scheme}${user}:•••@` : `${scheme}•••@`)
 }

@@ -69,6 +69,7 @@ describe('detectTool', () => {
     expect(detectTool('dotnet run', '/usr/local/share/dotnet/dotnet')).toBe('.NET')
     expect(detectTool('node app.js --name vite', '/usr/local/bin/node')).toBe('node')
     expect(detectTool('python3 -m uvicorn app:app', '/usr/bin/python3')).toBe('uvicorn')
+    expect(detectTool('foo -m flask', '/opt/bin/foo')).toBe('foo')
     expect(detectTool('/opt/thing/serve', '/opt/thing/serve')).toBe('serve')
   })
 })
@@ -163,6 +164,23 @@ describe('launchRoot', () => {
     const t2 = tree(proc(97, 1, '/bin/zsh', '-zsh'), proc(98, 97, '/opt/homebrew/bin/bun', 'bun run dev'), proc(99, 98, '/opt/homebrew/bin/bun', 'bun vite'))
     expect(launchRoot(99, t2)).toBe(98)
   })
+  it('bun run <file> is not a runner, bun run <script> is', () => {
+    for (const file of ['agent.ts', './agent.ts']) {
+      const t = tree(proc(110, 1, '/opt/homebrew/bin/bun', `bun run ${file}`), proc(111, 110, '/opt/homebrew/bin/pnpm', 'pnpm'), proc(112, 111, '/usr/local/bin/node', 'node vite'))
+      expect(launchRoot(112, t)).toBe(111)
+    }
+    const t = tree(proc(113, 1, '/bin/zsh', '-zsh'), proc(114, 113, '/opt/homebrew/bin/bun', 'bun run dev'), proc(115, 114, '/usr/local/bin/node', 'node vite'))
+    expect(launchRoot(115, t)).toBe(114)
+  })
+  it.each([
+    ['/usr/local/bin/node', 'node -r turbo agent.js'],
+    ['/usr/local/bin/node', 'node --require ./npm.js agent.js'],
+    ['/opt/homebrew/bin/bun', 'bun --cwd /Users/someone/code/nx agent.ts'],
+    ['/usr/local/bin/node', 'node --env-file ./pnpm agent.js'],
+  ])('an option value is not the script: %s', (comm, args) => {
+    const t = tree(proc(120, 1, comm, args), proc(121, 120, '/usr/local/bin/node', 'node vite'))
+    expect(launchRoot(121, t)).toBe(121)
+  })
   it('treats combined shell flags like -c', () => {
     const t = tree(proc(60, 1, '/bin/zsh', '-zsh'), proc(61, 60, '/opt/homebrew/bin/npm', 'npm run dev'), proc(62, 61, '/bin/sh', 'sh -ec vite'), proc(63, 62, '/usr/local/bin/node', 'node vite'))
     expect(launchRoot(63, t)).toBe(61)
@@ -184,5 +202,9 @@ describe('displayCommand', () => {
     expect(displayCommand(proc(1, 0, '/usr/local/bin/node', 'node server.js --api-key=abc PORT=3000'), true)).toBe('node server.js --api-key=••• PORT=3000')
     expect(displayCommand(proc(1, 0, '/usr/local/bin/node', 'API_TOKEN=abc vite'), true)).toBe('API_TOKEN=••• vite')
     expect(displayCommand(proc(1, 0, '/usr/local/bin/node', 'node s.js --password abc --port 1'), true)).toBe('node s.js --password ••• --port 1')
+  })
+  it('masks a value that starts with a dash and credentials in URLs', () => {
+    expect(displayCommand(proc(1, 0, '/usr/local/bin/node', 'node s.js --token -abc'), true)).toBe('node s.js --token •••')
+    expect(displayCommand(proc(1, 0, '/usr/local/bin/node', 'node s.js --db postgres://bob:pw@db.example.com/x --hook https://tok@example.com/h'), true)).toBe('node s.js --db postgres://bob:•••@db.example.com/x --hook https://•••@example.com/h')
   })
 })
