@@ -286,6 +286,13 @@ describe('maskSecrets', () => {
     for (const line of ['Tests passed: 12', 'monkey: 3', 'keyboard: us', 'tokenizer: ready', 'bypassed: 2']) expect(maskSecrets(line)).toBe(line)
   })
 
+  it('finds a strong word inside a one-word name: ngrok’s authtoken, SECRETKEY, clientsecret', () => {
+    for (const name of ['authtoken', 'SECRETKEY', 'clientsecret', 'accesstoken', 'apitoken', 'APITOKEN', 'dbpassword', 'mypasswd', 'awscredentials']) {
+      expect(maskSecrets(`${name}: ${S}`)).toBe(`${name}: •••`)
+    }
+    for (const line of ['tokenizer: ready', 'passed: 3', 'monkey: 3', 'keyboard: us', 'Tokenized: 12']) expect(maskSecrets(line)).toBe(line)
+  })
+
   it('leaves ordinary lines, URLs and timestamps alone', () => {
     for (const line of ['  ➜  Local: http://localhost:5173/', '10:42:01 ready in 312 ms', 'PORT: 3000', 'compiled 12 modules']) expect(maskSecrets(line)).toBe(line)
   })

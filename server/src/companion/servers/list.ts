@@ -328,14 +328,21 @@ export function maskSecrets(text: string): string {
 
 /** One part of a name that marks it secret: `API_KEY`, `apiKey`, `x-auth-token`, `passWord`, `db.credentials`. */
 const SENSITIVE_PART = /^(token|secret|key|apikey|password|passwd|pass|passphrase|auth|authorization|cred|creds|credential|credentials)s?$/i
+/** Words strong enough to count inside a one-word name; `key`, `pass` and `auth` only count whole. */
+const STRONG = 'token|secret|password|passwd|apikey|credentials?'
+/** A one-word name ending in a strong word: `authtoken` (ngrok's own key), `accesstoken`, `clientsecret`. */
+const STRONG_END = new RegExp(`(${STRONG})s?$`, 'i')
+/** A strong word followed by another sensitive word: `secretkey`, `tokensecret`; never `tokenizer`. */
+const STRONG_START = new RegExp(`^(${STRONG})(${STRONG}|key|pass|auth|passphrase)s?$`, 'i')
 
 /**
  * Whether a name holds a sensitive word as one of its parts, split on `_`, `-`, `.` and camelCase
- * boundaries; a word merely containing one (`passed`, `monkey`, `keyboard`, `tokenizer`) does not
- * count. Used for `NAME: value`, where the name is often a plain word of a log line.
+ * boundaries, or holds a strong one inside a one-word part (`authtoken`, `SECRETKEY`); a word
+ * merely containing a word (`passed`, `monkey`, `keyboard`, `tokenizer`) does not count. Used for `NAME: value`, where the name is often a plain word of a log line.
  */
 function sensitiveName(name: string): boolean {
-  return name.split(/[_.-]+/).flatMap((part) => part.split(/(?<=[a-z0-9])(?=[A-Z])/)).some((part) => SENSITIVE_PART.test(part))
+  return name.split(/[_.-]+/).flatMap((part) => part.split(/(?<=[a-z0-9])(?=[A-Z])/))
+    .some((part) => SENSITIVE_PART.test(part) || STRONG_END.test(part) || STRONG_START.test(part))
 }
 
 /**
