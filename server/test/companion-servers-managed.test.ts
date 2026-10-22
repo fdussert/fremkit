@@ -136,6 +136,8 @@ describe('managed server spawn', () => {
     const c = calls[0]
     expect(c.file).toBe('/opt/homebrew/bin/node')
     expect(c.args).toEqual(['/opt/homebrew/bin/pnpm', 'dev', '--title', 'my app'])
+    // argv[0] replayed as it was, so the command reads the same as the original.
+    expect(c.options.argv0).toBe('node')
     expect(c.options.cwd).toBe('/tmp/shop')
     expect(c.options.env).toEqual(ENV)
     expect(c.options.detached).toBe(true)
@@ -304,6 +306,7 @@ describe('companion:servers restart', () => {
     expect(s.file).toBe('/opt/homebrew/bin/node')
     expect(s.args).toEqual(['/opt/homebrew/bin/pnpm', 'dev', '--title', 'my app'])
     // pnpm's folder, not vite's.
+    expect(s.options.argv0).toBe('node')
     expect(s.options.cwd).toBe(`${HOME}/code/shop`)
     expect(s.options.env).toEqual(ENV)
     expect(s.options.detached).toBe(true)

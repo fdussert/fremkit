@@ -173,7 +173,7 @@ export interface ManagedServers {
   ready(): Promise<void>
   list(): ManagedEntry[]
   /**
-   * Spawns `launch.exe` with `launch.argv.slice(1)`, its folder and its environment, detached, no
+   * Spawns `launch.exe` with `launch.argv.slice(1)` and `argv0` `launch.argv[0]`, its folder and its environment, detached, no
    * shell, its output on a new log; `readStart` gives the child's `lstart` for its identity.
    */
   start(launch: Launch, readStart: (pid: number) => Promise<string | null>): Promise<ManagedEntry>
@@ -244,7 +244,8 @@ export function createManagedServers(opts: { dataDir: string; home: string; now?
         // The server runs under 077; the child would write 0600 build output under it.
         const previous = process.umask(0o022)
         try {
-          child = spawn(launch.exe, launch.argv.slice(1), { cwd: launch.cwd, env: launch.env, detached: true, stdio: ['ignore', fd, fd] })
+          // `argv0`: the original argv[0] (`node`, not the exe's full path), so the replay is exact.
+          child = spawn(launch.exe, launch.argv.slice(1), { argv0: launch.argv[0], cwd: launch.cwd, env: launch.env, detached: true, stdio: ['ignore', fd, fd] })
         } finally {
           process.umask(previous)
         }
