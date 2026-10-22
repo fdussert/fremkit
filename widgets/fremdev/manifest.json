@@ -5,4 +5,7 @@
   "category": "dev",
   "icon": "code", "minSize": [8, 4], "defaultSize": [20, 8],
   "compact": { "width": 2 },
-  "subscriptions": ["companion:dev", "companion:servers"], "commands": ["companion:dev", "companion:servers"] }
+  "subscriptions": ["companion:dev", "companion:servers"], "commands": ["companion:dev", "companion:servers"],
+  "settingsSchema": {
+    "showAllListeners": { "type": "boolean", "default": false, "label": { "fr": "Montrer tous les programmes qui écoutent", "en": "Show every listening program" } }
+  } }

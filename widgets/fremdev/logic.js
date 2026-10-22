@@ -283,7 +283,121 @@
     return { thumb: thumb, until: shot.until }
   }
 
+  /* ---- The Servers segment: `companion:servers` snapshots. ---- */
+
+  function isCount(v) {
+    return typeof v === 'number' && isFinite(v) && v >= 0
+  }
+
+  /** How long a server has run, its largest unit only: `42 s`, `12 min`, `2 h`, `3 d` (fr `3 j`). */
+  function formatUptime(sec, locale) {
+    if (!isCount(sec)) return ''
+    var s = Math.floor(sec)
+    if (s < 60) return s + ' s'
+    if (s < 3600) return Math.floor(s / 60) + ' min'
+    if (s < 86400) return Math.floor(s / 3600) + ' h'
+    return Math.floor(s / 86400) + (locale === 'fr' ? ' j' : ' d')
+  }
+
+  /** A resident size given in KB: `512 KB`, `402 MB`, `1.2 GB` (one decimal under 10 GB); fr Ko/Mo/Go. */
+  function formatMem(kb, locale) {
+    if (!isCount(kb)) return ''
+    var fr = locale === 'fr'
+    if (kb < 1024) return Math.round(kb) + (fr ? ' Ko' : ' KB')
+    var mb = kb / 1024
+    if (mb < 1024) return Math.round(mb) + (fr ? ' Mo' : ' MB')
+    var gb = mb / 1024
+    var text = gb < 10 ? (Math.round(gb * 10) / 10).toFixed(1) : String(Math.round(gb))
+    return (fr ? text.replace('.', ',') : text) + (fr ? ' Go' : ' GB')
+  }
+
+  /**
+   * A server row's key across snapshots: its project and first port. A server Fremkit restarted is
+   * listed by its root process while it starts and by the listener once it listens, under another
+   * id; the key stays, so its unfolded state and a restart in flight follow it. `id:<id>` without
+   * a port.
+   */
+  function serverKey(row) {
+    if (!row || typeof row !== 'object') return ''
+    var port = Array.isArray(row.ports) && typeof row.ports[0] === 'number' ? row.ports[0] : null
+    return port === null ? 'id:' + row.id : String(row.project || '') + ':' + port
+  }
+
+  /**
+   * The rows the segment draws, by port: the dev runtimes and the servers Fremkit restarted, every
+   * listener with `showAll`. Each a copy with its `key` (`serverKey`, or the id appended when two
+   * rows share one: a parent and a child both listed on one port).
+   */
+  function serverRows(snap, showAll) {
+    if (!snap || typeof snap !== 'object' || snap.enabled === false || !Array.isArray(snap.rows)) return []
+    var rows = snap.rows.filter(function (r) {
+      return r && typeof r === 'object' && Array.isArray(r.ports) && typeof r.ports[0] === 'number' &&
+        (showAll === true || r.dev === true || r.managed === true)
+    }).map(function (r) {
+      var row = {}
+      for (var k in r) if (Object.prototype.hasOwnProperty.call(r, k)) row[k] = r[k]
+      return row
+    })
+    rows.sort(function (a, b) { return a.ports[0] - b.ports[0] || (a.pid || 0) - (b.pid || 0) })
+    var used = {}
+    rows.forEach(function (row) {
+      var key = serverKey(row)
+      if (used[key]) key = key + '#' + row.id
+      used[key] = true
+      row.key = key
+    })
+    return rows
+  }
+
+  /**
+   * Which buttons an unfolded row offers. The server decides again for each command; this only
+   * hides what it would refuse. Docker's port holders get none; Finder for a dev program's folder;
+   * Kill for what is neither the system's nor Docker's; Restart for a dev program when the server
+   * can read a command line back (`canRestart`: the helper's scanner is there).
+   */
+  function serverActions(row, canRestart) {
+    var none = { open: false, reveal: false, kill: false, restart: false }
+    if (!row || typeof row !== 'object' || row.docker) return none
+    var dev = row.dev === true, system = row.system === true
+    return {
+      open: true,
+      reveal: dev && !system,
+      kill: !system,
+      restart: canRestart === true && dev && !system
+    }
+  }
+
+  /** The row's light: green when it answers, grey while it starts, red when it failed or holds a port a restart needed. */
+  function serverLight(row) {
+    if (!row) return 'grey'
+    if (row.state === 'failed' || row.portBusy === true) return 'red'
+    if (row.state === 'starting') return 'grey'
+    return 'green'
+  }
+
+  var SERVER_ERRORS = { unavailable: true }
+
+  /**
+   * One of 'loading', 'off' (`labs.fremdev` off), 'unavailable' (the listing failed and there is
+   * nothing to show; an unknown error code reads the same), 'empty' or 'rows'. A failed listing with
+   * rows from the last good one shows the rows.
+   */
+  function serversStateOf(snap, showAll) {
+    if (!snap || typeof snap !== 'object') return 'loading'
+    if (snap.enabled === false) return 'off'
+    if (serverRows(snap, showAll).length > 0) return 'rows'
+    if (typeof snap.error === 'string' && snap.error) return SERVER_ERRORS[snap.error] ? snap.error : 'unavailable'
+    return 'empty'
+  }
+
   root.FremkitFremdev = {
+    formatUptime: formatUptime,
+    formatMem: formatMem,
+    serverKey: serverKey,
+    serverRows: serverRows,
+    serverActions: serverActions,
+    serverLight: serverLight,
+    serversStateOf: serversStateOf,
     shotOf: shotOf,
     requestsFact: requestsFact,
     entryView: entryView,

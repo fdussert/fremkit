@@ -33,6 +33,13 @@ interface Logic {
   perfView(perf: unknown): Array<{ key: string; value: number; poor: boolean; dim: boolean }>
   requestsFact(row: unknown): { perf: EntryView | null; neutral: boolean }
   shotOf(row: unknown, now: number): { thumb: string | null; until: number } | null
+  formatUptime(sec: unknown, locale?: string): string
+  formatMem(kb: unknown, locale?: string): string
+  serverRows(snapshot: unknown, showAll: boolean): Array<{ id: string; pid: number; key: string; ports: number[]; project: string }>
+  serverKey(row: unknown): string
+  serverActions(row: unknown, canRestart: boolean): { open: boolean; reveal: boolean; kill: boolean; restart: boolean }
+  serverLight(row: unknown): 'green' | 'grey' | 'red'
+  serversStateOf(snapshot: unknown, showAll: boolean): string
 }
 
 async function loadLogic(): Promise<Logic> {
@@ -86,7 +93,9 @@ describe('the fremdev manifest', () => {
     expect(m.minSize).toEqual([8, 4])
     expect(m.defaultSize).toEqual([20, 8])
     expect(m.compact).toEqual({ width: 2 })
-    expect(m.settingsSchema).toEqual({})
+    expect(m.settingsSchema).toEqual({
+      showAllListeners: { type: 'boolean', default: false, label: { fr: 'Montrer tous les programmes qui écoutent', en: 'Show every listening program' } },
+    })
   })
 
   it('loads its pure half before the script that uses it, and writes text through textContent only', async () => {
@@ -400,5 +409,107 @@ describe('fremdev/logic.js', () => {
     // rowsOf carries it through.
     const snap = { enabled: true, paired: 1, installs: [{ deviceId: 'a', name: 'Chrome', on: true, tabs: [{ tabId: 7, errors: {}, requests: {}, server: 'up', activity: 1, shot: { thumb: THUMB, until: 2000 } }] }] }
     expect(shotOf(rowsOf(snap)[0], 1000)?.thumb).toBe(THUMB)
+  })
+})
+
+/** A `companion:servers` row, a dev server on `port` unless told otherwise. */
+function server(pid: number, port: number, over: Record<string, unknown> = {}) {
+  return {
+    id: `${pid}:Wed Oct 22 09:00:00 2026`, pid, ports: [port], project: `app-${port}`, tool: 'Vite', uptimeSec: 60, cpu: 1, rssKb: 1024,
+    folder: `~/code/app-${port}`, command: 'node vite', dev: true, system: false, docker: null,
+    managed: false, state: 'up', portBusy: false, tab: null, log: [],
+    ...over,
+  }
+}
+const servers = (rows: unknown[], over: Record<string, unknown> = {}) => ({ enabled: true, canRestart: true, rows, ...over })
+
+describe('fremdev/logic.js: the Servers segment', () => {
+  it('formatUptime: seconds, minutes, hours, days, the day in the user\'s language', async () => {
+    const { formatUptime } = await loadLogic()
+    expect(formatUptime(42)).toBe('42 s')
+    expect(formatUptime(720)).toBe('12 min')
+    expect(formatUptime(7200)).toBe('2 h')
+    expect(formatUptime(259200)).toBe('3 d')
+    expect(formatUptime(259200, 'fr')).toBe('3 j')
+    expect(formatUptime(259200, 'en')).toBe('3 d')
+    expect(formatUptime(59)).toBe('59 s')
+    expect(formatUptime(3599)).toBe('59 min')
+    expect(formatUptime(86399)).toBe('23 h')
+    expect(formatUptime(0)).toBe('0 s')
+    for (const bad of [-1, NaN, Infinity, '42', null, undefined]) expect(formatUptime(bad)).toBe('')
+  })
+
+  it('formatMem: KB, MB, GB with one decimal under 10, in the user\'s language', async () => {
+    const { formatMem } = await loadLogic()
+    expect(formatMem(512)).toBe('512 KB')
+    expect(formatMem(512, 'fr')).toBe('512 Ko')
+    expect(formatMem(412_000)).toBe('402 MB')
+    expect(formatMem(412_000, 'fr')).toBe('402 Mo')
+    expect(formatMem(1_258_291)).toBe('1.2 GB')
+    expect(formatMem(1_258_291, 'fr')).toBe('1,2 Go')
+    expect(formatMem(12 * 1024 * 1024)).toBe('12 GB')
+    for (const bad of [-1, NaN, '1024', null]) expect(formatMem(bad)).toBe('')
+  })
+
+  it('serverRows: hides non-dev rows unless showAll, never a managed one, sorted by port', async () => {
+    const { serverRows } = await loadLogic()
+    const snap = servers([
+      server(3, 8080, { dev: false, project: 'ControlCenter', system: true }),
+      server(2, 5173),
+      server(4, 6006, { dev: false, managed: true }),
+      server(1, 3000),
+    ])
+    expect(serverRows(snap, false).map((r) => r.pid)).toEqual([1, 2, 4])
+    expect(serverRows(snap, true).map((r) => r.pid)).toEqual([1, 2, 4, 3])
+    expect(serverRows(null, true)).toEqual([])
+    expect(serverRows({ enabled: false, rows: [server(1, 3000)] }, true)).toEqual([])
+    expect(serverRows({ enabled: true, rows: 'x' }, true)).toEqual([])
+    // A row without ports is dropped rather than sorted on undefined.
+    expect(serverRows(servers([server(1, 3000, { ports: [] }), null]), true)).toEqual([])
+  })
+
+  it('serverKey: the project and first port, so a managed row keeps its key from root to listener', async () => {
+    const { serverKey, serverRows } = await loadLogic()
+    const root = server(100, 6006, { project: 'design-system', managed: true, state: 'starting' })
+    const listener = server(101, 6006, { project: 'design-system', managed: true })
+    expect(serverKey(root)).toBe(serverKey(listener))
+    expect(serverKey(root)).not.toBe(serverKey(server(100, 6007, { project: 'design-system' })))
+    expect(serverKey({ id: '5:x', ports: [], project: '' })).toBe('id:5:x')
+    // Two rows of one project on one port (a parent and a child both listed): keys stay distinct.
+    const rows = serverRows(servers([server(7, 3000, { project: 'p' }), server(8, 3000, { project: 'p' })]), false)
+    expect(new Set(rows.map((r) => r.key)).size).toBe(2)
+    expect(rows[0].key).toBe(serverKey(rows[0]))
+  })
+
+  it('serverActions: Open but Docker, Finder on dev non-system rows, Kill on neither system nor Docker, Restart when the server can', async () => {
+    const { serverActions } = await loadLogic()
+    expect(serverActions(server(1, 3000), true)).toEqual({ open: true, reveal: true, kill: true, restart: true })
+    expect(serverActions(server(1, 3000), false)).toEqual({ open: true, reveal: true, kill: true, restart: false })
+    expect(serverActions(server(1, 3000, { dev: false }), true)).toEqual({ open: true, reveal: false, kill: true, restart: false })
+    expect(serverActions(server(1, 3000, { system: true }), true)).toEqual({ open: true, reveal: false, kill: false, restart: false })
+    expect(serverActions(server(1, 3000, { docker: 'db' }), true)).toEqual({ open: false, reveal: false, kill: false, restart: false })
+    expect(serverActions(server(1, 3000, { dev: false, docker: 'Docker' }), true)).toEqual({ open: false, reveal: false, kill: false, restart: false })
+    expect(serverActions(null, true)).toEqual({ open: false, reveal: false, kill: false, restart: false })
+  })
+
+  it('serverLight: green when up, grey while starting, red when failed or holding a port a restart wanted', async () => {
+    const { serverLight } = await loadLogic()
+    expect(serverLight(server(1, 3000))).toBe('green')
+    expect(serverLight(server(1, 3000, { state: 'starting' }))).toBe('grey')
+    expect(serverLight(server(1, 3000, { state: 'failed' }))).toBe('red')
+    expect(serverLight(server(1, 3000, { portBusy: true }))).toBe('red')
+  })
+
+  it('serversStateOf: loading, off, error with nothing to list, empty, rows', async () => {
+    const { serversStateOf } = await loadLogic()
+    expect(serversStateOf(null, false)).toBe('loading')
+    expect(serversStateOf({ enabled: false, rows: [], canRestart: true }, false)).toBe('off')
+    expect(serversStateOf(servers([], { error: 'unavailable' }), false)).toBe('unavailable')
+    expect(serversStateOf(servers([server(1, 3000)], { error: 'unavailable' }), false)).toBe('rows')
+    expect(serversStateOf(servers([]), false)).toBe('empty')
+    expect(serversStateOf(servers([server(1, 3000, { dev: false })]), false)).toBe('empty')
+    expect(serversStateOf(servers([server(1, 3000, { dev: false })]), true)).toBe('rows')
+    // An error code the widget does not know reads as the generic one.
+    expect(serversStateOf(servers([], { error: 'weird' }), false)).toBe('unavailable')
   })
 })

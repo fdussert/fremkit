@@ -32,20 +32,29 @@ function snapshot(tabs: unknown[], report = true, features: string[] = []) {
   return { enabled: true, paired: 1, installs: [{ deviceId: DEVICE, name: 'Chrome', on: true, connected: true, report, features, tabs }] }
 }
 
-function load() {
+function load(settings: Record<string, unknown> = {}) {
   document.body.innerHTML = html.match(/<body>([\s\S]*?)<script/)![1]!
-  let publish!: (data: unknown) => void
+  const subs = new Map<string, (data: unknown) => void>()
+  let onSettings: (() => void) | null = null
   const F = {
     t: (dict: { en: string }, vars?: Record<string, unknown>) =>
       dict.en.replace(/\{(\w+)\}/g, (_, k: string) => String(vars?.[k] ?? '')),
+    locale: 'en',
+    settings,
     whenReady: (cb: () => void) => cb(),
     onLocale: () => {},
-    subscribe: (_channel: string, cb: (data: unknown) => void) => { publish = cb },
+    onSettings: (cb: () => void) => { onSettings = cb },
+    subscribe: (channel: string, cb: (data: unknown) => void) => { subs.set(channel, cb) },
     sendCommand: vi.fn((..._args: unknown[]): Promise<unknown> => Promise.resolve({ ok: true })),
   }
   new Function(logic)()
   new Function('Fremkit', html.match(/<script>([\s\S]*?)<\/script>/)![1]!)(F)
-  return { F, publish: (s: unknown) => publish(s) }
+  return {
+    F,
+    publish: (s: unknown) => subs.get('companion:dev')!(s),
+    servers: (s: unknown) => subs.get('companion:servers')!(s),
+    settings: (next: Record<string, unknown>) => { F.settings = next; onSettings?.() },
+  }
 }
 
 const rowEls = () => [...document.querySelectorAll<HTMLElement>('.row')]
@@ -241,5 +250,205 @@ describe('the Fremdev widget page', () => {
     await vi.advanceTimersByTimeAsync(2000)
     expect(origin().textContent).toBe('/src/a.js:1:2')
     expect(unfoldedApps()).toEqual(['App 7'])
+  })
+})
+
+function server(pid: number, port: number, over: Record<string, unknown> = {}) {
+  return {
+    id: `${pid}:Wed Oct 22 09:00:00 2026`, pid, ports: [port], project: `app-${port}`, tool: 'Vite', uptimeSec: 7200, cpu: 3.1, rssKb: 412_000,
+    folder: `~/code/app-${port}`, command: `node ~/code/app-${port}/node_modules/.bin/vite`, dev: true, system: false, docker: null,
+    managed: false, state: 'up', portBusy: false, tab: null, log: [],
+    ...over,
+  }
+}
+const servers = (rows: unknown[], over: Record<string, unknown> = {}) => ({ enabled: true, canRestart: true, rows, ...over })
+const srows = () => [...document.querySelectorAll<HTMLElement>('.srow')]
+const srowOf = (port: number) => srows().find((r) => r.querySelector('.port')!.textContent!.split(', ')[0] === String(port))!
+const button = (row: HTMLElement, name: string) => row.querySelector<HTMLButtonElement>(`button.act.${name}`)!
+const showServers = () => document.querySelector<HTMLButtonElement>('#segServers')!.click()
+
+describe('the Fremdev widget page: the Servers segment', () => {
+  it('shows the segments with their counts while Fremdev is on, and the off sentence alone when it is off', () => {
+    const w = load()
+    w.publish({ enabled: true, paired: 0, installs: [] })
+    w.servers(servers([server(1, 3000), server(2, 5173)]))
+    const segs = document.querySelector<HTMLElement>('#segs')!
+    expect(segs.hidden).toBe(false)
+    expect(document.querySelector('#segTabs')!.textContent).toBe('Tabs (0)')
+    expect(document.querySelector('#segServers')!.textContent).toBe('Servers (2)')
+    expect(document.querySelector('#segTabs')!.getAttribute('aria-selected')).toBe('true')
+    // Unpaired, the Tabs segment says so; the Servers one lists the servers all the same.
+    expect(document.querySelector('#msg')!.textContent).toBe('Link your browser with Fremkit Companion')
+    showServers()
+    expect(document.querySelector('#segServers')!.getAttribute('aria-selected')).toBe('true')
+    expect(document.querySelector('#slist')!.classList.contains('current')).toBe(true)
+    expect(document.querySelector('#list')!.classList.contains('current')).toBe(false)
+    expect(document.querySelector('#stage')!.classList.contains('rows')).toBe(true)
+    expect(srows().map((r) => r.querySelector('.port')!.textContent)).toEqual(['3000', '5173'])
+    // Off: no segments, the off sentence, nothing to touch.
+    w.publish({ enabled: false, paired: 0, installs: [] })
+    w.servers({ enabled: false, rows: [], canRestart: true })
+    expect(segs.hidden).toBe(true)
+    expect(document.querySelector('#msg')!.textContent).toBe('Feature turned off')
+    expect(srows()).toHaveLength(0)
+    // Back on, the segment picked is still the one shown (kept in memory).
+    w.publish({ enabled: true, paired: 0, installs: [] })
+    w.servers(servers([server(1, 3000)]))
+    expect(document.querySelector('#segServers')!.getAttribute('aria-selected')).toBe('true')
+  })
+
+  it('writes the row: port, project, tool, uptime, CPU, memory, the Fremkit badge and the tab light', () => {
+    const w = load()
+    w.publish(snapshot([]))
+    w.servers(servers([server(1, 5173, { ports: [5173, 24678], managed: true, tab: 'orange' })]))
+    showServers()
+    const row = srowOf(5173)
+    expect(row.querySelector('.port')!.textContent).toBe('5173, 24678')
+    expect(row.querySelector('.project')!.textContent).toBe('app-5173')
+    expect(row.querySelector('.tool')!.textContent).toBe('Vite')
+    expect(row.querySelector('.uptime')!.textContent).toBe('2 h')
+    expect(row.querySelector('.cpu')!.textContent).toBe('3.1% CPU')
+    expect(row.querySelector('.mem')!.textContent).toBe('402 MB')
+    expect(row.querySelector<HTMLElement>('.badge')!.hidden).toBe(false)
+    expect(row.querySelector<HTMLElement>('.tabdot')!.className).toBe('tabdot orange')
+    expect(row.querySelector('.light')!.className).toBe('light green')
+  })
+
+  it('says "No dev server running" with nothing to list, and the unavailable sentence when listing failed', () => {
+    const w = load()
+    w.publish(snapshot([]))
+    w.servers(servers([server(1, 8080, { dev: false })]))
+    showServers()
+    expect(document.querySelector('#msg')!.textContent).toBe('No dev server running')
+    expect(document.querySelector('#segServers')!.textContent).toBe('Servers (0)')
+    // The setting lists every listener, live.
+    w.settings({ showAllListeners: true })
+    expect(srows()).toHaveLength(1)
+    expect(document.querySelector('#msg')!.textContent).toBe('')
+    w.servers(servers([], { error: 'unavailable' }))
+    expect(document.querySelector('#msg')!.textContent).toBe("Can't list the servers")
+    // With the last good rows, a line says the list is not current.
+    w.servers(servers([server(1, 3000)], { error: 'unavailable' }))
+    expect(document.querySelector<HTMLElement>('#snote')!.hidden).toBe(false)
+    expect(document.querySelector('#snote')!.textContent).toBe("Can't list the servers")
+  })
+
+  it('unfolds a row on tap: command, folder, the log of a managed server, 56 px buttons', () => {
+    const w = load()
+    w.publish(snapshot([]))
+    w.servers(servers([server(1, 3000), server(2, 6006, { managed: true, log: ['ready', 'Local: http://localhost:6006/'] })]))
+    showServers()
+    srowOf(6006).querySelector<HTMLElement>('.top')!.click()
+    expect(srowOf(6006).classList.contains('unfolded')).toBe(true)
+    expect(srowOf(3000).classList.contains('unfolded')).toBe(false)
+    expect(srowOf(6006).querySelector('.cmd')!.textContent).toBe('node ~/code/app-6006/node_modules/.bin/vite')
+    expect(srowOf(6006).querySelector('.folder')!.textContent).toBe('~/code/app-6006')
+    expect(srowOf(6006).querySelector('.log')!.textContent).toBe('ready\nLocal: http://localhost:6006/')
+    expect(srowOf(3000).querySelector<HTMLElement>('.log')!.hidden).toBe(true)
+    expect(read('index.html')).toMatch(/button\.act\{[^}]*min-height:56px/)
+    expect(['open', 'reveal', 'restart', 'kill'].map((n) => button(srowOf(6006), n).textContent)).toEqual(['Open', 'Finder', 'Restart', 'Kill'])
+    srowOf(3000).querySelector<HTMLElement>('.top')!.click()
+    expect(srows().filter((r) => r.classList.contains('unfolded'))).toEqual([srowOf(3000)])
+  })
+
+  it('offers only what the server would do: Docker nothing, system Open only, Restart only when the server can', () => {
+    const w = load({ showAllListeners: true })
+    w.publish(snapshot([]))
+    const visible = (port: number) => ['open', 'reveal', 'restart', 'kill'].filter((n) => !button(srowOf(port), n).hidden)
+    w.servers(servers([
+      server(1, 3000),
+      server(2, 5432, { dev: false, docker: 'postgres' }),
+      server(3, 7000, { dev: false, system: true, project: 'ControlCenter', tool: 'ControlCenter' }),
+      server(4, 8080, { dev: false, project: 'proxy', tool: 'proxy' }),
+    ]))
+    showServers()
+    expect(visible(3000)).toEqual(['open', 'reveal', 'restart', 'kill'])
+    expect(visible(5432)).toEqual([])
+    expect(srowOf(5432).querySelector<HTMLElement>('.actions')!.hidden).toBe(true)
+    expect(srowOf(5432).querySelector('.project')!.textContent).toBe('Docker → postgres')
+    expect(visible(7000)).toEqual(['open'])
+    expect(visible(8080)).toEqual(['open', 'kill'])
+    w.servers(servers([server(1, 3000)], { canRestart: false }))
+    expect(visible(3000)).toEqual(['open', 'reveal', 'kill'])
+  })
+
+  it('Open and Finder send at once with the row id; neither folds the row', () => {
+    const w = load()
+    w.publish(snapshot([]))
+    w.servers(servers([server(1, 3000)]))
+    showServers()
+    srowOf(3000).querySelector<HTMLElement>('.top')!.click()
+    button(srowOf(3000), 'open').click()
+    button(srowOf(3000), 'reveal').click()
+    expect(w.F.sendCommand.mock.calls).toEqual([
+      ['companion:servers', 'open', { id: '1:Wed Oct 22 09:00:00 2026' }],
+      ['companion:servers', 'reveal', { id: '1:Wed Oct 22 09:00:00 2026' }],
+    ])
+    expect(srowOf(3000).classList.contains('unfolded')).toBe(true)
+  })
+
+  it('Kill arms "Confirm?" for 3 s; a second touch inside sends it, none lets it go', async () => {
+    vi.useFakeTimers()
+    const w = load()
+    w.publish(snapshot([]))
+    w.servers(servers([server(1, 3000)]))
+    showServers()
+    srowOf(3000).querySelector<HTMLElement>('.top')!.click()
+    button(srowOf(3000), 'kill').click()
+    expect(w.F.sendCommand).not.toHaveBeenCalled()
+    expect(button(srowOf(3000), 'kill').textContent).toBe('Confirm?')
+    expect(button(srowOf(3000), 'kill').classList.contains('armed')).toBe(true)
+    // A snapshot meanwhile keeps it armed.
+    w.servers(servers([server(1, 3000)]))
+    expect(button(srowOf(3000), 'kill').textContent).toBe('Confirm?')
+    await vi.advanceTimersByTimeAsync(3000)
+    expect(button(srowOf(3000), 'kill').textContent).toBe('Kill')
+    button(srowOf(3000), 'kill').click()
+    await vi.advanceTimersByTimeAsync(2999)
+    button(srowOf(3000), 'kill').click()
+    expect(w.F.sendCommand).toHaveBeenCalledWith('companion:servers', 'kill', { id: '1:Wed Oct 22 09:00:00 2026' })
+    // Arming Restart disarms Kill.
+    await vi.advanceTimersByTimeAsync(0)
+    button(srowOf(3000), 'kill').click()
+    button(srowOf(3000), 'restart').click()
+    expect(button(srowOf(3000), 'kill').textContent).toBe('Kill')
+    expect(button(srowOf(3000), 'restart').textContent).toBe('Confirm?')
+    expect(w.F.sendCommand).toHaveBeenCalledTimes(1)
+  })
+
+  it('a restart holds the row as "Restarting…" with its buttons off, across the id change, then shows a refusal', async () => {
+    vi.useFakeTimers()
+    const w = load()
+    w.publish(snapshot([]))
+    w.servers(servers([server(1, 6006, { project: 'ds' })]))
+    showServers()
+    srowOf(6006).querySelector<HTMLElement>('.top')!.click()
+    let answer!: (v: unknown) => void
+    w.F.sendCommand.mockImplementationOnce(() => new Promise((r) => { answer = r }))
+    button(srowOf(6006), 'restart').click()
+    button(srowOf(6006), 'restart').click()
+    expect(w.F.sendCommand).toHaveBeenLastCalledWith('companion:servers', 'restart', { id: '1:Wed Oct 22 09:00:00 2026' })
+    const busy = () => {
+      const row = srowOf(6006)
+      expect(row.querySelector('.status')!.textContent).toBe('Restarting…')
+      expect(['open', 'reveal', 'restart', 'kill'].every((n) => button(row, n).disabled)).toBe(true)
+    }
+    busy()
+    // The old server gone from the list, then Fremkit's new one under another pid: same row, still busy, still unfolded.
+    w.servers(servers([]))
+    w.servers(servers([server(77, 6006, { project: 'ds', managed: true, state: 'starting' })]))
+    busy()
+    expect(srowOf(6006).classList.contains('unfolded')).toBe(true)
+    answer({ ok: false, error: 'The port stayed taken' })
+    await vi.advanceTimersByTimeAsync(0)
+    expect(srowOf(6006).querySelector('.status')!.textContent).toBe('The port stayed taken')
+    expect(srowOf(6006).querySelector('.status')!.classList.contains('failed')).toBe(true)
+    expect(button(srowOf(6006), 'restart').disabled).toBe(false)
+    await vi.advanceTimersByTimeAsync(4000)
+    expect(srowOf(6006).querySelector('.status')!.textContent).toBe('Starting…')
+  })
+
+  it('leaves the compact tile as it was: the sum, no segments', () => {
+    expect(html).toMatch(/html\.compact \.stage \.pane,html\.compact \.stage \.segs\{display:none\}/)
   })
 })
