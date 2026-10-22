@@ -191,7 +191,7 @@ function underLibrary(cwd: string, home: string): boolean {
 /** Folders that hold installed software, never a project being built. */
 const INSTALLED = /^(\/Users\/[^/]+)?\/Library(\/|$)|^\/(Applications|opt\/homebrew|usr\/local)(\/|$)/
 /** Where a build puts its binary, relative to the project folder. */
-const BUILD_OUTPUT = /^(?:(?:target\/(?:debug|release)|bin|build|dist|out)\/)?[^/]+$/
+const BUILD_OUTPUT = /^(?:(?:target\/(?:[^/]+\/)?(?:debug|release)|bin|build|dist|out)\/)?[^/]+$/
 
 /** A Go or Rust server built in the folder it runs from: the binary directly in it or in a build output folder. */
 function builtInFolder(comm: string, cwd: string | null): boolean {

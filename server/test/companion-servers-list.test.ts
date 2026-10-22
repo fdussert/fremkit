@@ -91,6 +91,10 @@ describe('isDevRuntime', () => {
   it('accepts a binary in the folder or a build output under it', () => {
     expect(isDevRuntime(proc(1, 0, '/Users/someone/code/api/target/debug/api'), '/Users/someone/code/api', '/Users/someone')).toBe(true)
     expect(isDevRuntime(proc(1, 0, '/Users/someone/code/api/target/release/api'), '/Users/someone/code/api', '/Users/someone')).toBe(true)
+    // A cross-compiled Rust build: target/<triple>/{debug,release}/.
+    expect(isDevRuntime(proc(1, 0, '/Users/someone/code/api/target/aarch64-apple-darwin/debug/api'), '/Users/someone/code/api', '/Users/someone')).toBe(true)
+    expect(isDevRuntime(proc(1, 0, '/Users/someone/code/api/target/x86_64-apple-darwin/release/api'), '/Users/someone/code/api', '/Users/someone')).toBe(true)
+    expect(isDevRuntime(proc(1, 0, '/Users/someone/code/api/target/a/b/release/api'), '/Users/someone/code/api', '/Users/someone')).toBe(false)
     expect(isDevRuntime(proc(1, 0, '/Users/someone/code/api/server'), '/Users/someone/code/api', '/Users/someone')).toBe(true)
     expect(isDevRuntime(proc(1, 0, '/Users/someone/code/api/dist/server'), '/Users/someone/code/api', '/Users/someone')).toBe(true)
     expect(isDevRuntime(proc(1, 0, '/Users/someone/code/api/vendor/tool/server'), '/Users/someone/code/api', '/Users/someone')).toBe(false)
