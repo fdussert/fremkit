@@ -163,8 +163,24 @@ const RUNTIMES = /^(node|bun|deno|python(\d+(\.\d+)*)?|ruby|php|java|dotnet|go)$
 export function isDevRuntime(p: ProcInfo, cwd: string | null): boolean {
   if (RUNTIMES.test(basename(p.comm))) return true
   if (knownTool(p.args, p.comm) !== null) return true
-  // A Go or Rust server built in the folder it runs from.
-  return cwd !== null && cwd.length > 1 && p.comm.startsWith(cwd.endsWith('/') ? cwd : cwd + '/')
+  return builtInFolder(p.comm, cwd)
+}
+
+/** Folders that hold installed software, never a project being built. */
+const INSTALLED = /^(\/Users\/[^/]+)?\/Library(\/|$)|^\/(Applications|opt\/homebrew|usr\/local)(\/|$)/
+/** Where a build puts its binary, relative to the project folder. */
+const BUILD_OUTPUT = /^(?:(?:target\/(?:debug|release)|bin|build|dist|out)\/)?[^/]+$/
+
+/**
+ * A Go or Rust server built in the folder it runs from: the binary directly in it or in a build
+ * output folder. An app's helper or a plugin run from its own bundle (a Stream Deck plugin under
+ * `~/Library/Application Support`) is not one, whatever its folder.
+ */
+function builtInFolder(comm: string, cwd: string | null): boolean {
+  if (cwd === null || cwd.length <= 1 || INSTALLED.test(cwd)) return false
+  if (comm.split('/').some((part) => /\.(app|sdPlugin|bundle|plugin)$/i.test(part))) return false
+  const dir = cwd.endsWith('/') ? cwd : cwd + '/'
+  return comm.startsWith(dir) && BUILD_OUTPUT.test(comm.slice(dir.length))
 }
 
 /** Programs shipped with macOS: Open only, never a kill. `/usr/local/` is the user's. */

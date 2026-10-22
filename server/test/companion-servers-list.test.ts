@@ -88,6 +88,23 @@ describe('isDevRuntime', () => {
     expect(isDevRuntime(proc(1, 0, '/Users/someone/api/bin/server'), '/Users/someone/api')).toBe(true)
     expect(isDevRuntime(proc(1, 0, '/Users/someone/api/bin/server'), '/Users/someone/other')).toBe(false)
   })
+  it('accepts a binary in the folder or a build output under it', () => {
+    expect(isDevRuntime(proc(1, 0, '/Users/someone/code/api/target/debug/api'), '/Users/someone/code/api')).toBe(true)
+    expect(isDevRuntime(proc(1, 0, '/Users/someone/code/api/target/release/api'), '/Users/someone/code/api')).toBe(true)
+    expect(isDevRuntime(proc(1, 0, '/Users/someone/code/api/server'), '/Users/someone/code/api')).toBe(true)
+    expect(isDevRuntime(proc(1, 0, '/Users/someone/code/api/dist/server'), '/Users/someone/code/api')).toBe(true)
+    expect(isDevRuntime(proc(1, 0, '/Users/someone/code/api/vendor/tool/server'), '/Users/someone/code/api')).toBe(false)
+  })
+  it('rejects an app helper or a plugin run from its own bundle', () => {
+    const plugin = '/Users/someone/Library/Application Support/com.elgato.StreamDeck/Plugins/x.sdPlugin'
+    expect(isDevRuntime(proc(1, 0, `${plugin}/bin/plugin`), plugin)).toBe(false)
+    expect(isDevRuntime(proc(1, 0, '/Library/Audio/Plug-Ins/x/bin/srv'), '/Library/Audio/Plug-Ins/x')).toBe(false)
+    expect(isDevRuntime(proc(1, 0, '/Applications/Tool.app/Contents/MacOS/helper'), '/Applications/Tool.app/Contents/MacOS')).toBe(false)
+    expect(isDevRuntime(proc(1, 0, '/opt/homebrew/opt/x/bin/x'), '/opt/homebrew/opt/x')).toBe(false)
+    expect(isDevRuntime(proc(1, 0, '/usr/local/x/bin/x'), '/usr/local/x')).toBe(false)
+    expect(isDevRuntime(proc(1, 0, '/Users/someone/code/Thing.app/Contents/MacOS/thing'), '/Users/someone/code/Thing.app/Contents/MacOS')).toBe(false)
+    expect(isDevRuntime(proc(1, 0, '/Users/someone/code/x.plugin/srv'), '/Users/someone/code/x.plugin')).toBe(false)
+  })
 })
 
 describe('isSystemProcess and isDockerHolder', () => {
