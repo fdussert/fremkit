@@ -306,6 +306,24 @@ export function displayCommand(p: ProcInfo, dev: boolean): string {
 }
 
 /**
+ * A line of a server's output with what `displayCommand` hides hidden there too, its spacing kept:
+ * URL credentials, the value of a sensitive `KEY=value` or `--key=value` word, and a bearer or basic
+ * credential. A dev server may print its `DATABASE_URL` or its whole environment.
+ */
+export function maskSecrets(text: string): string {
+  return text
+    .replace(/\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+/gi, '$1 •••')
+    .replace(/\S+/g, (word) => {
+      const x = maskUrl(word)
+      const eq = x.indexOf('=')
+      if (eq <= 0) return x
+      const name = x.slice(0, eq).replace(/^--?/, '')
+      if (/^[A-Za-z_][A-Za-z0-9_.-]*$/.test(name) && SENSITIVE.test(name) && !name.startsWith('no-')) return `${x.slice(0, eq)}=•••`
+      return x
+    })
+}
+
+/**
  * Credentials in one argument: the userinfo of a URL starting the word or following an `=`
  * (`DATABASE_URL=…`, `--db=…`), taken as everything up to the last `@` before the first `?` or `#`
  * so a password holding `@` or `/` does not leak while an `@` in the query keeps the host; a

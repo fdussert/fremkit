@@ -7,6 +7,11 @@
  *
  * Never published: argv as a list, the environment, the home folder (written `~`), a non-dev
  * program's arguments (`displayCommand`).
+ *
+ * The servers Fremkit restarted (`managed.ts`) are its children, yet listed: their trees, matched by
+ * pid and start time, are taken out of the exclusion of Fremkit's own tree. Their rows say
+ * `managed`, carry the tail of their output, and stay on the list while they start (their root
+ * process, with the ports they are to take) and once they are gone (red, until dismissed).
  */
 
 import { basename } from 'node:path'
@@ -17,6 +22,8 @@ import { displayCommand, detectTool, isDevRuntime, isDockerHolder, isHelper, isS
 import { createServersSystem, type ServersSystem } from './system.js'
 import { createServerCommands } from './commands.js'
 import { homeToTilde } from '../../home-tilde.js'
+import { busyPorts, createManagedServers, isAlive, managedRootOf, managedState, PORT_IN_USE, readLogTail, type ManagedEntry, type SpawnFn } from './managed.js'
+import { readProcArgs, type RunScanner } from './procargs.js'
 
 export const COMPANION_SERVERS_CHANNEL = 'companion:servers'
 export const SERVERS_INTERVAL_MS = 5_000
@@ -69,7 +76,13 @@ export interface ServersOptions {
   now?: () => number
   /** Polls the channel again: the registry's `refresh`, called 1 s after each command. */
   refresh?: () => void
+  /** Tests: the scanner's runner and `spawn`. */
+  runScanner?: RunScanner
+  spawn?: SpawnFn
 }
+
+/** What a managed row shows once its process is gone: the last row it had, or the one it replaced. */
+type Label = Pick<ServerRow, 'project' | 'tool' | 'folder' | 'command'>
 
 const RANK: Record<TabLight, number> = { red: 0, orange: 1, green: 2 }
 
@@ -157,6 +170,12 @@ export function createServersProvider(opts: ServersOptions): Provider<ServersSna
   const now = opts.now ?? Date.now
   /** The last `docker ps` names, with the holders' ports they were asked for. */
   let dockerNames: { key: string; at: number; names: Map<number, string> } | null = null
+  const managed = createManagedServers({ dataDir: opts.dataDir, home: sys.home, now, spawn: opts.spawn })
+  /** By log path: a managed server's last row, in memory only. */
+  const labels = new Map<string, Label>()
+  /** The managed server each row of the last snapshot belongs to; filled by `listRows`. */
+  let managedRows = new Map<string, ManagedEntry>()
+  let polledManaged = new Map<string, ManagedEntry>()
 
   const canRestart = () => opts.scanner !== null
 
@@ -171,17 +190,37 @@ export function createServersProvider(opts: ServersOptions): Provider<ServersSna
   }
 
   async function listRows(): Promise<ServerRow[]> {
+    await managed.ready()
+    polledManaged = new Map()
     const listeners = parseLsofListen(await sys.runLsofListen())
-    if (listeners.length === 0) return []
+    if (listeners.length === 0 && managed.list().length === 0) return []
     const statsText = await sys.runPsStats()
     // Every process, once: the listeners' parents (the launch root) and Fremkit's own descendants.
     const stats = parsePs(statsText, '')
+    await managed.reconcile(stats)
+    await managed.maintain()
+    const entries = managed.list()
+    const alive = entries.filter((e) => isAlive(e, stats))
     const own = selfTree(selfPid, stats)
-    const kept = listeners.filter((l) => {
+    // The trees of the servers Fremkit started are not Fremkit, though they are its children.
+    for (const e of alive) {
+      const tree = selfTree(e.pid, stats)
+      if (!tree.has(selfPid)) for (const pid of tree) own.delete(pid)
+    }
+    own.add(selfPid)
+    const listed = listeners.filter((l) => {
       const p = stats.get(l.pid)
       return p !== undefined && p.uid === sys.uid && !own.has(l.pid) && !isHelper(p)
     })
-    if (kept.length === 0) return []
+    const ownerOf = (pid: number) => managedRootOf(pid, alive, stats)
+    const listening = new Set(listed.map((l) => ownerOf(l.pid)).filter((e): e is ManagedEntry => e !== null))
+    // A managed server not listening yet is its root process, with the ports it is to take.
+    const kept = [
+      ...listed,
+      ...alive.filter((e) => !listening.has(e) && stats.get(e.pid)?.uid === sys.uid && e.ports.length > 0)
+        .map((e) => ({ pid: e.pid, ports: [...e.ports], comm: '' })),
+    ]
+    if (kept.length === 0 && entries.length === 0) return []
 
     // Command lines for the listeners and their parents up to launchd, nothing else.
     const wanted: number[] = []
@@ -234,7 +273,58 @@ export function createServersProvider(opts: ServersOptions): Provider<ServersSna
         log: [],
       }
     }))
+    for (const row of rows) {
+      const owner = ownerOf(row.pid)
+      if (owner) polledManaged.set(row.id, owner)
+    }
+    await markManaged(rows, entries, stats, listening)
     return rows.sort(byPort)
+  }
+
+  /**
+   * Each managed server's light and output on its rows (the log on the first only); a row for one
+   * that is gone; and, when it failed on a port in use, `portBusy` on the rows holding that port.
+   */
+  async function markManaged(rows: ServerRow[], entries: ManagedEntry[], stats: Map<number, ProcInfo>, listening: Set<ManagedEntry>): Promise<void> {
+    const busy: Array<{ owner: ManagedEntry; ports: number[] }> = []
+    for (const e of entries) {
+      const tail = await readLogTail(e.log, sys.home)
+      const state = managedState({ alive: isAlive(e, stats), listening: listening.has(e), tail, startedAt: e.startedAt, now: now(), exitCode: managed.exitCode(e) })
+      if (state === 'drop') {
+        await managed.forget(e)
+        continue
+      }
+      let mine = rows.filter((r) => polledManaged.get(r.id) === e).sort(byPort)
+      const listed = mine.length > 0
+      if (!listed) {
+        const label = labels.get(e.log)
+        const row: ServerRow = {
+          id: `${e.pid}:${e.start}`, pid: e.pid, ports: e.ports.length > 0 ? [...e.ports] : [0],
+          project: label?.project ?? '', tool: label?.tool ?? '', uptimeSec: 0, cpu: 0, rssKb: 0,
+          folder: label?.folder ?? null, command: label?.command ?? '', dev: true, system: false, docker: null,
+          managed: true, state, portBusy: false, tab: null, log: [],
+        }
+        rows.push(row)
+        polledManaged.set(row.id, e)
+        mine = [row]
+      }
+      mine.forEach((r, i) => {
+        r.managed = true
+        r.state = state
+        r.log = i === 0 ? tail : []
+      })
+      if (listed) {
+        const { project, tool, folder, command } = mine[0]
+        labels.set(e.log, { project, tool, folder, command })
+      }
+      if (state === 'failed' && tail.some((l) => PORT_IN_USE.test(l))) busy.push({ owner: e, ports: busyPorts(e, tail) })
+    }
+    for (const { owner, ports } of busy) {
+      for (const r of rows) if (polledManaged.get(r.id) !== owner && r.ports.some((p) => ports.includes(p))) r.portBusy = true
+    }
+    // Labels of servers no longer remembered go too.
+    const logs = new Set(managed.list().map((e) => e.log))
+    for (const key of labels.keys()) if (!logs.has(key)) labels.delete(key)
   }
 
   /** Docker's container names by host port: asked again when the holders' ports change, or after 30 s. */
@@ -257,6 +347,7 @@ export function createServersProvider(opts: ServersOptions): Provider<ServersSna
       last = []
       byId = new Map()
       folders = new Map()
+      managedRows = new Map()
       return { enabled: false, rows: [], canRestart: canRestart() }
     }
     try {
@@ -264,6 +355,7 @@ export function createServersProvider(opts: ServersOptions): Provider<ServersSna
       last = snap.rows
       byId = new Map(last.map((r) => [r.id, r]))
       folders = new Map(last.flatMap((r) => { const f = polledFolders.get(r.id); return f === undefined ? [] : [[r.id, f] as const] }))
+      managedRows = new Map(last.flatMap((r) => { const e = polledManaged.get(r.id); return e === undefined ? [] : [[r.id, e] as const] }))
       return snap
     } catch {
       return { enabled: true, rows: last, canRestart: canRestart(), error: 'unavailable' }
@@ -282,6 +374,14 @@ export function createServersProvider(opts: ServersOptions): Provider<ServersSna
       lookup: (id) => byId.get(id) ?? null,
       folderOf: (id) => folders.get(id) ?? null,
       refresh: opts.refresh,
+      scanner: opts.scanner,
+      readProcArgs: (scanner, pid) => readProcArgs(scanner, pid, opts.runScanner),
+      managed,
+      managedOf: (id) => managedRows.get(id) ?? null,
+      started: (entry, replaced) => {
+        const { project, tool, folder, command } = replaced
+        labels.set(entry.log, { project, tool, folder, command })
+      },
     }),
     lookup: (id) => byId.get(id) ?? null,
   }
