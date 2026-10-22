@@ -307,9 +307,9 @@ Each line here was a real hole once. Break one only with the owner's explicit sa
   needs it, and with the server's, the Swift and the Kotlin suites green
   (`pnpm test`, `pnpm ios:test`, `pnpm android:test`).
 - **A process Fremkit may signal** is this account's, in the current snapshot with the same start
-  time, and never Fremkit's tree (except the servers Fremkit started itself) or any ancestor of it, the helper, a macOS program, a browser or Docker's
-  (`server/src/companion/servers/commands.ts`). A restart's environment lives in one `spawn` call and
-  nowhere else.
+  time, and never Fremkit's tree (except the servers Fremkit started itself) or any ancestor of it,
+  the helper, a macOS program, a browser or Docker's (`server/src/companion/servers/commands.ts`). A
+  restart's environment lives in one `spawn` call and nowhere else.
 - **Commands that act on the Mac take their target from a closed list**: `dock.activate` only
   for an app in the current Dock snapshot; a URL handed to `open` is the parsed `href` that was
   checked, never the raw string.

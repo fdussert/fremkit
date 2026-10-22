@@ -642,11 +642,12 @@ the last 20 lines (300 characters each, with anything that looks like a secret h
 its unfolded row. A log past 1 MB is cut back to its last 512 KB; a few lines written during the cut
 can be lost. The server outlives a restart of Fremkit, which remembers it in `servers/managed.json`
 (pid, start time, log path, ports: no command, no environment). The log of a server that is gone is
-deleted after 24 hours. The row turns red when the server's output says that its port is taken
-(`EADDRINUSE`, *address already in use*, *port 3000 is in use*) or when it exits with an error; in
-the port case the row of the program holding that port lights up too. Kill on a Fremkit-started
-server stops it. Once its process is gone, its red row offers **Dismiss** alone, which removes it:
-no Open, Finder or Restart, since there is no process, port or folder left to act on.
+deleted after 24 hours. The row turns red when the server exits other than with code 0 (a signal
+included), is not listening 30 seconds after it started, or its output says that its port is taken
+(`EADDRINUSE`, *address already in use*, *port 3000 is in use*); in the port case the row of the
+program holding that port lights up too. Kill on a Fremkit-started server stops it. Once its process
+is gone, its red row offers **Dismiss** alone, which removes it: no Open, Finder or Restart, since
+there is no process, port or folder left to act on.
 
 *A stop always wins over a restart.* If you press Kill while a restart is waiting for the port, the
 restart is cancelled, and if it had already started the new server, that one is stopped. A second
