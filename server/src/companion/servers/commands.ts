@@ -315,7 +315,16 @@ export function createServerCommands(opts: ServerCommandsOptions): Record<string
    * (`pid:start`), with the ids of that root's tree so a kill of any of its rows finds it. A kill
    * cancels the restart of its row or root before the spawn: a stop always wins.
    */
-  type Job = { rowId: string; rootKey: string | null; treeIds: Set<string>; cancelled: boolean; spawning: boolean }
+  type Job = {
+    rowId: string
+    rootKey: string | null
+    treeIds: Set<string>
+    cancelled: boolean
+    /** The restart's own kill went out: the old server is being stopped whatever happens next. */
+    killSent: boolean
+    /** Past the last check: the spawn is happening and can no longer be cancelled. */
+    spawning: boolean
+  }
   const jobs = new Set<Job>()
   /** Launch roots a kill command is still settling, by `pid:start`. */
   const stopping = new Set<string>()
@@ -401,6 +410,7 @@ export function createServerCommands(opts: ServerCommandsOptions): Record<string
       return failed('companion.serversKillFailed')
     }
     if (!outcome.ok) return failed(outcome.error)
+    job.killSent = true
     if (owner) await managed.forget(owner)
     if (outcome.root.pid !== root.pid || outcome.root.start !== root.start) {
       // Reachable only when the chain above the listener changed between the restart's ps and the
@@ -426,17 +436,18 @@ export function createServerCommands(opts: ServerCommandsOptions): Record<string
     return { ok: true }
   }
 
-  /** Cancels the restarts a kill of `row` (or of its root, `rootKey`) stops; true when one was. */
-  function cancelRestarts(rowId: string, rootKey: string | null): boolean {
-    let any = false
+  const matches = (j: Job, rowId: string, rootKey: string | null) =>
+    j.rowId === rowId || j.treeIds.has(rowId) || (rootKey !== null && j.rootKey === rootKey)
+
+  /** Cancels the restarts a kill of `row` (or of its root, `rootKey`) stops, and returns them. */
+  function cancelRestarts(rowId: string, rootKey: string | null): Job[] {
+    const hit: Job[] = []
     for (const j of jobs) {
-      if (j.spawning) continue
-      if (j.rowId === rowId || j.treeIds.has(rowId) || (rootKey !== null && j.rootKey === rootKey)) {
-        j.cancelled = true
-        any = true
-      }
+      if (j.spawning || !matches(j, rowId, rootKey)) continue
+      j.cancelled = true
+      hit.push(j)
     }
-    return any
+    return hit
   }
 
   return {
@@ -450,11 +461,13 @@ export function createServerCommands(opts: ServerCommandsOptions): Record<string
       }
       // Before any await: a restart of this row or its root never spawns after this.
       const cancelled = cancelRestarts(row.id, null)
+      // The old server stopped already when the restart had sent its kill, or when it is gone.
+      const stoppedAnyway = (error: MessageKey) => cancelled.some((j) => j.killSent) || (cancelled.length > 0 && error === 'companion.serversUnknown')
       let outcome: KillOutcome
       try {
         outcome = await killer.kill(row)
       } catch {
-        return cancelled ? { ok: true } : failed('companion.serversKillFailed')
+        return stoppedAnyway('companion.serversKillFailed') ? { ok: true } : failed('companion.serversKillFailed')
       }
       if (outcome.ok) {
         const key = `${outcome.root.pid}:${outcome.root.start}`
@@ -464,8 +477,7 @@ export function createServerCommands(opts: ServerCommandsOptions): Record<string
         if (owner) await opts.managed?.forget(owner)
         return { ok: true }
       }
-      // The restart being cancelled had already stopped it: the stop is done all the same.
-      return cancelled ? { ok: true } : failed(outcome.error)
+      return stoppedAnyway(outcome.error) ? { ok: true } : failed(outcome.error)
     }),
     restart: command(async (row) => {
       const { scanner, managed, readProcArgs: read } = opts
@@ -475,7 +487,7 @@ export function createServerCommands(opts: ServerCommandsOptions): Record<string
       // row's restart frees its own place.
       if (!managed.hasRoom() && !opts.managedOf?.(row.id)) return failed('companion.serversBusy')
       if ([...jobs].some((j) => j.rowId === row.id || j.treeIds.has(row.id)) || killer.pending(row.id)) return failed('companion.serversBusy')
-      const job: Job = { rowId: row.id, rootKey: null, treeIds: new Set(), cancelled: false, spawning: false }
+      const job: Job = { rowId: row.id, rootKey: null, treeIds: new Set(), cancelled: false, killSent: false, spawning: false }
       jobs.add(job)
       try {
         return await restartServer(job, row, scanner, managed, read)
