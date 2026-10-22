@@ -160,10 +160,32 @@ export function detectTool(args: string, comm: string): string {
 
 const RUNTIMES = /^(node|bun|deno|python(\d+(\.\d+)*)?|ruby|php|java|dotnet|go)$/i
 
-export function isDevRuntime(p: ProcInfo, cwd: string | null): boolean {
+/**
+ * Whether a listener is a dev server. A program inside an app bundle (`.app`, `.sdPlugin`,
+ * `.bundle`, `.plugin`) or working in the home's `~/Library` never is, runtimes included: Stream
+ * Deck runs its plugins with its own node from `~/Library/Application Support`. The one bundle that
+ * is a runtime is a framework Python's launcher, `Python.framework/Versions/x/Resources/Python.app`
+ * (Homebrew, python.org and the Command Line Tools all run `python3` through it).
+ */
+export function isDevRuntime(p: ProcInfo, cwd: string | null, home: string): boolean {
+  if (inBundle(p.comm) || (cwd !== null && underLibrary(cwd, home))) return false
   if (RUNTIMES.test(basename(p.comm))) return true
   if (knownTool(p.args, p.comm) !== null) return true
   return builtInFolder(p.comm, cwd)
+}
+
+function inBundle(comm: string): boolean {
+  const parts = comm.split('/')
+  return parts.some((part, i) => {
+    if (!/\.(app|sdPlugin|bundle|plugin)$/i.test(part)) return false
+    const frameworkLauncher = /\.app$/i.test(part) && parts[i - 1] === 'Resources' && parts.slice(0, i - 1).some((x) => /\.framework$/i.test(x))
+    return !frameworkLauncher
+  })
+}
+
+function underLibrary(cwd: string, home: string): boolean {
+  const lib = `${home.replace(/\/+$/, '')}/Library`
+  return cwd === lib || cwd.startsWith(lib + '/')
 }
 
 /** Folders that hold installed software, never a project being built. */
@@ -171,14 +193,9 @@ const INSTALLED = /^(\/Users\/[^/]+)?\/Library(\/|$)|^\/(Applications|opt\/homeb
 /** Where a build puts its binary, relative to the project folder. */
 const BUILD_OUTPUT = /^(?:(?:target\/(?:debug|release)|bin|build|dist|out)\/)?[^/]+$/
 
-/**
- * A Go or Rust server built in the folder it runs from: the binary directly in it or in a build
- * output folder. An app's helper or a plugin run from its own bundle (a Stream Deck plugin under
- * `~/Library/Application Support`) is not one, whatever its folder.
- */
+/** A Go or Rust server built in the folder it runs from: the binary directly in it or in a build output folder. */
 function builtInFolder(comm: string, cwd: string | null): boolean {
   if (cwd === null || cwd.length <= 1 || INSTALLED.test(cwd)) return false
-  if (comm.split('/').some((part) => /\.(app|sdPlugin|bundle|plugin)$/i.test(part))) return false
   const dir = cwd.endsWith('/') ? cwd : cwd + '/'
   return comm.startsWith(dir) && BUILD_OUTPUT.test(comm.slice(dir.length))
 }

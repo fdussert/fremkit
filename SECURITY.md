@@ -531,6 +531,12 @@ nothing else of `labs`. What it holds and what it can do:
     folder and never from a string a widget sent), `docker ps` through `resolveDockerBinary()` (only
     while a Docker row exists), and `fremkit-scan procargs <pid>` by the path the helper passes in
     `FREMKIT_SCANNER`, only for a restart. No command line carries a secret.
+  - *What counts as a dev row* (`isDevRuntime`). Dev rows get Restart and Finder and show their
+    arguments, so a program inside an app bundle (a path component ending in `.app`, `.sdPlugin`,
+    `.bundle` or `.plugin`) or whose working folder is under the home's `~/Library` is never one,
+    runtimes included: Stream Deck runs its plugins with its own node from there. The one exemption
+    is a `.app` directly in the `Resources` folder of a `*.framework` (a framework Python's
+    launcher).
   - *A command names* a row id (`pid:start`) of the last snapshot, nothing else. Before a signal the
     server runs `ps` again and refuses a pid whose start time changed or that is no longer listed.
   - *Kill safety.* Only this account's processes; never Fremkit's tree, never any ancestor of Fremkit

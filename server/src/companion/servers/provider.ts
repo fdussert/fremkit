@@ -245,7 +245,7 @@ export function createServersProvider(opts: ServersOptions): Provider<ServersSna
     const rows = await Promise.all(kept.map(async (l): Promise<ServerRow> => {
       const p = procs.get(l.pid)!
       const cwd = cwds.get(l.pid) ?? null
-      const dev = isDevRuntime(p, cwd)
+      const dev = isDevRuntime(p, cwd, sys.home)
       if (cwd !== null) polledFolders.set(`${p.pid}:${p.start}`, cwd)
       let tab: TabLight | null = null
       for (const port of l.ports) {

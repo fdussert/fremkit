@@ -558,9 +558,11 @@ the light of the Fremdev tab open on that port, if any.
   knows (Vite, Next, webpack, Storybook, Astro, Nuxt, Remix, Rails, Django, Flask, uvicorn, `python
   -m http.server`…). The tool column names it, else the program. Other listeners (AirPlay, a
   database, an app) are hidden, unless the widget's setting **Show every listening program** is on:
-  they then appear with **Open** and **Kill** only. Programs run from inside an application bundle
-  (`.app`, `.sdPlugin`, `.bundle`, `.plugin`) or from `~/Library` never count as dev servers,
-  runtimes included (Stream Deck, an editor's helpers).
+  they then appear with **Open** and **Kill** only. A program run from inside an application bundle
+  (`.app`, `.sdPlugin`, `.bundle`, `.plugin`), or whose working folder is under `~/Library`, never
+  counts as a dev server, runtimes included (Stream Deck's plugins, an editor's helpers). The one
+  exception is the `Python.app` inside a `Python.framework`'s `Resources` folder, through which
+  Homebrew's, python.org's and the Command Line Tools' `python3` all run.
 - *The project* is the `name` in the `package.json` of the process's folder (read when it is at most
   64 KB), else the folder's name. Under `~/Documents`, `~/Desktop`, `~/Downloads` and iCloud Drive
   the file is not read and the folder's name is used, so that polling never makes macOS ask for

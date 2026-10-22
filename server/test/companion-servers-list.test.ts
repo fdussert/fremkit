@@ -77,33 +77,60 @@ describe('detectTool', () => {
 
 describe('isDevRuntime', () => {
   it.each(['node', 'bun', 'deno', 'python3', 'python3.12', 'ruby', 'php', 'java', 'dotnet', 'go'])('%s', (n) => {
-    expect(isDevRuntime(proc(1, 0, `/opt/bin/${n}`, n), null)).toBe(true)
+    expect(isDevRuntime(proc(1, 0, `/opt/bin/${n}`, n), null, '/Users/someone')).toBe(true)
   })
   it('rejects a system app', () => {
     const p = proc(1, 0, '/System/Library/CoreServices/ControlCenter.app/Contents/MacOS/ControlCenter')
-    expect(isDevRuntime(p, '/')).toBe(false)
-    expect(isDevRuntime(p, null)).toBe(false)
+    expect(isDevRuntime(p, '/', '/Users/someone')).toBe(false)
+    expect(isDevRuntime(p, null, '/Users/someone')).toBe(false)
   })
   it('accepts a binary built under its folder', () => {
-    expect(isDevRuntime(proc(1, 0, '/Users/someone/api/bin/server'), '/Users/someone/api')).toBe(true)
-    expect(isDevRuntime(proc(1, 0, '/Users/someone/api/bin/server'), '/Users/someone/other')).toBe(false)
+    expect(isDevRuntime(proc(1, 0, '/Users/someone/api/bin/server'), '/Users/someone/api', '/Users/someone')).toBe(true)
+    expect(isDevRuntime(proc(1, 0, '/Users/someone/api/bin/server'), '/Users/someone/other', '/Users/someone')).toBe(false)
   })
   it('accepts a binary in the folder or a build output under it', () => {
-    expect(isDevRuntime(proc(1, 0, '/Users/someone/code/api/target/debug/api'), '/Users/someone/code/api')).toBe(true)
-    expect(isDevRuntime(proc(1, 0, '/Users/someone/code/api/target/release/api'), '/Users/someone/code/api')).toBe(true)
-    expect(isDevRuntime(proc(1, 0, '/Users/someone/code/api/server'), '/Users/someone/code/api')).toBe(true)
-    expect(isDevRuntime(proc(1, 0, '/Users/someone/code/api/dist/server'), '/Users/someone/code/api')).toBe(true)
-    expect(isDevRuntime(proc(1, 0, '/Users/someone/code/api/vendor/tool/server'), '/Users/someone/code/api')).toBe(false)
+    expect(isDevRuntime(proc(1, 0, '/Users/someone/code/api/target/debug/api'), '/Users/someone/code/api', '/Users/someone')).toBe(true)
+    expect(isDevRuntime(proc(1, 0, '/Users/someone/code/api/target/release/api'), '/Users/someone/code/api', '/Users/someone')).toBe(true)
+    expect(isDevRuntime(proc(1, 0, '/Users/someone/code/api/server'), '/Users/someone/code/api', '/Users/someone')).toBe(true)
+    expect(isDevRuntime(proc(1, 0, '/Users/someone/code/api/dist/server'), '/Users/someone/code/api', '/Users/someone')).toBe(true)
+    expect(isDevRuntime(proc(1, 0, '/Users/someone/code/api/vendor/tool/server'), '/Users/someone/code/api', '/Users/someone')).toBe(false)
   })
   it('rejects an app helper or a plugin run from its own bundle', () => {
     const plugin = '/Users/someone/Library/Application Support/com.elgato.StreamDeck/Plugins/x.sdPlugin'
-    expect(isDevRuntime(proc(1, 0, `${plugin}/bin/plugin`), plugin)).toBe(false)
-    expect(isDevRuntime(proc(1, 0, '/Library/Audio/Plug-Ins/x/bin/srv'), '/Library/Audio/Plug-Ins/x')).toBe(false)
-    expect(isDevRuntime(proc(1, 0, '/Applications/Tool.app/Contents/MacOS/helper'), '/Applications/Tool.app/Contents/MacOS')).toBe(false)
-    expect(isDevRuntime(proc(1, 0, '/opt/homebrew/opt/x/bin/x'), '/opt/homebrew/opt/x')).toBe(false)
-    expect(isDevRuntime(proc(1, 0, '/usr/local/x/bin/x'), '/usr/local/x')).toBe(false)
-    expect(isDevRuntime(proc(1, 0, '/Users/someone/code/Thing.app/Contents/MacOS/thing'), '/Users/someone/code/Thing.app/Contents/MacOS')).toBe(false)
-    expect(isDevRuntime(proc(1, 0, '/Users/someone/code/x.plugin/srv'), '/Users/someone/code/x.plugin')).toBe(false)
+    expect(isDevRuntime(proc(1, 0, `${plugin}/bin/plugin`), plugin, '/Users/someone')).toBe(false)
+    expect(isDevRuntime(proc(1, 0, '/Library/Audio/Plug-Ins/x/bin/srv'), '/Library/Audio/Plug-Ins/x', '/Users/someone')).toBe(false)
+    expect(isDevRuntime(proc(1, 0, '/Applications/Tool.app/Contents/MacOS/helper'), '/Applications/Tool.app/Contents/MacOS', '/Users/someone')).toBe(false)
+    expect(isDevRuntime(proc(1, 0, '/opt/homebrew/opt/x/bin/x'), '/opt/homebrew/opt/x', '/Users/someone')).toBe(false)
+    expect(isDevRuntime(proc(1, 0, '/usr/local/x/bin/x'), '/usr/local/x', '/Users/someone')).toBe(false)
+    expect(isDevRuntime(proc(1, 0, '/Users/someone/code/Thing.app/Contents/MacOS/thing'), '/Users/someone/code/Thing.app/Contents/MacOS', '/Users/someone')).toBe(false)
+    expect(isDevRuntime(proc(1, 0, '/Users/someone/code/x.plugin/srv'), '/Users/someone/code/x.plugin', '/Users/someone')).toBe(false)
+  })
+  const HOME = '/Users/someone'
+  it('rejects a runtime run from an app bundle or from ~/Library', () => {
+    // Stream Deck's own node running a plugin from its folder.
+    const sd = proc(1, 0, '/Applications/Stream Deck.app/Contents/Helpers/node20/node', 'node bin/plugin.js')
+    expect(isDevRuntime(sd, `${HOME}/Library/Application Support/com.elgato.StreamDeck/Plugins/com.example.x.sdPlugin`, HOME)).toBe(false)
+    expect(isDevRuntime(sd, `${HOME}/code/x`, HOME)).toBe(false)
+    // A plain node whose working folder is under ~/Library.
+    const node = proc(1, 0, '/opt/homebrew/bin/node', 'node server.js')
+    expect(isDevRuntime(node, `${HOME}/Library/Application Support/Tool`, HOME)).toBe(false)
+    expect(isDevRuntime(node, `${HOME}/Library`, HOME)).toBe(false)
+    expect(isDevRuntime(node, `${HOME}/code/x`, HOME)).toBe(true)
+    // Not another account's Library, nor a folder merely named like it.
+    expect(isDevRuntime(node, `${HOME}/LibraryX/app`, HOME)).toBe(true)
+    // A tool by name in a bundle is not dev either.
+    expect(isDevRuntime(proc(1, 0, '/Applications/Tool.app/Contents/Resources/node', 'node /x/node_modules/.bin/vite'), `${HOME}/code/x`, HOME)).toBe(false)
+  })
+  it("keeps a framework Python's launcher app a runtime", () => {
+    const brew = '/opt/homebrew/Cellar/python@3.14/3.14.0/Frameworks/Python.framework/Versions/3.14/Resources/Python.app/Contents/MacOS/Python'
+    expect(isDevRuntime(proc(1, 0, brew, 'python3 -m http.server 18000'), `${HOME}/code/x`, HOME)).toBe(true)
+    const org = '/Library/Frameworks/Python.framework/Versions/3.13/Resources/Python.app/Contents/MacOS/Python'
+    expect(isDevRuntime(proc(1, 0, org, 'python3 -m http.server'), `${HOME}/code/x`, HOME)).toBe(true)
+    const clt = '/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/Resources/Python.app/Contents/MacOS/Python'
+    expect(isDevRuntime(proc(1, 0, clt, 'python3 -m http.server'), `${HOME}/code/x`, HOME)).toBe(true)
+    // Still not dev from ~/Library, and an app that is not a framework's Resources is still a bundle.
+    expect(isDevRuntime(proc(1, 0, brew, 'python3 -m http.server'), `${HOME}/Library/x`, HOME)).toBe(false)
+    expect(isDevRuntime(proc(1, 0, '/Applications/X.app/Contents/Resources/Python.app/Contents/MacOS/Python', 'python3 -m http.server'), `${HOME}/code/x`, HOME)).toBe(false)
   })
 })
 
