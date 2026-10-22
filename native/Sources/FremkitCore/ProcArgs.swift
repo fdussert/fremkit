@@ -95,7 +95,6 @@ public struct ProcArgs: Codable, Equatable {
         if sysctl(&mib, 3, &buffer, &length, nil, 0) != 0 {
             // The kernel answers EINVAL both for a pid that is gone and for one it will not show a
             // non-root caller, so kill(pid, 0) tells the two apart.
-            if errno == ESRCH { throw ProcArgsError.noSuchProcess }
             if kill(pid, 0) != 0 && errno == ESRCH { throw ProcArgsError.noSuchProcess }
             throw ProcArgsError.denied
         }
