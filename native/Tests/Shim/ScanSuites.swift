@@ -50,6 +50,7 @@ let scanSuites: [(String, () -> XCTestCase, [TestMethod])] = [
         ("testParseKeepsEmptyArgumentsInPlace", { try ($0 as! ProcArgsTests).testParseKeepsEmptyArgumentsInPlace() }),
         ("testParseRefusesWhatDoesNotFitTheLayout", { ($0 as! ProcArgsTests).testParseRefusesWhatDoesNotFitTheLayout() }),
         ("testParseRefusesBytesThatAreNotUTF8", { ($0 as! ProcArgsTests).testParseRefusesBytesThatAreNotUTF8() }),
+        ("testAnExecutablePathThatIsNotUTF8IsRefused", { try ($0 as! ProcArgsTests).testAnExecutablePathThatIsNotUTF8IsRefused() }),
         ("testParseReportsAHiddenEnvironmentAsNil", { try ($0 as! ProcArgsTests).testParseReportsAHiddenEnvironmentAsNil() }),
     ]),
 ]

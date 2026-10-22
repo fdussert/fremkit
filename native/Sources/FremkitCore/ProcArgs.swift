@@ -141,13 +141,19 @@ public struct ProcArgs: Codable, Equatable {
             guard let equals = entry.firstIndex(of: "=") else { continue }
             env[String(entry[..<equals])] = String(entry[entry.index(after: equals)...])
         }
-        return ProcArgs(exe: executablePath(pid: pid) ?? path, argv: argv, env: env.isEmpty ? nil : env)
+        return ProcArgs(exe: try executablePath(pid: pid) ?? path, argv: argv, env: env.isEmpty ? nil : env)
     }
 
-    private static func executablePath(pid: pid_t) -> String? {
+    private static func executablePath(pid: pid_t) throws -> String? {
         var buffer = [CChar](repeating: 0, count: 4 * Int(MAXPATHLEN))
         let count = proc_pidpath(pid, &buffer, UInt32(buffer.count))
         guard count > 0 else { return nil }
-        return String(decoding: buffer[0..<Int(count)].map { UInt8(bitPattern: $0) }, as: UTF8.self)
+        return try decodePath(buffer[0..<Int(count)].map { UInt8(bitPattern: $0) })
+    }
+
+    /// Strict like the strings of the record: a path that is not UTF-8 is refused, not rewritten.
+    static func decodePath(_ bytes: [UInt8]) throws -> String {
+        guard let value = String(bytes: bytes, encoding: .utf8) else { throw ProcArgsError.failed }
+        return value
     }
 }

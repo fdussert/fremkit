@@ -122,6 +122,14 @@ final class ProcArgsTests: XCTestCase {
         XCTAssertThrowsError(try ProcArgs.parse(bytes, pid: 0))
     }
 
+    func testAnExecutablePathThatIsNotUTF8IsRefused() throws {
+        // proc_pidpath cannot be made to return one without a file named in invalid UTF-8, so the
+        // decoder it goes through is tested directly.
+        let decoded = try ProcArgs.decodePath(Array("/bin/x".utf8))
+        XCTAssertEqual(decoded, "/bin/x")
+        XCTAssertThrowsError(try ProcArgs.decodePath([0x2F, 0xFF, 0xFE]))
+    }
+
     func testParseReportsAHiddenEnvironmentAsNil() throws {
         let hidden = try ProcArgs.parse(buffer(argc: 1, strings: ["x"]), pid: 0)
         XCTAssertNil(hidden.env)
