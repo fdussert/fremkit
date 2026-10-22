@@ -209,7 +209,7 @@ describe('companion:servers provider', () => {
     expect((await poll(p)).rows[0].docker).toBe('Docker')
   })
 
-  it('asks Docker again on the next poll after a failure, and 5 s after an empty answer', async () => {
+  it('asks Docker again on the next poll after a failure, and 15 s after an empty answer', async () => {
     let answer: () => string = () => { throw new Error('unavailable') }
     const runDockerPorts = vi.fn(async () => answer())
     let t = 1_000_000
@@ -220,8 +220,11 @@ describe('companion:servers provider', () => {
     expect((await poll(p)).rows[0].docker).toBe('Docker')
     expect(runDockerPorts).toHaveBeenCalledTimes(2)
     answer = () => 'web-1\t0.0.0.0:8080->80/tcp\n'
-    // An empty answer is kept 5 s, not 30: the next poll within it reuses it.
-    t += DOCKER_EMPTY_TTL_MS - 1
+    // An empty answer is kept 15 s, not 30: the regular 5 s polls within it reuse it.
+    expect(DOCKER_EMPTY_TTL_MS).toBeGreaterThan(SERVERS_INTERVAL_MS)
+    t += SERVERS_INTERVAL_MS
+    expect((await poll(p)).rows[0].docker).toBe('Docker')
+    t += DOCKER_EMPTY_TTL_MS - SERVERS_INTERVAL_MS - 1
     expect((await poll(p)).rows[0].docker).toBe('Docker')
     expect(runDockerPorts).toHaveBeenCalledTimes(2)
     t += 1
