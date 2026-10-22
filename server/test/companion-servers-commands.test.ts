@@ -246,11 +246,12 @@ describe('companion:servers commands: kill', () => {
     expect(w.signals).toEqual([[1002, 'SIGTERM'], [1003, 'SIGTERM']])
   })
 
-  it('never sends a group signal when Fremkit is missing from ps', async () => {
+  it('refuses to kill anything when Fremkit is missing from ps: its tree and ancestors are unknown', async () => {
     const w = world([SHELL, { ...PNPM, pgid: 1001 }, VITE], { noSelf: true })
     await w.poll()
-    expect(await w.run('kill', viteId)).toEqual({ ok: true })
-    expect(w.signals).toEqual([[1001, 'SIGTERM'], [1002, 'SIGTERM']])
+    expect(await w.run('kill', viteId)).toEqual({ ok: false, error: msg('companion.serversKillFailed') })
+    await vi.advanceTimersByTimeAsync(KILL_GRACE_MS)
+    expect(w.signals).toEqual([])
   })
 
   it('sends no group KILL to a member recycled during the 3 s', async () => {

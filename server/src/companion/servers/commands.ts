@@ -145,15 +145,15 @@ export async function killServer(row: Pick<ServerRow, 'id' | 'pid'>, deps: KillD
   const procs = await readProcs(sys, row.pid)
   const p = procs.get(row.pid)
   if (!p || `${p.pid}:${p.start}` !== row.id) return { ok: false, error: 'companion.serversUnknown' }
+  // Without Fremkit in ps, its tree and its ancestors are unknown: nothing can be judged safe.
+  if (!procs.has(selfPid)) return { ok: false, error: 'companion.serversKillFailed' }
   const guarded = protectedPids(selfPid, procs)
   if (!signallable(p, sys.uid, guarded)) return { ok: false, error: 'companion.serversNotAllowed' }
   const root = procs.get(narrowRoot(launchRoot(p.pid, procs), p.pid, procs, guarded))!
   if (!signallable(root, sys.uid, guarded)) return { ok: false, error: 'companion.serversNotAllowed' }
 
-  const ownPgid = procs.get(selfPid)?.pgid
-  let target = killGroup(root, procs, guarded)
-  // Fremkit's group unknown (it is missing from ps): never a group kill.
-  if ('pgid' in target && ownPgid === undefined) target = { pids: rootTree(root, procs, guarded) }
+  const ownPgid = procs.get(selfPid)!.pgid
+  const target = killGroup(root, procs, guarded)
   const watched = 'pgid' in target
     ? [...procs.values()].filter((m) => m.pgid === target.pgid)
     : target.pids.map((pid) => procs.get(pid)!)
@@ -213,7 +213,6 @@ export function createKiller(deps: KillDeps): ServerKiller {
     pending: (id) => inFlight.get(id),
   }
 }
-
 
 const CommandSchema = z.strictObject({
   // The host stamps it on every widget command.
