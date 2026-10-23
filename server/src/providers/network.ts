@@ -1,5 +1,8 @@
 import type { Provider } from './types.js'
 import { execCommand, type Exec } from './exec.js'
+import si from 'systeminformation'
+import { targetPlatform } from '../platform/index.js'
+import { sharedHost, type HostWifi } from '../win/powershell-host.js'
 
 /** How many samples the snapshot carries, so a freshly opened widget draws a graph at once. */
 export const NETWORK_HISTORY = 60
@@ -16,7 +19,21 @@ export interface NetworkSnapshot {
   upBps: number
   /** Oldest first, `[down, up]` in bytes per second. */
   history: [number, number][]
+  /** Set when the last read failed: the rest is then the last good snapshot. */
+  error?: string
 }
+
+/** The two systeminformation calls Windows reads, and the one host call; a test hands in fakes. */
+export interface NetworkDeps {
+  platform?: NodeJS.Platform
+  si?: Pick<typeof si, 'networkInterfaceDefault' | 'networkStats' | 'networkInterfaces'>
+  host?: { call<T>(op: 'network.wifi', arg?: undefined, timeoutMs?: number): Promise<T> }
+}
+
+/** How long a Windows adapter's kind, address and SSID stand before they are read again. */
+export const WINDOWS_DETAILS_TTL_MS = 30_000
+/** `network.wifi` runs netsh, which may take its whole 4 s budget. */
+const WIFI_TIMEOUT_MS = 6000
 
 /**
  * The interface the default route goes out of, from `route -n get default`.
@@ -108,24 +125,81 @@ interface Sample { rx: number; tx: number; at: number }
  * than in the widget: a tile opened a second ago should still draw the last minute, and every
  * widget watching the channel sees the same graph.
  */
-export function createNetworkProvider(exec: Exec = execCommand): Provider<NetworkSnapshot> {
+export function createNetworkProvider(exec: Exec = execCommand, deps: NetworkDeps = {}): Provider<NetworkSnapshot> {
+  const windows = targetPlatform(deps.platform) === 'win32'
   let previous: Sample | null = null
   let history: [number, number][] = []
   /** Hardware ports change only when an adapter is plugged in, so they are read once per start. */
   let ports: Record<string, string> | null = null
 
+  /** Windows only: what is read less often than the counters. */
+  let details: { iface: string; kind: NetworkKind; ip?: string; ssid?: string; at: number } | null = null
+  let last: NetworkSnapshot = { iface: null, kind: 'other', downBps: 0, upBps: 0, history }
+
   const run = async (file: string, args: string[]): Promise<string> => {
     try { return await exec(file, args) } catch { return '' }
+  }
+
+  /** Turns cumulative counters into a rate and a history entry; shared by every platform. */
+  const advance = (counters: { rx: number; tx: number }): { downBps: number; upBps: number } => {
+    const at = Date.now()
+    let downBps = 0
+    let upBps = 0
+    // A counter that went backwards means the interface was reset (or the 32-bit counter
+    // wrapped): drop the delta rather than publish a spike of several gigabytes per second.
+    if (previous && at > previous.at && counters.rx >= previous.rx && counters.tx >= previous.tx) {
+      const seconds = (at - previous.at) / 1000
+      downBps = Math.round((counters.rx - previous.rx) / seconds)
+      upBps = Math.round((counters.tx - previous.tx) / seconds)
+    }
+    previous = { rx: counters.rx, tx: counters.tx, at }
+    history = [...history, [downBps, upBps] as [number, number]].slice(-NETWORK_HISTORY)
+    return { downBps, upBps }
+  }
+
+  const reset = () => { previous = null; history = []; ports = null; details = null; last = { iface: null, kind: 'other', downBps: 0, upBps: 0, history } }
+
+  async function pollWindows(): Promise<NetworkSnapshot> {
+    const sys = deps.si ?? si
+    try {
+      const iface = await sys.networkInterfaceDefault()
+      if (!iface) {
+        previous = null
+        details = null
+        return (last = { iface: null, kind: 'other', downBps: 0, upBps: 0, history })
+      }
+      const stats = (await sys.networkStats(iface))[0]
+      let rates = { downBps: 0, upBps: 0 }
+      if (stats && Number.isFinite(stats.rx_bytes) && Number.isFinite(stats.tx_bytes)) {
+        rates = advance({ rx: stats.rx_bytes, tx: stats.tx_bytes })
+      }
+
+      if (!details || details.iface !== iface || Date.now() - details.at >= WINDOWS_DETAILS_TTL_MS) {
+        const known = (await sys.networkInterfaces().catch(() => [])).find((i) => i.iface === iface)
+        const kind: NetworkKind = known?.type === 'wireless' ? 'wifi' : known?.type === 'wired' ? 'ethernet' : 'other'
+        let ssid: string | undefined
+        if (kind === 'wifi') {
+          // No SSID (no Wi-Fi service, Location denied, netsh slow) costs the name and not the snapshot.
+          try { ssid = (await (deps.host ?? sharedHost()).call<HostWifi>('network.wifi', undefined, WIFI_TIMEOUT_MS)).ssid ?? undefined } catch { /* no name */ }
+        }
+        details = { iface, kind, ...(known?.ip4 ? { ip: known.ip4 } : {}), ...(ssid ? { ssid } : {}), at: Date.now() }
+      }
+      const { kind, ip, ssid } = details
+      return (last = { iface, kind, ...(ip ? { ip } : {}), ...(ssid ? { ssid } : {}), ...rates, history })
+    } catch {
+      return { ...last, history, error: 'offline' }
+    }
   }
 
   return {
     channel: 'network',
     intervalMs: NETWORK_INTERVAL_MS,
 
-    start() { previous = null; history = []; ports = null },
-    stop() { previous = null; history = []; ports = null },
+    start: reset,
+    stop: reset,
 
     async poll(): Promise<NetworkSnapshot> {
+      if (windows) return pollWindows()
       const iface = parseDefaultInterface(await run('/sbin/route', ['-n', 'get', 'default']))
       if (!iface) {
         previous = null
@@ -133,20 +207,7 @@ export function createNetworkProvider(exec: Exec = execCommand): Provider<Networ
       }
 
       const counters = parseNetstatBytes(await run('/usr/sbin/netstat', ['-ib']), iface)
-      const at = Date.now()
-      let downBps = 0
-      let upBps = 0
-      if (counters) {
-        // A counter that went backwards means the interface was reset (or the 32-bit counter
-        // wrapped): drop the delta rather than publish a spike of several gigabytes per second.
-        if (previous && at > previous.at && counters.rx >= previous.rx && counters.tx >= previous.tx) {
-          const seconds = (at - previous.at) / 1000
-          downBps = Math.round((counters.rx - previous.rx) / seconds)
-          upBps = Math.round((counters.tx - previous.tx) / seconds)
-        }
-        previous = { rx: counters.rx, tx: counters.tx, at }
-        history = [...history, [downBps, upBps] as [number, number]].slice(-NETWORK_HISTORY)
-      }
+      const { downBps, upBps } = counters ? advance(counters) : { downBps: 0, upBps: 0 }
 
       if (!ports) ports = parseHardwarePorts(await run('/usr/sbin/networksetup', ['-listallhardwareports']))
       const kind = classifyPort(ports[iface])

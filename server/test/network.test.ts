@@ -154,3 +154,77 @@ describe('network provider', () => {
     expect(snapshot).toEqual({ iface: null, kind: 'other', downBps: 0, upBps: 0, history: [] })
   })
 })
+
+describe('network provider on Windows', () => {
+  const stats = (rx: number, tx: number) => [{ iface: 'Wi-Fi', rx_bytes: rx, tx_bytes: tx }]
+  const fakes = (type = 'wireless') => ({
+    si: {
+      networkInterfaceDefault: vi.fn(async () => 'Wi-Fi'),
+      networkStats: vi.fn(async () => stats(1_000_000, 500_000)),
+      networkInterfaces: vi.fn(async () => [{ iface: 'Wi-Fi', ip4: '198.51.100.7', type }]),
+    } as any,
+    host: { call: vi.fn(async () => ({ ssid: 'Example Net', signal: 80 })) } as any,
+  })
+
+  it('turns two polls 2 s apart into a rate and a history, with the SSID from the host', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-01-01T00:00:00Z'))
+    const f = fakes()
+    const exec = vi.fn(async () => '')
+    const provider = createNetworkProvider(exec, { platform: 'win32', ...f })
+    provider.start?.()
+    const first = (await provider.poll!()) as NetworkSnapshot
+    expect(first).toMatchObject({ iface: 'Wi-Fi', kind: 'wifi', ip: '198.51.100.7', ssid: 'Example Net', downBps: 0, upBps: 0 })
+    expect(first.history).toEqual([[0, 0]])
+
+    vi.setSystemTime(new Date('2026-01-01T00:00:02Z'))
+    f.si.networkStats.mockImplementation(async () => stats(1_200_000, 560_000))
+    const second = (await provider.poll!()) as NetworkSnapshot
+    expect(second.downBps).toBe(100_000)
+    expect(second.upBps).toBe(30_000)
+    expect(second.history).toEqual([[0, 0], [100_000, 30_000]])
+    // The adapter's details are not read again within their TTL.
+    expect(f.host.call).toHaveBeenCalledTimes(1)
+    expect(f.host.call).toHaveBeenCalledWith('network.wifi', undefined, expect.any(Number))
+    expect(exec).not.toHaveBeenCalled()
+  })
+
+  it('calls a wired adapter ethernet and asks the host nothing', async () => {
+    const f = fakes('wired')
+    const snapshot = (await createNetworkProvider(undefined, { platform: 'win32', ...f }).poll!()) as NetworkSnapshot
+    expect(snapshot.kind).toBe('ethernet')
+    expect(snapshot.ssid).toBeUndefined()
+    expect(f.host.call).not.toHaveBeenCalled()
+  })
+
+  it('keeps the snapshot without a name when the host cannot say it', async () => {
+    const f = fakes()
+    f.host.call.mockRejectedValue(new Error('location-denied'))
+    const snapshot = (await createNetworkProvider(undefined, { platform: 'win32', ...f }).poll!()) as NetworkSnapshot
+    expect(snapshot).toMatchObject({ iface: 'Wi-Fi', kind: 'wifi' })
+    expect(snapshot.ssid).toBeUndefined()
+    expect(snapshot.error).toBeUndefined()
+  })
+
+  it('publishes the last snapshot with an error when systeminformation fails', async () => {
+    const f = fakes()
+    const provider = createNetworkProvider(undefined, { platform: 'win32', ...f })
+    const good = (await provider.poll!()) as NetworkSnapshot
+    f.si.networkStats.mockRejectedValue(new Error('boom'))
+    expect(await provider.poll!()).toEqual({ ...good, error: 'offline' })
+  })
+
+  it('has no interface when there is no default route', async () => {
+    const f = fakes()
+    f.si.networkInterfaceDefault.mockResolvedValue('')
+    expect(await createNetworkProvider(undefined, { platform: 'win32', ...f }).poll!()).toEqual({ iface: null, kind: 'other', downBps: 0, upBps: 0, history: [] })
+  })
+
+  it('never touches systeminformation or the host on macOS', async () => {
+    const f = fakes()
+    const exec = vi.fn(async () => '')
+    await createNetworkProvider(exec, { platform: 'darwin', ...f }).poll!()
+    await createNetworkProvider(exec, { platform: 'linux', ...f }).poll!()
+    for (const fn of [f.si.networkInterfaceDefault, f.si.networkStats, f.si.networkInterfaces, f.host.call]) expect(fn).not.toHaveBeenCalled()
+  })
+})
