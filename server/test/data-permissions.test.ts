@@ -1,15 +1,17 @@
 import { describe, it, expect, afterEach } from 'vitest'
 import { chmod, mkdir, mkdtemp, rm, stat, lstat, symlink, writeFile } from 'node:fs/promises'
+import { execFileSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { tightenDataDir } from '../src/data-permissions.js'
+import { tightenDataDir, restrictToUser, type AclExec } from '../src/data-permissions.js'
+import { windowsTool } from '../src/platform/windows-tools.js'
 import { buildApp } from '../src/app.js'
 
 const mode = async (path: string) => (await stat(path)).mode & 0o777
 let root: string
 afterEach(async () => { if (root) await rm(root, { recursive: true, force: true }) })
 
-// POSIX modes: Windows has no owner/group/other bits (and its data-folder ACL is tested where it lands).
+// POSIX modes: Windows has no owner/group/other bits; its ACL is checked in the last block.
 const itPosix = it.skipIf(process.platform === 'win32')
 
 describe('tightenDataDir', () => {
@@ -53,6 +55,100 @@ describe('tightenDataDir', () => {
       const res = await app.inject({ method: 'PUT', url: '/api/config', headers: { host: '127.0.0.1:4242' }, payload: (await app.inject({ url: '/api/config', headers: { host: '127.0.0.1:4242' } })).json() })
       expect(res.statusCode).toBe(200)
       expect(await mode(join(data, 'fremkit.json'))).toBe(0o600)
+    } finally {
+      await app.close()
+    }
+  })
+})
+
+describe('tightenDataDir on Windows', () => {
+  const SID = 'S-1-5-21-1-2-3-1001'
+  const fake = (whoami: string) => {
+    const calls: Array<{ file: string; args: string[] }> = []
+    const exec: AclExec = async (file, args) => {
+      calls.push({ file, args })
+      return file.endsWith('whoami.exe') ? { stdout: whoami } : { stdout: '' }
+    }
+    return { calls, exec }
+  }
+
+  it('grants the user and SYSTEM only, inherited, by SID', async () => {
+    root = await mkdtemp(join(tmpdir(), 'fremkit-perm-'))
+    const { calls, exec } = fake(`"desktop-x\\a","${SID}"\r\n`)
+    expect(await tightenDataDir(root, { platform: 'win32', exec })).toBe(1)
+    expect(calls[0]).toEqual({ file: windowsTool('whoami'), args: ['/user', '/fo', 'csv', '/nh'] })
+    expect(calls[1]).toEqual({
+      file: windowsTool('icacls'),
+      args: [root, '/inheritance:r', '/grant:r', `*${SID}:(OI)(CI)F`, '*S-1-5-18:(OI)(CI)F', '/T', '/C', '/Q'],
+    })
+    expect(calls).toHaveLength(2)
+  })
+
+  it('reads a localized whoami: only the SID column matters', async () => {
+    root = await mkdtemp(join(tmpdir(), 'fremkit-perm-'))
+    const { calls, exec } = fake(`"poste\\é, utilisateur","${SID}"\r\n`)
+    expect(await tightenDataDir(root, { platform: 'win32', exec })).toBe(1)
+    expect(calls[1].args[3]).toBe(`*${SID}:(OI)(CI)F`)
+  })
+
+  it('applies nothing when whoami answers something that is not a user SID', async () => {
+    root = await mkdtemp(join(tmpdir(), 'fremkit-perm-'))
+    for (const out of ['', 'garbage', '"a","S-1-5-18"', '"a","S-1-5-21-1-2-3"', `"a","${SID}*"`]) {
+      const { calls, exec } = fake(out)
+      expect(await tightenDataDir(root, { platform: 'win32', exec })).toBe(0)
+      expect(calls.every((c) => c.file.endsWith('whoami.exe'))).toBe(true)
+    }
+  })
+
+  it('returns 0 and never throws when icacls fails', async () => {
+    root = await mkdtemp(join(tmpdir(), 'fremkit-perm-'))
+    const exec: AclExec = async (file) => {
+      if (file.endsWith('icacls.exe')) throw new Error('denied')
+      return { stdout: `"a","${SID}"` }
+    }
+    expect(await tightenDataDir(root, { platform: 'win32', exec })).toBe(0)
+  })
+
+  it('restrictToUser serves a single folder the same way', async () => {
+    const { calls, exec } = fake(`"a","${SID}"`)
+    expect(await restrictToUser('C:\\Users\\x\\AppData\\Local\\Fremkit', { platform: 'win32', exec })).toBe(true)
+    expect(calls[1].args[0]).toBe('C:\\Users\\x\\AppData\\Local\\Fremkit')
+  })
+
+  it('never runs a program on darwin', async () => {
+    root = await mkdtemp(join(tmpdir(), 'fremkit-perm-'))
+    const { calls, exec } = fake('')
+    await tightenDataDir(root, { platform: 'darwin', exec })
+    expect(await restrictToUser(root, { platform: 'darwin', exec })).toBe(false)
+    expect(calls).toHaveLength(0)
+  })
+})
+
+// The real thing, on Windows only: `icacls` lists the user and SYSTEM, and a file made later inherits it.
+describe.skipIf(process.platform !== 'win32')('the data folder ACL, for real', () => {
+  const aclOf = (path: string) => execFileSync(windowsTool('icacls'), [path], { encoding: 'utf8' })
+  const principals = (out: string) => out.split(/\r?\n/).filter((l) => /:\(/.test(l)).map((l) => l.replace(/^.*?(\S+):\(.*$/, '$1'))
+
+  it('leaves the user and SYSTEM only, and files created afterwards inherit it', async () => {
+    root = await mkdtemp(join(tmpdir(), 'fremkit-perm-'))
+    const data = join(root, 'data')
+    await mkdir(data, { recursive: true })
+    expect(await tightenDataDir(data)).toBe(1)
+    const own = principals(aclOf(data))
+    expect(own).toHaveLength(2)
+    expect(own.some((p) => /SYSTEM$/i.test(p))).toBe(true)
+    await writeFile(join(data, 'later.json'), '{}')
+    const file = aclOf(join(data, 'later.json'))
+    expect(principals(file)).toEqual(own)
+    expect(file).toContain('(I)')
+  })
+
+  it('runs when the server starts', async () => {
+    root = await mkdtemp(join(tmpdir(), 'fremkit-perm-'))
+    const data = join(root, 'data')
+    const app = await buildApp({ accessToken: null, dataDir: data, widgetsDir: join(root, 'widgets'), uiDist: join(root, 'ui') })
+    try {
+      expect(principals(aclOf(data))).toHaveLength(2)
     } finally {
       await app.close()
     }

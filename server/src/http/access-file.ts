@@ -23,6 +23,7 @@ import { homedir } from 'node:os'
 import { dirname, isAbsolute, join, win32 } from 'node:path'
 import { generateToken, isWellFormedToken } from './access.js'
 import { ABSOLUTE_WINDOWS } from '../platform/windows-tools.js'
+import { restrictToUser, type AclDeps } from '../data-permissions.js'
 
 /** The environment variable the helper passes its secret in. Removed once read. */
 export const ACCESS_TOKEN_ENV = 'FREMKIT_ACCESS_TOKEN'
@@ -75,8 +76,10 @@ export function resolveAccessToken(env: NodeJS.ProcessEnv = process.env): { toke
 }
 
 /** Writes the secret to `path`, mode `0600`, replacing any previous file in one rename. */
-export async function writeAccessToken(path: string, token: string): Promise<void> {
+export async function writeAccessToken(path: string, token: string, acl: AclDeps = {}): Promise<void> {
   await mkdir(dirname(path), { recursive: true, mode: 0o700 })
+  // Windows: the folder is the user's and SYSTEM's alone (a no-op elsewhere), so the file inherits it.
+  await restrictToUser(dirname(path), acl)
   const tmp = `${path}.${process.pid}.${randomBytes(6).toString('hex')}.tmp`
   try {
     // `wx`: never through a file or a link someone put there first.
