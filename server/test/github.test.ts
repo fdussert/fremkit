@@ -1,3 +1,4 @@
+import { windowsTool } from '../src/platform/index.js'
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
@@ -529,6 +530,10 @@ describe('githubType', () => {
 })
 
 
+// The platform's own opener: `open` on the Mac, rundll32's URL handler on Windows.
+const OPENER = process.platform === 'win32' ? windowsTool('rundll32') : '/usr/bin/open'
+const OPEN_ARGS = process.platform === 'win32' ? ['url.dll,FileProtocolHandler'] : []
+
 describe('opening GitHub rows', () => {
   it('opens the saved run URL locally, without making a GitHub write', async () => {
     const { fetchFn, calls } = responder()
@@ -536,7 +541,7 @@ describe('opening GitHub rows', () => {
     const provider = createGithubProvider(context(), { fetchFn, openRunner: async (cmd, args) => { opened.push([cmd, ...args]) } })
     const snapshot = await provider.poll!() as GhSnapshot
     expect(await provider.commands!.open({ kind: 'run', id: snapshot.runs[0].id, instanceId: 'github-actions-1' }, { loopback: true, paired: false })).toEqual({ ok: true })
-    expect(opened).toEqual([['/usr/bin/open', snapshot.runs[0].url]])
+    expect(opened).toEqual([[OPENER, ...OPEN_ARGS, snapshot.runs[0].url]])
     expect(calls.every(c => c.method === 'GET')).toBe(true)
   })
   it('opens a notification and a review without marking them read', async () => {
@@ -546,7 +551,7 @@ describe('opening GitHub rows', () => {
     const snapshot = await provider.poll!() as GhSnapshot
     for (const [kind, item] of [['notification', snapshot.notifications[0]], ['review', snapshot.reviewRequests[0]], ['pull', snapshot.myPrs[0]]] as const) {
       expect(await provider.commands!.open({ kind, id: item.id }, { loopback: true, paired: false })).toEqual({ ok: true })
-      expect(opened.at(-1)).toEqual(['/usr/bin/open', item.url])
+      expect(opened.at(-1)).toEqual([OPENER, ...OPEN_ARGS, item.url])
     }
     expect(calls.every(c => c.method === 'GET')).toBe(true)
   })
@@ -568,6 +573,6 @@ describe('opening GitHub rows', () => {
     const provider = createGithubProvider(context(), { fetchFn, openRunner: async (cmd, args) => { opened.push([cmd, ...args]) } })
     const snapshot = await provider.poll!() as GhSnapshot
     expect(await provider.commands!.open({ kind: 'run', id: snapshot.runs[0].id, url: 'https://evil.test', futureHostField: true }, { loopback: true, paired: false })).toEqual({ ok: true })
-    expect(opened).toEqual([['/usr/bin/open', snapshot.runs[0].url]])
+    expect(opened).toEqual([[OPENER, ...OPEN_ARGS, snapshot.runs[0].url]])
   })
 })

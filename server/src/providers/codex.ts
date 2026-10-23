@@ -1,4 +1,4 @@
-import { execFile } from 'node:child_process'
+import { openUrl } from '../platform/open-url.js'
 import { z } from 'zod'
 import { isTrusted, type Provider } from './types.js'
 import {
@@ -60,13 +60,9 @@ export interface CodexProviderDeps {
   isLocalChat?: LocalChatValidator
   openUrl?: (url: string) => Promise<void>
 }
-const openUrl = (url: string): Promise<void> =>
-  new Promise((resolve, reject) => {
-    execFile('/usr/bin/open', [url], { timeout: 15000, shell: false }, (error) => {
-      if (error) reject(new CodexError('offline'))
-      else resolve()
-    })
-  })
+const openThread = (url: string): Promise<void> =>
+  // `codex://` is the desktop app's own deep link, so it is the one scheme named here.
+  openUrl(url, { timeout: 15000, schemes: ['codex:'] }).catch(() => { throw new CodexError('offline') })
 const failure = (error: unknown): CodexFailure =>
   error instanceof CodexError ? error.reason : error instanceof z.ZodError ? 'invalid' : 'offline'
 const stale = <T>(part: SnapshotPart<T>, error: CodexFailure): SnapshotPart<T> => ({
@@ -352,7 +348,7 @@ export function createCodexProvider(
           if (!(await deps.isLocalChat(thread.id))) return { ok: false, error: 'unavailable' }
           if (epoch !== generation || last.history !== history || now() - history.updatedAt > 120000)
             return { ok: false, error: 'unavailable' }
-          await (deps.openUrl ?? openUrl)(`codex://threads/${thread.id}`)
+          await (deps.openUrl ?? openThread)(`codex://threads/${thread.id}`)
           return { ok: true }
         } catch {
           return { ok: false, error: 'offline' }

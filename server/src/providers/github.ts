@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { execFile } from 'node:child_process'
+import { openUrl } from '../platform/open-url.js'
 import type { ConnectionProviderContext } from '../connections/types.js'
 import { isTrusted, type Provider } from './types.js'
 import { USER_AGENT } from '../version.js'
@@ -622,7 +623,7 @@ export function createGithubProvider(ctx: ConnectionProviderContext, deps: Githu
         // including for Enterprise hosts, until the configured API and web ports are paired.
         if (url.protocol !== 'https:' || url.hostname !== host || url.username || url.password || url.port ||
             !(url.pathname === `/${row.repo}` || url.pathname.startsWith(`/${row.repo}/`))) return { ok: false }
-        try { await openRunner('/usr/bin/open', [url.href]); return { ok: true } }
+        try { await openUrl(url.href, { exec: (cmd, args) => openRunner(cmd, args) }); return { ok: true } }
         catch { return { ok: false } }
       },
       /** Marks one notification thread read — what a tap on an inbox row asks for. */

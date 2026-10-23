@@ -1,4 +1,4 @@
-import { execFile } from 'node:child_process'
+import { openUrl } from '../platform/open-url.js'
 import type { ConnectionProviderContext } from '../connections/types.js'
 import { isTrusted, type CommandContext, type Provider } from './types.js'
 import { USER_AGENT } from '../version.js'
@@ -145,8 +145,7 @@ export function splitRuns(runs: AdoRun[]): { running: AdoRun[]; history: AdoRun[
   }
 }
 
-const openUrl = (url: string): Promise<void> =>
-  new Promise((resolve, reject) => execFile('/usr/bin/open', [url], (err) => (err ? reject(err) : resolve())))
+const openPage = (url: string): Promise<void> => openUrl(url)
 
 export interface AdoProviderDeps {
   fetchFn?: typeof fetch
@@ -164,7 +163,7 @@ export interface AdoProviderDeps {
 export function createAzureDevOpsProvider(ctx: ConnectionProviderContext, deps: AdoProviderDeps = {}): Provider {
   const fetchFn = deps.fetchFn ?? fetch
   const now = deps.now ?? Date.now
-  const open = deps.open ?? openUrl
+  const open = deps.open ?? openPage
 
   const org = encodeURIComponent(ctx.fields.organization ?? '')
   const project = encodeURIComponent(ctx.fields.project ?? '')
