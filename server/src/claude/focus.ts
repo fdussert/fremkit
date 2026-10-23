@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process'
 import type { SessionClient } from './tracker.js'
+import { targetPlatform, type Platform } from '../platform/index.js'
 
 /**
  * Bringing the window of a Claude session to the front.
@@ -172,7 +173,7 @@ export interface FocusResult {
   ok: boolean
   /** What actually happened, so the card can say "its tab" rather than "its application". */
   how?: 'pane' | 'tab' | 'app'
-  reason?: 'unknownClient' | 'failed'
+  reason?: 'unknownClient' | 'failed' | 'unsupported'
 }
 
 /**
@@ -188,7 +189,11 @@ export async function focusClient(
   runner: Runner = run,
   pid?: number,
   reader: Reader = read,
+  platform: Platform = targetPlatform(),
 ): Promise<FocusResult> {
+  // Fronting a window is AppleScript, Orca and cmux on the Mac; Windows has no counterpart yet,
+  // and nothing is run on its behalf.
+  if (platform === 'win32') return { ok: false, reason: 'unsupported' }
   try {
     // Hooks written before cmux support already identify the app. Read the live process once
     // to recover its panel and reuse its client details for the no-hook fallback below.

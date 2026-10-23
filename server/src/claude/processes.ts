@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process'
+import { targetPlatform, type Platform } from '../platform/index.js'
 
 /** An open Claude Code CLI process discovered on the host, independent of any hook event. */
 export interface ClaudeProcess { pid: number; cwd: string; startedAt: number }
@@ -42,8 +43,13 @@ export function parseLsof(out: string): Map<number, string> {
   return map
 }
 
-/** Lists open Claude Code sessions as processes. Returns null when discovery itself failed. */
-export async function listClaudeProcesses(runner: Runner = run): Promise<ClaudeProcess[] | null> {
+/**
+ * Lists open Claude Code sessions as processes. Returns null when discovery itself failed, and on
+ * Windows, where `ps` and `lsof` do not exist: discovery is unknown there, which is what the
+ * tracker already handles by keeping what the hooks told it.
+ */
+export async function listClaudeProcesses(runner: Runner = run, platform: Platform = targetPlatform()): Promise<ClaudeProcess[] | null> {
+  if (platform === 'win32') return null
   try {
     const procs = parsePs(await runner('/bin/ps', ['-axo', 'pid=,lstart=,command=']))
     if (!procs.length) return []

@@ -48,16 +48,34 @@ describe('Claude identity', () => {
     const path = await resolveClaudeBinary(async (candidate) => {
       seen.push(candidate)
       if (candidate !== '/opt/homebrew/bin/claude') throw new Error('missing')
-    })
+    }, 'darwin')
     expect(path).toBe('/opt/homebrew/bin/claude')
     expect(seen[0]).toMatch(/[\\/]\.local[\\/]bin[\\/]claude$/)
     expect(seen).toHaveLength(2)
+  })
+  it('looks for claude.exe under the validated profile folders on Windows', async () => {
+    const seen: string[] = []
+    const env = { USERPROFILE: 'C:\\Users\\example', LOCALAPPDATA: 'C:\\Users\\example\\AppData\\Local' }
+    const path = await resolveClaudeBinary(async (c) => { seen.push(c); if (!c.includes('Programs')) throw new Error('missing') }, 'win32', env)
+    expect(seen).toEqual(['C:\\Users\\example\\.local\\bin\\claude.exe', 'C:\\Users\\example\\AppData\\Local\\Programs\\claude\\claude.exe'])
+    expect(path).toBe(seen[1])
+  })
+  it('never builds a Windows candidate from a missing or relative folder', async () => {
+    const seen: string[] = []
+    const fail = async (c: string) => { seen.push(c); throw new Error('missing') }
+    await expect(resolveClaudeBinary(fail, 'win32', { USERPROFILE: 'rel\\dir', LOCALAPPDATA: '\\\\server\\share' })).rejects.toThrow('offline')
+    await expect(resolveClaudeBinary(fail, 'win32', {})).rejects.toThrow('offline')
+    expect(seen).toEqual([])
+  })
+  it('hands a Windows child its profile and system folder, and still no token', () => {
+    const env = identityEnv({ SystemRoot: 'C:\\Windows', USERPROFILE: 'C:\\Users\\example', USERNAME: 'example', PATHEXT: '.EXE', ANTHROPIC_API_KEY: 'PRIVATE' }, 'win32')
+    expect(env).toEqual({ SystemRoot: 'C:\\Windows', USERPROFILE: 'C:\\Users\\example', USERNAME: 'example' })
   })
   it('strips token and loader environment variables', () => {
     const env = identityEnv({
       HOME: '/path/to/home', PATH: '/usr/bin', USER: 'example', LOGNAME: 'example',
       ANTHROPIC_API_KEY: 'PRIVATE', NODE_OPTIONS: 'PRIVATE',
-    })
+    }, 'darwin')
     expect(env).toEqual({ HOME: '/path/to/home', PATH: '/usr/bin', USER: 'example', LOGNAME: 'example' })
   })
   it('rereads promptly if a widget returns while the first CLI read is pending', async () => {

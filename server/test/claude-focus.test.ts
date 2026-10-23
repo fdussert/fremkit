@@ -1,7 +1,13 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { ClaudeTracker } from '../src/claude/tracker.js'
 import { appOfProcess, focusClient } from '../src/claude/focus.js'
 import { createClaudeSessionsProvider } from '../src/claude/providers.js'
+
+// These tests describe the macOS behaviour; the Windows branches pass their platform explicitly.
+vi.mock('../src/platform/index.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../src/platform/index.js')>()
+  return { ...actual, targetPlatform: (p?: NodeJS.Platform) => (p === undefined ? 'darwin' : actual.targetPlatform(p)) }
+})
 
 /**
  * Going to the session, once the server knows where it lives.
@@ -235,5 +241,15 @@ describe('cmux session navigation', () => {
     expect(await focusClient({ bundleId: 'com.cmuxterm.app' }, '/x', async (cmd, args) => { calls.push([cmd, ...args]) }, 123, reader))
       .toEqual({ ok: true, how: 'app' })
     expect(calls).toEqual([['/usr/bin/open', '-b', 'com.cmuxterm.app']])
+  })
+})
+
+describe('focusClient on Windows', () => {
+  it('answers unsupported without running or reading anything', async () => {
+    let calls = 0
+    const spy = async () => { calls++; return '' }
+    const r = await focusClient(ORCA, '/p', spy as never, 4242, spy, 'win32')
+    expect(r).toEqual({ ok: false, reason: 'unsupported' })
+    expect(calls).toBe(0)
   })
 })

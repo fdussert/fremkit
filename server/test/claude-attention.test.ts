@@ -1,7 +1,13 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { ClaudeTracker } from '../src/claude/tracker.js'
 import { SOUNDS, createAttention, playSound } from '../src/claude/attention.js'
 import type { InstanceView } from '../src/config/instances.js'
+
+// These tests describe the macOS behaviour; the Windows branches pass their platform explicitly.
+vi.mock('../src/platform/index.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../src/platform/index.js')>()
+  return { ...actual, targetPlatform: (p?: NodeJS.Platform) => (p === undefined ? 'darwin' : actual.targetPlatform(p)) }
+})
 
 /**
  * Hearing that a session is waiting.
@@ -150,5 +156,34 @@ describe('the name is a name, not a path', () => {
       session(h.attention).handle(ev())
       expect(h.played).toEqual([`/System/Library/Sounds/${name}.aiff`])
     }
+  })
+})
+
+describe('the sound on Windows', () => {
+  it('asks the host for chimes or notify, never the setting itself', async () => {
+    const calls: unknown[][] = []
+    const host = { call: async (...a: unknown[]) => { calls.push(a); return true as never } }
+    expect(await playSound('Glass', undefined, { platform: 'win32', host })).toBe(true)
+    expect(await playSound('Basso', undefined, { platform: 'win32', host })).toBe(true)
+    expect(calls.map((c) => [c[0], c[1]])).toEqual([['sound', 'chimes'], ['sound', 'notify']])
+  })
+  it('refuses a name outside the list without calling the host', async () => {
+    const host = { call: async () => { throw new Error('called') } }
+    expect(await playSound('..\\x', undefined, { platform: 'win32', host: host as never })).toBe(false)
+  })
+  it('is false, not an error, when the host fails', async () => {
+    const host = { call: async () => { throw new Error('no-sound') } }
+    expect(await playSound('Ping', undefined, { platform: 'win32', host: host as never })).toBe(false)
+  })
+  it('plays through the host from the attention listener and never spawns afplay', () => {
+    const calls: unknown[][] = []
+    const host = { call: async (...a: unknown[]) => { calls.push(a); return true as never } }
+    const ran: string[] = []
+    const attention = createAttention({
+      instances: () => [tile({ sound: 'Hero' })], platform: 'win32', host, now: () => 1_000, runner: async (c) => { ran.push(c) },
+    })
+    attention({ sessionId: 's', isQuestion: false })
+    expect(calls[0].slice(0, 2)).toEqual(['sound', 'chimes'])
+    expect(ran).toEqual([])
   })
 })

@@ -1,5 +1,11 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { parsePs, parseLsof, listClaudeProcesses } from '../src/claude/processes.js'
+
+// These tests describe the macOS behaviour; the Windows branches pass their platform explicitly.
+vi.mock('../src/platform/index.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../src/platform/index.js')>()
+  return { ...actual, targetPlatform: (p?: NodeJS.Platform) => (p === undefined ? 'darwin' : actual.targetPlatform(p)) }
+})
 
 const PS = `  1769 Fri 11 Sep 09:07:50 2026     /Users/alice/.local/bin/claude --chrome-native-host
 46407 Wed 16 Sep 15:02:11 2026     claude
@@ -31,5 +37,13 @@ describe('listClaudeProcesses', () => {
     ])
     expect(await listClaudeProcesses(async () => { throw new Error('nope') })).toBeNull()
     expect(await listClaudeProcesses(async (cmd: string) => (cmd === '/bin/ps' ? '' : ''))).toEqual([])
+  })
+})
+
+describe('listClaudeProcesses on Windows', () => {
+  it('is unknown, and runs nothing', async () => {
+    let ran = 0
+    expect(await listClaudeProcesses(async () => { ran++; return '' }, 'win32')).toBeNull()
+    expect(ran).toBe(0)
   })
 })

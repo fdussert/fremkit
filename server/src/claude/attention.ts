@@ -1,5 +1,7 @@
 import { execFile } from 'node:child_process'
 import type { InstanceView } from '../config/instances.js'
+import { targetPlatform, type Platform } from '../platform/index.js'
+import { sharedHost } from '../win/powershell-host.js'
 
 /**
  * A sound when a session starts waiting for you.
@@ -32,11 +34,30 @@ export function isSoundName(v: unknown): v is SoundName {
 }
 
 /**
+ * What each setting plays on Windows, which has two of the host's five sounds to offer instead of
+ * fourteen: the sharper settings play `notify`, the soft ones `chimes`. A closed map, so the name
+ * handed to the host is never the setting itself.
+ */
+const WINDOWS_SOUND: Record<SoundName, 'chimes' | 'notify'> = {
+  Basso: 'notify', Blow: 'notify', Bottle: 'chimes', Frog: 'notify', Funk: 'notify', Glass: 'chimes', Hero: 'chimes',
+  Morse: 'notify', Ping: 'chimes', Pop: 'chimes', Purr: 'chimes', Sosumi: 'notify', Submarine: 'chimes', Tink: 'chimes',
+}
+
+/** The PowerShell host's `sound` op, which is all this module asks of it. */
+export interface SoundHost { call<T>(op: 'sound', arg?: unknown, timeoutMs?: number): Promise<T> }
+
+export interface PlayOptions { platform?: Platform; host?: SoundHost }
+
+/**
  * Plays one of the sounds, now, whatever the tiles say — the admin's preview button. The name
  * has to come out of the list; anything else is refused before a path exists.
  */
-export async function playSound(name: unknown, runner: Runner = run): Promise<boolean> {
+export async function playSound(name: unknown, runner: Runner = run, opts: PlayOptions = {}): Promise<boolean> {
   if (!isSoundName(name)) return false
+  if ((opts.platform ?? targetPlatform()) === 'win32') {
+    try { await (opts.host ?? sharedHost()).call('sound', WINDOWS_SOUND[name], 5000) } catch { return false }
+    return true
+  }
   try { await runner('/usr/bin/afplay', [`/System/Library/Sounds/${name}.aiff`]) } catch { return false }
   return true
 }
@@ -64,6 +85,8 @@ export interface AttentionOptions {
   /** The placed instances of the widget, in the order the dashboard holds them. */
   instances: () => InstanceView[]
   runner?: Runner
+  platform?: Platform
+  host?: SoundHost
   now?: () => number
   minGapMs?: number
 }
@@ -103,6 +126,6 @@ export function createAttention(opts: AttentionOptions): (event: AttentionEvent)
     if (t - lastAt < gap) return
     lastAt = t
     // The name came out of the closed list above, so the path cannot be anything else.
-    void playSound(pick.sound, runner)
+    void playSound(pick.sound, runner, { platform: opts.platform, host: opts.host })
   }
 }

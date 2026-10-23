@@ -4,6 +4,7 @@ import { homedir, userInfo } from 'node:os'
 import { join } from 'node:path'
 import { z } from 'zod'
 import type { Provider } from '../providers/types.js'
+import { targetPlatform, windowsUserCandidates, WINDOWS_CHILD_ENV_KEYS, type Platform } from '../platform/index.js'
 
 const Status = z.object({
   loggedIn: z.boolean(),
@@ -20,19 +21,31 @@ export interface ClaudeIdentity {
   error: 'offline' | 'invalid' | null
 }
 
-export function identityEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+export function identityEnv(env: NodeJS.ProcessEnv, platform: Platform = targetPlatform()): NodeJS.ProcessEnv {
   const safe: NodeJS.ProcessEnv = {}
-  for (const key of ['HOME', 'PATH', 'TMPDIR', 'LANG', 'LC_ALL', 'USER', 'LOGNAME', 'SHELL', 'CLAUDE_CONFIG_DIR']) {
+  const keys = ['HOME', 'PATH', 'TMPDIR', 'LANG', 'LC_ALL', 'USER', 'LOGNAME', 'SHELL', 'CLAUDE_CONFIG_DIR']
+  if (platform === 'win32') keys.push(...WINDOWS_CHILD_ENV_KEYS)
+  for (const key of keys) {
     if (env[key] !== undefined) safe[key] = env[key]
   }
   return safe
 }
 
+/** Where the CLI is installed: the native installer's folders on Windows, a closed list. */
+export function claudeCandidates(platform: Platform = targetPlatform(), env: NodeJS.ProcessEnv = process.env): string[] {
+  if (platform === 'win32') {
+    return windowsUserCandidates([['USERPROFILE', '.local\\bin\\claude.exe'], ['LOCALAPPDATA', 'Programs\\claude\\claude.exe']], env)
+  }
+  return [join(homedir(), '.local/bin/claude'), '/opt/homebrew/bin/claude', '/usr/local/bin/claude']
+}
+
 /** Resolve only known local installs; the helper's PATH need not contain the CLI. */
 export async function resolveClaudeBinary(
   canExecute: (path: string) => Promise<void> = (path) => access(path, constants.X_OK),
+  platform: Platform = targetPlatform(),
+  env: NodeJS.ProcessEnv = process.env,
 ): Promise<string> {
-  const candidates = [join(homedir(), '.local/bin/claude'), '/opt/homebrew/bin/claude', '/usr/local/bin/claude']
+  const candidates = claudeCandidates(platform, env)
   for (const path of candidates) {
     try {
       await canExecute(path)
