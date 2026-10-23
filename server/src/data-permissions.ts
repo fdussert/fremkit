@@ -31,7 +31,7 @@ export interface AclDeps {
   exec?: AclExec
   /** Called once with the code when the ACL could not be (fully) applied. */
   log?: (code: AclFailure) => void
-  /** `/T`: re-ACL what the folder already holds (default true). A folder only written to later needs no walk. */
+  /** Reset what the folder already holds to inherit from it (default true). A folder only written to later needs no walk. */
   recurse?: boolean
 }
 
@@ -77,6 +77,17 @@ function failedCount(stdout: string): number {
   return numbers && numbers.length === 2 ? Number(numbers[1]) : 0
 }
 
+/** One icacls call: a failure to run is `acl-icacls-failed`, a non-zero failed count `acl-icacls-partial`. */
+async function icacls(exec: AclExec, args: string[]): Promise<void> {
+  let stdout: string
+  try {
+    stdout = (await exec(windowsTool('icacls'), args)).stdout
+  } catch {
+    throw new AclError('acl-icacls-failed')
+  }
+  if (failedCount(stdout) > 0) throw new AclError('acl-icacls-partial')
+}
+
 /**
  * Restricts a Windows folder to this user and SYSTEM, inherited by what it holds. True when
  * applied; false when not (off Windows, or a failure, reported once through `deps.log`).
@@ -86,14 +97,15 @@ export async function restrictToUser(dir: string, deps: AclDeps = {}): Promise<b
   const exec = deps.exec ?? defaultExec
   try {
     const sid = await currentUserSid(exec, deps.exec === undefined)
-    let stdout: string
-    try {
-      const args = [dir, '/inheritance:r', '/grant:r', `*${sid}:(OI)(CI)F`, `*${SYSTEM_SID}:(OI)(CI)F`, ...(deps.recurse === false ? [] : ['/T']), '/C', '/Q']
-      stdout = (await exec(windowsTool('icacls'), args)).stdout
-    } catch {
-      throw new AclError('acl-icacls-failed')
+    // The folder itself first: protected, user and SYSTEM only. No /T here: `/inheritance:r` on a
+    // file strips what it inherited and the (OI)(CI) grant does not apply to a file, leaving an empty ACL.
+    await icacls(exec, [dir, '/inheritance:r', '/grant:r', `*${sid}:(OI)(CI)F`, `*${SYSTEM_SID}:(OI)(CI)F`, '/C', '/Q'])
+    // Then everything already in it goes back to inheriting from it (`/reset` also clears any
+    // explicit entry). icacls expands the `*` itself; it fails on an empty folder, so only run it
+    // when there is something to reset.
+    if (deps.recurse !== false && (await readdir(dir).catch(() => [])).length > 0) {
+      await icacls(exec, [`${dir.replace(/[\\/]+$/, '')}\\*`, '/reset', '/T', '/C', '/Q'])
     }
-    if (failedCount(stdout) > 0) throw new AclError('acl-icacls-partial')
     return true
   } catch (error) {
     deps.log?.(error instanceof AclError ? error.code : 'acl-icacls-failed')

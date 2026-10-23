@@ -80,9 +80,34 @@ describe('tightenDataDir on Windows', () => {
     expect(calls[0]).toEqual({ file: windowsTool('whoami'), args: ['/user', '/fo', 'csv', '/nh'] })
     expect(calls[1]).toEqual({
       file: windowsTool('icacls'),
-      args: [root, '/inheritance:r', '/grant:r', `*${SID}:(OI)(CI)F`, '*S-1-5-18:(OI)(CI)F', '/T', '/C', '/Q'],
+      args: [root, '/inheritance:r', '/grant:r', `*${SID}:(OI)(CI)F`, '*S-1-5-18:(OI)(CI)F', '/C', '/Q'],
     })
+    // An empty folder has nothing to reset (icacls fails on `\\*` there).
     expect(calls).toHaveLength(2)
+  })
+
+  it('then resets what the folder already holds to inherit from it', async () => {
+    root = await mkdtemp(join(tmpdir(), 'fremkit-perm-'))
+    await writeFile(join(root, 'fremkit.json'), '{}')
+    const { calls, exec } = fake(`"a","${SID}"`)
+    expect(await tightenDataDir(root, { platform: 'win32', exec })).toBe(1)
+    expect(calls).toHaveLength(3)
+    expect(calls[2]).toEqual({ file: windowsTool('icacls'), args: [`${root}\\*`, '/reset', '/T', '/C', '/Q'] })
+    // The folder is protected without /T: a file would be left with an empty ACL.
+    expect(calls[1].args).not.toContain('/T')
+  })
+
+  it('a partial reset is reported too', async () => {
+    root = await mkdtemp(join(tmpdir(), 'fremkit-perm-'))
+    await writeFile(join(root, 'fremkit.json'), '{}')
+    const logged: string[] = []
+    let n = 0
+    const exec: AclExec = async (file) => {
+      if (file.endsWith('whoami.exe')) return { stdout: `"a","${SID}"` }
+      return { stdout: ++n === 2 ? 'Successfully processed 1 files; Failed processing 1 files' : 'Successfully processed 1 files; Failed processing 0 files' }
+    }
+    expect(await tightenDataDir(root, { platform: 'win32', exec, log: (c) => logged.push(c) })).toBe(0)
+    expect(logged).toEqual(['acl-icacls-partial'])
   })
 
   it('reads a localized whoami: only the SID column matters', async () => {
@@ -176,6 +201,37 @@ describe.skipIf(process.platform !== 'win32')('the data folder ACL, for real', (
     const file = aclOf(join(data, 'later.json'))
     expect(principals(file)).toEqual(own)
     expect(file).toContain('(I)')
+  })
+
+  it('files and folders already there inherit it, and stay readable and writable (a second boot works)', async () => {
+    root = await mkdtemp(join(tmpdir(), 'fremkit-perm-'))
+    const data = join(root, 'data')
+    await mkdir(join(data, 'sub'), { recursive: true })
+    await writeFile(join(data, 'fremkit.json'), '{}')
+    await writeFile(join(data, 'sub', 'x.json'), '{}')
+    expect(await tightenDataDir(data)).toBe(1)
+    expect(await tightenDataDir(data)).toBe(1)
+    const own = principals(aclOf(data))
+    expect(own).toHaveLength(2)
+    for (const p of [join(data, 'fremkit.json'), join(data, 'sub'), join(data, 'sub', 'x.json')]) {
+      const out = aclOf(p)
+      expect(principals(out)).toEqual(own)
+      expect(out).toContain('(I)')
+    }
+    await writeFile(join(data, 'fremkit.json'), '{"a":1}')
+    await writeFile(join(data, 'sub', 'x.json'), '{"a":1}')
+    expect(await readFile(join(data, 'fremkit.json'), 'utf8')).toBe('{"a":1}')
+  })
+
+  it('a token file already in the support folder keeps working after writeAccessToken', async () => {
+    root = await mkdtemp(join(tmpdir(), 'fremkit-perm-'))
+    const folder = join(root, 'support')
+    await mkdir(folder)
+    await writeFile(join(folder, 'access-1.token'), 'old')
+    await writeAccessToken(join(folder, 'access-1.token'), 'new')
+    await writeAccessToken(join(folder, 'access-2.token'), 'other')
+    expect(await readFile(join(folder, 'access-1.token'), 'utf8')).toBe('new\n')
+    expect(principals(aclOf(join(folder, 'access-1.token')))).toHaveLength(2)
   })
 
   it('runs when the server starts', async () => {
