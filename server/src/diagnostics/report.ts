@@ -7,6 +7,7 @@ import type { WidgetSource } from '../widgets/catalog.js'
 import { FREMKIT_VERSION } from '../version.js'
 import { hostOf, redact, type RedactionContext } from './redact.js'
 import type { LogSource } from './log-tail.js'
+import { targetPlatform, type Platform } from '../platform/index.js'
 
 /** Lines of the server log a report carries. */
 export const LOG_LINES = 200
@@ -26,6 +27,8 @@ export interface DiagnosticsFacts {
   node: string
   macos: string | null
   darwin: string
+  /** The Windows build (`os.release()`, e.g. `10.0.26100`), on Windows only; never a machine name. */
+  windows?: string | null
   arch: string
   configVersion: number
   theme: string
@@ -58,7 +61,9 @@ export function renderReport(f: DiagnosticsFacts): string {
   out.push('## Fremkit diagnostics', '')
   out.push(`- Generated: ${f.generatedAt}`)
   out.push(`- Fremkit: ${f.version} (${f.install}${f.dev ? ', FREMKIT_DEV=1' : ''})`)
-  out.push(`- macOS: ${f.macos ?? 'unknown'} (Darwin ${f.darwin}), ${f.arch}`)
+  out.push(f.windows != null
+    ? `- Windows: ${f.windows}, ${f.arch}`
+    : `- macOS: ${f.macos ?? 'unknown'} (Darwin ${f.darwin}), ${f.arch}`)
   out.push(`- Node: ${f.node}`)
   out.push(`- Config schema: v${f.configVersion}`)
   out.push(`- Theme: ${f.theme}`)
@@ -230,6 +235,8 @@ export interface SystemFacts {
   node: string
   macos: string | null
   darwin: string
+  /** The Windows build number on Windows, null elsewhere. */
+  windows?: string | null
   arch: string
   home: string
   username: string
@@ -245,20 +252,29 @@ function run(file: string, args: string[]): Promise<string | null> {
   })
 }
 
-export async function readSystemFacts(env: NodeJS.ProcessEnv = process.env): Promise<SystemFacts> {
-  const [macos, computerName, localHostName] = await Promise.all([
-    run('/usr/bin/sw_vers', ['-productVersion']),
-    run('/usr/sbin/scutil', ['--get', 'ComputerName']),
-    run('/usr/sbin/scutil', ['--get', 'LocalHostName']),
+export async function readSystemFacts(
+  env: NodeJS.ProcessEnv = process.env,
+  opts: { platform?: Platform; hostname?: () => string; release?: () => string; run?: typeof run } = {},
+): Promise<SystemFacts> {
+  const win = (opts.platform ?? targetPlatform()) === 'win32'
+  const exec = opts.run ?? run
+  // Windows has no sw_vers or scutil: its facts are the build number and the host name, which
+  // goes into `machineNames` below so that `redact()` removes it wherever it shows up.
+  const [macos, computerName, localHostName] = win ? [null, null, null] : await Promise.all([
+    exec('/usr/bin/sw_vers', ['-productVersion']),
+    exec('/usr/sbin/scutil', ['--get', 'ComputerName']),
+    exec('/usr/sbin/scutil', ['--get', 'LocalHostName']),
   ])
+  const build = (opts.release ?? release)()
   let username = ''
   try { username = userInfo().username } catch { username = '' }
-  const host = hostname()
+  const host = (opts.hostname ?? hostname)()
   const names = [host, host.replace(/\.local$/i, ''), computerName, localHostName]
   return {
     node: process.version,
     macos,
-    darwin: release(),
+    darwin: win ? '' : build,
+    windows: win ? build : null,
     arch: process.arch,
     home: homedir(),
     username,
@@ -350,6 +366,7 @@ export async function buildDiagnostics(deps: DiagnosticsDeps): Promise<string> {
     node: system.node,
     macos: system.macos,
     darwin: system.darwin,
+    windows: system.windows ?? null,
     arch: system.arch,
     configVersion: config.version ?? CONFIG_VERSION,
     theme: config.theme,

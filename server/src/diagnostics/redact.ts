@@ -158,6 +158,13 @@ export function redact(text: string, ctx: RedactionContext = {}): string {
     const home = ctx.home.replace(/\/+$/, '')
     out = out.replace(new RegExp(`${escape(home)}(?=/|\\b|$)`, 'g'), '~')
   }
+  // A Windows home folder, written with either separator and in any case, and any other
+  // account's profile folder under `X:\Users`.
+  if (ctx.home && /^[A-Za-z]:[\\/]/.test(ctx.home) && ctx.home.length > 3) {
+    const parts = ctx.home.replace(/[\\/]+$/, '').split(/[\\/]+/).map(escape)
+    out = out.replace(new RegExp(`${parts.join('[\\\\/]+')}(?=[\\\\/]|\\b|$)`, 'gi'), '~')
+  }
+  out = out.replace(/\b([A-Za-z]:[\\/]+Users[\\/]+)(?!Public\b|Default\b|All Users\b)[^\\/\s"'`]+/gi, `$1${MARK.user}`)
   // Any other account's home: a log line from a run under another user, a path in a stack trace.
   out = out.replace(/\/Users\/(?!Shared\b)[^/\s"'`]+/g, `/Users/${MARK.user}`)
 

@@ -6,7 +6,7 @@ import type { FastifyInstance } from 'fastify'
 import { buildApp } from '../src/app.js'
 import type { ConnectionType } from '../src/connections/types.js'
 import { LineRing, LogTail, helperLogPath, readFileTail } from '../src/diagnostics/log-tail.js'
-import { buildDiagnostics, compactLog, formatLogLine, renderReport, type DiagnosticsDeps } from '../src/diagnostics/report.js'
+import { buildDiagnostics, compactLog, readSystemFacts, formatLogLine, renderReport, type DiagnosticsDeps } from '../src/diagnostics/report.js'
 import { errorCode } from '../src/providers/registry.js'
 import { CONFIG_VERSION, type Config } from '../src/config/schema.js'
 
@@ -257,5 +257,39 @@ describe('GET /api/diagnostics', () => {
   it('refuses a request that is not from this Mac', async () => {
     const res = await app.inject({ method: 'GET', url: '/api/diagnostics', remoteAddress: '192.0.2.9' })
     expect(res.statusCode).toBe(404)
+  })
+})
+
+describe('diagnostics on Windows', () => {
+  const winSystem = {
+    node: 'v22.0.0', macos: null, darwin: '', windows: '10.0.26100', arch: 'x64',
+    home: 'C:\\Users\\example', username: 'example', machineNames: ['DESKTOP-EXAMPLE'],
+    install: 'checkout' as const, dev: false,
+  }
+
+  it('reads the Windows build and the host name without running sw_vers or scutil', async () => {
+    const ran: string[] = []
+    const facts = await readSystemFacts({}, {
+      platform: 'win32', hostname: () => 'DESKTOP-EXAMPLE', release: () => '10.0.26100',
+      run: async (file) => { ran.push(file); return 'x' },
+    })
+    expect(ran).toEqual([])
+    expect(facts).toMatchObject({ macos: null, darwin: '', windows: '10.0.26100' })
+    expect(facts.machineNames).toContain('DESKTOP-EXAMPLE')
+  })
+
+  it('names the Windows build and never the machine, the account or a path', async () => {
+    const text = await buildDiagnostics(deps({
+      system: winSystem,
+      log: async () => ({ kind: 'memory', lines: [
+        '{"level":50,"hostname":"DESKTOP-EXAMPLE","msg":"read C:\\Users\\example\\AppData\\Local\\Fremkit\\x from DESKTOP-EXAMPLE"}',
+        '{"level":30,"msg":"also C:/Users/example/y and C:\\Users\\someone-else\\z, \\\\DESKTOP-EXAMPLE\\share"}',
+      ] }),
+    }))
+    expect(text).toContain('Windows: 10.0.26100, x64')
+    expect(text).not.toContain('macOS')
+    for (const leak of ['DESKTOP-EXAMPLE', 'C:\\Users\\example', 'C:/Users/example', 'someone-else', 'example\\AppData']) {
+      expect(text, leak).not.toContain(leak)
+    }
   })
 })
