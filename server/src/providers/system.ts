@@ -26,6 +26,14 @@ function apfsContainer(disk: DiskReading): string | null {
   return /^\/dev\/(disk\d+)s\d+(?:s\d+)?$/.exec(disk.fs ?? '')?.[1] ?? null
 }
 
+/** A Windows drive as `systeminformation` reports it: `C:`, with no trailing separator. */
+const WINDOWS_DRIVE = /^[A-Za-z]:/
+
+/**
+ * Windows lists every lettered drive with a size, mapped network drives included, as the Mac lists
+ * the network mounts under /Volumes; empty card readers and optical drives (size 0) are dropped.
+ */
+
 /**
  * One row per disk rather than per volume.
  *
@@ -38,7 +46,7 @@ function apfsContainer(disk: DiskReading): string | null {
 export function normalizeDisks(disks: DiskReading[]) {
   const data = disks.find((disk) => disk.mount === '/System/Volumes/Data')
   const shown = disks.filter((disk) => (data ? disk === data : disk.mount === '/')
-    || disk.mount.startsWith('/Volumes/'))
+    || disk.mount.startsWith('/Volumes/') || (WINDOWS_DRIVE.test(disk.mount) && disk.size > 0))
   const groups = new Map<string, DiskReading[]>()
   for (const disk of shown) {
     const key = apfsContainer(disk) ?? `mount:${disk.mount}`
@@ -66,6 +74,30 @@ export function normalizeDisks(disks: DiskReading[]) {
   })
 }
 
+/**
+ * Windows disks, read without ever holding the poll: `si.fsSize()` can stall for many seconds on
+ * a disconnected mapped drive, so the poll waits `timeoutMs` at most and then answers the last
+ * good reading (none yet: no disks). One read is in flight at a time; a late answer is kept for
+ * the next poll.
+ */
+export function timedDisks(
+  read: () => Promise<DiskReading[]>,
+  timeoutMs = 3_000,
+): () => Promise<DiskReading[]> {
+  let last: DiskReading[] = []
+  let pending: Promise<void> | null = null
+  return async () => {
+    if (!pending) {
+      const run = read().then((disks) => { last = disks }, () => { /* keep the last good reading */ })
+      pending = run.finally(() => { pending = null })
+    }
+    let timer: NodeJS.Timeout | undefined
+    await Promise.race([pending, new Promise<void>((resolve) => { timer = setTimeout(resolve, timeoutMs) })])
+    clearTimeout(timer)
+    return last
+  }
+}
+
 /** A denied uptime reading must not suppress CPU, memory or disk metrics. */
 function uptimeSeconds(): number | null {
   try {
@@ -85,7 +117,7 @@ export function createSystemProvider(options: {
 } = {}): Provider {
   const readMacTemperature = options.readMacTemperature ?? createMacTemperatureReader()
   const mac = process.platform === 'darwin'
-  const disks = options.readDisks ?? (mac ? cachedDisks() : () => si.fsSize())
+  const disks = options.readDisks ?? (mac ? cachedDisks() : timedDisks(() => si.fsSize()))
   const memory = options.readMemory ?? (mac ? () => readMemory() : () => si.mem())
   return {
     channel: 'system',

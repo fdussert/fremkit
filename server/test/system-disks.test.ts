@@ -51,3 +51,17 @@ describe('Mac disk availability', () => {
     expect(normalizeDisks([{ mount: '/', size: 1000, used: 50, use: 5 }])[0].available).toBeNull()
   })
 })
+
+describe('Windows drives', () => {
+  it('shows every drive as its own row under its letter', () => {
+    // The shape `si.fsSize()` returns on Windows 11 (checked in the VM): fs and mount are both `C:`.
+    const disks = normalizeDisks([
+      { fs: 'C:', type: 'NTFS', mount: 'C:', size: 2731, used: 1416, available: 1315, use: 51.85 },
+      { fs: 'D:', type: 'exFAT', mount: 'D:', size: 500, used: 100, available: 400, use: 20 },
+    ])
+    expect(disks).toEqual([
+      { mount: 'C:', size: 2731, used: 1416, available: 1315, use: 51.9 },
+      { mount: 'D:', size: 500, used: 100, available: 400, use: 20 },
+    ])
+  })
+})
