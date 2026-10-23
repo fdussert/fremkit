@@ -1,7 +1,8 @@
 import { fstatSync, statSync } from 'node:fs'
 import { open } from 'node:fs/promises'
 import { homedir } from 'node:os'
-import { join } from 'node:path'
+import { join, win32 } from 'node:path'
+import { supportDirectory } from '../http/access-file.js'
 
 /**
  * The recent lines of the server's log, for a diagnostics report.
@@ -53,7 +54,9 @@ export class LineRing {
 }
 
 /** Where the helper writes the server's log; `FREMKIT_SUPPORT_DIR` moves it, as `HelperPaths` does. */
-export function helperLogPath(env: NodeJS.ProcessEnv = process.env, home: string = homedir()): string {
+export function helperLogPath(env: NodeJS.ProcessEnv = process.env, home: string = homedir(), platform: NodeJS.Platform = process.platform): string {
+  // Windows: the helper writes `<support>\logs\server.log`.
+  if (platform === 'win32') return win32.join(supportDirectory(env, home, platform), 'logs', 'server.log')
   const override = env.FREMKIT_SUPPORT_DIR
   if (override && override.startsWith('/')) return join(override, 'Logs', 'server.log')
   return join(home, 'Library', 'Logs', 'Fremkit', 'server.log')

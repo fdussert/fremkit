@@ -216,8 +216,12 @@ describe('log tail', () => {
   })
 
   it('finds the log where the helper writes it', () => {
-    expect(helperLogPath({}, '/Users/example')).toBe(join('/Users/example', 'Library', 'Logs', 'Fremkit', 'server.log'))
-    expect(helperLogPath({ FREMKIT_SUPPORT_DIR: '/tmp/bench' }, '/Users/example')).toBe(join('/tmp/bench', 'Logs', 'server.log'))
+    expect(helperLogPath({}, '/Users/example', 'darwin')).toBe(join('/Users/example', 'Library', 'Logs', 'Fremkit', 'server.log'))
+    expect(helperLogPath({ FREMKIT_SUPPORT_DIR: '/tmp/bench' }, '/Users/example', 'darwin')).toBe(join('/tmp/bench', 'Logs', 'server.log'))
+    const win = { LOCALAPPDATA: 'C:\\Users\\a\\AppData\\Local' }
+    expect(helperLogPath(win, 'C:\\Users\\a', 'win32')).toBe('C:\\Users\\a\\AppData\\Local\\Fremkit\\logs\\server.log')
+    expect(helperLogPath({ FREMKIT_SUPPORT_DIR: 'D:\\s' }, 'C:\\Users\\a', 'win32')).toBe('D:\\s\\logs\\server.log')
+    expect(helperLogPath({ FREMKIT_SUPPORT_DIR: '/tmp/x' }, 'C:\\Users\\a', 'win32')).toBe('C:\\Users\\a\\AppData\\Local\\Fremkit\\logs\\server.log')
   })
 })
 
