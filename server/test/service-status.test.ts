@@ -5,6 +5,9 @@ import {
   ProbePayloadSchema,
   PROBE_TIMEOUT_MS,
   probeOne,
+  createRealPing,
+  pingBin,
+  windowsPingLatency,
   splitHostPort,
   stateForStatus,
   type Probes,
@@ -270,5 +273,52 @@ describe('service-status probe command', () => {
   })
   it('publishes nothing: the channel only ever carries commands', async () => {
     expect(await createServiceStatusProvider().poll!()).toEqual({ ok: true })
+  })
+})
+
+describe('service-status ping on Windows', () => {
+  const EN = 'Pinging 192.0.2.1 with 32 bytes of data:\r\nReply from 192.0.2.1: bytes=32 time=12ms TTL=118\r\n'
+  const FR = 'Envoi d\'une requête \'Ping\' 192.0.2.1\r\nRéponse de 192.0.2.1 : octets=32 temps=12 ms TTL=118\r\n'
+  const DE = 'Antwort von 192.0.2.1: Bytes=32 Zeit=12ms TTL=118'
+  const FAST = 'Reply from 192.0.2.1: bytes=32 time<1ms TTL=64'
+
+  it('reads the latency on the TTL line in any language', () => {
+    expect(windowsPingLatency(EN)).toBe(12)
+    expect(windowsPingLatency(FR)).toBe(12)
+    expect(windowsPingLatency(DE)).toBe(12)
+    expect(windowsPingLatency(FAST)).toBe(0)
+  })
+  it('finds no latency in a timeout or an unreachable answer', () => {
+    expect(windowsPingLatency('Request timed out.\r\n')).toBeUndefined()
+    expect(windowsPingLatency('Reply from 192.0.2.254: Destination host unreachable.')).toBeUndefined()
+    expect(windowsPingLatency('Délai d\'attente de la demande dépassé.')).toBeUndefined()
+  })
+  it('runs the system ping by absolute path with -n 1 -w', async () => {
+    const exec = vi.fn((_f: string, _a: string[], _o: unknown, cb: (e: Error | null, o: string, s: string) => void) => cb(null, EN, ''))
+    const out = await createRealPing({ platform: 'win32', exec })('192.0.2.1', 5000)
+    expect(out).toBe(EN)
+    expect(exec.mock.calls[0][0]).toMatch(/^[A-Za-z]:\\.*\\System32\\PING\.EXE$/)
+    expect(exec.mock.calls[0][1]).toEqual(['-n', '1', '-w', '2000', '192.0.2.1'])
+  })
+  it('calls an exit 0 with no TTL line offline', async () => {
+    const exec = (_f: string, _a: string[], _o: unknown, cb: (e: Error | null, o: string, s: string) => void) =>
+      cb(null, 'Reply from 192.0.2.254: Destination host unreachable.', '')
+    await expect(createRealPing({ platform: 'win32', exec })('192.0.2.9', 5000)).rejects.toThrow('offline')
+  })
+  it('calls a timed-out ping offline, not a command line', async () => {
+    const exec = (_f: string, _a: string[], _o: unknown, cb: (e: Error | null, o: string, s: string) => void) =>
+      cb(new Error('Command failed: PING.EXE -n 1 -w 2000 192.0.2.1'), 'Request timed out.', '')
+    await expect(createRealPing({ platform: 'win32', exec })('192.0.2.1', 5000)).rejects.toThrow(/^offline$/)
+  })
+  it('keeps /sbin/ping and its flags on macOS', async () => {
+    expect(pingBin('darwin')).toBe('/sbin/ping')
+    const exec = vi.fn((_f: string, _a: string[], _o: unknown, cb: (e: Error | null, o: string, s: string) => void) => cb(null, 'time=1.5 ms', ''))
+    await createRealPing({ platform: 'darwin', exec })('192.0.2.1', 5000)
+    expect(exec.mock.calls[0][0]).toBe('/sbin/ping')
+    expect(exec.mock.calls[0][1]).toEqual(['-c', '1', '-W', '2000', '192.0.2.1'])
+  })
+  it('reports the latency from a localized reply', async () => {
+    const r = await probeOne({ kind: 'ping', name: 'GW', url: '192.0.2.1' }, probes({ ping: vi.fn(async () => FR) }))
+    expect(r).toMatchObject({ state: 'up', latencyMs: 12 })
   })
 })

@@ -5,6 +5,7 @@ import { isTrusted, type CommandContext, type Provider } from './types.js'
 import { noInstances, type InstanceLookup } from '../config/instances.js'
 import { USER_AGENT } from '../version.js'
 import { tr } from '../i18n.js'
+import { targetPlatform, windowsTool, type Platform } from '../platform/index.js'
 
 /** Longest any one probe may take before it is called down. */
 export const PROBE_TIMEOUT_MS = 5_000
@@ -14,8 +15,11 @@ const MAX_SERVICES = 20
 const MAX_NAME = 80
 const MAX_TARGET = 500
 
-/** The absolute path of the only program this provider runs. */
-export const PING_BIN = '/sbin/ping'
+/** The absolute path of the only program this provider runs: the system's own `ping`. */
+export function pingBin(platform: Platform = targetPlatform()): string {
+  return platform === 'win32' ? windowsTool('ping') : '/sbin/ping'
+}
+export const PING_BIN = pingBin()
 
 /**
  * What a host may be made of: letters, digits, dots, hyphens and colons — a name, an IPv4, or an
@@ -142,20 +146,51 @@ export const realTcpConnect: Probes['tcpConnect'] = (host, port, timeoutMs) =>
     socket.once('error', (err) => done(err))
   })
 
-export const realPing: Probes['ping'] = (host, timeoutMs) =>
-  new Promise((resolve, reject) => {
-    // `-c 1` one echo, `-W 2000` two seconds waiting for the reply; the outer timeout is the
-    // backstop for a `ping` that hangs on name resolution instead.
-    execFile(PING_BIN, ['-c', '1', '-W', '2000', host], { timeout: timeoutMs }, (err, stdout, stderr) => {
-      if (err) reject(new Error(stderr.trim() || err.message))
-      else resolve(stdout)
+type PingExec = (file: string, args: string[], options: { timeout: number }, cb: (err: Error | null, stdout: string, stderr: string) => void) => unknown
+
+/**
+ * The echo probe. `ping.exe` prints its answer in the user's language and exits 0 for some
+ * failures ("Destination host unreachable" comes from a router and carries no TTL), so on Windows
+ * a run only counts as an answer when a `TTL=` line is in it, a token ping never translates.
+ */
+export function createRealPing(opts: { platform?: Platform; exec?: PingExec } = {}): Probes['ping'] {
+  const platform = opts.platform ?? targetPlatform()
+  const exec = opts.exec ?? (execFile as unknown as PingExec)
+  return (host, timeoutMs) =>
+    new Promise((resolve, reject) => {
+      // One echo, two seconds waiting for the reply (`-c 1 -W 2000` on macOS, `-n 1 -w 2000` on
+      // Windows); the outer timeout is the backstop for a `ping` that hangs on name resolution.
+      const args = platform === 'win32' ? ['-n', '1', '-w', '2000', host] : ['-c', '1', '-W', '2000', host]
+      exec(pingBin(platform), args, { timeout: timeoutMs }, (err, stdout, stderr) => {
+        if (err) reject(new Error(String(stderr).trim() || (platform === 'win32' ? 'offline' : err.message)))
+        else if (platform === 'win32' && windowsPingLatency(String(stdout)) === undefined) reject(new Error('offline'))
+        else resolve(String(stdout))
+      })
     })
-  })
+}
+export const realPing = createRealPing()
 
 const defaultProbes: Probes = { fetchFn: fetch, tcpConnect: realTcpConnect, ping: realPing }
 
+/**
+ * The latency on the reply line of a Windows `ping`, whatever the language: the line that holds
+ * `TTL=` (`time=12ms`, `temps=12 ms`, `Zeit=12ms`, `time<1ms`). `<1ms` is 0. Undefined for a run
+ * with no reply line, which is an offline host.
+ */
+export function windowsPingLatency(stdout: string): number | undefined {
+  for (const line of stdout.split(/\r?\n/)) {
+    if (!/\bTTL\s*=/i.test(line)) continue
+    const m = /([=<])\s*(\d+(?:[.,]\d+)?)\s*ms/i.exec(line)
+    if (!m) return undefined
+    return m[1] === '<' ? 0 : Math.round(Number(m[2].replace(',', '.')))
+  }
+  return undefined
+}
+
 /** `time=12.3 ms` in `ping`'s output, when there is one. */
 function pingLatency(stdout: string): number | undefined {
+  const byReply = windowsPingLatency(stdout)
+  if (byReply !== undefined) return byReply
   const m = /time[=<]\s*([\d.]+)\s*ms/i.exec(stdout)
   if (!m) return undefined
   const value = Number(m[1])
