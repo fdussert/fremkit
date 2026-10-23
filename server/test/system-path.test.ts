@@ -13,3 +13,9 @@ describe('safePath', () => {
     expect(safePath(undefined)).toBe('/usr/bin:/bin:/usr/sbin:/sbin')
   })
 })
+
+describe('safePath (platform argument)', () => {
+  it('is the platform module\'s function, unchanged on the Mac', () => {
+    expect(safePath('/opt/homebrew/bin:/usr/bin', 'darwin')).toBe('/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin')
+  })
+})
