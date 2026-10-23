@@ -391,7 +391,8 @@ describe('widget routes', () => {
     expect((await app.inject({ url: '/widgets/synology/..%2fclock%2fstyle.css' })).statusCode).toBeGreaterThanOrEqual(400)
     expect((await app.inject({ url: '/widgets/synology/..%2f..%2ffremkit.json' })).statusCode).toBeGreaterThanOrEqual(400)
     // A backslash is a separator on Windows only: refused everywhere (a raw one never arrives: the URL parser turns it into a slash).
-    for (const url of ['/widgets/synology/sub%5c..%5c..%5cclock%5cstyle.css', '/widgets/synology/..%5cclock%5cstyle.css']) {
+    for (const url of ['/widgets/synology/sub%5c..%5c..%5cclock%5cstyle.css', '/widgets/synology/..%5cclock%5cstyle.css',
+      '/widgets/synology/C:/Windows/win.ini', '/widgets/synology/C%3A%2FWindows%2Fwin.ini', '/widgets/synology/app.js::$DATA', '/widgets/synology/app.js:stream']) {
       expect((await app.inject({ url })).statusCode, url).toBe(400)
     }
   })
