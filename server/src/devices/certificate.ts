@@ -161,7 +161,8 @@ export async function resetKey(secrets: SecretStore, opts: OpensslOptions = {}):
 function checkNames(names: { host: string | null; addresses: string[] }): { dns: string[]; ips: string[] } {
   if (names.host !== null && !DNS_NAME_RE.test(names.host)) throw new Error('invalid certificate host name')
   for (const address of names.addresses) {
-    if (isIP(address) === 0) throw new Error('invalid certificate address')
+    // A zoned IPv6 address (`fe80::1%en0`) is an address to Node but has no place in a SAN.
+    if (isIP(address) === 0 || address.includes('%')) throw new Error('invalid certificate address')
   }
   return { dns: names.host === null ? [] : [names.host], ips: names.addresses }
 }

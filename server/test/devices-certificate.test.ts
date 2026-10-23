@@ -137,6 +137,7 @@ describe.each(BACKENDS)('pairing TLS key and certificate ($label)', ({ opts, ava
     expect(createPrivateKey(key).asymmetricKeyDetails?.namedCurve).toBe('prime256v1')
     await expect(issueCertificate(key, { host: 'a\n[v3]', addresses: [] }, { ...opts, exec })).rejects.toThrow()
     await expect(issueCertificate(key, { host: null, addresses: ['192.0.2.1,DNS:x'] }, { ...opts, exec })).rejects.toThrow()
+    await expect(issueCertificate(key, { host: null, addresses: ['fe80::1%en0'] }, { ...opts, exec })).rejects.toThrow('invalid certificate address')
   })
 
   it.skipIf(opts.platform !== 'win32')('keeps an unusable key out of the error', async () => {
@@ -185,6 +186,7 @@ describe('pairing TLS key and certificate through openssl', () => {
     const exec: Exec = async () => ({ stdout: '' })
     await expect(issueCertificate('k', { host: 'a\n[v3]', addresses: [] }, { ...OPENSSL, exec })).rejects.toThrow()
     await expect(issueCertificate('k', { host: null, addresses: ['192.0.2.1,DNS:x'] }, { ...OPENSSL, exec })).rejects.toThrow()
+    await expect(issueCertificate('k', { host: null, addresses: ['fe80::1%en0'] }, { ...OPENSSL, exec })).rejects.toThrow('invalid certificate address')
   })
 })
 
