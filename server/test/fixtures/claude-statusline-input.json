@@ -1,0 +1,1 @@
+{"session_id":"s1","cwd":"/work/fremkit","workspace":{"current_dir":"/work/fremkit/server","project_dir":"/work/fremkit"},"model":{"id":"claude-opus-5","display_name":"Opus 5"},"cost":{"total_cost_usd":1.2549},"context_window":{"used_percentage":17.9},"rate_limits":{"five_hour":{"used_percentage":5.5,"resets_at":1},"seven_day":{"used_percentage":42}}}

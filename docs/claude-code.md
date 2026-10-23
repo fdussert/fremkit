@@ -45,6 +45,36 @@ themselves, so keep the two together if you copy them. The hooks are asynchronou
 Claude Code, even when Fremkit is not running. The status line needs `jq` and degrades to one line of text
 without it.
 
+### Windows
+
+On Windows the same two scripts exist as Node programs, `claude-hook.mjs` and
+`claude-statusline.mjs`, which need only the Node that runs Claude Code's tooling (Node 22 or
+later) and no `bash` or `jq`. In `%USERPROFILE%\.claude\settings.json` (or the file `CLAUDE_CONFIG_DIR`
+names), use the same layout as above with these commands, replacing `<repo>` with the checkout:
+
+```json
+"statusLine": { "type": "command", "command": "node <repo>\\scripts\\claude-statusline.mjs" },
+"hooks": {
+  "SessionStart": [{ "hooks": [{ "type": "command", "command": "node <repo>\\scripts\\claude-hook.mjs", "async": true }] }]
+}
+```
+
+Repeat the hook entry for each event in the list above. Backslashes are doubled because this is
+JSON.
+
+- The server's access secret is read from `%LOCALAPPDATA%\Fremkit\access-4242.token` (the port
+  follows `FREMKIT_HOOK_URL`; `FREMKIT_SUPPORT_DIR` and `FREMKIT_ACCESS_TOKEN_FILE` work as on the
+  Mac). The scripts read it themselves and send it in a header only, never on a command line.
+  They load `lib/access.mjs` from beside themselves, so keep them together if you copy them.
+- The `client` object carries `TERM_PROGRAM`, the pid of the process that started the hook (the
+  `claude` process) and, when set, the distribution name from `WSL_DISTRO_NAME`.
+- The status line prints the same text as the bash version, with the folder name taken from
+  either kind of path separator.
+- Account usage reads Claude Code's credentials from `%USERPROFILE%\.claude\.credentials.json`,
+  or from `.credentials.json` in `CLAUDE_CONFIG_DIR` when that is an absolute path such as
+  `D:\claude`. As on the Mac it happens only when **Read the Claude account usage** (the screen's settings) is
+  ticked, and the token is never stored or logged.
+
 ## What is sent
 
 Only the tool name and a short summary reach Fremkit. Tool inputs and outputs are never sent and
