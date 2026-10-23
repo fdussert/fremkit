@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { EventEmitter } from 'node:events'
 import { PassThrough } from 'node:stream'
 import { readFileSync } from 'node:fs'
-import { HOST_ARGS, HostError, PowerShellHost, encodeLine, type SpawnHost } from '../src/win/powershell-host.js'
+import { HOST_ARGS, HostError, MAX_LINE, PowerShellHost, START_TIMEOUT_MS, encodeLine, type SpawnHost } from '../src/win/powershell-host.js'
 import { shippedPaths } from '../src/paths.js'
 
 /** A stand-in for the PowerShell child: what the host writes on stdin, and a way to answer. */
@@ -95,6 +95,7 @@ describe('PowerShellHost', () => {
     const pending = host.call('battery', undefined, 1000)
     const outcome = pending.catch((error: unknown) => error)
     children[0].ready()
+    await vi.advanceTimersByTimeAsync(0)
     await vi.advanceTimersByTimeAsync(1000)
     const error = await outcome
     expect(error).toBeInstanceOf(HostError)
@@ -107,6 +108,104 @@ describe('PowerShellHost', () => {
     await vi.advanceTimersByTimeAsync(0)
     children[1].answer({ id: 2, ok: true, value: { level: 1, muted: true } })
     await expect(next).resolves.toEqual({ level: 1, muted: true })
+    host.close()
+  })
+
+  it('fails the other in-flight calls with host-exited when one times out', async () => {
+    vi.useFakeTimers()
+    const { host, children } = setup()
+    const slow = host.call('battery', undefined, 1000).catch((error: HostError) => error.code)
+    const other = host.call('volume.get', undefined, 5000).catch((error: HostError) => error.code)
+    children[0].ready()
+    await vi.advanceTimersByTimeAsync(0)
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(await slow).toBe('timeout')
+    expect(await other).toBe('host-exited')
+    host.close()
+  })
+
+  it('starts a call timer when the line is written, so a slow start is not a timeout', async () => {
+    vi.useFakeTimers()
+    const { host, children } = setup()
+    const pending = host.call('volume.get', undefined, 1000)
+    await vi.advanceTimersByTimeAsync(8000) // spawn plus Add-Type, far past the call's own budget
+    expect(children[0].killed).toBe(false)
+    expect(children[0].written).toHaveLength(1)
+    children[0].ready()
+    await vi.advanceTimersByTimeAsync(0)
+    children[0].answer({ id: 1, ok: true, value: 5 })
+    await expect(pending).resolves.toBe(5)
+    expect(children).toHaveLength(1)
+    host.close()
+  })
+
+  it('gives up on a start that never gets ready, once, without a kill loop', async () => {
+    vi.useFakeTimers()
+    const { host, children } = setup()
+    const a = host.call('volume.get').catch((error: HostError) => error.code)
+    const b = host.call('battery').catch((error: HostError) => error.code)
+    await vi.advanceTimersByTimeAsync(START_TIMEOUT_MS)
+    expect(await a).toBe('host-start-timeout')
+    expect(await b).toBe('host-start-timeout')
+    expect(children[0].killed).toBe(true)
+    await vi.advanceTimersByTimeAsync(START_TIMEOUT_MS * 3)
+    expect(children).toHaveLength(1) // nothing respawns until someone calls again
+    const next = host.call('volume.get')
+    expect(children).toHaveLength(2)
+    children[1].ready()
+    await vi.advanceTimersByTimeAsync(0)
+    children[1].answer({ id: 3, ok: true, value: 9 })
+    await expect(next).resolves.toBe(9)
+    host.close()
+  })
+
+  it('keeps a replaced child out of the new child\'s calls', async () => {
+    vi.useFakeTimers()
+    const { host, children } = setup()
+    const first = host.call('battery', undefined, 1000).catch((error: HostError) => error.code)
+    children[0].ready()
+    await vi.advanceTimersByTimeAsync(0)
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(await first).toBe('timeout')
+    const next = host.call('volume.get')
+    children[1].ready()
+    await vi.advanceTimersByTimeAsync(0)
+    // The old child answers late with the new call's id, then exits: neither touches the new call.
+    children[0].answer({ id: 2, ok: true, value: 'stale' })
+    children[0].emit('exit', 1, null)
+    await vi.advanceTimersByTimeAsync(0)
+    children[1].answer({ id: 2, ok: true, value: 'fresh' })
+    await expect(next).resolves.toBe('fresh')
+    host.close()
+  })
+
+  it('kills the child and fails its calls when an answer line grows past the cap', async () => {
+    const { host, children } = setup()
+    const pending = host.call('clipboard.read').catch((error: HostError) => error.code)
+    children[0].ready()
+    await flush()
+    const chunk = 'x'.repeat(1024 * 1024)
+    for (let written = 0; written <= MAX_LINE; written += chunk.length) children[0].stdout.write(chunk)
+    await flush()
+    expect(await pending).toBe('host-exited')
+    expect(children[0].killed).toBe(true)
+    host.close()
+  })
+
+  it('rejects an arg that cannot be encoded without touching the child', async () => {
+    const { host, children } = setup()
+    const cyclic: Record<string, unknown> = {}
+    cyclic.self = cyclic
+    await expect(host.call('volume.set', cyclic)).rejects.toMatchObject({ code: 'invalid-arg' })
+    await expect(host.call('volume.set', { level: 10n })).rejects.toMatchObject({ code: 'invalid-arg' })
+    expect(children).toHaveLength(0)
+    // and the host still works afterwards
+    const next = host.call('volume.get')
+    children[0].ready()
+    await flush()
+    expect(children[0].requests()).toEqual([{ id: 3, op: 'volume.get' }])
+    children[0].answer({ id: 3, ok: true, value: 1 })
+    await expect(next).resolves.toBe(1)
     host.close()
   })
 
@@ -237,7 +336,35 @@ describe('host.ps1', () => {
     }
   })
 
+  const code = script.split('\n').filter((line) => !/^\s*#/.test(line)).join('\n')
+
   it('runs system tools by absolute path', () => {
-    expect(script).not.toMatch(/(^|[\s&'"(])(netsh|wsl)(\.exe)?\s+(wlan|--list)/m)
+    // The only place a tool's name appears is its path under %SystemRoot%.
+    const tools = [...code.matchAll(/\b(netsh|wsl)\.exe\b/gi)]
+    expect(tools.length).toBeGreaterThan(0)
+    for (const match of tools) {
+      const start = code.lastIndexOf('\n', match.index) + 1
+      const line = code.slice(start, code.indexOf('\n', match.index))
+      expect(line).toMatch(/^\s*\$\w+ = Join-Path \$FkSystemRoot 'System32\\(netsh|wsl)\.exe'$/)
+    }
+    // ...and no bare name a call could resolve through PATH (variables like $netsh aside).
+    expect(code).not.toMatch(/(?<![$\w\\])netsh(?![.\w])/i)
+    expect(code).not.toMatch(/(?<![$\w\\-])wsl(?![.\w])/i)
+    // Every tool runs through FkRunTool with one of those variables; nothing else starts a process.
+    const runs = [...code.matchAll(/\bFkRunTool\s+(\S+)/g)].map((m) => m[1])
+    expect(runs.sort()).toEqual(['$netsh', '$wsl'])
+    expect(code.match(/Process\]::Start\(/g)).toHaveLength(1)
+    expect(code).not.toMatch(/Start-Process|Invoke-Expression|\biex\b|cmd\.exe/i)
+    expect(code).not.toMatch(/(^|[\s;(=])&\s*[$'"\w(]/m)
+  })
+
+  it('hands no request value or secret to a cmdlet', () => {
+    // Module Logging records cmdlet parameter bindings: JSON, clipboard and paths go through .NET.
+    for (const cmdlet of ['ConvertFrom-Json', 'ConvertTo-Json', 'Set-Clipboard', 'Get-Clipboard', 'Test-Path', 'Write-Output', 'Out-String']) {
+      expect(code).not.toContain(cmdlet)
+    }
+    for (const op of ['clipboard.read', 'clipboard.write', 'dpapi.protect', 'dpapi.unprotect']) {
+      expect(code).toMatch(new RegExp(`'${op.replace('.', '\\.')}' \\{ \\$value = \\[Fremkit\\.\\w+\\]::`))
+    }
   })
 })

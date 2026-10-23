@@ -6,33 +6,38 @@
 # {"id":n,"ok":true,"value":...} or {"id":n,"ok":false,"code":"..."}. Both directions are ASCII
 # (\uXXXX escapes), so no console code page mangles clipboard text or a distro name.
 #
-# A failure answers a short code and nothing else: no exception text, no path, no value. Every
-# arg is type-checked here before use, whatever the server already checked.
+# THE RULE: no cmdlet ever receives a value from a request, or a secret, as a parameter or on its
+# pipeline. Module Logging (event 4103, turned on by policy) records cmdlet parameter bindings, so
+# a DPAPI value passed to ConvertTo-Json or clipboard text passed to Set-Clipboard would land in
+# the event log. Requests are parsed, answers written, the clipboard read and written and DPAPI
+# called through the C# below (method calls, which nothing logs); the script's own functions
+# receive only the non-secret args of volume and sound, and pass them on to .NET only.
 #
-#   op                 arg                    value                                         codes
-#   clipboard.read     -                      string ('' when it holds no text)             -
-#   clipboard.write    { text: string }       true (text up to 1 MiB characters)            busy
-#   clipboard.private  -                      [] or ['private']                             -
-#   volume.get         -                      { level: 0-100, muted: bool }                 no-device
-#   volume.set         { level: number }      true (clamped to 0-100)                       no-device
-#   volume.mute        { muted: bool }        true                                          no-device
-#   battery            -                      { internal: null | { percent, charging,       -
-#                                                 minutesLeft? }, devices: [{ name, percent }] }
-#   network.wifi       -                      { ssid: string|null, signal: 0-100|null }     no-wifi, location-denied
+# A failure answers a short code and nothing else: no exception text, no path, no value. Every arg
+# is type-checked here before use, whatever the server already checked. A line that does not
+# parse answers `bad-request` when its leading `{"id":<n>,` can still be read, and is ignored
+# otherwise (as is a request whose id is not a non-negative integer); the server's own timer then
+# fails that call.
+#
+#   op                 arg                      value                                       codes
+#   clipboard.read     -                        string ('' when it holds no text)           busy, too-large (> 1 MiB chars)
+#   clipboard.write    { text: string }         true (text up to 1 MiB chars; '' empties)   busy
+#   clipboard.private  -                        [] or ['private'] (held open elsewhere: ['private'])
+#   volume.get         -                        { level: 0-100, muted: bool }               no-device
+#   volume.set         { level: number }        true (clamped to 0-100)                     no-device
+#   volume.mute        { muted: bool }          true                                        no-device
+#   battery            -                        { internal: null | { percent, charging,     -
+#                                                   minutesLeft? }, devices: [{ name, percent }] }
+#   network.wifi       -                        { ssid: string|null, signal: 0-100|null }   no-wifi, location-denied, tool-timeout
 #   sound              'chimes'|'chord'|'ding'|'notify'|'tada'   true                       no-sound
-#   dpapi.protect      base64 string          base64 string (CurrentUser scope)             dpapi-failed
-#   dpapi.unprotect    base64 string          base64 string                                 dpapi-failed
-#   wsl.list           -                      [distro names matching ^[A-Za-z0-9._-]{1,64}$] no-wsl, tool-timeout
+#   dpapi.protect      base64 (<= 90000 chars)  base64 (CurrentUser scope)                  dpapi-failed
+#   dpapi.unprotect    base64 (<= 90000 chars)  base64                                      dpapi-failed
+#   wsl.list           -                        [names matching ^[A-Za-z0-9._-]{1,64}$]     no-wsl, tool-timeout
 #
-# Common codes: invalid-arg, unknown-op, failed (anything unexpected).
+# Common codes: invalid-arg, unknown-op, bad-request, failed (anything unexpected).
 
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
-
-$FkUtf8 = New-Object System.Text.UTF8Encoding $false
-$FkOut = New-Object System.IO.StreamWriter ([Console]::OpenStandardOutput(), $FkUtf8)
-$FkOut.AutoFlush = $true
-$FkIn = New-Object System.IO.StreamReader ([Console]::OpenStandardInput(), $FkUtf8)
 
 $FkSystemRoot = 'C:\Windows'
 if ($env:SystemRoot -match '^[A-Za-z]:\\') { $FkSystemRoot = $env:SystemRoot.TrimEnd('\') }
@@ -40,15 +45,157 @@ if ($env:SystemRoot -match '^[A-Za-z]:\\') { $FkSystemRoot = $env:SystemRoot.Tri
 $FkSounds = @('chimes', 'chord', 'ding', 'notify', 'tada')
 $FkPlayer = $null
 
-$FkNative = $true
-try {
-  Add-Type -AssemblyName System.Security
-  Add-Type -TypeDefinition @'
+# The wire is needed for everything: without it the host cannot even answer, so a failed compile
+# ends the script and the server sees `host-exited`.
+Add-Type -ReferencedAssemblies System.Web.Extensions, System.Security -TypeDefinition @'
 using System;
+using System.Collections;
+using System.Collections.Generic;
+using System.Globalization;
+using System.IO;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading;
+using System.Web.Script.Serialization;
 
 namespace Fremkit {
+  // A failure the script answers as its code, never with any other text.
+  public class CodeException : Exception {
+    public CodeException(string code) : base("fremkit:" + code) { }
+  }
+
+  public static class Wire {
+    static readonly StreamWriter Out = new StreamWriter(Console.OpenStandardOutput(), new UTF8Encoding(false)) { AutoFlush = true };
+    static readonly StreamReader In = new StreamReader(Console.OpenStandardInput(), new UTF8Encoding(false));
+    static readonly JavaScriptSerializer Json = new JavaScriptSerializer { MaxJsonLength = 16 * 1024 * 1024, RecursionLimit = 16 };
+    static readonly Regex LeadingId = new Regex("^\\{\"id\":([0-9]{1,15})[,}]");
+
+    public static string ReadLine() { return In.ReadLine(); }
+
+    // The request as a dictionary, or null when the line is not a JSON object.
+    public static IDictionary<string, object> Parse(string line) {
+      try { return Json.DeserializeObject(line) as IDictionary<string, object>; } catch { return null; }
+    }
+
+    // The request's id, read from the parsed object or, failing that, from the line's start; -1 if none.
+    public static long Id(IDictionary<string, object> request, string line) {
+      if (request != null) {
+        object id;
+        if (!request.TryGetValue("id", out id)) return -1;
+        if (id is int && (int)id >= 0) return (int)id;
+        if (id is long && (long)id >= 0) return (long)id;
+        return -1;
+      }
+      Match match = LeadingId.Match(line);
+      return match.Success ? long.Parse(match.Groups[1].Value, CultureInfo.InvariantCulture) : -1;
+    }
+
+    public static object Get(IDictionary<string, object> dictionary, string key) {
+      object value;
+      return dictionary != null && dictionary.TryGetValue(key, out value) ? value : null;
+    }
+
+    // A named field of an object arg; invalid-arg when the arg is not an object or lacks it.
+    public static object Prop(object arg, string key) {
+      IDictionary<string, object> dictionary = arg as IDictionary<string, object>;
+      object value;
+      if (dictionary == null || !dictionary.TryGetValue(key, out value)) throw new CodeException("invalid-arg");
+      return value;
+    }
+
+    public static string CodeOf(Exception error) {
+      for (Exception e = error; e != null; e = e.InnerException) {
+        Match match = Regex.Match(e.Message, "^fremkit:([a-z][a-z0-9-]{0,39})$");
+        if (match.Success) return match.Groups[1].Value;
+      }
+      return "failed";
+    }
+
+    public static void Send(object message) {
+      StringBuilder line = new StringBuilder();
+      Write(line, message, 0);
+      Out.WriteLine(line.ToString());
+    }
+
+    // JSON in printable ASCII only: everything else is a \uXXXX escape.
+    static void Write(StringBuilder s, object v, int depth) {
+      if (depth > 16) throw new CodeException("failed");
+      System.Management.Automation.PSObject wrapped = v as System.Management.Automation.PSObject;
+      if (wrapped != null) v = wrapped.BaseObject;
+      if (v == null) { s.Append("null"); return; }
+      if (v is bool) { s.Append((bool)v ? "true" : "false"); return; }
+      if (v is string) { WriteString(s, (string)v); return; }
+      if (v is int || v is long || v is short || v is byte || v is uint || v is ulong || v is decimal) {
+        s.Append(Convert.ToString(v, CultureInfo.InvariantCulture)); return;
+      }
+      if (v is double || v is float) {
+        double d = Convert.ToDouble(v, CultureInfo.InvariantCulture);
+        s.Append(double.IsNaN(d) || double.IsInfinity(d) ? "null" : d.ToString("R", CultureInfo.InvariantCulture)); return;
+      }
+      IDictionary map = v as IDictionary;
+      if (map != null) {
+        s.Append('{');
+        bool first = true;
+        foreach (DictionaryEntry entry in map) {
+          if (!first) s.Append(',');
+          first = false;
+          WriteString(s, Convert.ToString(entry.Key, CultureInfo.InvariantCulture));
+          s.Append(':');
+          Write(s, entry.Value, depth + 1);
+        }
+        s.Append('}');
+        return;
+      }
+      IEnumerable list = v as IEnumerable;
+      if (list != null) {
+        s.Append('[');
+        bool first = true;
+        foreach (object item in list) {
+          if (!first) s.Append(',');
+          first = false;
+          Write(s, item, depth + 1);
+        }
+        s.Append(']');
+        return;
+      }
+      throw new CodeException("failed");
+    }
+
+    static void WriteString(StringBuilder s, string text) {
+      s.Append('"');
+      foreach (char c in text) {
+        if (c == '"') s.Append("\\\"");
+        else if (c == '\\') s.Append("\\\\");
+        else if (c < 0x20 || c > 0x7e) s.Append("\\u").Append(((int)c).ToString("x4", CultureInfo.InvariantCulture));
+        else s.Append(c);
+      }
+      s.Append('"');
+    }
+  }
+
+  public static class Dpapi {
+    public static string Run(object arg, bool protect) {
+      string text = arg as string;
+      if (text == null || text.Length > 90000) throw new CodeException("invalid-arg");
+      byte[] input;
+      try { input = Convert.FromBase64String(text); } catch (FormatException) { throw new CodeException("invalid-arg"); }
+      byte[] output = null;
+      try {
+        output = protect
+          ? ProtectedData.Protect(input, null, DataProtectionScope.CurrentUser)
+          : ProtectedData.Unprotect(input, null, DataProtectionScope.CurrentUser);
+        return Convert.ToBase64String(output);
+      } catch (CryptographicException) {
+        throw new CodeException("dpapi-failed");
+      } finally {
+        Array.Clear(input, 0, input.Length);
+        if (output != null) Array.Clear(output, 0, output.Length);
+      }
+    }
+  }
+
   [ComImport, Guid("5CDF2C82-841E-4546-9722-0CF74078229A"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
   interface IAudioEndpointVolume {
     void RegisterControlChangeNotify(IntPtr notify);
@@ -120,22 +267,74 @@ namespace Fremkit {
   }
 
   public static class Clipboard {
+    const uint CF_UNICODETEXT = 13;
+    const uint GMEM_MOVEABLE = 0x0002;
+    public const int MaxChars = 1048576;
+
     [DllImport("user32.dll", SetLastError = true)] static extern bool OpenClipboard(IntPtr owner);
     [DllImport("user32.dll")] static extern bool CloseClipboard();
     [DllImport("user32.dll")] static extern bool EmptyClipboard();
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern uint RegisterClipboardFormat(string name);
     [DllImport("user32.dll")] static extern bool IsClipboardFormatAvailable(uint format);
     [DllImport("user32.dll")] static extern IntPtr GetClipboardData(uint format);
+    [DllImport("user32.dll")] static extern IntPtr SetClipboardData(uint format, IntPtr memory);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    static extern IntPtr CreateWindowEx(int exStyle, string className, string name, int style, int x, int y, int width, int height, IntPtr parent, IntPtr menu, IntPtr instance, IntPtr param);
+    [DllImport("kernel32.dll")] static extern IntPtr GlobalAlloc(uint flags, UIntPtr bytes);
+    [DllImport("kernel32.dll")] static extern IntPtr GlobalFree(IntPtr memory);
     [DllImport("kernel32.dll")] static extern IntPtr GlobalLock(IntPtr memory);
     [DllImport("kernel32.dll")] static extern bool GlobalUnlock(IntPtr memory);
     [DllImport("kernel32.dll")] static extern UIntPtr GlobalSize(IntPtr memory);
 
-    static bool Open() {
+    // A message-only window to own the clipboard: SetClipboardData fails after EmptyClipboard
+    // when the clipboard was opened with no owner.
+    static IntPtr owner = IntPtr.Zero;
+
+    static void Open() {
+      if (owner == IntPtr.Zero) owner = CreateWindowEx(0, "STATIC", "", 0, 0, 0, 0, 0, new IntPtr(-3), IntPtr.Zero, IntPtr.Zero, IntPtr.Zero);
       for (int i = 0; i < 10; i++) {
-        if (OpenClipboard(IntPtr.Zero)) return true;
+        if (OpenClipboard(owner)) return;
         Thread.Sleep(20);
       }
-      return false;
+      throw new CodeException("busy");
+    }
+
+    public static string Read() {
+      if (!IsClipboardFormatAvailable(CF_UNICODETEXT)) return "";
+      Open();
+      try {
+        IntPtr memory = GetClipboardData(CF_UNICODETEXT);
+        if (memory == IntPtr.Zero) return "";
+        if (GlobalSize(memory).ToUInt64() > (ulong)(MaxChars + 1) * 2) throw new CodeException("too-large");
+        IntPtr data = GlobalLock(memory);
+        if (data == IntPtr.Zero) return "";
+        try {
+          string text = Marshal.PtrToStringUni(data);
+          if (text.Length > MaxChars) throw new CodeException("too-large");
+          return text;
+        } finally { GlobalUnlock(memory); }
+      } finally { CloseClipboard(); }
+    }
+
+    public static bool Write(object arg) {
+      string text = Wire.Prop(arg, "text") as string;
+      if (text == null || text.Length > MaxChars) throw new CodeException("invalid-arg");
+      Open();
+      try {
+        if (!EmptyClipboard()) throw new CodeException("busy");
+        if (text.Length == 0) return true;
+        IntPtr memory = GlobalAlloc(GMEM_MOVEABLE, new UIntPtr((ulong)(text.Length + 1) * 2));
+        if (memory == IntPtr.Zero) throw new CodeException("failed");
+        IntPtr data = GlobalLock(memory);
+        if (data == IntPtr.Zero) { GlobalFree(memory); throw new CodeException("failed"); }
+        try {
+          Marshal.Copy(text.ToCharArray(), 0, data, text.Length);
+          Marshal.WriteInt16(data, text.Length * 2, 0);
+        } finally { GlobalUnlock(memory); }
+        // The system owns the memory once SetClipboardData succeeds, and not before.
+        if (SetClipboardData(CF_UNICODETEXT, memory) == IntPtr.Zero) { GlobalFree(memory); throw new CodeException("failed"); }
+        return true;
+      } finally { CloseClipboard(); }
     }
 
     // 1 when the copying app asked clipboard watchers to look away, 0 otherwise, -1 when busy.
@@ -144,7 +343,7 @@ namespace Fremkit {
       if (IsClipboardFormatAvailable(RegisterClipboardFormat("Clipboard Viewer Ignore"))) return 1;
       uint history = RegisterClipboardFormat("CanIncludeInClipboardHistory");
       if (!IsClipboardFormatAvailable(history)) return 0;
-      if (!Open()) return -1;
+      try { Open(); } catch (CodeException) { return -1; }
       try {
         IntPtr memory = GetClipboardData(history);
         if (memory == IntPtr.Zero) return 0;
@@ -154,32 +353,11 @@ namespace Fremkit {
         finally { GlobalUnlock(memory); }
       } finally { CloseClipboard(); }
     }
-
-    public static bool Clear() {
-      if (!Open()) return false;
-      try { return EmptyClipboard(); } finally { CloseClipboard(); }
-    }
   }
 }
 '@
-} catch {
-  $FkNative = $false
-}
 
-function FkFail([string]$code) { throw (New-Object System.Exception "fremkit:$code") }
-
-function FkSend($message) {
-  $json = ConvertTo-Json -InputObject $message -Compress -Depth 6
-  $json = [regex]::Replace($json, '[^\x20-\x7e]', { param($m) '\u{0:x4}' -f [int][char]$m.Value })
-  $FkOut.WriteLine($json)
-}
-
-function FkProp($object, [string]$name) {
-  if ($object -isnot [System.Management.Automation.PSCustomObject]) { FkFail 'invalid-arg' }
-  $property = $object.PSObject.Properties[$name]
-  if ($null -eq $property) { FkFail 'invalid-arg' }
-  $property.Value
-}
+function FkFail([string]$code) { throw (New-Object Fremkit.CodeException $code) }
 
 function FkIsNumber($value) {
   ($value -is [int]) -or ($value -is [long]) -or ($value -is [double]) -or ($value -is [decimal])
@@ -206,50 +384,28 @@ function FkRunTool([string]$file, [string]$arguments, $encoding, [int]$timeoutMs
   @{ exit = $process.ExitCode; out = $stdout.Result }
 }
 
-function FkClipboardRead {
-  $text = Get-Clipboard -Format Text -Raw
-  if ($null -eq $text) { return '' }
-  [string]$text
-}
-
-function FkClipboardWrite($arg) {
-  $text = FkProp $arg 'text'
-  if ($text -isnot [string] -or $text.Length -gt 1048576) { FkFail 'invalid-arg' }
-  if ($text.Length -eq 0) {
-    if (-not $FkNative -or -not [Fremkit.Clipboard]::Clear()) { FkFail 'busy' }
-  } else {
-    Set-Clipboard -Value $text
-  }
-  $true
-}
-
 function FkClipboardPrivate {
-  if (-not $FkNative) { FkFail 'failed' }
-  $private = [Fremkit.Clipboard]::IsPrivate()
   # A clipboard another app holds open is treated as private: better one missed entry than a leak.
-  if ($private -ne 0) { 'private' }
+  if ([Fremkit.Clipboard]::IsPrivate() -ne 0) { 'private' }
 }
 
 function FkVolumeGet {
-  if (-not $FkNative) { FkFail 'failed' }
   $state = [Fremkit.Audio]::Get()
   if ($null -eq $state) { FkFail 'no-device' }
   [ordered]@{ level = $state[0]; muted = ($state[1] -eq 1) }
 }
 
 function FkVolumeSet($arg) {
-  $level = FkProp $arg 'level'
+  $level = [Fremkit.Wire]::Prop($arg, 'level')
   if (-not (FkIsNumber $level) -or [double]::IsNaN([double]$level) -or [double]::IsInfinity([double]$level)) { FkFail 'invalid-arg' }
   $level = [int][Math]::Round([Math]::Max(0, [Math]::Min(100, [double]$level)))
-  if (-not $FkNative) { FkFail 'failed' }
   if (-not [Fremkit.Audio]::Set($level)) { FkFail 'no-device' }
   $true
 }
 
 function FkVolumeMute($arg) {
-  $muted = FkProp $arg 'muted'
+  $muted = [Fremkit.Wire]::Prop($arg, 'muted')
   if ($muted -isnot [bool]) { FkFail 'invalid-arg' }
-  if (-not $FkNative) { FkFail 'failed' }
   if (-not [Fremkit.Audio]::Mute($muted)) { FkFail 'no-device' }
   $true
 }
@@ -288,7 +444,8 @@ function FkBattery {
 }
 
 function FkWifi {
-  $result = FkRunTool (Join-Path $FkSystemRoot 'System32\netsh.exe') 'wlan show interfaces' $null 4000
+  $netsh = Join-Path $FkSystemRoot 'System32\netsh.exe'
+  $result = FkRunTool $netsh 'wlan show interfaces' $null 4000
   # Windows 11 24H2 refuses WLAN details without location access; its message links the setting.
   if ($result.out -match 'ms-settings:privacy-location') { FkFail 'location-denied' }
   if ($result.exit -ne 0) { FkFail 'no-wifi' }
@@ -307,34 +464,17 @@ function FkWifi {
 
 function FkSound($arg) {
   if ($arg -isnot [string] -or $FkSounds -cnotcontains $arg) { FkFail 'invalid-arg' }
-  $path = Join-Path $FkSystemRoot "Media\$arg.wav"
-  if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { FkFail 'no-sound' }
+  $path = [System.IO.Path]::Combine($FkSystemRoot, 'Media', "$arg.wav")
+  if (-not [System.IO.File]::Exists($path)) { FkFail 'no-sound' }
   # Kept in script scope: Play() returns at once and the player must outlive this call.
   $script:FkPlayer = New-Object System.Media.SoundPlayer $path
   $script:FkPlayer.Play()
   $true
 }
 
-function FkDpapi($arg, [bool]$protect) {
-  if ($arg -isnot [string] -or $arg.Length -gt 90000) { FkFail 'invalid-arg' }
-  try { $bytes = [Convert]::FromBase64String($arg) } catch { FkFail 'invalid-arg' }
-  $scope = [System.Security.Cryptography.DataProtectionScope]::CurrentUser
-  try {
-    if ($protect) { $out = [System.Security.Cryptography.ProtectedData]::Protect($bytes, $null, $scope) }
-    else { $out = [System.Security.Cryptography.ProtectedData]::Unprotect($bytes, $null, $scope) }
-  } catch {
-    FkFail 'dpapi-failed'
-  } finally {
-    [Array]::Clear($bytes, 0, $bytes.Length)
-  }
-  $encoded = [Convert]::ToBase64String($out)
-  [Array]::Clear($out, 0, $out.Length)
-  $encoded
-}
-
 function FkWslList {
   $wsl = Join-Path $FkSystemRoot 'System32\wsl.exe'
-  if (-not (Test-Path -LiteralPath $wsl -PathType Leaf)) { FkFail 'no-wsl' }
+  if (-not [System.IO.File]::Exists($wsl)) { FkFail 'no-wsl' }
   # wsl.exe writes UTF-16LE (unless WSL_UTF8 is set, which FkRunTool removes).
   $result = FkRunTool $wsl '--list --quiet' ([System.Text.Encoding]::Unicode) 4000
   if ($result.exit -ne 0) { FkFail 'no-wsl' }
@@ -344,21 +484,27 @@ function FkWslList {
   }
 }
 
-FkSend ([ordered]@{ ready = $true })
+[Fremkit.Wire]::Send([ordered]@{ ready = $true })
 
 while ($true) {
-  $line = $FkIn.ReadLine()
+  $line = [Fremkit.Wire]::ReadLine()
   if ($null -eq $line) { break }
-  try { $request = ConvertFrom-Json -InputObject $line } catch { continue }
-  if ($request -isnot [System.Management.Automation.PSCustomObject]) { continue }
-  $id = $request.id
-  if ($id -isnot [int] -and $id -isnot [long]) { continue }
-  $arg = $request.arg
+  $request = [Fremkit.Wire]::Parse($line)
+  $id = [Fremkit.Wire]::Id($request, $line)
+  $line = $null
+  if ($id -lt 0) { continue }
+  if ($null -eq $request) {
+    [Fremkit.Wire]::Send([ordered]@{ id = $id; ok = $false; code = 'bad-request' })
+    continue
+  }
+  $arg = [Fremkit.Wire]::Get($request, 'arg')
+  $op = [Fremkit.Wire]::Get($request, 'op')
+  $request = $null
   try {
     $value = $null
-    switch -CaseSensitive -Exact ([string]$request.op) {
-      'clipboard.read' { $value = FkClipboardRead; break }
-      'clipboard.write' { $value = FkClipboardWrite $arg; break }
+    switch -CaseSensitive -Exact ([string]$op) {
+      'clipboard.read' { $value = [Fremkit.Clipboard]::Read(); break }
+      'clipboard.write' { $value = [Fremkit.Clipboard]::Write($arg); break }
       'clipboard.private' { $value = @(FkClipboardPrivate); break }
       'volume.get' { $value = FkVolumeGet; break }
       'volume.set' { $value = FkVolumeSet $arg; break }
@@ -366,16 +512,15 @@ while ($true) {
       'battery' { $value = FkBattery; break }
       'network.wifi' { $value = FkWifi; break }
       'sound' { $value = FkSound $arg; break }
-      'dpapi.protect' { $value = FkDpapi $arg $true; break }
-      'dpapi.unprotect' { $value = FkDpapi $arg $false; break }
+      'dpapi.protect' { $value = [Fremkit.Dpapi]::Run($arg, $true); break }
+      'dpapi.unprotect' { $value = [Fremkit.Dpapi]::Run($arg, $false); break }
       'wsl.list' { $value = @(FkWslList); break }
       default { FkFail 'unknown-op' }
     }
-    FkSend ([ordered]@{ id = $id; ok = $true; value = $value })
+    [Fremkit.Wire]::Send([ordered]@{ id = $id; ok = $true; value = $value })
   } catch {
-    $code = 'failed'
-    if ($_.Exception.Message -cmatch '^fremkit:([a-z][a-z0-9-]{0,39})$') { $code = $Matches[1] }
-    FkSend ([ordered]@{ id = $id; ok = $false; code = $code })
+    [Fremkit.Wire]::Send([ordered]@{ id = $id; ok = $false; code = [Fremkit.Wire]::CodeOf($_.Exception) })
   }
   $value = $null
+  $arg = $null
 }
