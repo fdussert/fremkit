@@ -10,7 +10,7 @@ export function targetPlatform(p: NodeJS.Platform = process.platform): Platform 
   return p === 'win32' ? 'win32' : 'darwin'
 }
 
-export { systemRoot, windowsTool, ABSOLUTE_WINDOWS } from './windows-tools.js'
+export { systemRoot, windowsTool, windowsEnvDir, windowsUserCandidates, WINDOWS_CHILD_ENV_KEYS, ABSOLUTE_WINDOWS } from './windows-tools.js'
 export type { WindowsTool } from './windows-tools.js'
 import { ABSOLUTE_WINDOWS, systemRoot } from './windows-tools.js'
 

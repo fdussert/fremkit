@@ -24,3 +24,37 @@ export function windowsTool(name: WindowsTool, env: Record<string, string | unde
   return `${systemRoot(env)}\\${TOOL_PATHS[name]}`
 }
 
+
+/**
+ * The environment a Windows child of the server gets, besides what the macOS list holds: the
+ * profile and system locations a program needs to start, and the account name (non-secret; the
+ * Claude CLI and git read it). `PATHEXT` and `ComSpec` are left out on purpose: every child here
+ * is a `.exe` run by absolute path, and neither is ever needed to find one.
+ */
+export const WINDOWS_CHILD_ENV_KEYS = [
+  'SystemRoot', 'USERPROFILE', 'USERNAME', 'APPDATA', 'LOCALAPPDATA', 'ProgramData', 'ProgramFiles', 'TEMP', 'TMP',
+] as const
+
+/**
+ * A per-user or per-machine folder from the environment (`USERPROFILE`, `LOCALAPPDATA`,
+ * `ProgramFiles`), only when it is an absolute `X:\…` path. A missing or relative value yields
+ * null, so a caller skips that candidate rather than join onto the current folder.
+ */
+export function windowsEnvDir(name: string, env: Record<string, string | undefined> = process.env): string | null {
+  const wanted = name.toLowerCase()
+  const key = Object.keys(env).find((k) => k.toLowerCase() === wanted)
+  const value = key === undefined ? undefined : env[key]
+  if (typeof value !== 'string' || !ABSOLUTE_WINDOWS.test(value)) return null
+  return value.replace(/(?<=.{3})\\+$/, '')
+}
+
+/** `base\segment\…` for each base that is a valid environment folder, in order; none are invented. */
+export function windowsUserCandidates(
+  parts: ReadonlyArray<readonly [envName: string, relative: string]>,
+  env: Record<string, string | undefined> = process.env,
+): string[] {
+  return parts.flatMap(([name, relative]) => {
+    const base = windowsEnvDir(name, env)
+    return base ? [`${base}\\${relative}`] : []
+  })
+}

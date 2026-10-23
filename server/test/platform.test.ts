@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { safePath, systemRoot, targetPlatform, windowsTool } from '../src/platform/index.js'
+import { safePath, systemRoot, targetPlatform, windowsEnvDir, windowsTool } from '../src/platform/index.js'
 
 describe('targetPlatform', () => {
   it('knows darwin and win32 and treats anything else as darwin', () => {
@@ -49,5 +49,17 @@ describe('safePath on win32', () => {
   it('keeps the macOS behaviour elsewhere', () => {
     expect(safePath('/opt/homebrew/bin:/usr/bin', 'darwin')).toBe('/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin')
     expect(safePath('/opt/x', 'linux')).toBe('/usr/bin:/bin:/usr/sbin:/sbin:/opt/x')
+  })
+})
+
+describe('windowsEnvDir', () => {
+  it('accepts an absolute folder in any case of the variable name, without a trailing slash', () => {
+    expect(windowsEnvDir('USERPROFILE', { UserProfile: 'C:\\Users\\example\\' })).toBe('C:\\Users\\example')
+    expect(windowsEnvDir('ProgramFiles', { PROGRAMFILES: 'D:\\' })).toBe('D:\\')
+  })
+  it('refuses a missing, relative or UNC value', () => {
+    expect(windowsEnvDir('USERPROFILE', {})).toBeNull()
+    expect(windowsEnvDir('USERPROFILE', { USERPROFILE: 'Users\\example' })).toBeNull()
+    expect(windowsEnvDir('USERPROFILE', { USERPROFILE: '\\\\host\\share' })).toBeNull()
   })
 })
