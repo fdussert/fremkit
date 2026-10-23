@@ -2,6 +2,8 @@ import type { Provider } from './types.js'
 import { osascript, type Runner } from './osascript.js'
 import { z } from 'zod'
 import { tr } from '../i18n.js'
+import { targetPlatform } from '../platform/index.js'
+import { HostError, sharedHost, type HostVolume } from '../win/powershell-host.js'
 
 export function parseVolume(raw: string): { level: number; muted: boolean } {
   const level = Number(/output volume:(\d+)/.exec(raw)?.[1] ?? 0)
@@ -13,7 +15,13 @@ export function parseVolume(raw: string): { level: number; muted: boolean } {
 export const SetPayloadSchema = z.object({ level: z.number().finite() })
 export const MutePayloadSchema = z.object({ muted: z.boolean() })
 
-export function createVolumeProvider(run: Runner = osascript): Provider {
+export interface VolumeDeps {
+  platform?: NodeJS.Platform
+  host?: { call<T>(op: 'volume.get' | 'volume.set' | 'volume.mute', arg?: unknown, timeoutMs?: number): Promise<T> }
+}
+
+export function createVolumeProvider(run: Runner = osascript, deps: VolumeDeps = {}): Provider {
+  if (targetPlatform(deps.platform) === 'win32') return createWindowsVolumeProvider(deps)
   return {
     channel: 'volume',
     intervalMs: 1000,
@@ -33,6 +41,42 @@ export function createVolumeProvider(run: Runner = osascript): Provider {
         if (!parsed.success) throw new Error(tr(undefined, 'volume.invalidMute'))
         const muted = parsed.data.muted
         await run(`set volume output muted ${muted}`)
+        return { muted }
+      },
+    },
+  }
+}
+
+/** Windows: the same payload checks and the same clamp, with the host in place of osascript. */
+function createWindowsVolumeProvider(deps: VolumeDeps): Provider {
+  const host = () => deps.host ?? sharedHost()
+  let last: { level: number; muted: boolean } = { level: 0, muted: false }
+  return {
+    channel: 'volume',
+    intervalMs: 1000,
+    poll: async () => {
+      try {
+        return (last = await host().call<HostVolume>('volume.get', undefined, 5000))
+      } catch (e) {
+        // `no-device` (no output device) and a host that is gone both keep the last level on screen.
+        return { ...last, error: e instanceof HostError ? e.code : 'offline' }
+      }
+    },
+    commands: {
+      set: async (payload) => {
+        const parsed = SetPayloadSchema.safeParse(payload)
+        if (!parsed.success) throw new Error(tr(undefined, 'volume.invalidLevel'))
+        const level = Math.max(0, Math.min(100, Math.round(parsed.data.level)))
+        await host().call('volume.set', { level }, 5000)
+        last = { ...last, level }
+        return { level }
+      },
+      mute: async (payload) => {
+        const parsed = MutePayloadSchema.safeParse(payload)
+        if (!parsed.success) throw new Error(tr(undefined, 'volume.invalidMute'))
+        const muted = parsed.data.muted
+        await host().call('volume.mute', { muted }, 5000)
+        last = { ...last, muted }
         return { muted }
       },
     },
