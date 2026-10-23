@@ -357,7 +357,7 @@ describe('host.ps1', () => {
     expect(power).toContain('Internal()')
     // Both WMI queries swallow any exception, not only a ManagementException.
     expect(power).not.toContain('ManagementException')
-    expect(power.match(/catch \(Exception\) \{ \}/g)).toHaveLength(2)
+    expect(power.match(/catch\s*\(\s*Exception\s*\)\s*\{\s*\}/g)).toHaveLength(2)
     // The whole of Internal() sits inside the try, so a failing query ends in `return null`.
     const internal = power.slice(power.indexOf('Internal()'), power.indexOf('static bool? Charging()'))
     expect(internal.indexOf('try {')).toBeGreaterThan(-1)
