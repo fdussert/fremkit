@@ -2,9 +2,21 @@ import { execFileSync, spawn } from 'node:child_process'
 import { createCiaoAdvertiser, type CiaoDeps } from './advertise-ciao.js'
 import { txtRecord } from './txt.js'
 
-/** A running advertisement; `stop` withdraws it. */
+/**
+ * A running advertisement; `stop` withdraws it. `update`, where there is one (ciao on Windows),
+ * changes the TXT address in place; without it a new address means stop and advertise again.
+ */
 export interface Advertisement {
   stop(): void
+  update?(address: string | null): void
+}
+
+/** What an advertiser may use besides the service itself; `dns-sd` on the Mac uses neither. */
+export interface AdvertiseOptions {
+  /** The host name (`localHostName`) the SRV target is made from on Windows. */
+  hostName?: string | null
+  /** Hears the first failure of the advertisement, as a short code. */
+  warn?: (code: string) => void
 }
 
 /**
@@ -12,7 +24,7 @@ export interface Advertisement {
  * when known, goes in the TXT record as `a=<address> p=<port>` (the address the QR code carries):
  * a device that cannot resolve the Mac's `.local` name still learns where to connect.
  */
-export type Advertiser = (port: number, name?: string, address?: string | null) => Advertisement
+export type Advertiser = (port: number, name?: string, address?: string | null, opts?: AdvertiseOptions) => Advertisement
 
 const DNS_SD = '/usr/bin/dns-sd'
 const PGREP = '/usr/bin/pgrep'

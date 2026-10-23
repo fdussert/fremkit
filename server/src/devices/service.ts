@@ -17,7 +17,7 @@ import type { WidgetCatalog } from '../widgets/catalog.js'
 import type { Hub } from '../ws/hub.js'
 import { codeProof } from './codeProof.js'
 import { fingerprintWords } from './fingerprint.js'
-import { advertise as bonjourAdvertise, type Advertisement, type Advertiser } from './bonjour.js'
+import { advertise as bonjourAdvertise, type AdvertiseOptions, type Advertisement, type Advertiser } from './bonjour.js'
 import { ensureKey, issueCertificate, readKey, resetKey, spkiHash } from './certificate.js'
 import { channelAllowed, screenChannels, type ChannelConnection, type ChannelManifest, type ScreenChannels } from './channels.js'
 import { deviceConfigView } from './scope.js'
@@ -516,13 +516,21 @@ export class DeviceService {
     }
   }
 
+  /** The host name for the SRV target, and where a failed advertisement is told: its code only. */
+  private advertiseOptions(): AdvertiseOptions {
+    return {
+      hostName: this.hostName,
+      warn: (code) => this.app.log.warn({ code }, 'could not advertise the remote listener'),
+    }
+  }
+
   /** The listener is bound: let its names through, advertise it, follow the addresses. */
   private async bound(): Promise<void> {
     this.error = null
     this.updateHosts()
     this.bonjourName = await computerName(this.exec, this.host)
     this.bonjourAddress = await this.pickAddress(this.certAddresses)
-    this.bonjour = this.advertiser(this.listener.port, this.bonjourName, this.bonjourAddress)
+    this.bonjour = this.advertiser(this.listener.port, this.bonjourName, this.bonjourAddress, this.advertiseOptions())
     this.timer = setInterval(() => { void this.checkAddresses() }, ADDRESS_CHECK_MS)
     this.timer.unref()
     await this.store.setEnabled(true)
@@ -627,9 +635,15 @@ export class DeviceService {
       // The advertisement carries the address too (TXT `a=`): announce the new one.
       const address = await this.pickAddress(addresses)
       if (!this.listener.running || this.bonjour === null || address === this.bonjourAddress) return
-      this.bonjour.stop()
       this.bonjourAddress = address
-      this.bonjour = this.advertiser(this.listener.port, this.bonjourName, address)
+      // In place where the advertiser can (ciao): withdrawing and announcing again would race the
+      // old announcement and come back renamed `PC (2)`.
+      if (this.bonjour.update) {
+        this.bonjour.update(address)
+      } else {
+        this.bonjour.stop()
+        this.bonjour = this.advertiser(this.listener.port, this.bonjourName, address, this.advertiseOptions())
+      }
     }).catch((err: unknown) => {
       this.app.log.warn({ err: (err as Error).message }, 'could not follow a change of address')
     })

@@ -826,6 +826,41 @@ describe.skipIf(!canIssueCertificates)('following a change of address', () => {
   })
 })
 
+describe.skipIf(!canIssueCertificates)('following a change of address with an advertiser that updates in place', () => {
+  it('updates the advertisement instead of withdrawing it and announcing another, with the host name and a warn hook', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'fremkit-devices-upd-'))
+    await writeFile(join(dir, 'fremkit.json'), JSON.stringify(CONFIG))
+    let addresses = ['192.0.2.10']
+    const calls: string[] = []
+    const seen: { hostName?: string | null; warn?: unknown }[] = []
+    const updating: Advertiser = (_port, _name, address, opts = {}) => {
+      calls.push(`advertise ${address}`)
+      seen.push(opts)
+      return { stop: () => { calls.push('stop') }, update: (next) => { calls.push(`update ${next}`) } }
+    }
+    const app = await buildApp({
+      accessToken: null,
+      dataDir: dir,
+      widgetsDir: join(process.cwd(), '..', 'widgets'),
+      devicesPort: 0,
+      devices: { exec, host: EXAMPLE_HOST, advertise: updating, lanAddresses: () => addresses, preferredAddress: async (a) => a[0] ?? null },
+    })
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+    try {
+      await app.inject({ method: 'PUT', url: '/api/devices/settings', payload: { enabled: true } })
+      expect(seen[0]).toMatchObject({ hostName: 'example', warn: expect.any(Function) })
+      addresses = ['198.51.100.7']
+      vi.advanceTimersByTime(30_000)
+      await expect.poll(() => calls.length).toBe(2)
+      expect(calls).toEqual(['advertise 192.0.2.10', 'update 198.51.100.7'])
+    } finally {
+      vi.useRealTimers()
+      await app.close()
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+})
+
 describe('browser extensions in the device list', () => {
   const ORIGIN = 'chrome-extension://lnckeodobpbbmfbdlpnegjpchgkehdlk'
   const INSTALL = '3a9c1d2e-5b6f-4a7b-8c9d-0e1f2a3b4c5d'
