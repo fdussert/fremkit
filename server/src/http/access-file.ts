@@ -79,7 +79,8 @@ export function resolveAccessToken(env: NodeJS.ProcessEnv = process.env): { toke
 export async function writeAccessToken(path: string, token: string, acl: AclDeps = {}): Promise<void> {
   await mkdir(dirname(path), { recursive: true, mode: 0o700 })
   // Windows: the folder is the user's and SYSTEM's alone (a no-op elsewhere), so the file inherits it.
-  await restrictToUser(dirname(path), acl)
+  // No walk: a fresh folder holds nothing yet, and what is written later inherits. A failure is logged by the caller's hook and the token is still written (the folder is per-user by default).
+  await restrictToUser(dirname(path), { ...acl, recurse: false })
   const tmp = `${path}.${process.pid}.${randomBytes(6).toString('hex')}.tmp`
   try {
     // `wx`: never through a file or a link someone put there first.

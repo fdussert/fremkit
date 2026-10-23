@@ -163,7 +163,7 @@ async function main(): Promise<void> {
   // Written once the port is ours, and removed on the way out: the file names a server that is
   // listening, never one that failed to bind or has gone. The helper knows the secret of a
   // server it spawned without reading this; scripts and a helper facing a `pnpm dev` read it.
-  await writeAccessToken(tokenFile, access.token)
+  await writeAccessToken(tokenFile, access.token, { log: (code) => app.log.warn({ code }, 'support folder ACL not applied') })
   process.on('exit', () => removeAccessToken(tokenFile, access.token))
   app.log.info({ tokenFile, source: access.source }, 'local access secret written')
 }

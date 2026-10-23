@@ -1,10 +1,11 @@
 import { describe, it, expect, afterEach } from 'vitest'
-import { chmod, mkdir, mkdtemp, rm, stat, lstat, symlink, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, readdir, readFile, rm, stat, lstat, symlink, writeFile } from 'node:fs/promises'
 import { execFileSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { tightenDataDir, restrictToUser, type AclExec } from '../src/data-permissions.js'
 import { windowsTool } from '../src/platform/windows-tools.js'
+import { writeAccessToken } from '../src/http/access-file.js'
 import { buildApp } from '../src/app.js'
 
 const mode = async (path: string) => (await stat(path)).mode & 0o777
@@ -115,6 +116,40 @@ describe('tightenDataDir on Windows', () => {
     expect(calls[1].args[0]).toBe('C:\\Users\\x\\AppData\\Local\\Fremkit')
   })
 
+  it('logs a fixed code, never a SID or a name, for each way it can fail', async () => {
+    root = await mkdtemp(join(tmpdir(), 'fremkit-perm-'))
+    const ok = `"desktop-x\\secretname","${SID}"`
+    const cases: Array<[string, AclExec, string]> = [
+      ['acl-whoami-failed', async () => { throw new Error(`boom ${SID} secretname`) }, ''],
+      ['acl-sid-invalid', async () => ({ stdout: '"secretname","S-1-5-18"' }), ''],
+      ['acl-icacls-failed', async (file) => { if (file.endsWith('icacls.exe')) throw new Error(`denied ${SID}`); return { stdout: ok } }, ''],
+      ['acl-icacls-partial', async (file) => ({ stdout: file.endsWith('icacls.exe') ? 'Successfully processed 3 files; Failed processing 2 files\r\n' : ok }), ''],
+      ['acl-icacls-partial', async (file) => ({ stdout: file.endsWith('icacls.exe') ? '3 fichiers traités ; échec du traitement de 2 fichiers\r\n' : ok }), ''],
+    ]
+    for (const [code, exec] of cases) {
+      const logged: string[] = []
+      expect(await tightenDataDir(root, { platform: 'win32', exec, log: (c) => logged.push(c) })).toBe(0)
+      expect(logged).toEqual([code])
+      expect(JSON.stringify(logged)).not.toMatch(/S-1-5|secretname/)
+    }
+  })
+
+  it('whoami rejecting means no icacls call', async () => {
+    root = await mkdtemp(join(tmpdir(), 'fremkit-perm-'))
+    const files: string[] = []
+    const exec: AclExec = async (file) => { files.push(file); throw new Error('nope') }
+    expect(await tightenDataDir(root, { platform: 'win32', exec })).toBe(0)
+    expect(files).toEqual([windowsTool('whoami')])
+  })
+
+  it('a clean icacls summary logs nothing', async () => {
+    root = await mkdtemp(join(tmpdir(), 'fremkit-perm-'))
+    const logged: string[] = []
+    const exec: AclExec = async (file) => ({ stdout: file.endsWith('icacls.exe') ? 'Successfully processed 1 files; Failed processing 0 files\r\n' : `"a","${SID}"` })
+    expect(await tightenDataDir(root, { platform: 'win32', exec, log: (c) => logged.push(c) })).toBe(1)
+    expect(logged).toEqual([])
+  })
+
   it('never runs a program on darwin', async () => {
     root = await mkdtemp(join(tmpdir(), 'fremkit-perm-'))
     const { calls, exec } = fake('')
@@ -152,5 +187,35 @@ describe.skipIf(process.platform !== 'win32')('the data folder ACL, for real', (
     } finally {
       await app.close()
     }
+  })
+})
+
+describe('writeAccessToken on Windows', () => {
+  const SID = 'S-1-5-21-1-2-3-1001'
+  it('restricts the folder before the token exists, without walking it', async () => {
+    root = await mkdtemp(join(tmpdir(), 'fremkit-perm-'))
+    const folder = join(root, 'support')
+    const path = join(folder, 'access-4242.token')
+    const seen: Array<{ file: string; args: string[]; present: string[] }> = []
+    const exec: AclExec = async (file, args) => {
+      seen.push({ file, args, present: file.endsWith('icacls.exe') ? await readdir(folder) : [] })
+      return { stdout: file.endsWith('icacls.exe') ? 'Successfully processed 1 files; Failed processing 0 files' : `"a","${SID}"` }
+    }
+    await writeAccessToken(path, 'tok', { platform: 'win32', exec })
+    const icacls = seen.find((c) => c.file.endsWith('icacls.exe'))!
+    expect(icacls.present).toEqual([])
+    expect(icacls.args[0]).toBe(folder)
+    expect(icacls.args).not.toContain('/T')
+    expect((await readFile(path, 'utf8')).trim()).toBe('tok')
+  })
+
+  it('still writes the token, and logs the code, when the restriction fails', async () => {
+    root = await mkdtemp(join(tmpdir(), 'fremkit-perm-'))
+    const path = join(root, 'support', 'access-4242.token')
+    const logged: string[] = []
+    const exec: AclExec = async () => { throw new Error(`x ${SID}`) }
+    await writeAccessToken(path, 'tok', { platform: 'win32', exec, log: (c) => logged.push(c) })
+    expect(logged).toEqual(['acl-whoami-failed'])
+    expect((await readFile(path, 'utf8')).trim()).toBe('tok')
   })
 })

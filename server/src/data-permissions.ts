@@ -23,7 +23,17 @@ import { windowsTool } from './platform/windows-tools.js'
 /** How a program is run for the ACL: file and argument list, never a shell. */
 export type AclExec = (file: string, args: string[]) => Promise<{ stdout: string }>
 
-export interface AclDeps { platform?: NodeJS.Platform; exec?: AclExec }
+/** Why the ACL was not applied: fixed codes for the log, never a SID, a name or an error text. */
+export type AclFailure = 'acl-whoami-failed' | 'acl-sid-invalid' | 'acl-icacls-failed' | 'acl-icacls-partial'
+
+export interface AclDeps {
+  platform?: NodeJS.Platform
+  exec?: AclExec
+  /** Called once with the code when the ACL could not be (fully) applied. */
+  log?: (code: AclFailure) => void
+  /** `/T`: re-ACL what the folder already holds (default true). A folder only written to later needs no walk. */
+  recurse?: boolean
+}
 
 const run = promisify(execFile)
 const defaultExec: AclExec = async (file, args) => {
@@ -36,26 +46,57 @@ const SYSTEM_SID = 'S-1-5-18'
 let userSid: string | null = null
 
 /** The account's SID from `whoami /user`: the second CSV column, whatever language the first is in. */
-async function currentUserSid(exec: AclExec, cache: boolean): Promise<string | null> {
+async function currentUserSid(exec: AclExec, cache: boolean): Promise<string> {
   if (cache && userSid) return userSid
-  const { stdout } = await exec(windowsTool('whoami'), ['/user', '/fo', 'csv', '/nh'])
+  let stdout: string
+  try {
+    stdout = (await exec(windowsTool('whoami'), ['/user', '/fo', 'csv', '/nh'])).stdout
+  } catch {
+    throw new AclError('acl-whoami-failed')
+  }
   const line = stdout.split(/\r?\n/).find((l) => l.trim() !== '')
   const sid = line?.match(/^"[^"]*","([^"]*)"\s*$/)?.[1] ?? null
-  if (!sid || !USER_SID.test(sid)) return null
+  if (!sid || !USER_SID.test(sid)) throw new AclError('acl-sid-invalid')
   if (cache) userSid = sid
   return sid
 }
 
-/** Restricts a Windows folder to this user and SYSTEM, inherited by what it holds. False when not applied. */
+class AclError extends Error {
+  constructor(readonly code: AclFailure) { super(code) }
+}
+
+/**
+ * `icacls /C /Q` keeps going past a file it cannot change and says so only in its last line,
+ * which is localized ("Successfully processed 1 files; Failed processing 0 files"). The line
+ * has exactly two numbers in every language, processed then failed, so the second is read.
+ * Anything else (no such line) is not treated as partial.
+ */
+function failedCount(stdout: string): number {
+  const last = stdout.split(/\r?\n/).filter((l) => l.trim() !== '').pop() ?? ''
+  const numbers = last.match(/\d+/g)
+  return numbers && numbers.length === 2 ? Number(numbers[1]) : 0
+}
+
+/**
+ * Restricts a Windows folder to this user and SYSTEM, inherited by what it holds. True when
+ * applied; false when not (off Windows, or a failure, reported once through `deps.log`).
+ */
 export async function restrictToUser(dir: string, deps: AclDeps = {}): Promise<boolean> {
   if ((deps.platform ?? process.platform) !== 'win32') return false
   const exec = deps.exec ?? defaultExec
   try {
     const sid = await currentUserSid(exec, deps.exec === undefined)
-    if (!sid) return false
-    await exec(windowsTool('icacls'), [dir, '/inheritance:r', '/grant:r', `*${sid}:(OI)(CI)F`, `*${SYSTEM_SID}:(OI)(CI)F`, '/T', '/C', '/Q'])
+    let stdout: string
+    try {
+      const args = [dir, '/inheritance:r', '/grant:r', `*${sid}:(OI)(CI)F`, `*${SYSTEM_SID}:(OI)(CI)F`, ...(deps.recurse === false ? [] : ['/T']), '/C', '/Q']
+      stdout = (await exec(windowsTool('icacls'), args)).stdout
+    } catch {
+      throw new AclError('acl-icacls-failed')
+    }
+    if (failedCount(stdout) > 0) throw new AclError('acl-icacls-partial')
     return true
-  } catch {
+  } catch (error) {
+    deps.log?.(error instanceof AclError ? error.code : 'acl-icacls-failed')
     return false
   }
 }

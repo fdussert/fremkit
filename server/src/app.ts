@@ -209,7 +209,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   if (opts.onRoute) app.addHook('onRoute', opts.onRoute)
 
   // Private before anything is read from it or written to it: see data-permissions.ts.
-  await tightenDataDir(opts.dataDir)
+  await tightenDataDir(opts.dataDir, { log: (code) => app.log.warn({ code }, 'data folder ACL not applied') })
   const store = new ConfigStore(join(opts.dataDir, 'fremkit.json'), { history: new ConfigHistory(join(opts.dataDir, 'history')) })
   await store.load()
   // Providers, the proxy and the connection types are far from any request, so they read the
