@@ -3,6 +3,8 @@ import { createHash } from 'node:crypto'
 import { z } from 'zod'
 import { isTrusted, type CommandContext, type Provider } from './types.js'
 import { tr } from '../i18n.js'
+import { targetPlatform } from '../platform/index.js'
+import { sharedHost, type PowerShellHost } from '../win/powershell-host.js'
 
 /**
  * The clipboard history.
@@ -69,6 +71,8 @@ export const PRIVATE_PASTEBOARD_TYPES = [
   'de.petermaurer.TransientPasteboardType',
   'com.typeit4me.clipping',
   'Pasteboard generator type',
+  // What the Windows host answers when the clipboard asks not to be remembered (or cannot be asked).
+  'private',
 ]
 
 /**
@@ -152,6 +156,37 @@ export const pbPasteboard: Pasteboard = {
   }),
 }
 
+/**
+ * The Windows clipboard, through the PowerShell host.
+ *
+ * `clipboard.private` answers `['private']` for the exclusion formats password managers set
+ * (`ExcludeClipboardContentFromMonitorProcessing`, `CanIncludeInClipboardHistory` = 0, "Clipboard
+ * Viewer Ignore") and while another app holds the clipboard open. It is asked *before* the text is
+ * read, and a check that fails counts as private: better one missed entry than a leaked password.
+ * The text travels in the host's request body only, never in an argument list or a log.
+ */
+export function createWinPasteboard(host: () => PowerShellHost = sharedHost): Pasteboard {
+  const types = async (): Promise<string[]> => {
+    try {
+      return await host().call<string[]>('clipboard.private')
+    } catch {
+      return ['private']
+    }
+  }
+  return {
+    read: async () => {
+      // Never open the text of a clipboard that asked not to be kept. '' reads as "nothing new".
+      if (isPrivatePasteboard(await types())) return ''
+      // `too-large` and `busy` reject: the poll leaves the history as it is.
+      return host().call<string>('clipboard.read')
+    },
+    write: async (text) => { await host().call('clipboard.write', { text }) },
+    types,
+  }
+}
+
+export const winPasteboard: Pasteboard = createWinPasteboard()
+
 /** Truncates to `MAX_TEXT_BYTES`, on a character boundary. */
 export function capText(text: string): string {
   if (Buffer.byteLength(text) <= MAX_TEXT_BYTES) return text
@@ -197,7 +232,7 @@ const hash = (text: string): string => createHash('sha256').update(text).digest(
 
 const CopyPayloadSchema = z.object({ id: z.string().min(1).max(64) })
 
-export function createClipboardProvider(pasteboard: Pasteboard = pbPasteboard, now: () => number = Date.now): Provider {
+export function createClipboardProvider(pasteboard: Pasteboard = targetPlatform() === 'win32' ? winPasteboard : pbPasteboard, now: () => number = Date.now): Provider {
   /** Newest first. */
   let entries: ClipboardEntry[] = []
   const hashes = new Map<string, string>() // hash -> entry id

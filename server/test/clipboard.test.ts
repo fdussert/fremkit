@@ -2,8 +2,9 @@ import { describe, it, expect, vi } from 'vitest'
 import {
   createClipboardProvider, isSecret, capText, previewOf, characterClasses, isPrivatePasteboard,
   MAX_ENTRIES, MAX_TEXT_BYTES, PREVIEW_CHARS, MASKED_PREVIEW, SECRET_MIN_LENGTH,
-  type ClipboardSnapshot, type Pasteboard,
+  createWinPasteboard, type ClipboardSnapshot, type Pasteboard,
 } from '../src/providers/clipboard.js'
+import { HostError, type PowerShellHost } from '../src/win/powershell-host.js'
 
 const LOCAL = { loopback: true, paired: false }
 
@@ -310,5 +311,82 @@ describe('a pasteboard that asks not to be remembered', () => {
     const p = createClipboardProvider({ read: async () => '   ', write: async () => {}, types })
     await p.poll!()
     expect(types).not.toHaveBeenCalled()
+  })
+})
+
+describe('clipboard on Windows', () => {
+  /** A host double that records every call and answers from a table (a function throws as a HostError). */
+  function fakeHost(answers: Record<string, unknown>) {
+    const calls: Array<{ op: string; arg: unknown }> = []
+    const host = {
+      call: async (op: string, arg?: unknown) => {
+        calls.push({ op, arg })
+        const answer = answers[op]
+        if (typeof answer === 'function') return (answer as () => unknown)()
+        return answer
+      },
+    }
+    return { host: host as unknown as PowerShellHost, calls }
+  }
+  const failing = (code: string) => () => { throw new HostError(code) }
+
+  it('records ordinary text and masks a six-digit code', async () => {
+    let text = 'meeting notes'
+    const { host } = fakeHost({ 'clipboard.private': [], 'clipboard.read': () => text })
+    const p = createClipboardProvider(createWinPasteboard(() => host), now)
+    let snap = await p.poll!() as ClipboardSnapshot
+    expect(snap.entries.map((e) => e.preview)).toEqual(['meeting notes'])
+    text = '482913'
+    snap = await p.poll!() as ClipboardSnapshot
+    expect(snap.entries[0]).toMatchObject({ preview: MASKED_PREVIEW, masked: true })
+  })
+
+  it('asks whether the clipboard is private before reading it, and records nothing when it is', async () => {
+    const { host, calls } = fakeHost({ 'clipboard.private': ['private'], 'clipboard.read': 'hunter2 from a password manager' })
+    const p = createClipboardProvider(createWinPasteboard(() => host), now)
+    const snap = await p.poll!() as ClipboardSnapshot
+    expect(snap.entries).toEqual([])
+    expect(calls.map((c) => c.op)).not.toContain('clipboard.read')
+    expect(calls[0].op).toBe('clipboard.private')
+  })
+
+  it('fails closed when the private check itself fails', async () => {
+    const { host, calls } = fakeHost({ 'clipboard.private': failing('timeout'), 'clipboard.read': 'some text' })
+    const p = createClipboardProvider(createWinPasteboard(() => host), now)
+    const snap = await p.poll!() as ClipboardSnapshot
+    expect(snap.entries).toEqual([])
+    expect(calls.map((c) => c.op)).not.toContain('clipboard.read')
+    await expect(createWinPasteboard(() => host).types!()).resolves.toEqual(['private'])
+  })
+
+  it('skips a too-large or busy reading quietly and keeps the history', async () => {
+    let read: () => unknown = () => 'first entry'
+    const { host } = fakeHost({ 'clipboard.private': [], 'clipboard.read': () => read() })
+    const p = createClipboardProvider(createWinPasteboard(() => host), now)
+    expect((await p.poll!() as ClipboardSnapshot).entries).toHaveLength(1)
+    for (const code of ['too-large', 'busy']) {
+      read = failing(code)
+      const snap = await p.poll!() as ClipboardSnapshot
+      expect(snap.entries).toHaveLength(1)
+    }
+  })
+
+  it('treats an empty clipboard as nothing to record', async () => {
+    const { host } = fakeHost({ 'clipboard.private': [], 'clipboard.read': '' })
+    const p = createClipboardProvider(createWinPasteboard(() => host), now)
+    expect((await p.poll!() as ClipboardSnapshot).entries).toEqual([])
+  })
+
+  it('writes the text in the request body, not in argv, and as the only argument', async () => {
+    const { host, calls } = fakeHost({ 'clipboard.private': [], 'clipboard.read': 'copy me please', 'clipboard.write': true })
+    const p = createClipboardProvider(createWinPasteboard(() => host), now)
+    const snap = await p.poll!() as ClipboardSnapshot
+    const res = await p.commands!.copy({ id: snap.entries[0].id }, { loopback: true, paired: false }) as { ok: boolean }
+    expect(res.ok).toBe(true)
+    expect(calls.find((c) => c.op === 'clipboard.write')?.arg).toEqual({ text: 'copy me please' })
+  })
+
+  it('lists the Windows marker among the private types', () => {
+    expect(isPrivatePasteboard(['private'])).toBe(true)
   })
 })
