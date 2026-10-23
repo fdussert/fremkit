@@ -5,10 +5,14 @@ import { basename, isAbsolute, join } from 'node:path'
 import si from 'systeminformation'
 import { z } from 'zod'
 import type { Provider } from './types.js'
+import { targetPlatform, windowsUserCandidates, WINDOWS_CHILD_ENV_KEYS, type Platform } from '../platform/index.js'
 
-export const localEnv = (env: NodeJS.ProcessEnv): NodeJS.ProcessEnv => {
+export const localEnv = (env: NodeJS.ProcessEnv, platform: Platform = targetPlatform()): NodeJS.ProcessEnv => {
   const safe: NodeJS.ProcessEnv = {}
-  for (const key of ['HOME', 'PATH', 'TMPDIR', 'LANG', 'LC_ALL', 'USER', 'LOGNAME']) {
+  const keys = ['HOME', 'PATH', 'TMPDIR', 'LANG', 'LC_ALL', 'USER', 'LOGNAME']
+  // A Windows program needs its profile and the system folder to start at all.
+  if (platform === 'win32') keys.push(...WINDOWS_CHILD_ENV_KEYS)
+  for (const key of keys) {
     if (env[key] !== undefined) safe[key] = env[key]
   }
   return safe
@@ -52,8 +56,15 @@ function jsonLines(raw: string): unknown[] {
 }
 
 /** Resolve a local executable from a closed path list, without PATH lookup. */
-export async function resolveDockerBinary(canExecute: (path: string) => Promise<void> = (path) => access(path, constants.X_OK)): Promise<string> {
-  for (const path of ['/opt/homebrew/bin/docker', '/usr/local/bin/docker', join(homedir(), '.docker/bin/docker')]) {
+export async function resolveDockerBinary(
+  canExecute: (path: string) => Promise<void> = (path) => access(path, constants.X_OK),
+  platform: Platform = targetPlatform(),
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<string> {
+  const candidates = platform === 'win32'
+    ? windowsUserCandidates([['ProgramFiles', 'Docker\\Docker\\resources\\bin\\docker.exe']], env)
+    : ['/opt/homebrew/bin/docker', '/usr/local/bin/docker', join(homedir(), '.docker/bin/docker')]
+  for (const path of candidates) {
     try { await canExecute(path); return path } catch { /* Try the next known install. */ }
   }
   throw new Error('unavailable')

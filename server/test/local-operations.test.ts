@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { createDockerProvider, createLocalModelsProvider, resolveDockerBinary } from '../src/providers/local-operations.js'
+import { createDockerProvider, createLocalModelsProvider, localEnv, resolveDockerBinary } from '../src/providers/local-operations.js'
 
 const container = (state = 'running') => JSON.stringify({ ID: 'abcd', Names: 'example', Image: 'example:latest', State: state, Status: state === 'running' ? 'Up' : 'Exited', Command: 'PRIVATE' })
 const stats = JSON.stringify({ ID: 'abcd', CPUPerc: '2.3%', MemUsage: '12MiB / 2GiB', MemPerc: '1%', PIDs: '3', NetIO: '1kB / 2kB', BlockIO: '0B / 0B' })
@@ -68,10 +68,25 @@ describe('Docker observation', () => {
     const binary = await resolveDockerBinary(async (path) => {
       paths.push(path)
       if (path !== '/usr/local/bin/docker') throw new Error('missing')
-    })
+    }, 'darwin')
     expect(binary).toBe('/usr/local/bin/docker')
     expect(paths).toEqual(['/opt/homebrew/bin/docker', '/usr/local/bin/docker'])
-    await expect(resolveDockerBinary(async () => { throw new Error('missing') })).rejects.toThrow('unavailable')
+    await expect(resolveDockerBinary(async () => { throw new Error('missing') }, 'darwin')).rejects.toThrow('unavailable')
+  })
+
+  it('gives a Windows child the same profile variables as the Claude one, and nothing secret', () => {
+    expect(localEnv({ SystemRoot: 'C:\\Windows', USERNAME: 'example', GITHUB_TOKEN: 'PRIVATE' }, 'win32')).toEqual({ SystemRoot: 'C:\\Windows', USERNAME: 'example' })
+    expect(localEnv({ SystemRoot: 'C:\\Windows', HOME: '/h' }, 'darwin')).toEqual({ HOME: '/h' })
+  })
+
+  it('looks for Docker Desktop under a validated ProgramFiles on Windows, and nowhere else', async () => {
+    const paths: string[] = []
+    const found = async (path: string) => { paths.push(path) }
+    expect(await resolveDockerBinary(found, 'win32', { ProgramFiles: 'C:\\Program Files' })).toBe('C:\\Program Files\\Docker\\Docker\\resources\\bin\\docker.exe')
+    paths.length = 0
+    await expect(resolveDockerBinary(found, 'win32', { ProgramFiles: 'Program Files' })).rejects.toThrow('unavailable')
+    await expect(resolveDockerBinary(found, 'win32', {})).rejects.toThrow('unavailable')
+    expect(paths).toEqual([])
   })
 })
 

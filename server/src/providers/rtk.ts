@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { z } from 'zod'
 import { localEnv } from './local-operations.js'
 import type { Provider } from './types.js'
+import { targetPlatform, windowsUserCandidates, type Platform } from '../platform/index.js'
 
 /**
  * The `rtk` channel: the token savings reported by RTK (https://github.com/rtk-ai/rtk), a CLI
@@ -70,8 +71,15 @@ export function parseGain(raw: string, now: Date = new Date()): RtkData {
 }
 
 /** Resolves RTK from a closed list of install locations, without a PATH lookup. */
-export async function resolveRtkBinary(canExecute: (path: string) => Promise<void> = (path) => access(path, constants.X_OK)): Promise<string> {
-  for (const path of ['/opt/homebrew/bin/rtk', '/usr/local/bin/rtk', join(homedir(), '.cargo/bin/rtk'), join(homedir(), '.local/bin/rtk')]) {
+export async function resolveRtkBinary(
+  canExecute: (path: string) => Promise<void> = (path) => access(path, constants.X_OK),
+  platform: Platform = targetPlatform(),
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<string> {
+  const candidates = platform === 'win32'
+    ? windowsUserCandidates([['USERPROFILE', '.cargo\\bin\\rtk.exe']], env)
+    : ['/opt/homebrew/bin/rtk', '/usr/local/bin/rtk', join(homedir(), '.cargo/bin/rtk'), join(homedir(), '.local/bin/rtk')]
+  for (const path of candidates) {
     try { await canExecute(path); return path } catch { /* Try the next known install. */ }
   }
   throw new Error('unavailable')

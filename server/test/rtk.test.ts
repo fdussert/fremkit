@@ -57,13 +57,22 @@ describe('parseGain', () => {
 describe('resolveRtkBinary', () => {
   it('takes the first executable install', async () => {
     const seen: string[] = []
-    const path = await resolveRtkBinary(async (p) => { seen.push(p); if (p !== '/usr/local/bin/rtk') throw new Error('no') })
+    const path = await resolveRtkBinary(async (p) => { seen.push(p); if (p !== '/usr/local/bin/rtk') throw new Error('no') }, 'darwin')
     expect(path).toBe('/usr/local/bin/rtk')
     expect(seen[0]).toBe('/opt/homebrew/bin/rtk')
   })
 
   it('fails as unavailable when none is installed', async () => {
-    await expect(resolveRtkBinary(async () => { throw new Error('no') })).rejects.toThrow('unavailable')
+    await expect(resolveRtkBinary(async () => { throw new Error('no') }, 'darwin')).rejects.toThrow('unavailable')
+  })
+
+  it('looks for rtk.exe under a validated USERPROFILE on Windows, never a relative path', async () => {
+    const seen: string[] = []
+    const found = async (p: string) => { seen.push(p) }
+    expect(await resolveRtkBinary(found, 'win32', { USERPROFILE: 'C:\\Users\\example' })).toBe('C:\\Users\\example\\.cargo\\bin\\rtk.exe')
+    seen.length = 0
+    await expect(resolveRtkBinary(found, 'win32', { USERPROFILE: '.' })).rejects.toThrow('unavailable')
+    expect(seen).toEqual([])
   })
 })
 
