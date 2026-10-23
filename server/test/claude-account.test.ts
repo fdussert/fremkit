@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { normalizeAccountUsage, createClaudeAccountProvider, parseKeychainJson } from '../src/claude/account.js'
+import { normalizeAccountUsage, createClaudeAccountProvider, parseKeychainJson, readClaudeOAuthToken, claudeCredentialsPath } from '../src/claude/account.js'
 import { USER_AGENT } from '../src/version.js'
 
 const sample = {
@@ -160,5 +160,35 @@ describe('createClaudeAccountProvider', () => {
     await writeFile(join(dir, 'bad.json'), '{"last": 3', 'utf8')
     expect(await createClaudeAccountProvider({ fetchFn: limited as any, readToken: async () => 'tok', filePath: join(dir, 'bad.json') }).poll!())
       .toMatchObject({ available: false, stale: true, limits: [] })
+  })
+})
+
+describe('readClaudeOAuthToken on Windows', () => {
+  const creds = JSON.stringify({ claudeAiOauth: { accessToken: 'sk-ant-oat-fixture' } })
+  const win = { platform: 'win32' as const, home: 'C:\\Users\\Sam' }
+
+  it('reads .credentials.json under the profile folder', async () => {
+    const seen: string[] = []
+    const token = await readClaudeOAuthToken({ ...win, env: { USERPROFILE: 'C:\\Users\\Sam' }, readFile: async (p) => { seen.push(p); return creds } })
+    expect(token).toBe('sk-ant-oat-fixture')
+    expect(seen).toEqual(['C:\\Users\\Sam\\.claude\\.credentials.json'])
+  })
+
+  it('honours an absolute CLAUDE_CONFIG_DIR and ignores a relative one', () => {
+    expect(claudeCredentialsPath({ CLAUDE_CONFIG_DIR: 'D:\\cfg' }, 'C:\\Users\\Sam')).toBe('D:\\cfg\\.credentials.json')
+    expect(claudeCredentialsPath({ CLAUDE_CONFIG_DIR: 'cfg' }, 'C:\\Users\\Sam')).toBe('C:\\Users\\Sam\\.claude\\.credentials.json')
+    expect(claudeCredentialsPath({ USERPROFILE: '..\\x' }, 'C:\\Users\\Sam')).toBe('C:\\Users\\Sam\\.claude\\.credentials.json')
+  })
+
+  it('returns null for a missing or malformed file, without throwing', async () => {
+    expect(await readClaudeOAuthToken({ ...win, env: {}, readFile: async () => { throw new Error('ENOENT') } })).toBeNull()
+    expect(await readClaudeOAuthToken({ ...win, env: {}, readFile: async () => 'not json' })).toBeNull()
+  })
+
+  it('never writes the token to the console', async () => {
+    const spies = (['log', 'warn', 'error', 'info', 'debug'] as const).map((m) => vi.spyOn(console, m).mockImplementation(() => {}))
+    await readClaudeOAuthToken({ ...win, env: {}, readFile: async () => creds })
+    await readClaudeOAuthToken({ ...win, env: {}, readFile: async () => { throw new Error(creds) } })
+    for (const s of spies) { expect(JSON.stringify(s.mock.calls)).not.toContain('sk-ant-oat-fixture'); s.mockRestore() }
   })
 })

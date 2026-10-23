@@ -47,4 +47,13 @@ describe('parseHookEvent', () => {
   it('accepts a model given as a plain string, as some versions send it', () => {
     expect(parseHookEvent({ session_id: 'a', model: 'claude-opus-5' })?.model).toBe('claude-opus-5')
   })
+
+  it('keeps a well-formed WSL distribution name and drops anything else', () => {
+    const wsl = (wslDistro: unknown) => parseHookEvent({ session_id: 'a', client: { program: 'x', wslDistro } })?.client
+    expect(wsl('Ubuntu-24.04')?.wslDistro).toBe('Ubuntu-24.04')
+    expect(wsl('has space')).toEqual({ program: 'x' })
+    expect(wsl('a'.repeat(65))).toEqual({ program: 'x' })
+    expect(wsl('')).toEqual({ program: 'x' })
+    expect(wsl(7)).toEqual({ program: 'x' })
+  })
 })

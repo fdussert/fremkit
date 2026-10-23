@@ -38,6 +38,8 @@ const ClientSchema = z.object({
   pid: z.number().int().positive().max(9_999_999).optional().catch(undefined),
   tty: shortText(NAME_MAX),
   terminalSession: shortText(ID_MAX),
+  /** The WSL distribution the session runs in (`WSL_DISTRO_NAME`): a name, nothing else. */
+  wslDistro: z.string().regex(/^[A-Za-z0-9._-]{1,64}$/).optional().catch(undefined),
   orca: z.object({
     pane: shortText(ID_MAX),
     tab: shortText(ID_MAX),

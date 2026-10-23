@@ -1,9 +1,12 @@
 import { execFile } from 'node:child_process'
 import { readFile, writeFile, rename } from 'node:fs/promises'
+import { homedir } from 'node:os'
+import { win32 } from 'node:path'
 import type { Provider } from '../providers/types.js'
 import type { UsageWindow } from './usage.js'
 import { tr, type MessageKey } from '../i18n.js'
 import { USER_AGENT } from '../version.js'
+import { ABSOLUTE_WINDOWS } from '../platform/windows-tools.js'
 
 export interface AccountLimit { kind: string; name: string; percent: number; resetsAt: number | null; active: boolean }
 export interface AccountUsage { fiveHour: UsageWindow | null; sevenDay: UsageWindow | null; limits: AccountLimit[]; breakdown: { name: string; percent: number }[] }
@@ -74,8 +77,37 @@ export function parseKeychainJson(raw: string): string | null {
   } catch { return null }
 }
 
-/** Reads the token from the macOS keychain. Never logs or stores it. */
-export async function readClaudeOAuthToken(): Promise<string | null> {
+export interface ReadTokenDeps {
+  platform?: NodeJS.Platform
+  readFile?: (path: string) => Promise<string>
+  env?: NodeJS.ProcessEnv
+  home?: string
+}
+
+/**
+ * Where Claude Code keeps its credentials on Windows: `.credentials.json` in its config folder,
+ * which is `CLAUDE_CONFIG_DIR` when that is an absolute `X:\` path and `%USERPROFILE%\.claude`
+ * otherwise (the profile folder itself falls back to the home directory when it is not absolute).
+ */
+export function claudeCredentialsPath(env: NodeJS.ProcessEnv = process.env, home: string = homedir()): string {
+  const configured = env.CLAUDE_CONFIG_DIR
+  if (configured && ABSOLUTE_WINDOWS.test(configured)) return win32.join(configured, '.credentials.json')
+  const profile = env.USERPROFILE && ABSOLUTE_WINDOWS.test(env.USERPROFILE) ? env.USERPROFILE : home
+  return win32.join(profile, '.claude', '.credentials.json')
+}
+
+/**
+ * Reads the token from the macOS keychain, or from Claude Code's credentials file on Windows.
+ * Never logs or stores it, and never quotes the file's content in an error.
+ */
+export async function readClaudeOAuthToken(deps: ReadTokenDeps = {}): Promise<string | null> {
+  const platform = deps.platform ?? process.platform
+  if (platform === 'win32') {
+    try {
+      const read = deps.readFile ?? ((path: string) => readFile(path, 'utf8'))
+      return parseKeychainJson(await read(claudeCredentialsPath(deps.env ?? process.env, deps.home)))
+    } catch { return null }
+  }
   try { return parseKeychainJson(await run('/usr/bin/security', ['find-generic-password', '-s', KEYCHAIN_SERVICE, '-w'])) } catch { return null }
 }
 
@@ -118,7 +150,7 @@ export function createClaudeAccountProvider(opts: {
   enabled?: () => boolean
 } = {}): Provider {
   const fetchFn = opts.fetchFn ?? fetch
-  const readToken = opts.readToken ?? readClaudeOAuthToken
+  const readToken = opts.readToken ?? (() => readClaudeOAuthToken())
   const now = opts.now ?? Date.now
   const filePath = opts.filePath
   const enabled = opts.enabled ?? (() => true)
