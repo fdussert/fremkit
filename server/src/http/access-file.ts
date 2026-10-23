@@ -20,22 +20,30 @@ import { randomBytes } from 'node:crypto'
 import { readFileSync, unlinkSync } from 'node:fs'
 import { chmod, mkdir, open, rename, unlink } from 'node:fs/promises'
 import { homedir } from 'node:os'
-import { dirname, isAbsolute, join } from 'node:path'
+import { dirname, isAbsolute, join, win32 } from 'node:path'
 import { generateToken, isWellFormedToken } from './access.js'
+import { ABSOLUTE_WINDOWS } from '../platform/windows-tools.js'
 
 /** The environment variable the helper passes its secret in. Removed once read. */
 export const ACCESS_TOKEN_ENV = 'FREMKIT_ACCESS_TOKEN'
 
 /** The helper's support folder: `FREMKIT_SUPPORT_DIR` when absolute, as `HelperPaths` reads it. */
-export function supportDirectory(env: NodeJS.ProcessEnv = process.env, home: string = homedir()): string {
+export function supportDirectory(env: NodeJS.ProcessEnv = process.env, home: string = homedir(), platform: NodeJS.Platform = process.platform): string {
   const override = env.FREMKIT_SUPPORT_DIR
+  if (platform === 'win32') {
+    if (override && ABSOLUTE_WINDOWS.test(override)) return override
+    const local = env.LOCALAPPDATA
+    const base = local && ABSOLUTE_WINDOWS.test(local) ? local : win32.join(home, 'AppData', 'Local')
+    return win32.join(base, 'Fremkit')
+  }
   if (override && isAbsolute(override)) return override
   return join(home, 'Library', 'Application Support', 'Fremkit')
 }
 
 /** The token file for a port. */
-export function accessTokenPath(port: number, env: NodeJS.ProcessEnv = process.env, home: string = homedir()): string {
-  return join(supportDirectory(env, home), `access-${port}.token`)
+export function accessTokenPath(port: number, env: NodeJS.ProcessEnv = process.env, home: string = homedir(), platform: NodeJS.Platform = process.platform): string {
+  const dir = supportDirectory(env, home, platform)
+  return (platform === 'win32' ? win32.join : join)(dir, `access-${port}.token`)
 }
 
 /**

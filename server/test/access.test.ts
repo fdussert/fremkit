@@ -357,9 +357,20 @@ describe('the token file', () => {
   })
   it('lives in the helper\'s support folder, keyed by port', () => {
     const support = join('/Users/u', 'Library', 'Application Support', 'Fremkit')
-    expect(accessTokenPath(4242, {}, '/Users/u')).toBe(join(support, 'access-4242.token'))
-    expect(supportDirectory({ FREMKIT_SUPPORT_DIR: '/tmp/s' }, '/Users/u')).toBe('/tmp/s')
-    expect(supportDirectory({ FREMKIT_SUPPORT_DIR: 'relative' }, '/Users/u')).toBe(support)
+    expect(accessTokenPath(4242, {}, '/Users/u', 'darwin')).toBe(join(support, 'access-4242.token'))
+    expect(supportDirectory({ FREMKIT_SUPPORT_DIR: '/tmp/s' }, '/Users/u', 'darwin')).toBe('/tmp/s')
+    expect(supportDirectory({ FREMKIT_SUPPORT_DIR: 'relative' }, '/Users/u', 'darwin')).toBe(support)
+    expect(supportDirectory({}, '/Users/a', 'darwin')).toBe('/Users/a/Library/Application Support/Fremkit')
+  })
+  it('lives under LocalAppData on Windows, never at a relative path', () => {
+    const home = 'C:\\Users\\a'
+    const local = 'C:\\Users\\a\\AppData\\Local\\Fremkit'
+    expect(supportDirectory({ LOCALAPPDATA: 'C:\\Users\\a\\AppData\\Local' }, home, 'win32')).toBe(local)
+    expect(supportDirectory({ LOCALAPPDATA: 'rel' }, home, 'win32')).toBe(local)
+    expect(supportDirectory({}, home, 'win32')).toBe(local)
+    expect(supportDirectory({ FREMKIT_SUPPORT_DIR: 'D:\\s', LOCALAPPDATA: 'C:\\L' }, home, 'win32')).toBe('D:\\s')
+    expect(supportDirectory({ FREMKIT_SUPPORT_DIR: 'relative' }, home, 'win32')).toBe(local)
+    expect(accessTokenPath(4242, {}, home, 'win32')).toBe(`${local}\\access-4242.token`)
   })
   it('takes the launcher\'s secret and removes it from the environment', () => {
     const env: NodeJS.ProcessEnv = { [ACCESS_TOKEN_ENV]: TOKEN }
