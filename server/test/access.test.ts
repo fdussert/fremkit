@@ -360,7 +360,7 @@ describe('the token file', () => {
     expect(accessTokenPath(4242, {}, '/Users/u', 'darwin')).toBe(join(support, 'access-4242.token'))
     expect(supportDirectory({ FREMKIT_SUPPORT_DIR: '/tmp/s' }, '/Users/u', 'darwin')).toBe('/tmp/s')
     expect(supportDirectory({ FREMKIT_SUPPORT_DIR: 'relative' }, '/Users/u', 'darwin')).toBe(support)
-    expect(supportDirectory({}, '/Users/a', 'darwin')).toBe('/Users/a/Library/Application Support/Fremkit')
+    expect(supportDirectory({}, '/Users/a', 'darwin')).toBe(join('/Users/a', 'Library', 'Application Support', 'Fremkit'))
   })
   it('lives under LocalAppData on Windows, never at a relative path', () => {
     const home = 'C:\\Users\\a'
