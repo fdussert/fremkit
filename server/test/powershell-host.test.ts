@@ -352,6 +352,19 @@ describe('host.ps1', () => {
 
   const code = script.split('\n').filter((line) => !/^\s*(#|\/\/)/.test(line)).join('\n')
 
+  it('checks the private formats inside the same open as the clipboard read, failing closed', () => {
+    const read = /public static string Read\(\) \{([\s\S]*?)\n    \}\n/.exec(code)?.[1] ?? ''
+    const open = read.indexOf('Open(IntPtr.Zero)')
+    const check = read.indexOf('PrivateOpen()')
+    const text = read.indexOf('GetClipboardData(CF_UNICODETEXT)')
+    expect(open).toBeGreaterThan(-1)
+    expect(check).toBeGreaterThan(open)
+    expect(text).toBeGreaterThan(check)
+    // A check that throws counts as private, and a private clipboard is refused with its own code.
+    expect(read).toMatch(/catch \(Exception\) \{ concealed = true; \}/)
+    expect(read).toContain('new CodeException("private")')
+  })
+
   it('keeps the Bluetooth devices when the battery query fails, whatever it throws', () => {
     const power = /public static class Power \{([\s\S]*?)\n  \}\n/.exec(code)?.[1] ?? ''
     expect(power).toContain('Internal()')

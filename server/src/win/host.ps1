@@ -23,7 +23,8 @@
 # fails that call.
 #
 #   op                 arg                      value                                       codes
-#   clipboard.read     -                        string ('' when it holds no text)           busy, too-large (> 1 MiB chars)
+#   clipboard.read     -                        string ('' when it holds no text)           busy, too-large (> 1 MiB chars), private
+#                                                    (the copying app asked not to be recorded, checked while the clipboard is open; the text is never returned)
 #   clipboard.write    { text: string }         true (text up to 1 MiB chars; '' empties)   busy
 #   clipboard.private  -                        [] or ['private'] (held open elsewhere: ['private'])
 #   volume.get         -                        { level: 0-100, muted: bool }               no-device
@@ -321,6 +322,12 @@ namespace Fremkit {
       if (!IsClipboardFormatAvailable(CF_UNICODETEXT)) return "";
       Open(IntPtr.Zero);
       try {
+        // Checked while the clipboard is held open, so the text read is the text checked: a copy
+        // landing between a separate check and this read cannot slip a password through. Any
+        // failure of the check answers private too.
+        bool concealed;
+        try { concealed = PrivateOpen(); } catch (Exception) { concealed = true; }
+        if (concealed) throw new CodeException("private");
         IntPtr memory = GetClipboardData(CF_UNICODETEXT);
         if (memory == IntPtr.Zero) return "";
         IntPtr data = GlobalLock(memory);
@@ -374,21 +381,29 @@ namespace Fremkit {
       } finally { CloseClipboard(); }
     }
 
+    // True when the copying app asked clipboard watchers to look away. Needs the clipboard open.
+    static bool PrivateOpen() {
+      if (IsClipboardFormatAvailable(RegisterClipboardFormat("ExcludeClipboardContentFromMonitorProcessing"))) return true;
+      if (IsClipboardFormatAvailable(RegisterClipboardFormat("Clipboard Viewer Ignore"))) return true;
+      uint history = RegisterClipboardFormat("CanIncludeInClipboardHistory");
+      if (!IsClipboardFormatAvailable(history)) return false;
+      IntPtr memory = GetClipboardData(history);
+      if (memory == IntPtr.Zero) return false;
+      IntPtr data = GlobalLock(memory);
+      if (data == IntPtr.Zero) return false;
+      try { return GlobalSize(memory).ToUInt64() >= 4 && Marshal.ReadInt32(data) == 0; }
+      finally { GlobalUnlock(memory); }
+    }
+
     // 1 when the copying app asked clipboard watchers to look away, 0 otherwise, -1 when busy.
     public static int IsPrivate() {
       if (IsClipboardFormatAvailable(RegisterClipboardFormat("ExcludeClipboardContentFromMonitorProcessing"))) return 1;
       if (IsClipboardFormatAvailable(RegisterClipboardFormat("Clipboard Viewer Ignore"))) return 1;
-      uint history = RegisterClipboardFormat("CanIncludeInClipboardHistory");
-      if (!IsClipboardFormatAvailable(history)) return 0;
+      if (!IsClipboardFormatAvailable(RegisterClipboardFormat("CanIncludeInClipboardHistory"))) return 0;
       try { Open(IntPtr.Zero); } catch (CodeException) { return -1; }
-      try {
-        IntPtr memory = GetClipboardData(history);
-        if (memory == IntPtr.Zero) return 0;
-        IntPtr data = GlobalLock(memory);
-        if (data == IntPtr.Zero) return 0;
-        try { return GlobalSize(memory).ToUInt64() >= 4 && Marshal.ReadInt32(data) == 0 ? 1 : 0; }
-        finally { GlobalUnlock(memory); }
-      } finally { CloseClipboard(); }
+      try { return PrivateOpen() ? 1 : 0; }
+      catch (Exception) { return 1; }
+      finally { CloseClipboard(); }
     }
   }
 

@@ -54,7 +54,7 @@ export interface HostWifi { ssid: string | null; signal: number | null }
  * `timeout`, `host-start-timeout`, `host-exited`, `error`) are listed per op.
  */
 export interface HostOpTypes {
-  'clipboard.read': { arg: undefined; value: string } // '' when it holds no text; codes: busy, too-large (> 1 MiB chars)
+  'clipboard.read': { arg: undefined; value: string } // '' when it holds no text; codes: busy, too-large (> 1 MiB chars), private (checked while the clipboard is open; no text returned)
   'clipboard.write': { arg: { text: string }; value: true } // text ≤ 1 MiB chars, '' empties it; codes: busy
   'clipboard.private': { arg: undefined; value: [] | ['private'] } // a clipboard held open elsewhere answers ['private']
   'volume.get': { arg: undefined; value: HostVolume } // codes: no-device
