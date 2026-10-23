@@ -132,6 +132,7 @@ onUnmounted(() => observer?.disconnect())
         :item="popover.open.value.item"
         :widgets="s.state.config!.widgets"
         :manifest="manifestOf(popover.open.value.item)"
+        :unavailable="unavailable.has(popover.open.value.item.instanceId)"
         :cell="display.cell"
         :anchor="popover.open.value.anchor"
         :screen="popover.open.value.screen"

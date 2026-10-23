@@ -34,7 +34,7 @@ const unavailable = computed(() => unavailableInstances(config.value, unavailabl
 async function loadCatalogue(): Promise<void> {
   const res = await api.getWidgets()
   manifests.value = res.widgets
-  unavailableIds.value = res.unavailable
+  unavailableIds.value = res.unavailable ?? []
 }
 /**
  * A paired device loads this page over HTTPS from the Mac's TLS listener. It shows the screen the

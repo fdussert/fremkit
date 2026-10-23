@@ -18,6 +18,7 @@ import { pick, useI18n } from '../shared/i18n'
 import { DEVICE_CELL, DEVICE_NAV_HEIGHT, deviceGrid } from '../shared/screens'
 import { DEFAULT_NAV_HEIGHT, ROWS_BY_NAV_HEIGHT, type Display, type Screen } from '../shared/types'
 import { arrangeInto, type Arrangement } from './arrange'
+import { unavailableInstances } from '../shared/companionGate'
 import { useAdminStore } from './store'
 
 const props = defineProps<{
@@ -70,6 +71,8 @@ function nameOf(instanceId: string): string {
 const names = (ids: string[]): string => ids.map(nameOf).join(', ')
 
 /** The pages drawn the way the new screen will show them: its grid, the look it takes from the source. */
+/** Tiles whose widget this platform cannot run: the preview draws them as a notice, never a frame. */
+const unavailable = computed(() => unavailableInstances(s.state.config, s.state.unavailable))
 const previewDisplay = computed<Display>(() => ({
   ...grid.value, cell: DEVICE_CELL, autoCycleSeconds: 0,
   ...(kind.value === 'device' ? { navHeight: DEVICE_NAV_HEIGHT } : {}),
@@ -149,7 +152,7 @@ function create(): void {
         <li v-for="p in arrangement.pages" :key="p.id">
           <div class="thumb" :style="{ width: grid.cols * DEVICE_CELL * thumbScale + 'px', height: grid.rows * DEVICE_CELL * thumbScale + 'px' }">
             <div class="scaled" :style="{ width: grid.cols * DEVICE_CELL + 'px', transform: `scale(${thumbScale})` }">
-              <PageView :page="p" :config="s.state.config!" :display="previewDisplay" :manifests="s.state.manifests" edit />
+              <PageView :page="p" :config="s.state.config!" :display="previewDisplay" :manifests="s.state.manifests" :unavailable="unavailable" edit />
             </div>
           </div>
           <span class="caption">{{ p.name }}</span>

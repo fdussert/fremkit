@@ -627,8 +627,8 @@ export function createAdminStore(deps: StoreDeps): AdminStore {
       state.manifests = widgets.widgets
       state.sources = widgets.sources
       state.asks = widgets.asks
-      state.platform = widgets.platform
-      state.unavailable = widgets.unavailable
+      state.platform = widgets.platform ?? 'darwin'
+      state.unavailable = widgets.unavailable ?? []
       state.catalogErrors = widgets.errors
       undoStack.length = 0
       redoStack.length = 0
@@ -641,8 +641,8 @@ export function createAdminStore(deps: StoreDeps): AdminStore {
       state.manifests = widgets.widgets
       state.sources = widgets.sources
       state.asks = widgets.asks
-      state.platform = widgets.platform
-      state.unavailable = widgets.unavailable
+      state.platform = widgets.platform ?? 'darwin'
+      state.unavailable = widgets.unavailable ?? []
       state.catalogErrors = widgets.errors
     },
 

@@ -126,3 +126,38 @@ describe('the bar editor', () => {
     wrapper.unmount()
   })
 })
+
+describe('the widget inspector for a widget this platform cannot run', () => {
+  const withSettings = () => {
+    const s = useAdminStore()
+    s.state.manifests = {
+      ...s.state.manifests,
+      cpu: { ...manifest('cpu', 'CPU'), settingsSchema: { flag: { type: 'boolean', label: { fr: 'Option', en: 'Option' }, default: false } } } as unknown as WidgetManifest,
+    }
+    s.select('cpu-1')
+    return s
+  }
+
+  afterEach(() => { useAdminStore().state.unavailable = [] })
+
+  it('shows the settings form when the platform runs it', async () => {
+    withSettings()
+    const wrapper = mount(WidgetInspector, { attachTo: document.body })
+    await wrapper.vm.$nextTick()
+    expect(wrapper.find('[data-test="not-on-platform"]').exists()).toBe(false)
+    expect(wrapper.text()).toContain('Settings')
+    wrapper.unmount()
+  })
+
+  it('says why in place of the settings, and keeps geometry and removal', async () => {
+    const s = withSettings()
+    s.state.unavailable = ['cpu']
+    const wrapper = mount(WidgetInspector, { attachTo: document.body })
+    await wrapper.vm.$nextTick()
+    expect(wrapper.find('[data-test="not-on-platform"]').text()).toContain('This widget needs macOS')
+    expect(wrapper.text()).not.toContain('Settings')
+    expect(wrapper.text()).toContain('Position and size')
+    expect(buttons(wrapper).some((b) => b.text().includes('Delete'))).toBe(true)
+    wrapper.unmount()
+  })
+})
