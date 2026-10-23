@@ -174,8 +174,10 @@ export function createNetworkProvider(exec: Exec = execCommand, deps: NetworkDep
         rates = advance({ rx: stats.rx_bytes, tx: stats.tx_bytes })
       }
 
-      if (!details || details.iface !== iface || Date.now() - details.at >= WINDOWS_DETAILS_TTL_MS) {
-        // A failed read is never cached: `details` stays stale (or empty) and the next poll retries.
+      let shown = details?.iface === iface ? details : null
+      if (!shown || Date.now() - shown.at >= WINDOWS_DETAILS_TTL_MS) {
+        // A failed read is never cached: `details` stays as it was and the next poll retries. This
+        // snapshot shows the stale details of the same adapter when there are some.
         let ok = true
         const found = await sys.networkInterfaces().then((all) => all.find((i) => i.iface === iface), () => { ok = false; return undefined })
         const kind: NetworkKind = found?.type === 'wireless' ? 'wifi' : found?.type === 'wired' ? 'ethernet' : 'other'
@@ -185,13 +187,10 @@ export function createNetworkProvider(exec: Exec = execCommand, deps: NetworkDep
           try { ssid = (await (deps.host ?? sharedHost()).call<HostWifi>('network.wifi', undefined, WIFI_TIMEOUT_MS)).ssid ?? undefined } catch { ok = false }
         }
         const fresh = { iface, kind, ...(found?.ip4 ? { ip: found.ip4 } : {}), ...(ssid ? { ssid } : {}), at: Date.now() }
-        if (ok) details = fresh
-        else {
-          const { kind: k, ip, ssid: n } = fresh
-          return (last = { iface, kind: k, ...(ip ? { ip } : {}), ...(n ? { ssid: n } : {}), ...rates, history })
-        }
+        if (ok) details = shown = fresh
+        else shown ??= fresh
       }
-      const { kind, ip, ssid } = details!
+      const { kind, ip, ssid } = shown
       return (last = { iface, kind, ...(ip ? { ip } : {}), ...(ssid ? { ssid } : {}), ...rates, history })
     } catch {
       return { ...last, history, error: 'offline' }

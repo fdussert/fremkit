@@ -233,6 +233,21 @@ describe('network provider on Windows', () => {
     expect(((await p2.poll!()) as NetworkSnapshot).kind).toBe('wifi')
   })
 
+  it('shows the stale details of the same adapter when a refresh fails', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-01-01T00:00:00Z'))
+    const f = fakes()
+    const provider = createNetworkProvider(undefined, { platform: 'win32', ...f })
+    await provider.poll!()
+    vi.setSystemTime(new Date('2026-01-01T00:01:00Z'))
+    f.si.networkInterfaces.mockRejectedValueOnce(new Error('ps'))
+    const stale = (await provider.poll!()) as NetworkSnapshot
+    expect(stale).toMatchObject({ iface: 'Wi-Fi', kind: 'wifi', ip: '198.51.100.7', ssid: 'Example Net' })
+    // Not cached anew: the next poll reads again.
+    await provider.poll!()
+    expect(f.si.networkInterfaces).toHaveBeenCalledTimes(3)
+  })
+
   it('never touches systeminformation or the host on macOS', async () => {
     const f = fakes()
     const exec = vi.fn(async () => '')
