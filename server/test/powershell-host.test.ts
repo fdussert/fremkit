@@ -352,6 +352,19 @@ describe('host.ps1', () => {
 
   const code = script.split('\n').filter((line) => !/^\s*(#|\/\/)/.test(line)).join('\n')
 
+  it('keeps the Bluetooth devices when the battery query fails, whatever it throws', () => {
+    const power = /public static class Power \{([\s\S]*?)\n  \}\n/.exec(code)?.[1] ?? ''
+    expect(power).toContain('Internal()')
+    // Both WMI queries swallow any exception, not only a ManagementException.
+    expect(power).not.toContain('ManagementException')
+    expect(power.match(/catch \(Exception\) \{ \}/g)).toHaveLength(2)
+    // The whole of Internal() sits inside the try, so a failing query ends in `return null`.
+    const internal = power.slice(power.indexOf('Internal()'), power.indexOf('static bool? Charging()'))
+    expect(internal.indexOf('try {')).toBeGreaterThan(-1)
+    expect(internal.indexOf('try {')).toBeLessThan(internal.indexOf('ManagementObjectSearcher'))
+    expect(internal.trimEnd().endsWith('return null;\n    }')).toBe(true)
+  })
+
   it('answers dpapi-foreign only to an unprotect, for the HRESULTs of a blob that never opens here', () => {
     expect(code).toContain('!protect && IsForeign(e.HResult) ? "dpapi-foreign" : "dpapi-failed"')
     const list = /static readonly int\[\] Foreign = \{([^}]*)\}/.exec(code)?.[1] ?? ''

@@ -395,26 +395,30 @@ namespace Fremkit {
   // The internal battery, through WMI from here rather than Get-CimInstance: Module Logging would
   // record the objects a cmdlet returns, battery names included.
   public static class Power {
-    // { percent, charging, minutesLeft? }, or null without an internal battery.
+    // { percent, charging, minutesLeft? }, or null without an internal battery. A failing WMI
+    // query (a COMException, access denied) also answers null: it must cost the internal battery
+    // and not the Bluetooth devices answered beside it.
     public static System.Collections.Specialized.OrderedDictionary Internal() {
-      using (System.Management.ManagementObjectSearcher searcher = new System.Management.ManagementObjectSearcher(
-          "root\\CIMV2", "SELECT BatteryStatus, EstimatedChargeRemaining, EstimatedRunTime FROM Win32_Battery")) {
-        foreach (System.Management.ManagementBaseObject battery in searcher.Get()) {
-          int status = Number(battery["BatteryStatus"]);
-          // BatteryStatus 6-9 are the charging states; many laptops report 2 ("on AC") while
-          // charging, which root\WMI's BatteryStatus.Charging gets right where it exists.
-          bool charging = status >= 6 && status <= 9;
-          bool? wmi = Charging();
-          if (wmi.HasValue) charging = wmi.Value;
-          System.Collections.Specialized.OrderedDictionary result = new System.Collections.Specialized.OrderedDictionary();
-          result["percent"] = Math.Max(0, Math.Min(100, Number(battery["EstimatedChargeRemaining"])));
-          result["charging"] = charging;
-          long run = Number(battery["EstimatedRunTime"]);
-          // 71582788 is "unknown"; the estimate means something only while on battery.
-          if (status == 1 && run > 0 && run < 71582788) result["minutesLeft"] = (int)run;
-          return result;
+      try {
+        using (System.Management.ManagementObjectSearcher searcher = new System.Management.ManagementObjectSearcher(
+            "root\\CIMV2", "SELECT BatteryStatus, EstimatedChargeRemaining, EstimatedRunTime FROM Win32_Battery")) {
+          foreach (System.Management.ManagementBaseObject battery in searcher.Get()) {
+            int status = Number(battery["BatteryStatus"]);
+            // BatteryStatus 6-9 are the charging states; many laptops report 2 ("on AC") while
+            // charging, which root\WMI's BatteryStatus.Charging gets right where it exists.
+            bool charging = status >= 6 && status <= 9;
+            bool? wmi = Charging();
+            if (wmi.HasValue) charging = wmi.Value;
+            System.Collections.Specialized.OrderedDictionary result = new System.Collections.Specialized.OrderedDictionary();
+            result["percent"] = Math.Max(0, Math.Min(100, Number(battery["EstimatedChargeRemaining"])));
+            result["charging"] = charging;
+            long run = Number(battery["EstimatedRunTime"]);
+            // 71582788 is "unknown"; the estimate means something only while on battery.
+            if (status == 1 && run > 0 && run < 71582788) result["minutesLeft"] = (int)run;
+            return result;
+          }
         }
-      }
+      } catch (Exception) { }
       return null;
     }
 
@@ -427,7 +431,7 @@ namespace Fremkit {
             if (charging is bool) return (bool)charging;
           }
         }
-      } catch (System.Management.ManagementException) { }
+      } catch (Exception) { }
       return null;
     }
 
