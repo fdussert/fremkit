@@ -1,4 +1,5 @@
 import { execFileSync, spawn } from 'node:child_process'
+import { createCiaoAdvertiser, type CiaoDeps } from './advertise-ciao.js'
 
 /** A running advertisement; `stop` withdraws it. */
 export interface Advertisement {
@@ -32,6 +33,8 @@ export interface AdvertiserDeps {
   kill?: (pid: number) => void
   /** Registers a callback for the process's `exit`; returns its removal. */
   onExit?: (cb: () => void) => () => void
+  /** What the Windows advertiser (`advertise-ciao.ts`) runs. */
+  ciao?: CiaoDeps
 }
 
 /** The exact argument list `dns-sd` is run with, so a stale one can be recognised by it. */
@@ -47,6 +50,7 @@ const TXT_ADDRESS = /^[0-9A-Fa-f.:]+(%[0-9A-Za-z]+)?$/
 
 const realDeps: Required<AdvertiserDeps> = {
   platform: process.platform,
+  ciao: {},
   spawn: (cmd, args) => spawn(cmd, args, { stdio: 'ignore' }),
   listProcesses: (pattern) => {
     try {
@@ -95,7 +99,8 @@ function killStale(port: number, deps: Required<AdvertiserDeps>): void {
 /**
  * Announces the remote listener on the LAN as `_fremkit._tcp`, so the device app can find the
  * Mac without typing an address. `dns-sd -R` keeps the registration for as long as it runs, so
- * stopping is killing it. Spawned with an argument list, never a shell. A no-op off macOS.
+ * stopping is killing it. Spawned with an argument list, never a shell. On Windows the service
+ * is announced in process by `advertise-ciao.ts`; a no-op anywhere else.
  *
  * The child is also killed from the process's `exit` event, synchronously, so a server that exits
  * without closing the app (an uncaught error, `process.exit`) does not leave it advertising. A
@@ -103,6 +108,7 @@ function killStale(port: number, deps: Required<AdvertiserDeps>): void {
  */
 export function createAdvertiser(deps: AdvertiserDeps = {}): Advertiser {
   const d: Required<AdvertiserDeps> = { ...realDeps, ...deps }
+  if (d.platform === 'win32') return createCiaoAdvertiser(d.ciao)
   return (port, name = 'Fremkit', address = null) => {
     if (d.platform !== 'darwin') return { stop: () => undefined }
     killStale(port, d)

@@ -38,27 +38,30 @@ describe('fingerprintWords on a short hash', () => {
   })
 })
 
+/** These read `scutil`, the Mac's way; Windows's is in devices-host.test.ts. */
+const MAC = { platform: 'darwin' as const }
+
 describe('computerName', () => {
   const ok = (stdout: string) => async () => ({ stdout, stderr: '' })
   it('reads and trims the name', async () => {
-    expect(await computerName(ok("  Example's Mac \n"))).toBe("Example's Mac")
+    expect(await computerName(ok("  Example's Mac \n"), MAC)).toBe("Example's Mac")
   })
   it('runs scutil by its absolute path', async () => {
     const calls: string[] = []
-    await computerName(async (file) => { calls.push(file); return { stdout: 'Mac', stderr: '' } })
+    await computerName(async (file) => { calls.push(file); return { stdout: 'Mac', stderr: '' } }, MAC)
     expect(calls).toEqual(['/usr/sbin/scutil'])
   })
   it('falls back to Fremkit when scutil fails or prints nothing', async () => {
-    expect(await computerName(async () => { throw new Error('x') })).toBe('Fremkit')
-    expect(await computerName(ok('\n'))).toBe('Fremkit')
+    expect(await computerName(async () => { throw new Error('x') }, MAC)).toBe('Fremkit')
+    expect(await computerName(ok('\n'), MAC)).toBe('Fremkit')
   })
   it('cuts at 63 bytes on a character boundary', async () => {
-    const name = await computerName(ok('é'.repeat(40)))
+    const name = await computerName(ok('é'.repeat(40)), MAC)
     expect(Buffer.byteLength(name)).toBe(62)
     expect(name).toBe('é'.repeat(31))
   })
   it('does not leave a trailing space after the cut', async () => {
-    expect(await computerName(ok(`${'a'.repeat(62)} b`))).toBe('a'.repeat(62))
+    expect(await computerName(ok(`${'a'.repeat(62)} b`), MAC)).toBe('a'.repeat(62))
   })
 })
 

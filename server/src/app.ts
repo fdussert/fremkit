@@ -91,6 +91,7 @@ import { REMOTE_PORT } from './devices/listener.js'
 import type { Advertiser } from './devices/bonjour.js'
 import { createCompanion, type Companion } from './companion/index.js'
 import type { Exec } from './secrets/keychain.js'
+import type { HostDeps } from './devices/host.js'
 import { diagnosticsRoutes } from './diagnostics/routes.js'
 import { shareRoutes } from './share/routes.js'
 import { shareRedaction } from './share/context.js'
@@ -183,6 +184,8 @@ export interface AppOptions {
    */
   devices?: {
     exec?: Exec
+    /** Where the host name and default route come from on Windows (`HostDeps`). */
+    host?: HostDeps
     advertise?: Advertiser
     lanAddresses?: () => string[]
     preferredAddress?: (addresses: string[]) => Promise<string | null>

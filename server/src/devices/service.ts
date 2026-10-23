@@ -22,7 +22,7 @@ import { ensureKey, issueCertificate, readKey, resetKey, spkiHash } from './cert
 import { channelAllowed, screenChannels, type ChannelConnection, type ChannelManifest, type ScreenChannels } from './channels.js'
 import { deviceConfigView } from './scope.js'
 import type { PairingCodes } from './codes.js'
-import { lanAddresses as readLanAddresses, cachedPick, computerName, isPrivate, lanAppAddresses, localHostName, preferredAddress } from './host.js'
+import { lanAddresses as readLanAddresses, cachedPick, computerName, isPrivate, lanAppAddresses, localHostName, preferredAddress, type HostDeps } from './host.js'
 import { REMOTE_PORT, RemoteListener } from './listener.js'
 import { deviceThemeView } from '../themes/schedule.js'
 import { FREMKIT_VERSION } from '../version.js'
@@ -102,6 +102,8 @@ export interface DeviceServiceOptions {
   bindRetry?: { attempts: number; delayMs: number }
   /** Runs `scutil` and `openssl`; tests swap the first for a fixed name. */
   exec?: Exec
+  /** Where the host name and default route come from on Windows; tests give a fixed name. */
+  host?: HostDeps
   /** Bonjour; tests pass `noAdvertise` so `dns-sd` never runs there. */
   advertise?: Advertiser
   lanAddresses?: () => string[]
@@ -171,6 +173,7 @@ export class DeviceService {
   private readonly hub: Hub
   private readonly catalog: WidgetCatalog
   private readonly exec: Exec
+  private readonly host: HostDeps
   private readonly advertiser: Advertiser
   private readonly readAddresses: () => string[]
   private readonly pickAddress: (addresses: string[]) => Promise<string | null>
@@ -218,13 +221,14 @@ export class DeviceService {
     this.channelOf = opts.channelOf
     this.catalog = opts.catalog
     this.exec = opts.exec ?? execFileAsync
+    this.host = opts.host ?? {}
     this.advertiser = opts.advertise ?? bonjourAdvertise
     this.readAddresses = opts.lanAddresses ?? readLanAddresses
-    this.pickAddress = opts.preferredAddress ?? ((addresses) => preferredAddress(addresses, this.exec))
+    this.pickAddress = opts.preferredAddress ?? ((addresses) => preferredAddress(addresses, this.exec, this.host))
     this.companionRequest = opts.companionRequest ?? (() => null)
     this.companionLocked = opts.companionLocked ?? (() => false)
     this.companionConnected = opts.companionConnected ?? (() => new Set())
-    this.listAppAddresses = cachedPick(opts.appAddresses ?? ((addresses) => lanAppAddresses(addresses, this.exec)))
+    this.listAppAddresses = cachedPick(opts.appAddresses ?? ((addresses) => lanAppAddresses(addresses, this.exec, this.host)))
     this.listener = new RemoteListener(opts.app, opts.listenerPort ?? REMOTE_PORT)
     this.bindRetry = opts.bindRetry ?? BIND_RETRY
   }
@@ -487,7 +491,7 @@ export class DeviceService {
     const key = await ensureKey(this.secrets, { exec: this.exec })
     this.keyHash = spkiHash(key)
     this.keyHashKnown = true
-    this.hostName = await localHostName(this.exec)
+    this.hostName = await localHostName(this.exec, this.host)
     this.certAddresses = this.readAddresses()
     const cert = await issueCertificate(key, { host: this.dnsName(), addresses: this.certAddresses }, { exec: this.exec })
     if (await this.tryBind(key, cert)) {
@@ -516,7 +520,7 @@ export class DeviceService {
   private async bound(): Promise<void> {
     this.error = null
     this.updateHosts()
-    this.bonjourName = await computerName(this.exec)
+    this.bonjourName = await computerName(this.exec, this.host)
     this.bonjourAddress = await this.pickAddress(this.certAddresses)
     this.bonjour = this.advertiser(this.listener.port, this.bonjourName, this.bonjourAddress)
     this.timer = setInterval(() => { void this.checkAddresses() }, ADDRESS_CHECK_MS)
@@ -611,7 +615,7 @@ export class DeviceService {
     return this.serialize(async () => {
       if (!this.listener.running) return
       const addresses = this.readAddresses()
-      const hostName = await localHostName(this.exec)
+      const hostName = await localHostName(this.exec, this.host)
       if (addresses.join(',') === this.certAddresses.join(',') && hostName === this.hostName) return
       const key = await ensureKey(this.secrets, { exec: this.exec })
       const cert = await issueCertificate(key, { host: hostName === null ? null : `${hostName}.local`, addresses }, { exec: this.exec })

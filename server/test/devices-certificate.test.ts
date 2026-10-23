@@ -237,13 +237,13 @@ describe('host identity', () => {
       calls.push([cmd, args])
       return { stdout: 'example\n' }
     }
-    expect(await localHostName(exec)).toBe('example')
+    expect(await localHostName(exec, { platform: 'darwin' })).toBe('example')
     expect(calls).toEqual([['/usr/sbin/scutil', ['--get', 'LocalHostName']]])
   })
 
   it('returns null when scutil fails or prints something odd', async () => {
-    expect(await localHostName(failingExec)).toBeNull()
-    expect(await localHostName(async () => ({ stdout: 'bad name\n' }))).toBeNull()
+    expect(await localHostName(failingExec, { platform: 'darwin' })).toBeNull()
+    expect(await localHostName(async () => ({ stdout: 'bad name\n' }), { platform: 'darwin' })).toBeNull()
   })
 
   it('lists sorted, external IPv4 addresses only', () => {

@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import type { NetworkInterfaceInfo } from 'node:os'
-import { appAddresses, cachedPick, defaultRouteInterface, isPrivate, lanAddresses, pickAddress, type InterfaceMap } from '../src/devices/host.js'
+import type { HostDeps } from '../src/devices/host.js'
+import type { Exec } from '../src/secrets/keychain.js'
+import { appAddresses, cachedPick, computerName, defaultRouteInterface, isPrivate, lanAddresses, localHostName, pickAddress, type InterfaceMap } from '../src/devices/host.js'
 
 const v4 = (address: string, internal = false): NetworkInterfaceInfo => ({
   address, netmask: '255.255.255.0', family: 'IPv4', mac: '00:00:00:00:00:00', internal, cidr: null,
@@ -8,6 +10,8 @@ const v4 = (address: string, internal = false): NetworkInterfaceInfo => ({
 const v6 = (address: string): NetworkInterfaceInfo => ({
   address, netmask: 'ffff:ffff:ffff:ffff::', family: 'IPv6', mac: '00:00:00:00:00:00', internal: false, cidr: null, scopeid: 0,
 })
+
+const MAC: HostDeps = { platform: 'darwin' }
 
 const IFACES: InterfaceMap = {
   lo0: [v4('127.0.0.1', true), v6('::1')],
@@ -96,14 +100,46 @@ describe('defaultRouteInterface', () => {
     expect(await defaultRouteInterface(async (cmd, args) => {
       calls.push([cmd, args])
       return { stdout: out }
-    })).toBe('en0')
+    }, MAC)).toBe('en0')
     expect(calls).toEqual([['/sbin/route', ['-n', 'get', 'default']]])
   })
 
   it('is null with no default route or an odd answer', async () => {
-    expect(await defaultRouteInterface(async () => { throw new Error('not in table') })).toBeNull()
-    expect(await defaultRouteInterface(async () => ({ stdout: 'route: writing to routing socket: not in table\n' }))).toBeNull()
-    expect(await defaultRouteInterface(async () => ({ stdout: '  interface: en0;rm\n' }))).toBeNull()
+    expect(await defaultRouteInterface(async () => { throw new Error('not in table') }, MAC)).toBeNull()
+    expect(await defaultRouteInterface(async () => ({ stdout: 'route: writing to routing socket: not in table\n' }), MAC)).toBeNull()
+    expect(await defaultRouteInterface(async () => ({ stdout: '  interface: en0;rm\n' }), MAC)).toBeNull()
+  })
+})
+
+describe('the host on Windows', () => {
+  const ranNothing: Exec = async () => { throw new Error('nothing may run') }
+  const WIN_IFACES: InterfaceMap = { 'Loopback Pseudo-Interface 1': [v4('127.0.0.1', true)], 'Wi-Fi': [v4('192.0.2.10')], 'Ethernet 2': [v4('198.51.100.7')] }
+  const win = (deps: Partial<HostDeps> = {}): HostDeps => ({ platform: 'win32', hostname: () => 'EXAMPLE-PC', interfaces: () => WIN_IFACES, ...deps })
+
+  it('takes the host name as the mDNS name and the shown name, without running anything', async () => {
+    expect(await localHostName(ranNothing, win())).toBe('EXAMPLE-PC')
+    expect(await computerName(ranNothing, win())).toBe('EXAMPLE-PC')
+  })
+
+  it('has no mDNS name, and shows Fremkit, when the host name is not one plain label', async () => {
+    for (const name of ['', 'example.corp.example.com', 'bad name', 'x'.repeat(64), '-x']) {
+      expect(await localHostName(ranNothing, win({ hostname: () => name }))).toBeNull()
+      expect(await computerName(ranNothing, win({ hostname: () => name }))).toBe('Fremkit')
+    }
+    expect(await localHostName(ranNothing, win({ hostname: () => { throw new Error('no') } }))).toBeNull()
+  })
+
+  it('reads the default route through systeminformation, kept only when it names an interface', async () => {
+    expect(await defaultRouteInterface(ranNothing, win({ defaultInterface: async () => 'Wi-Fi' }))).toBe('Wi-Fi')
+    expect(await defaultRouteInterface(ranNothing, win({ defaultInterface: async () => 'Ethernet 9' }))).toBeNull()
+    expect(await defaultRouteInterface(ranNothing, win({ defaultInterface: async () => '' }))).toBeNull()
+    expect(await defaultRouteInterface(ranNothing, win({ defaultInterface: async () => '__proto__' }))).toBeNull()
+    expect(await defaultRouteInterface(ranNothing, win({ defaultInterface: async () => { throw new Error('no route') } }))).toBeNull()
+  })
+
+  it('picks the default route\'s address for the QR code', async () => {
+    const iface = await defaultRouteInterface(ranNothing, win({ defaultInterface: async () => 'Ethernet 2' }))
+    expect(pickAddress(['192.0.2.10', '198.51.100.7'], WIN_IFACES, iface)).toBe('198.51.100.7')
   })
 })
 

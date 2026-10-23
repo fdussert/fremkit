@@ -1,5 +1,7 @@
-import { networkInterfaces, type NetworkInterfaceInfo } from 'node:os'
+import { hostname, networkInterfaces, type NetworkInterfaceInfo } from 'node:os'
+import si from 'systeminformation'
 import { execFileAsync, type Exec } from '../secrets/keychain.js'
+import { targetPlatform } from '../platform/index.js'
 
 /** What a Bonjour local host name may contain; anything else is treated as unknown. */
 const HOST_NAME_RE = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$/
@@ -10,11 +12,35 @@ const INTERFACE_RE = /^[A-Za-z][A-Za-z0-9]{0,15}$/
 /** The interfaces and their addresses, as `os.networkInterfaces()` returns them. */
 export type InterfaceMap = NodeJS.Dict<NetworkInterfaceInfo[]>
 
+/** Where the host's identity comes from on Windows; the defaults are the real ones, tests inject. */
+export interface HostDeps {
+  platform?: NodeJS.Platform
+  /** `os.hostname()`. */
+  hostname?: () => string
+  /** `si.networkInterfaceDefault()`: the name of the interface the default route goes out of. */
+  defaultInterface?: () => Promise<string>
+  interfaces?: () => InterfaceMap
+}
+
+const onWindows = (deps: HostDeps): boolean => targetPlatform(deps.platform) === 'win32'
+
+/** Windows has no LocalHostName: its mDNS name is the host name, when it is one plain label. */
+function windowsHostName(deps: HostDeps): string | null {
+  try {
+    const name = (deps.hostname ?? hostname)().trim()
+    return HOST_NAME_RE.test(name) ? name : null
+  } catch {
+    return null
+  }
+}
+
 /**
- * The Mac's Bonjour name (`<name>.local` on the LAN), from `scutil --get LocalHostName`.
- * Null when the command fails or prints something that is not a plain host label.
+ * The Mac's Bonjour name (`<name>.local` on the LAN), from `scutil --get LocalHostName`; on
+ * Windows, the host name. Null when the command fails or prints something that is not a plain
+ * host label.
  */
-export async function localHostName(exec: Exec = execFileAsync): Promise<string | null> {
+export async function localHostName(exec: Exec = execFileAsync, deps: HostDeps = {}): Promise<string | null> {
+  if (onWindows(deps)) return windowsHostName(deps)
   try {
     const { stdout } = await exec('/usr/sbin/scutil', ['--get', 'LocalHostName'])
     const name = stdout.trim()
@@ -30,9 +56,10 @@ const SERVICE_NAME_MAX_BYTES = 63
 /**
  * The Mac's name as its owner sees it (`scutil --get ComputerName`), which is what the device app
  * lists. Trimmed and cut to 63 bytes on a character boundary; `Fremkit` when the command fails or
- * prints nothing.
+ * prints nothing. On Windows, the host name, as `localHostName` reads it.
  */
-export async function computerName(exec: Exec = execFileAsync): Promise<string> {
+export async function computerName(exec: Exec = execFileAsync, deps: HostDeps = {}): Promise<string> {
+  if (onWindows(deps)) return windowsHostName(deps) ?? 'Fremkit'
   try {
     const { stdout } = await exec('/usr/sbin/scutil', ['--get', 'ComputerName'])
     let name = stdout.trim()
@@ -82,8 +109,19 @@ export function lanAddresses(ifaces: InterfaceMap = networkInterfaces()): string
   return [...out].sort()
 }
 
-/** The interface the default route goes out of (`route -n get default`), or null. */
-export async function defaultRouteInterface(exec: Exec = execFileAsync): Promise<string | null> {
+/**
+ * The interface the default route goes out of (`route -n get default`), or null. On Windows,
+ * `systeminformation`'s answer, kept only when it names one of `os.networkInterfaces()`.
+ */
+export async function defaultRouteInterface(exec: Exec = execFileAsync, deps: HostDeps = {}): Promise<string | null> {
+  if (onWindows(deps)) {
+    try {
+      const name = await (deps.defaultInterface ?? (() => si.networkInterfaceDefault()))()
+      return typeof name === 'string' && name !== '' && Object.hasOwn((deps.interfaces ?? networkInterfaces)(), name) ? name : null
+    } catch {
+      return null
+    }
+  }
   try {
     const { stdout } = await exec('/sbin/route', ['-n', 'get', 'default'])
     const m = /^\s*interface:\s*(\S+)\s*$/m.exec(stdout)
@@ -143,8 +181,8 @@ export function appAddresses(addresses: string[], ifaces: InterfaceMap, defaultI
 }
 
 /** `appAddresses` on this Mac's own interfaces and default route. */
-export async function lanAppAddresses(addresses: string[], exec: Exec = execFileAsync): Promise<string[]> {
-  return appAddresses(addresses, networkInterfaces(), await defaultRouteInterface(exec))
+export async function lanAppAddresses(addresses: string[], exec: Exec = execFileAsync, deps: HostDeps = {}): Promise<string[]> {
+  return appAddresses(addresses, networkInterfaces(), await defaultRouteInterface(exec, deps))
 }
 
 /** How long `cachedPick` keeps an answer for the same addresses. */
@@ -175,6 +213,6 @@ export function cachedPick<T>(
 }
 
 /** `pickAddress` on this Mac's own interfaces and default route. */
-export async function preferredAddress(addresses: string[], exec: Exec = execFileAsync): Promise<string | null> {
-  return pickAddress(addresses, networkInterfaces(), await defaultRouteInterface(exec))
+export async function preferredAddress(addresses: string[], exec: Exec = execFileAsync, deps: HostDeps = {}): Promise<string | null> {
+  return pickAddress(addresses, networkInterfaces(), await defaultRouteInterface(exec, deps))
 }
