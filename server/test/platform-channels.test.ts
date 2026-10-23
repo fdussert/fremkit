@@ -40,7 +40,7 @@ describe('the channel platform table', () => {
     expect(channelAvailable('github:abc', 'win32')).toBe(true)
     expect(channelAvailable('dock', 'win32')).toBe(false)
     expect(channelAvailable('toString', 'win32')).toBe(true)
-    expect(Object.keys(CHANNEL_PLATFORMS).sort()).toEqual(['cleanshot', 'dock', 'disk-map', 'mutedeck', 'shortcuts', 'spotify'].sort())
+    expect(Object.keys(CHANNEL_PLATFORMS).sort()).toEqual(['cleanshot', 'dock', 'disk-map', 'mutedeck', 'shortcuts', 'spotify', 'brightness'].sort())
   })
 
   it('makes a widget unavailable when any channel it reads is', () => {
@@ -54,12 +54,12 @@ describe('the channel platform table', () => {
 describe('buildApp on a platform', () => {
   it('registers no provider the platform lacks, and lists the widgets that need one', async () => {
     const channels = await registered('win32')
-    for (const gone of ['spotify', 'mutedeck', 'cleanshot', 'dock', 'shortcuts', 'disk-map']) expect(channels, gone).not.toContain(gone)
+    for (const gone of ['spotify', 'mutedeck', 'cleanshot', 'dock', 'shortcuts', 'disk-map', 'brightness']) expect(channels, gone).not.toContain(gone)
     expect(channels).toContain('github:x')
     expect(channels).toContain('volume')
     const body = (await app!.inject({ url: '/api/widgets' })).json()
     expect(body.platform).toBe('win32')
-    expect(body.unavailable).toEqual(expect.arrayContaining(['notifications', 'shortcuts', 'spotify', 'disk-map']))
+    expect(body.unavailable).toEqual(expect.arrayContaining(['brightness', 'notifications', 'shortcuts', 'spotify', 'disk-map']))
     expect(body.unavailable).toEqual([...body.unavailable].sort())
     expect(body.unavailable).not.toContain('fremplay')
     expect(body.unavailable).not.toContain('volume')
@@ -67,7 +67,7 @@ describe('buildApp on a platform', () => {
 
   it('keeps every provider and lists nothing on darwin', async () => {
     const channels = await registered('darwin')
-    for (const here of ['spotify', 'mutedeck', 'cleanshot', 'dock', 'shortcuts', 'disk-map', 'github:x']) expect(channels, here).toContain(here)
+    for (const here of ['spotify', 'mutedeck', 'cleanshot', 'dock', 'shortcuts', 'disk-map', 'brightness', 'github:x']) expect(channels, here).toContain(here)
     const body = (await app!.inject({ url: '/api/widgets' })).json()
     expect(body.platform).toBe('darwin')
     expect(body.unavailable).toEqual([])
@@ -78,9 +78,17 @@ describe('buildApp on a platform', () => {
     expect((await app!.inject({ url: '/api/widgets' })).json().platform).toBe('darwin')
   })
 
+  it('lists no installed application where there is no Dock', async () => {
+    await registered('win32')
+    const res = (await app!.inject({ url: '/api/apps/installed' })).json()
+    expect(JSON.stringify(res)).not.toMatch(/Safari|\.app/)
+    expect(res.apps ?? res).toEqual(expect.any(Array))
+    expect(res.apps ?? res).toHaveLength(0)
+  })
+
   it('does not register the demo fakes of a channel the platform lacks', async () => {
     const channels = await registered('win32', { demo: true })
-    for (const gone of ['spotify', 'mutedeck', 'cleanshot', 'dock', 'shortcuts', 'disk-map']) expect(channels, gone).not.toContain(gone)
+    for (const gone of ['spotify', 'mutedeck', 'cleanshot', 'dock', 'shortcuts', 'disk-map', 'brightness']) expect(channels, gone).not.toContain(gone)
     expect(channels).toContain('volume')
   })
 })

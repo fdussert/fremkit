@@ -15,6 +15,8 @@ export const CHANNEL_PLATFORMS: Readonly<Record<string, readonly Platform[]>> = 
   cleanshot: ['darwin'],
   mutedeck: ['darwin'],
   'disk-map': ['darwin'],
+  // Windows brightness (DDC/CI) comes with the Windows helper.
+  brightness: ['darwin'],
 }
 
 /** A channel is judged by its family: `github:abc` is `github`. */

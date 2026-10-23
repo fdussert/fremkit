@@ -488,3 +488,51 @@ describe.skipIf(!hasOpenssl)('a paired device acts on its own screen only', () =
     }
   })
 })
+
+describe.skipIf(!hasOpenssl)('the unavailable list of a paired device on Windows', () => {
+  let dir: string
+  let app: FastifyInstance
+  let listener: RemoteListener
+  let port: number
+  const cookie = (t: string): Record<string, string> => ({ cookie: `fremkit_device=${t}` })
+
+  beforeAll(async () => {
+    dir = await mkdtemp(join(tmpdir(), 'fremkit-scope-win-'))
+    const widget = async (id: string, manifest: Record<string, unknown>) => {
+      await mkdir(join(dir, 'widgets', id), { recursive: true })
+      await writeFile(join(dir, 'widgets', id, 'manifest.json'), JSON.stringify({ id, name: id, version: '1.0.0', minSize: [4, 2], defaultSize: [8, 4], ...manifest }))
+      await writeFile(join(dir, 'widgets', id, 'index.html'), '<!doctype html><title>w</title>')
+    }
+    await widget('clock', {})
+    await widget('edgeonly', { subscriptions: ['spotify'] })
+    await widget('docky', { subscriptions: ['dock'] })
+    await widget('shortcuts', { commands: ['shortcuts'] })
+    await widget('service-status', { commands: ['service-status'], compact: { width: 4 } })
+    await mkdir(join(dir, 'data'), { recursive: true })
+    await writeFile(join(dir, 'data', 'fremkit.json'), JSON.stringify(RAW_CONFIG))
+    app = await buildApp({ accessToken: null, dataDir: join(dir, 'data'), widgetsDir: join(dir, 'widgets'), platform: 'win32' })
+    listener = new RemoteListener(app, 0)
+    const { key, cert } = await tlsMaterial()
+    await listener.start(key, cert)
+    port = listener.port
+    app.pairing.setRemoteHosts(() => new Set([`127.0.0.1:${port}`]))
+  })
+  afterAll(async () => {
+    await listener?.stop()
+    await app?.close()
+    await rm(dir, { recursive: true, force: true })
+  })
+
+  it('keeps the platform and limits unavailable to the widgets of its own screen', async () => {
+    const { token: tokenA } = await app.pairing.store.create('iPad A', { width: 1180, height: 820 }, 'tab-a')
+    const { token: tokenB } = await app.pairing.store.create('iPad B', { width: 1180, height: 820 }, 'tab-b')
+    const a = JSON.parse((await remote(port, { path: '/api/widgets', headers: cookie(tokenA) })).body)
+    expect(a.platform).toBe('win32')
+    expect(a.unavailable).toEqual([])
+    const b = JSON.parse((await remote(port, { path: '/api/widgets', headers: cookie(tokenB) })).body)
+    expect(b.platform).toBe('win32')
+    expect(b.unavailable).toEqual(['docky', 'shortcuts'])
+    // This Mac sees the whole list, edgeonly (on no paired screen) included.
+    expect((await app.inject({ url: '/api/widgets' })).json().unavailable).toEqual(['docky', 'edgeonly', 'shortcuts'])
+  })
+})

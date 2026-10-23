@@ -246,12 +246,15 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   // default config already has the image it names.
   await seedDefaultBackground(opts.dataDir, opts.wallpaperPath)
 
+  const platform = targetPlatform(opts.platform)
   const dock = new DockState({ iconsDir: join(opts.dataDir, 'icons') })
   await dock.loadIcons()
   const demo = opts.demo === true
   // A demo lists no installed application and extracts no icon from one: both read the Mac.
-  const installedApps = demo ? new InstalledApps({ roots: [] }) : new InstalledApps()
-  const appIcons = demo ? undefined : new AppIcons({ dir: join(opts.dataDir, 'icons', 'apps'), apps: installedApps })
+  // Nor does a platform with no Dock: the default roots are the Mac's application folders.
+  const noApps = demo || !channelAvailable('dock', platform)
+  const installedApps = noApps ? new InstalledApps({ roots: [] }) : new InstalledApps()
+  const appIcons = noApps ? undefined : new AppIcons({ dir: join(opts.dataDir, 'icons', 'apps'), apps: installedApps })
   if (demo) {
     // The helper uploads the Dock's icons; a demo has no helper, so it draws its own.
     for (const app of DEMO_APPS) await dock.setIcon(app.bundleId, demoIcon(app.hue, app.glyph))
@@ -292,9 +295,12 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     const config = store.get()
     return instanceInScope(config, commandScope(ctx, screenOfDevice), instanceId) ? findInstance(config, instanceId) : null
   }
-  const platform = targetPlatform(opts.platform)
   /** Registers a provider unless its channel does not run on this platform. */
-  const registerHere = (p: Provider): void => { if (channelAvailable(p.channel, platform)) registry.register(p) }
+  const skipped: string[] = []
+  const registerHere = (p: Provider): void => {
+    if (channelAvailable(p.channel, platform)) registry.register(p)
+    else skipped.push(p.channel)
+  }
   /** Every real provider: the Mac, the accounts, the helper's reports. Never called in demo mode. */
   function registerRealProviders(): void {
     for (const p of opts.providers ?? []) registerHere(p)
@@ -331,6 +337,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   } else {
     registerRealProviders()
   }
+  if (skipped.length > 0) app.log.debug({ platform, channels: skipped }, 'channels not registered on this platform')
   // The theme in force, day or night: see themes/schedule.ts. Read from the config alone, so a
   // demo runs the real one.
   registry.register(createThemeProvider(() => store.get()))
