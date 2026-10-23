@@ -23,6 +23,13 @@ describe('openUrl', () => {
     await openUrl('https://example.com/', { platform: 'darwin', exec, timeout: 5000 })
     expect(exec).toHaveBeenCalledWith('/usr/bin/open', ['https://example.com/'], { timeout: 5000 })
   })
+  it('opens the parsed href, the string that was checked', async () => {
+    const exec = vi.fn(async () => {})
+    await openUrl(' https://example.com/\n', { platform: 'win32', exec })
+    await openUrl(' https://example.com/\n', { platform: 'darwin', exec })
+    expect((exec.mock.calls[0] as unknown as [string, string[]])[1][1]).toBe('https://example.com/')
+    expect((exec.mock.calls[1] as unknown as [string, string[]])[1]).toEqual(['https://example.com/'])
+  })
   it('accepts a deep-link scheme only when the caller names it', async () => {
     const exec = vi.fn(async () => {})
     await openUrl('codex://threads/abc', { platform: 'darwin', exec, schemes: ['codex:'] })

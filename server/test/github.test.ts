@@ -1,5 +1,5 @@
-import { windowsTool } from '../src/platform/index.js'
 import { describe, expect, it } from 'vitest'
+import { windowsTool } from '../src/platform/index.js'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import {

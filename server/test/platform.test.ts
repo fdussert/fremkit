@@ -15,6 +15,8 @@ describe('systemRoot', () => {
     expect(systemRoot({ SystemRoot: 'relative\\x' })).toBe('C:\\Windows')
     expect(systemRoot({ SystemRoot: '\\\\host\\share' })).toBe('C:\\Windows')
     expect(systemRoot({})).toBe('C:\\Windows')
+    expect(systemRoot({ SystemRoot: 'D:\\Win\\' })).toBe('D:\\Win')
+    expect(windowsTool('wsl', { SystemRoot: 'C:\\' })).toBe('C:\\System32\\wsl.exe')
   })
 })
 
@@ -34,6 +36,10 @@ describe('safePath on win32', () => {
   const env = { SystemRoot: 'C:\\Windows' }
   it('puts the system folders first, dedupes case-insensitively and drops relative entries', () => {
     expect(safePath('C:\\Tools;.;;C:\\Windows\\system32', 'win32', env)).toBe(
+      'C:\\Windows\\System32;C:\\Windows;C:\\Windows\\System32\\Wbem;C:\\Windows\\System32\\WindowsPowerShell\\v1.0;C:\\Tools')
+  })
+  it('treats a trailing backslash and surrounding quotes as the same folder', () => {
+    expect(safePath('C:\\Windows\\System32\\;"C:\\Tools";"C:\\Windows\\"', 'win32', env)).toBe(
       'C:\\Windows\\System32;C:\\Windows;C:\\Windows\\System32\\Wbem;C:\\Windows\\System32\\WindowsPowerShell\\v1.0;C:\\Tools')
   })
   it('follows the system root', () => {

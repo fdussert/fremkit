@@ -30,8 +30,8 @@ export async function openUrl(href: string, deps: OpenUrlDeps = {}): Promise<voi
   const exec = deps.exec ?? defaultExec
   const options = deps.timeout === undefined ? undefined : { timeout: deps.timeout }
   if (targetPlatform(deps.platform) === 'win32') {
-    await exec(windowsTool('rundll32'), ['url.dll,FileProtocolHandler', href], options)
+    await exec(windowsTool('rundll32'), ['url.dll,FileProtocolHandler', parsed.href], options)
   } else {
-    await exec('/usr/bin/open', [href], options)
+    await exec('/usr/bin/open', [parsed.href], options)
   }
 }
