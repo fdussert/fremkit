@@ -40,8 +40,8 @@ function config(): Config {
 const makeStore = () => createAdminStore({
   api: {
     getConfig: async () => config(), getStatus: async () => ({ degraded: false }),
-    getWidgets: async () => ({ widgets: {}, errors: [], sources: {}, asks: {}, sdk: 1 }),
-    putConfig: async (c) => c, rescan: async () => ({ widgets: {}, errors: [], sources: {}, asks: {}, sdk: 1 }),
+    getWidgets: async () => ({ widgets: {}, errors: [], sources: {}, asks: {}, sdk: 1, platform: 'darwin', unavailable: [] }),
+    putConfig: async (c) => c, rescan: async () => ({ widgets: {}, errors: [], sources: {}, asks: {}, sdk: 1, platform: 'darwin', unavailable: [] }),
   },
   subscribeConfig: () => () => {},
   debounceMs: 0,

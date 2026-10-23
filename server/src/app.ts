@@ -30,6 +30,8 @@ import { installedThemesDir } from './themes/installed.js'
 import { themeRoutes } from './themes/routes.js'
 import { createThemeProvider } from './themes/schedule.js'
 import { widgetRoutes } from './widgets/routes.js'
+import { targetPlatform } from './platform/index.js'
+import { channelAvailable } from './platform/channels.js'
 import { ProviderRegistry } from './providers/registry.js'
 import { publishHealth } from './providers/health.js'
 import type { Provider } from './providers/types.js'
@@ -136,6 +138,11 @@ export interface AppOptions {
   bridgePath?: string
   /** Only ever passed by the tests: the built-ins allowed WebRTC's `local` level (`widgets/webrtc.ts`). */
   webrtcLocalBuiltins?: ReadonlySet<string>
+  /**
+   * The platform whose channel table applies; `process.platform` unless a test says otherwise.
+   * Resolved through `targetPlatform`, so anything but `win32` is `darwin`.
+   */
+  platform?: NodeJS.Platform
   /** The wallpaper copied into a fresh background library. Defaults like `bridgePath`. */
   wallpaperPath?: string
   providers?: Provider[]
@@ -285,15 +292,18 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     const config = store.get()
     return instanceInScope(config, commandScope(ctx, screenOfDevice), instanceId) ? findInstance(config, instanceId) : null
   }
+  const platform = targetPlatform(opts.platform)
+  /** Registers a provider unless its channel does not run on this platform. */
+  const registerHere = (p: Provider): void => { if (channelAvailable(p.channel, platform)) registry.register(p) }
   /** Every real provider: the Mac, the accounts, the helper's reports. Never called in demo mode. */
   function registerRealProviders(): void {
-    for (const p of opts.providers ?? []) registry.register(p)
+    for (const p of opts.providers ?? []) registerHere(p)
     // Consent lives in the config store, so this provider is registered beside the Claude providers.
-    registry.register(createSystemProvider({ macmonTemperatureEnabled: () => store.get().privacy.macmonTemperature }))
-    registry.register(createClaudeSessionsProvider(tracker))
-    registry.register(createClaudeUsageProvider(usage))
-    registry.register(createClaudeIdentityProvider())
-    registry.register(createClaudeAccountProvider({
+    registerHere(createSystemProvider({ macmonTemperatureEnabled: () => store.get().privacy.macmonTemperature }))
+    registerHere(createClaudeSessionsProvider(tracker))
+    registerHere(createClaudeUsageProvider(usage))
+    registerHere(createClaudeIdentityProvider())
+    registerHere(createClaudeAccountProvider({
       filePath: join(opts.dataDir, 'claude-account.json'),
       enabled: () => store.get().privacy.claudeAccountUsage,
     }))
@@ -302,22 +312,22 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
       accountEnabled: () => store.get().privacy.codexAccount,
       historySources: () => store.get().privacy.codexHistorySources,
     }, { isLocalChat: createLocalChatValidator() })
-    registry.register(codex)
-    registry.register(codex.sessions)
-    registry.register(createDockProvider(dock))
+    registerHere(codex)
+    registerHere(codex.sessions)
+    registerHere(createDockProvider(dock))
     // Registered here, not in providers/index.ts, because its last scan is saved under the data dir.
-    registry.register(createDiskMapProvider({ dataDir: opts.dataDir }))
+    registerHere(createDiskMapProvider({ dataDir: opts.dataDir }))
     // Registered here, not in providers/index.ts, because that is where the config store lives.
-    registry.register(createShortcutsProvider(undefined, instances))
-    registry.register(createServiceStatusProvider({}, instances))
+    registerHere(createShortcutsProvider(undefined, instances))
+    registerHere(createServiceStatusProvider({}, instances))
     // A paired device may set only its own screen's brightness: see mayCommandBrightness. Read
     // at command time, so a device moved to another screen (or unpaired) is judged as it is now.
-    registry.register(createBrightnessProvider(brightness, brightnessChanged, (id) => deviceService.deviceScreenOf(id)))
+    registerHere(createBrightnessProvider(brightness, brightnessChanged, (id) => deviceService.deviceScreenOf(id)))
   }
   if (demo) {
     // The demo has its own `brightness` channel; the service above still serves the routes and
     // the paired devices.
-    for (const p of createDemoProviders({ config: () => store.get(), instances })) registry.register(p)
+    for (const p of createDemoProviders({ config: () => store.get(), instances })) registerHere(p)
   } else {
     registerRealProviders()
   }
@@ -468,6 +478,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     port: opts.port,
     dev: process.env.FREMKIT_DEV === '1',
     screenOfDevice,
+    platform,
     ...(opts.webrtcLocalBuiltins ? { webrtcLocalBuiltins: opts.webrtcLocalBuiltins } : {}),
   })
   await app.register(themeRoutes, { catalog: themes, config: () => store.get() })

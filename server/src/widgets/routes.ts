@@ -11,6 +11,8 @@ import { tr } from '../i18n.js'
 import { isLocalRequest, isRemoteRequest } from '../net/remote.js'
 import { requestScope, widgetInScope, type ScreenOfDevice } from '../devices/scope.js'
 import { isIP } from 'node:net'
+import type { Platform } from '../platform/index.js'
+import { widgetAvailable } from '../platform/channels.js'
 import { hostAddresses, webrtcLevel, type WebRtcLevel } from './webrtc.js'
 
 
@@ -109,6 +111,8 @@ export async function widgetRoutes(
     screenOfDevice?: ScreenOfDevice
     /** The built-ins allowed WebRTC's `local` level; `WEBRTC_LOCAL_BUILTINS` unless a test says otherwise. */
     webrtcLocalBuiltins?: ReadonlySet<string>
+    /** The platform the catalogue is judged against. */
+    platform: Platform
   },
 ): Promise<void> {
   const bridge = await readFile(opts.bridgePath, 'utf8')
@@ -127,6 +131,8 @@ export async function widgetRoutes(
     asks: Record<string, Permissions>
     errors: unknown[]
     sdk: number
+    platform: Platform
+    unavailable: string[]
   } => ({
     // What each widget may do, not what it asks for: an installed widget's manifest is narrowed
     // to the permissions the user accepted, so the bridge host relays nothing beyond them.
@@ -146,6 +152,10 @@ export async function widgetRoutes(
     asks: Object.fromEntries([...opts.catalog.entries].map(([id, e]) => [id, permissionsOf(e.manifest)])),
     errors: opts.catalog.errors,
     sdk: SDK_VERSION,
+    // Widgets reading a channel this platform does not run: the editor greys them out and the
+    // dashboard draws a placeholder. Judged on every answer, since a rescan changes the catalogue.
+    platform: opts.platform,
+    unavailable: [...opts.catalog.entries].filter(([, e]) => !widgetAvailable(e.manifest, opts.platform)).map(([id]) => id).sort(),
   })
 
   app.get('/api/widgets', async (req) => {
@@ -165,6 +175,7 @@ export async function widgetRoutes(
       sources: Object.fromEntries(Object.entries(all.sources).filter(([id]) => shown(id))),
       asks: {},
       errors: [],
+      unavailable: all.unavailable.filter(shown),
     }
   })
 

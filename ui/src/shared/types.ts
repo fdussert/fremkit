@@ -639,6 +639,10 @@ export interface MarketplaceResponse {
 }
 
 export interface WidgetsResponse {
+  /** The platform the server runs on; decides which channels, hence which widgets, exist. */
+  platform: 'darwin' | 'win32'
+  /** Sorted ids of the widgets that read a channel this platform does not run. */
+  unavailable: string[]
   /** Narrowed to what was granted; this is what the bridge enforces and the dashboard reads. */
   widgets: Record<string, WidgetManifest>; errors: { id: string; error: string }[]
   /** One entry per widget in `widgets`; a fact about the folder, not a claim of the manifest. */

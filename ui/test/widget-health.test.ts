@@ -234,8 +234,8 @@ describe('fixing from the editor', () => {
     const store = createAdminStore({
       api: {
         getConfig: async () => input().config, getStatus: async () => ({ degraded: false }),
-        getWidgets: async () => ({ widgets: { clock: base, gh }, errors: [], sources: {}, asks: {}, sdk: 1 }),
-        putConfig: async (c) => c, rescan: async () => ({ widgets: { clock: base, gh }, errors: [], sources: {}, asks: {}, sdk: 1 }),
+        getWidgets: async () => ({ widgets: { clock: base, gh }, errors: [], sources: {}, asks: {}, sdk: 1, platform: 'darwin', unavailable: [] }),
+        putConfig: async (c) => c, rescan: async () => ({ widgets: { clock: base, gh }, errors: [], sources: {}, asks: {}, sdk: 1, platform: 'darwin', unavailable: [] }),
       },
       subscribeConfig: () => () => {},
       debounceMs: 0,
