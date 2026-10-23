@@ -1,4 +1,4 @@
-import { createHash, createPrivateKey, createPublicKey } from 'node:crypto'
+import { createHash, createPrivateKey, createPublicKey, generateKeyPairSync } from 'node:crypto'
 import { chmod, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { isIP } from 'node:net'
 import { tmpdir } from 'node:os'
@@ -6,6 +6,7 @@ import { join } from 'node:path'
 import { execFileAsync, type Exec } from '../secrets/keychain.js'
 import type { SecretStore } from '../secrets/types.js'
 import { tr } from '../i18n.js'
+import { DNS_NAME_RE, selfSignedCertificate } from './x509.js'
 
 /**
  * Where the pairing listener's private key lives in the secrets store: base64 of its PKCS8 DER, on
@@ -25,10 +26,14 @@ export const DEFAULT_OPENSSL = process.platform === 'darwin' ? '/usr/bin/openssl
 export interface OpensslOptions {
   exec?: Exec
   openssl?: string
+  /**
+   * Which way the key and certificate are made: on `win32`, in process (`generateKeyPairSync` and
+   * `x509.ts`), since Windows has no openssl; everywhere else, through openssl as on the Mac.
+   */
+  platform?: NodeJS.Platform
 }
 
-/** One DNS name made of plain labels: it is written into an openssl config file. */
-const DNS_NAME_RE = /^(?=.{1,253}$)[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*$/
+const inProcess = (opts: OpensslOptions): boolean => (opts.platform ?? process.platform) === 'win32'
 
 /**
  * Describes a failed openssl call by its exit status only. Node puts the command line in
@@ -44,6 +49,10 @@ function describe(err: unknown): string {
 }
 
 async function generateKey(opts: OpensslOptions): Promise<string> {
+  if (inProcess(opts)) {
+    const { privateKey } = generateKeyPairSync('ec', { namedCurve: 'prime256v1' })
+    return privateKey.export({ type: 'pkcs8', format: 'pem' }).toString()
+  }
   const exec = opts.exec ?? execFileAsync
   const openssl = opts.openssl ?? DEFAULT_OPENSSL
   let stdout: string
@@ -148,16 +157,19 @@ export async function resetKey(secrets: SecretStore, opts: OpensslOptions = {}):
   return storeNewKey(secrets, opts)
 }
 
-function configFor(names: { host: string | null; addresses: string[] }): string {
-  const san: string[] = []
-  if (names.host !== null) {
-    if (!DNS_NAME_RE.test(names.host)) throw new Error('invalid certificate host name')
-    san.push(`DNS:${names.host}`)
-  }
+/** The names checked before either way of issuing sees them; a host or address that fails throws. */
+function checkNames(names: { host: string | null; addresses: string[] }): { dns: string[]; ips: string[] } {
+  if (names.host !== null && !DNS_NAME_RE.test(names.host)) throw new Error('invalid certificate host name')
   for (const address of names.addresses) {
     if (isIP(address) === 0) throw new Error('invalid certificate address')
-    san.push(`IP:${address}`)
   }
+  return { dns: names.host === null ? [] : [names.host], ips: names.addresses }
+}
+
+/** The openssl config: the names are checked first, as it is a file openssl parses. */
+function configFor(names: { host: string | null; addresses: string[] }): string {
+  const checked = checkNames(names)
+  const san = [...checked.dns.map((d) => `DNS:${d}`), ...checked.ips.map((ip) => `IP:${ip}`)]
   return [
     '[req]',
     'distinguished_name = dn',
@@ -180,13 +192,23 @@ function configFor(names: { host: string | null; addresses: string[] }): string 
  * name (used verbatim, e.g. `<LocalHostName>.local`) and `addresses` as IP SANs.
  *
  * LibreSSL has no `-addext`, so the SANs go through a config file. It and the key are written
- * to a private temporary directory that is removed whatever happens.
+ * to a private temporary directory that is removed whatever happens. On Windows the certificate is
+ * written in process (`x509.ts`) and the key never leaves memory.
  */
 export async function issueCertificate(
   keyPem: string,
   names: { host: string | null; addresses: string[] },
   opts: OpensslOptions = {},
 ): Promise<string> {
+  if (inProcess(opts)) {
+    const checked = checkNames(names)
+    try {
+      return selfSignedCertificate(createPrivateKey(keyPem), checked, CERT_DAYS)
+    } catch {
+      // The key is in what crypto may say about it: only the fact leaves this module.
+      throw new Error(`${tr(undefined, 'devices.certFailed')} (unusable key)`)
+    }
+  }
   const exec = opts.exec ?? execFileAsync
   const openssl = opts.openssl ?? DEFAULT_OPENSSL
   const config = configFor(names)
