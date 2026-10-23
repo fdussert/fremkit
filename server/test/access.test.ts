@@ -11,6 +11,7 @@ import {
 import { ACCESS_TOKEN_ENV, accessTokenPath, removeAccessToken, resolveAccessToken, supportDirectory, writeAccessToken } from '../src/http/access-file.js'
 import { ACCESS_CHALLENGE } from '../src/http/access-routes.js'
 import { serializeRequest } from '../src/http/logging.js'
+import { expectMode } from './helpers/modes.js'
 
 const TOKEN = generateToken()
 const PORT = 4301
@@ -335,12 +336,12 @@ describe('the token file', () => {
   it('is written mode 0600 and replaced whole', async () => {
     const path = join(dir, 'support', `access-${PORT}.token`)
     await writeAccessToken(path, TOKEN)
-    expect((await stat(path)).mode & 0o777).toBe(0o600)
+    await expectMode(path, 0o600)
     expect((await readFile(path, 'utf8')).trim()).toBe(TOKEN)
     const next = generateToken()
     await writeAccessToken(path, next)
     expect((await readFile(path, 'utf8')).trim()).toBe(next)
-    expect((await stat(path)).mode & 0o777).toBe(0o600)
+    await expectMode(path, 0o600)
     // No temporary file left behind.
     expect(await readdir(join(dir, 'support'))).toEqual([`access-${PORT}.token`])
   })
@@ -355,9 +356,10 @@ describe('the token file', () => {
     expect(() => removeAccessToken(path, TOKEN)).not.toThrow()
   })
   it('lives in the helper\'s support folder, keyed by port', () => {
-    expect(accessTokenPath(4242, {}, '/Users/u')).toBe('/Users/u/Library/Application Support/Fremkit/access-4242.token')
+    const support = join('/Users/u', 'Library', 'Application Support', 'Fremkit')
+    expect(accessTokenPath(4242, {}, '/Users/u')).toBe(join(support, 'access-4242.token'))
     expect(supportDirectory({ FREMKIT_SUPPORT_DIR: '/tmp/s' }, '/Users/u')).toBe('/tmp/s')
-    expect(supportDirectory({ FREMKIT_SUPPORT_DIR: 'relative' }, '/Users/u')).toBe('/Users/u/Library/Application Support/Fremkit')
+    expect(supportDirectory({ FREMKIT_SUPPORT_DIR: 'relative' }, '/Users/u')).toBe(support)
   })
   it('takes the launcher\'s secret and removes it from the environment', () => {
     const env: NodeJS.ProcessEnv = { [ACCESS_TOKEN_ENV]: TOKEN }

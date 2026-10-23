@@ -40,7 +40,9 @@ describe('seedDefaultBackground', () => {
 
   it('does not refuse to start when it cannot copy', async () => {
     // A data dir that cannot be written, or a checkout with no brand folder.
-    expect(await seedDefaultBackground('/dev/null/nope')).toBe(false)
+    const file = join(dir, 'a-file')
+    await writeFile(file, 'x')
+    expect(await seedDefaultBackground(join(file, 'nope'))).toBe(false)
   })
 })
 

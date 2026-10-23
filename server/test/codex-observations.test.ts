@@ -52,6 +52,9 @@ afterEach(async () => {
   while (dirs.length) await rm(dirs.pop()!, { recursive: true, force: true })
 })
 
+// The Codex readers shell out to /usr/bin/sqlite3, which has no Windows counterpart yet (Codex providers task).
+const itMac = it.skipIf(process.platform === 'win32')
+
 describe('Codex turn observations', () => {
   it('tracks explicit start and per-turn model without exposing prompt/tool content', () => {
     const turn = parseTurnRecords(started + context + progress)
@@ -163,7 +166,7 @@ async function fixture() {
 }
 
 describe('Selected Codex local session reader', () => {
-  it('joins selected parent and direct child, sanitizes project paths and keeps unrelated threads private', async () => {
+  itMac('joins selected parent and direct child, sanitizes project paths and keeps unrelated threads private', async () => {
     const f = await fixture()
     const snapshot = await createSessionReader({ codexHome: f.home })([A], now)
     expect(snapshot.sessions).toHaveLength(1)
@@ -188,7 +191,7 @@ describe('Selected Codex local session reader', () => {
     expect(snapshot.truncated).toBe(false)
   })
 
-  it('preserves a start through incremental updates and split UTF-8 JSON records', async () => {
+  itMac('preserves a start through incremental updates and split UTF-8 JSON records', async () => {
     const f = await fixture()
     const read = createSessionReader({ codexHome: f.home })
     await read([A], now)
@@ -206,7 +209,7 @@ describe('Selected Codex local session reader', () => {
     })
   })
 
-  it('recovers after an oversized record arrives in chunks before a completion event', async () => {
+  itMac('recovers after an oversized record arrives in chunks before a completion event', async () => {
     const f = await fixture()
     const read = createSessionReader({ codexHome: f.home })
     await read([A], now)
@@ -220,7 +223,7 @@ describe('Selected Codex local session reader', () => {
     expect(finished.sessions[0]).toMatchObject({ state: 'done', finishedAt: now })
   })
 
-  it('retains a turn start beyond a large recent output on initial observation', async () => {
+  itMac('retains a turn start beyond a large recent output on initial observation', async () => {
     const f = await fixture()
     await appendFile(
       f.parent,
@@ -233,7 +236,7 @@ describe('Selected Codex local session reader', () => {
     expect(snapshot.sessions[0]).toMatchObject({ state: 'working', startedAt: now - 120000 })
   })
 
-  it('refuses a rollout belonging to another ID and a path outside sessions', async () => {
+  itMac('refuses a rollout belonging to another ID and a path outside sessions', async () => {
     const f = await fixture()
     await writeFile(f.parent, line('session_meta', { id: C }) + started + progress)
     let snapshot = await createSessionReader({ codexHome: f.home })([A], now)
@@ -248,7 +251,7 @@ describe('Selected Codex local session reader', () => {
     expect(snapshot.sessions[0].state).toBe('unknown')
   })
 
-  it('prioritizes each selected parent and reports exact counts when detail rows are bounded', async () => {
+  itMac('prioritizes each selected parent and reports exact counts when detail rows are bounded', async () => {
     const f = await fixture()
     const inserts = Array.from({ length: 320 }, (_, i) => {
       const id = '10000000-0000-4000-8000-' + String(i).padStart(12, '0')
@@ -271,7 +274,7 @@ describe('Selected Codex local session reader', () => {
     expect(snapshot.sessions[1].subagents).toHaveLength(297)
   })
 
-  it('does not create a missing database or query invalid IDs', async () => {
+  itMac('does not create a missing database or query invalid IDs', async () => {
     const f = await fixture()
     const missing = join(f.home, 'missing')
     await expect(createSessionReader({ codexHome: missing })([A], now)).rejects.toThrow()

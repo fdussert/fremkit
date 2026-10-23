@@ -216,8 +216,8 @@ describe('log tail', () => {
   })
 
   it('finds the log where the helper writes it', () => {
-    expect(helperLogPath({}, '/Users/example')).toBe('/Users/example/Library/Logs/Fremkit/server.log')
-    expect(helperLogPath({ FREMKIT_SUPPORT_DIR: '/tmp/bench' }, '/Users/example')).toBe('/tmp/bench/Logs/server.log')
+    expect(helperLogPath({}, '/Users/example')).toBe(join('/Users/example', 'Library', 'Logs', 'Fremkit', 'server.log'))
+    expect(helperLogPath({ FREMKIT_SUPPORT_DIR: '/tmp/bench' }, '/Users/example')).toBe(join('/tmp/bench', 'Logs', 'server.log'))
   })
 })
 

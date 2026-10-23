@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { LOCK_WINDOW_MS, MAX_EXHAUSTED_REQUESTS, PairingLock } from '../src/companion/lock.js'
 import { tr } from '../src/i18n.js'
+import { expectMode } from './helpers/modes.js'
 
 let dir: string
 let file: string
@@ -24,7 +25,7 @@ describe('PairingLock', () => {
     expect(await lock.noteExhausted(2_000)).toBe(true)
     expect(lock.locked).toBe(true)
     expect(JSON.parse(await readFile(file, 'utf8'))).toEqual({ locked: true, since: 2_000 })
-    expect((await stat(file)).mode & 0o777).toBe(0o600)
+    await expectMode(file, 0o600)
   })
 
   it('counts only the last day', async () => {

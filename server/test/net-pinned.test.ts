@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import type { LookupAddress } from 'node:dns'
 import { guardedLookup, PrivateAddressError } from '../src/net/pinned.js'
+import { hasOpenssl } from './helpers/remote.js'
 
 /** A resolver that answers `addresses`, for every name. */
 const answering = (addresses: LookupAddress[]) =>
@@ -37,7 +38,8 @@ describe('loading undici', () => {
   // has long since used fetch by the time this file runs. And HTTP/2 over TLS, because that is
   // where it broke — GitHub, Azure DevOps and the Claude API answer h2; an HTTP/1.1 test passes
   // on the broken code too.
-  it('leaves the global fetch decoding gzip answers, as at server start', async () => {
+  // Needs the app's openssl (/usr/bin/openssl on the Mac); the Windows certificate path is a later task.
+  it.skipIf(!hasOpenssl)('leaves the global fetch decoding gzip answers, as at server start', async () => {
     const { createSecureServer } = await import('node:http2')
     const { gzipSync } = await import('node:zlib')
     const { generateKeyPairSync } = await import('node:crypto')

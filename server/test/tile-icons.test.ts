@@ -8,6 +8,7 @@ import {
   MAX_TILE_ICON_BODY_BYTES, MAX_TILE_ICON_BYTES, checkTileIcon, svgHasActiveContent, tileIconContentType,
 } from '../src/tile-icons/routes.js'
 import { tr } from '../src/i18n.js'
+import { expectMode } from './helpers/modes.js'
 
 const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3])
 const JPEG = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3])
@@ -107,7 +108,7 @@ describe('POST /api/tile-icons', () => {
     expect(await readdir(iconsDir())).toEqual([name])
     expect(await readFile(join(iconsDir(), name), 'utf8')).toBe(SVG)
     // The data folder is 0700 and its files 0600, whatever the process umask.
-    expect((await stat(join(iconsDir(), name))).mode & 0o777).toBe(0o600)
+    await expectMode(join(iconsDir(), name), 0o600)
   })
   it('refuses a missing or empty payload', async () => {
     expect((await app.inject({ method: 'POST', url: '/api/tile-icons', payload: { name: 'x.svg' } })).statusCode).toBe(400)

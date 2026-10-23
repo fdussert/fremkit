@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { FileSecretStore } from '../src/secrets/file.js'
 import { KeychainSecretStore, accountsInDump, instanceService, parsePassword, passwordArgument, runSecurity } from '../src/secrets/keychain.js'
 import { assertSecretKey, createSecretStore, defaultSecretsBackend } from '../src/secrets/index.js'
+import { expectMode } from './helpers/modes.js'
 
 const dir = () => mkdtemp(join(tmpdir(), 'fremkit-secrets-'))
 
@@ -33,7 +34,7 @@ describe('FileSecretStore', () => {
     const store = new FileSecretStore(path)
     await store.set('ado-x1z9/pat', 'token-1')
     expect(await store.get('ado-x1z9/pat')).toBe('token-1')
-    expect((await stat(path)).mode & 0o777).toBe(0o600)
+    await expectMode(path, 0o600)
   })
 
   it('keeps the other keys when one is written, and writes valid JSON', async () => {

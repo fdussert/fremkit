@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { mkdtemp, mkdir, writeFile, appendFile, utimes, symlink, open } from 'node:fs/promises'
+import { symlinkOrSkip } from './helpers/symlink.js'
+import { mkdtemp, mkdir, writeFile, appendFile, utimes, open } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { scanTranscriptsToday, createTranscriptScanner } from '../src/claude/transcripts.js'
@@ -99,9 +100,9 @@ describe('createTranscriptScanner', () => {
     expect(r2.hourly[14]).toBe(153)
   })
 
-  it('does not hang on a symlinked directory loop', async () => {
+  it('does not hang on a symlinked directory loop', async (ctx) => {
     await transcript('p1/a.jsonl', [line('m1', '2026-09-16T10:00:00Z', { input_tokens: 10, output_tokens: 5 })])
-    await symlink(join(dir, 'p1'), join(dir, 'p1', 'loop'), 'dir')
+    await symlinkOrSkip(ctx, join(dir, 'p1'), join(dir, 'p1', 'loop'), 'dir')
     const r = await createTranscriptScanner(dir).scanToday(now)
     expect(r).toMatchObject({ input: 10, output: 5, messages: 1, sessions: 1 })
   })

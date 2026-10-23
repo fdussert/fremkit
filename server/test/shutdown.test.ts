@@ -61,7 +61,8 @@ describe('shutdown', () => {
     expect(t.order.filter((x) => x === 'listeners')).toHaveLength(1)
   })
 
-  it('a process whose main thread is held after SIGTERM frees its port at once and dies by the watchdog', async () => {
+  // POSIX signals: Windows has no SIGTERM to deliver, kill() ends the process outright.
+  it.skipIf(process.platform === 'win32')('a process whose main thread is held after SIGTERM frees its port at once and dies by the watchdog', async () => {
     const child = spawn(process.execPath, ['--import', 'tsx', join(__dirname, 'fixtures', 'shutdown-blocked.ts')], {
       cwd: join(__dirname, '..'),
       stdio: ['ignore', 'pipe', 'inherit'],

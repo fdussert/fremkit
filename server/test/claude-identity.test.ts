@@ -50,7 +50,7 @@ describe('Claude identity', () => {
       if (candidate !== '/opt/homebrew/bin/claude') throw new Error('missing')
     })
     expect(path).toBe('/opt/homebrew/bin/claude')
-    expect(seen[0]).toMatch(/\/\.local\/bin\/claude$/)
+    expect(seen[0]).toMatch(/[\\/]\.local[\\/]bin[\\/]claude$/)
     expect(seen).toHaveLength(2)
   })
   it('strips token and loader environment variables', () => {

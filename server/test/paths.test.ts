@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { access } from 'node:fs/promises'
+import { join } from 'node:path'
 import { shippedPaths } from '../src/paths.js'
 
 describe('shippedPaths', () => {
@@ -9,7 +10,7 @@ describe('shippedPaths', () => {
     for (const path of [paths.widgetsDir, paths.themesDir, paths.bridgePath, paths.wallpaperDir]) {
       await expect(access(path)).resolves.toBeUndefined()
     }
-    expect(paths.bridgePath.endsWith('server/src/bridge/fremkit.js')).toBe(true)
+    expect(paths.bridgePath.endsWith(join('server', 'src', 'bridge', 'fremkit.js'))).toBe(true)
   })
 
   it('treats an empty FREMKIT_ROOT as unset', () => {
@@ -20,11 +21,11 @@ describe('shippedPaths', () => {
     const root = '/Applications/Fremkit.app/Contents/Resources'
     expect(shippedPaths({ FREMKIT_ROOT: root })).toEqual({
       root,
-      widgetsDir: `${root}/widgets`,
-      themesDir: `${root}/themes`,
-      uiDist: `${root}/ui/dist`,
-      bridgePath: `${root}/server/bridge/fremkit.js`,
-      wallpaperDir: `${root}/brand/wallpaper`,
+      widgetsDir: join(root, 'widgets'),
+      themesDir: join(root, 'themes'),
+      uiDist: join(root, 'ui', 'dist'),
+      bridgePath: join(root, 'server', 'bridge', 'fremkit.js'),
+      wallpaperDir: join(root, 'brand', 'wallpaper'),
     })
   })
 

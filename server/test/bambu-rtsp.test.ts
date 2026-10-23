@@ -1,3 +1,4 @@
+import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   concatListLine,
@@ -291,7 +292,7 @@ describe('sweepStaleCameraDirs', () => {
       rm: ((p: string) => { removed.push(String(p)) }) as never,
     })
     expect(swept).toBe(2)
-    expect(removed).toEqual(['/tmp-x/fremkit-cam-abc', '/tmp-x/fremkit-cam-def'])
+    expect(removed).toEqual([join('/tmp-x', 'fremkit-cam-abc'), join('/tmp-x', 'fremkit-cam-def')])
   })
   it('says nothing when the temp directory cannot be read', () => {
     expect(sweepStaleCameraDirs({ readdir: (() => { throw new Error('EACCES') }) as never })).toBe(0)

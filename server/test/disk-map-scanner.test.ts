@@ -9,6 +9,9 @@ import {
 } from '../src/providers/disk-map-scanner.js'
 import { DEFAULT_POLICY, findNode } from '../src/providers/disk-map-tree.js'
 
+// du and sh scripts are macOS tooling; the Windows scanner is a later task.
+const itPosix = it.skipIf(process.platform === 'win32')
+
 let fixture: string
 beforeAll(async () => {
   fixture = await mkdtemp(join(tmpdir(), 'fremkit-disk-map-'))
@@ -34,7 +37,8 @@ describe('resolveScannerBinary', () => {
     expect(await resolveScannerBinary({})).toBeNull()
     const plain = join(fixture, 'plain.txt')
     await writeFile(plain, 'x', { mode: 0o644 })
-    expect(await resolveScannerBinary({ FREMKIT_SCANNER: plain })).toBeNull()
+    // Windows has no executable bit: any file there is runnable as far as stat can tell.
+    if (process.platform !== 'win32') expect(await resolveScannerBinary({ FREMKIT_SCANNER: plain })).toBeNull()
   })
 })
 
@@ -142,7 +146,7 @@ describe('DuParser', () => {
 })
 
 describe('createDuScanner', () => {
-  it('scans a real folder with /usr/bin/du', async () => {
+  itPosix('scans a real folder with /usr/bin/du', async () => {
     const progress: unknown[] = []
     const outcome = await createDuScanner().start(join(fixture, 'tree'), { ...DEFAULT_POLICY, minBytes: 1 }, (p) => progress.push(p)).result
     expect(findNode(outcome.tree, ['big'])!.size).toBeGreaterThanOrEqual(3 * 1024 * 1024)
@@ -154,7 +158,7 @@ describe('createDuScanner', () => {
   it('fails on a folder that is not there', async () => {
     await expect(createDuScanner().start(join(fixture, 'missing'), DEFAULT_POLICY, () => {}).result).rejects.toBeInstanceOf(ScanError)
   })
-  it('stops when cancelled', async () => {
+  itPosix('stops when cancelled', async () => {
     const handle = createDuScanner().start('/', DEFAULT_POLICY, () => {})
     handle.cancel()
     await expect(handle.result).rejects.toMatchObject({ code: 'cancelled' })
@@ -162,7 +166,7 @@ describe('createDuScanner', () => {
 })
 
 describe('createNativeScanner', () => {
-  it('runs a scanner by path with its argument list and reads its lines', async () => {
+  itPosix('runs a scanner by path with its argument list and reads its lines', async () => {
     const fake = join(fixture, 'fake-scan.sh')
     // Prints its arguments back inside the tree's name, so the test sees exactly what it was given.
     await writeFile(fake, [
@@ -174,7 +178,7 @@ describe('createNativeScanner', () => {
     expect(outcome.tree.size).toBe(42)
     expect(outcome.tree.name).toBe(`--depth 4 --min-bytes ${DEFAULT_POLICY.minBytes} --max-children 128 --budget 20000 --progress-depth 1 -- /Volumes/With space`)
   })
-  it('reports a scanner that dies without a result as a failure', async () => {
+  itPosix('reports a scanner that dies without a result as a failure', async () => {
     const fake = join(fixture, 'dies.sh')
     await writeFile(fake, '#!/bin/sh\nexit 3\n', { mode: 0o755 })
     await expect(createNativeScanner(fake).start('/x', DEFAULT_POLICY, () => {}).result).rejects.toMatchObject({ code: 'failed' })

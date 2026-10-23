@@ -9,8 +9,11 @@ const mode = async (path: string) => (await stat(path)).mode & 0o777
 let root: string
 afterEach(async () => { if (root) await rm(root, { recursive: true, force: true }) })
 
+// POSIX modes: Windows has no owner/group/other bits (and its data-folder ACL is tested where it lands).
+const itPosix = it.skipIf(process.platform === 'win32')
+
 describe('tightenDataDir', () => {
-  it('brings an older data folder to 0700 folders and 0600 files, links left alone', async () => {
+  itPosix('brings an older data folder to 0700 folders and 0600 files, links left alone', async () => {
     root = await mkdtemp(join(tmpdir(), 'fremkit-perm-'))
     const data = join(root, 'data')
     await mkdir(join(data, 'disk-map'), { recursive: true })
@@ -36,7 +39,7 @@ describe('tightenDataDir', () => {
     expect(await tightenDataDir(data)).toBe(0)
   })
 
-  it('runs when the server starts, and the config it writes is private', async () => {
+  itPosix('runs when the server starts, and the config it writes is private', async () => {
     root = await mkdtemp(join(tmpdir(), 'fremkit-perm-'))
     const data = join(root, 'data')
     await mkdir(data, { recursive: true, mode: 0o755 })

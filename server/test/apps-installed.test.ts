@@ -13,10 +13,13 @@ import { DockState } from '../src/dock/state.js'
 
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64')
 
+/** Windows joins with backslashes; the fixtures are keyed by POSIX paths. */
+const posix = (path: string): string => path.replace(/\\/g, '/')
+
 /** A fake filesystem: folder path → entry names. Anything absent throws, as `readdir` does. */
 function fakeDirs(tree: Record<string, string[]>) {
   return async (path: string): Promise<string[]> => {
-    const entries = tree[path]
+    const entries = tree[posix(path)]
     if (!entries) throw new Error(`ENOENT: ${path}`)
     return entries
   }
@@ -25,12 +28,12 @@ function fakeDirs(tree: Record<string, string[]>) {
 /** A fake `Info.plist` reader: bundle path → the keys the scanner reads. */
 function fakePlists(plists: Record<string, Record<string, unknown>>, calls: string[] = []) {
   return async (path: string): Promise<Record<string, unknown> | null> => {
-    calls.push(path)
-    return plists[path] ?? null
+    calls.push(posix(path))
+    return plists[posix(path)] ?? null
   }
 }
 
-const info = (path: string): string => join(path, 'Contents', 'Info.plist')
+const info = (path: string): string => `${path}/Contents/Info.plist`
 
 const TREE = {
   '/Applications': ['Safari.app', 'Setapp', '.hidden.app', 'README.txt'],
@@ -56,10 +59,10 @@ const scanner = (overrides: Partial<ConstructorParameters<typeof InstalledApps>[
 describe('defaultRoots', () => {
   it('covers the four places macOS keeps applications, deep only where folders are nested', () => {
     const roots = defaultRoots('/Users/someone')
-    expect(roots.map((r) => r.path)).toEqual([
+    expect(roots.map((r) => posix(r.path))).toEqual([
       '/Applications', '/Users/someone/Applications', '/System/Applications', '/System/Applications/Utilities',
     ])
-    expect(roots.filter((r) => r.deep).map((r) => r.path)).toEqual(['/Applications', '/Users/someone/Applications'])
+    expect(roots.filter((r) => r.deep).map((r) => posix(r.path))).toEqual(['/Applications', '/Users/someone/Applications'])
   })
 })
 
@@ -89,7 +92,7 @@ describe('InstalledApps', () => {
     // Calculator declares only an icon name: still an application, simply one with no `.icns`.
     expect(icnsPath(apps[0])).toBeNull()
     // Paste sits one level down, under a vendor folder.
-    expect(apps[1].path).toBe('/Applications/Setapp/Paste.app')
+    expect(posix(apps[1].path)).toBe('/Applications/Setapp/Paste.app')
   })
   it('skips dot folders, plain files and folders with no plist', async () => {
     const calls: string[] = []
@@ -149,8 +152,8 @@ describe('InstalledApps', () => {
 describe('icnsPath', () => {
   const base = { name: 'A', bundleId: 'com.example.a', path: '/Applications/A.app', file: null, iconName: null }
   it('appends .icns when the plist leaves it out, and keeps it when it is there', () => {
-    expect(icnsPath({ ...base, iconFile: 'AppIcon' })).toBe('/Applications/A.app/Contents/Resources/AppIcon.icns')
-    expect(icnsPath({ ...base, iconFile: 'AppIcon.icns' })).toBe('/Applications/A.app/Contents/Resources/AppIcon.icns')
+    expect(posix(icnsPath({ ...base, iconFile: 'AppIcon' })!)).toBe('/Applications/A.app/Contents/Resources/AppIcon.icns')
+    expect(posix(icnsPath({ ...base, iconFile: 'AppIcon.icns' })!)).toBe('/Applications/A.app/Contents/Resources/AppIcon.icns')
   })
   it('gives up on an asset-catalogue icon and on a name that is a path', () => {
     expect(icnsPath({ ...base, iconFile: null, iconName: 'AppIcon' })).toBeNull()
@@ -167,7 +170,7 @@ describe('AppIcons', () => {
     const icons = new AppIcons({
       dir,
       apps: found,
-      convert: async (icns, out) => { seen.push(icns); await writeFile(out, PNG) },
+      convert: async (icns, out) => { seen.push(posix(icns)); await writeFile(out, PNG) },
     })
     expect(await icons.get('com.example.a')).toEqual(PNG)
     expect(seen).toEqual(['/Applications/A.app/Contents/Resources/AppIcon.icns'])

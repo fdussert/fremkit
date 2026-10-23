@@ -4,6 +4,7 @@ import { mkdtemp, readFile, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DeviceStore } from '../src/devices/store.js'
+import { expectMode } from './helpers/modes.js'
 
 async function tempFile(): Promise<string> {
   return join(await mkdtemp(join(tmpdir(), 'fremkit-devices-')), 'devices.json')
@@ -55,7 +56,7 @@ describe('DeviceStore', () => {
     const store = new DeviceStore(file)
     await store.load()
     const { token } = await store.create('iPad', viewport, null)
-    expect((await stat(file)).mode & 0o777).toBe(0o600)
+    await expectMode(file, 0o600)
     const raw = await readFile(file, 'utf8')
     expect(raw).not.toContain(token)
     const parsed = JSON.parse(raw)

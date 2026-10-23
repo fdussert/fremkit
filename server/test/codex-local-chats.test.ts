@@ -4,6 +4,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { createLocalChatValidator } from '../src/codex/local-chats.js'
+// The Codex readers shell out to /usr/bin/sqlite3, which has no Windows counterpart yet (Codex providers task).
+const itMac = it.skipIf(process.platform === 'win32')
 const A = '01900000-0000-7000-8000-000000000001'
 const B = '01900000-0000-7000-8000-000000000002'
 const C = '01900000-0000-7000-8000-000000000003'
@@ -19,7 +21,7 @@ const schema = `CREATE TABLE local_thread_catalog_hosts (host_id TEXT PRIMARY KE
 CREATE TABLE local_thread_catalog (host_id TEXT, thread_id TEXT, display_title TEXT, missing_candidate INTEGER NOT NULL);
 INSERT INTO local_thread_catalog_hosts VALUES ('local','local'),('remote','ssh');`
 describe('Codex desktop local catalog validation', () => {
-  it('proves same-title chats by UUID while rejecting foreign, removed and absent IDs', async () => {
+  itMac('proves same-title chats by UUID while rejecting foreign, removed and absent IDs', async () => {
     const path = await database(`${schema}
 INSERT INTO local_thread_catalog VALUES ('local','${A}','Same title',0),('local','${B}','Same title',0),('remote','${C}','Same title',0);`)
     const valid = createLocalChatValidator({ databasePath: path })
@@ -29,16 +31,16 @@ INSERT INTO local_thread_catalog VALUES ('local','${A}','Same title',0),('local'
     expect(await valid(A)).toBe(false)
     expect(await valid("' OR 1=1 --")).toBe(false)
   })
-  it('requires the authoritative local host kind even when a host ID is local', async () => {
+  itMac('requires the authoritative local host kind even when a host ID is local', async () => {
     const path = await database(`${schema} INSERT INTO local_thread_catalog VALUES ('local','${A}','Same title',0); UPDATE local_thread_catalog_hosts SET host_kind='ssh' WHERE host_id='local';`)
     expect(await createLocalChatValidator({ databasePath: path })(A)).toBe(false)
   })
-  it('checks a history page in one query and excludes IDs outside the local catalog', async () => {
+  itMac('checks a history page in one query and excludes IDs outside the local catalog', async () => {
     const path = await database(`${schema} INSERT INTO local_thread_catalog VALUES ('local','${A}','A',0),('remote','${B}','B',0),('local','${C}','C',1);`)
     const validator = createLocalChatValidator({ databasePath: path })
     expect(await validator.validateMany!([A, B, C, A, "' OR 1=1 --"])).toEqual(new Set([A]))
   })
-  it('fails closed for missing or unsupported databases without creating one', async () => {
+  itMac('fails closed for missing or unsupported databases without creating one', async () => {
     const path = await database('CREATE TABLE unsupported (id TEXT);')
     expect(await createLocalChatValidator({ databasePath: path })(A)).toBe(false)
     const missing = join(dirs[0], 'missing.db')

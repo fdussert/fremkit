@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { mkdtemp, mkdir, writeFile, symlink } from 'node:fs/promises'
+import { symlinkOrSkip } from './helpers/symlink.js'
+import { mkdtemp, mkdir, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { ManifestSchema } from '../src/widgets/manifest.js'
@@ -142,9 +143,9 @@ describe('widget:check', () => {
     expect(errors.join('\n')).toMatch(/widget Fremkit ships/)
   })
 
-  it('refuses a symlink, and only warns about Finder\'s .DS_Store', async () => {
+  it('refuses a symlink, and only warns about Finder\'s .DS_Store', async (ctx) => {
     const folder = await write(good())
-    await symlink('/etc/hosts', join(folder, 'hosts.txt'))
+    await symlinkOrSkip(ctx, '/etc/hosts', join(folder, 'hosts.txt'))
     await writeFile(join(folder, '.DS_Store'), '')
     const result = await checkWidgetFolder(folder)
     expect(result.errors).toEqual(['symlink: hosts.txt'])

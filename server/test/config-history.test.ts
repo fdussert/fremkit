@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { ConfigSchema, type Config } from '../src/config/schema.js'
 import { ConfigHistory, HISTORY_ID_RE } from '../src/config/history.js'
 import { ConfigStore } from '../src/config/store.js'
+import { expectMode } from './helpers/modes.js'
 
 /** A v4 config whose only page is called `name`. */
 const cfg = (name: string): Config => ConfigSchema.parse({
@@ -116,9 +117,9 @@ describe('ConfigHistory', () => {
   it('writes 0600 files in a 0700 folder', async () => {
     const h = history()
     await h.recordChange(cfg('A'), cfg('B'), 'save')
-    expect((await stat(join(dir, 'history'))).mode & 0o777).toBe(0o700)
+    await expectMode(join(dir, 'history'), 0o700)
     for (const name of await readdir(join(dir, 'history'))) {
-      expect((await stat(join(dir, 'history', name))).mode & 0o777).toBe(0o600)
+      await expectMode(join(dir, 'history', name), 0o600)
     }
   })
 
