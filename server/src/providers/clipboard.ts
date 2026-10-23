@@ -4,7 +4,7 @@ import { z } from 'zod'
 import { isTrusted, type CommandContext, type Provider } from './types.js'
 import { tr } from '../i18n.js'
 import { targetPlatform } from '../platform/index.js'
-import { sharedHost, type PowerShellHost } from '../win/powershell-host.js'
+import { HostError, sharedHost, type PowerShellHost } from '../win/powershell-host.js'
 
 /**
  * The clipboard history.
@@ -161,8 +161,9 @@ export const pbPasteboard: Pasteboard = {
  *
  * `clipboard.private` answers `['private']` for the exclusion formats password managers set
  * (`ExcludeClipboardContentFromMonitorProcessing`, `CanIncludeInClipboardHistory` = 0, "Clipboard
- * Viewer Ignore") and while another app holds the clipboard open. It is asked *before* the text is
- * read, and a check that fails counts as private: better one missed entry than a leaked password.
+ * Viewer Ignore") and while another app holds the clipboard open. `read` checks them inside the
+ * same open as the text, and a check that fails counts as private: better one missed entry than a
+ * leaked password.
  * The text travels in the host's request body only, never in an argument list or a log.
  */
 export function createWinPasteboard(host: () => PowerShellHost = sharedHost): Pasteboard {
@@ -175,10 +176,16 @@ export function createWinPasteboard(host: () => PowerShellHost = sharedHost): Pa
   }
   return {
     read: async () => {
-      // Never open the text of a clipboard that asked not to be kept. '' reads as "nothing new".
-      if (isPrivatePasteboard(await types())) return ''
-      // `too-large` and `busy` reject: the poll leaves the history as it is.
-      return host().call<string>('clipboard.read')
+      // One host call: the host checks the private formats while it holds the clipboard open and
+      // answers the code `private` instead of the text, so nothing can change between the check
+      // and the read. '' reads as "nothing new".
+      try {
+        return await host().call<string>('clipboard.read')
+      } catch (err) {
+        if (err instanceof HostError && err.code === 'private') return ''
+        // `too-large`, `busy` and a failed host reject: the poll leaves the history as it is.
+        throw err
+      }
     },
     write: async (text) => { await host().call('clipboard.write', { text }) },
     types,

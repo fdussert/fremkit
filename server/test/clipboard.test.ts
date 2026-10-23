@@ -341,13 +341,20 @@ describe('clipboard on Windows', () => {
     expect(snap.entries[0]).toMatchObject({ preview: MASKED_PREVIEW, masked: true })
   })
 
-  it('asks whether the clipboard is private before reading it, and records nothing when it is', async () => {
-    const { host, calls } = fakeHost({ 'clipboard.private': ['private'], 'clipboard.read': 'hunter2 from a password manager' })
+  it('records nothing when the read itself answers private, in one host call', async () => {
+    const { host, calls } = fakeHost({ 'clipboard.private': [], 'clipboard.read': failing('private') })
     const p = createClipboardProvider(createWinPasteboard(() => host), now)
     const snap = await p.poll!() as ClipboardSnapshot
     expect(snap.entries).toEqual([])
-    expect(calls.map((c) => c.op)).not.toContain('clipboard.read')
-    expect(calls[0].op).toBe('clipboard.private')
+    expect(calls.map((c) => c.op)).toEqual(['clipboard.read'])
+  })
+
+  it('records nothing when the poll\'s second check says private after a clean read', async () => {
+    let asked = 0
+    const { host } = fakeHost({ 'clipboard.private': () => (++asked >= 1 ? ['private'] : []), 'clipboard.read': 'text that turned private' })
+    const p = createClipboardProvider(createWinPasteboard(() => host), now)
+    const snap = await p.poll!() as ClipboardSnapshot
+    expect(snap.entries).toEqual([])
   })
 
   it('fails closed when the private check itself fails', async () => {
@@ -355,7 +362,6 @@ describe('clipboard on Windows', () => {
     const p = createClipboardProvider(createWinPasteboard(() => host), now)
     const snap = await p.poll!() as ClipboardSnapshot
     expect(snap.entries).toEqual([])
-    expect(calls.map((c) => c.op)).not.toContain('clipboard.read')
     await expect(createWinPasteboard(() => host).types!()).resolves.toEqual(['private'])
   })
 
@@ -377,7 +383,7 @@ describe('clipboard on Windows', () => {
     expect((await p.poll!() as ClipboardSnapshot).entries).toEqual([])
   })
 
-  it('writes the text in the request body, not in argv, and as the only argument', async () => {
+  it('hands the host only { text } when it writes', async () => {
     const { host, calls } = fakeHost({ 'clipboard.private': [], 'clipboard.read': 'copy me please', 'clipboard.write': true })
     const p = createClipboardProvider(createWinPasteboard(() => host), now)
     const snap = await p.poll!() as ClipboardSnapshot
