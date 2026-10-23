@@ -10,7 +10,7 @@
   "subscriptions": ["battery"],
   "settingsSchema": {
     "showMac": { "type": "boolean", "default": true, "scope": "tile",
-                 "label": { "fr": "Afficher la batterie du Mac", "en": "Show the Mac's battery" } },
+                 "label": { "fr": "Afficher la batterie de cet ordinateur", "en": "Show this computer's battery" } },
     "max": { "type": "number", "default": 6, "scope": "tile",
              "label": { "fr": "Nombre de lignes au maximum", "en": "Most rows to show" } }
   } }

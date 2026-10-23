@@ -142,6 +142,7 @@ describe('battery provider on Windows', () => {
     expect(snapshot).toEqual({
       mac: { percent: 72, charging: false, minutesLeft: 180 },
       devices: [{ name: 'Example Mouse', kind: 'mouse', percent: 15 }, { name: 'Example Headset', kind: 'headphones', percent: 40 }],
+      computer: 'pc',
     })
     expect(h.call).toHaveBeenCalledWith('battery', undefined, expect.any(Number))
     expect(exec).not.toHaveBeenCalled()
@@ -149,7 +150,7 @@ describe('battery provider on Windows', () => {
 
   it('has no mac field on a desktop', async () => {
     const snapshot = (await createBatteryProvider(undefined, { platform: 'win32', host: host({ internal: null, devices: [] }) }).poll!()) as BatterySnapshot
-    expect(snapshot).toEqual({ devices: [] })
+    expect(snapshot).toEqual({ devices: [], computer: 'pc' })
     expect('mac' in snapshot).toBe(false)
   })
 
@@ -165,5 +166,14 @@ describe('battery provider on Windows', () => {
     const h = host({})
     await createBatteryProvider(vi.fn(async () => ''), { platform: 'darwin', host: h }).poll!()
     expect(h.call).not.toHaveBeenCalled()
+  })
+})
+
+describe('battery snapshot computer field', () => {
+  it("marks the Windows snapshot computer: 'pc' and leaves the Mac one alone", async () => {
+    const h = { call: vi.fn(async () => ({ internal: { percent: 50, charging: false }, devices: [] })) } as any
+    expect(((await createBatteryProvider(undefined, { platform: 'win32', host: h }).poll!()) as BatterySnapshot).computer).toBe('pc')
+    const mac = (await createBatteryProvider(vi.fn(async () => ''), { platform: 'darwin', host: h }).poll!()) as BatterySnapshot
+    expect('computer' in mac).toBe(false)
   })
 })

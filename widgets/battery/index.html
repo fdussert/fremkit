@@ -29,6 +29,7 @@
 <script>
   var L = {
     mac: { fr: 'Mac', en: 'Mac' },
+    pc: { fr: 'PC', en: 'PC' },
     none: { fr: 'Aucune batterie', en: 'No battery' },
     left: { fr: 'G', en: 'L' },
     right: { fr: 'D', en: 'R' },
@@ -92,7 +93,7 @@
     function entries(d) {
       var out = []
       if (d.mac && Fremkit.settings.showMac !== false) {
-        out.push({ name: Fremkit.t(L.mac), percent: d.mac.percent, charging: d.mac.charging, detail: macDetail(d.mac) })
+        out.push({ name: Fremkit.t(d.computer === 'pc' ? L.pc : L.mac), percent: d.mac.percent, charging: d.mac.charging, detail: macDetail(d.mac) })
       }
       ;(d.devices || []).forEach(function (device) {
         out.push({ name: device.name, percent: device.percent, charging: false, detail: partsText(device.parts) })

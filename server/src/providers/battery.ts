@@ -23,6 +23,8 @@ export interface BatterySnapshot {
   /** Absent on a Mac with no internal battery — a Mac mini, a Studio, a Mac Pro. */
   mac?: MacBattery
   devices: BatteryDevice[]
+  /** `'pc'` on Windows, where `mac` is the PC's own battery; absent on macOS. */
+  computer?: 'pc'
   /** Set when the last read failed: the rest is then the last good snapshot. */
   error?: string
 }
@@ -244,7 +246,7 @@ export function createBatteryProvider(exec: Exec = execCommand, deps: BatteryDep
             battery.devices.map((d) => ({ name: d.name, address: '', percent: d.percent })),
             [],
           )
-          return (last = { ...(internal ? { mac: internal } : {}), devices })
+          return (last = { ...(internal ? { mac: internal } : {}), devices, computer: 'pc' })
         } catch {
           return { ...last, error: 'offline' }
         }
