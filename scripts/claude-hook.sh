@@ -16,7 +16,7 @@
 URL="${FREMKIT_HOOK_URL:-http://127.0.0.1:4242/api/hooks/claude}"
 # The server's access secret, read from its token file and handed to curl through a descriptor,
 # never on the command line. No file, no header: the server answers 401 and the event is dropped.
-. "$(dirname "$0")/lib/access.sh" 2>/dev/null || fremkit_auth_header() { :; }
+. "$(dirname "$0")/lib/access.sh" 2>/dev/null || { fremkit_auth_header() { :; }; fremkit_is_loopback_url() { return 1; }; }
 PORT=$(fremkit_port_of "$URL" 2>/dev/null || echo 4242)
 
 body=$(cat)
@@ -74,5 +74,5 @@ fi
 
 printf '%s' "$merged" |
   curl --silent --output /dev/null --max-time 1 -X POST -H 'content-type: application/json' \
-    -H @<(fremkit_auth_header "$PORT") --data-binary @- "$URL" || true
+    -H @<(fremkit_is_loopback_url "$URL" && fremkit_auth_header "$PORT") --data-binary @- "$URL" || true
 exit 0

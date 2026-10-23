@@ -179,6 +179,38 @@ describe('the Node Claude Code scripts', () => {
     expect(r).toEqual({ code: 0, stdout: '\n' })
   })
 
+  const bash = process.platform !== 'win32'
+
+  it.skipIf(!bash)('bash scripts: the same loopback rule as access.mjs', () => {
+    const agree = [
+      'http://127.0.0.1:4242/x', 'http://localhost:4242/x', 'http://[::1]:4242/x', 'http://127.0.0.1/x', 'http://LOCALHOST:1/x',
+      'http://192.0.2.1:4242/x', 'http://example.com/x', 'http://127.0.0.1@example.com/x', 'http://127.0.0.1@evil.com',
+      'http://127.0.0.1.example.com/x', 'http://evil.com?x=@127.0.0.1', 'http://evil.com#@127.0.0.1', 'http://evil.com/?@127.0.0.1', 'http://localhost./x', 'http://evil.com\\@127.0.0.1', 'http://127.0.0.1\\@evil.com', 'http://127.0.0.1\\x', 'http://127.0.0.1:abc/x', 'http://127.0.0.1:/x', 'http://127.0.0.1:80a/x', 'http://127.0.0.1:99999/x', 'http://127.0.0.1:000080/x', 'http://[::1]:abc/x', 'http://[::1]x/', 'http://[::1]:4242/x', 'nonsense',
+    ]
+    const bashSays = (url: string) => spawnSync('bash', ['-c', `. "${join(scripts, 'lib', 'access.sh')}"; fremkit_is_loopback_url "$1"`, 'x', url]).status === 0
+    for (const url of agree) expect([url, bashSays(url)]).toEqual([url, isLoopbackUrl(url)])
+    // Accepted differences: other spellings of loopback that the URL parser normalises. The shell
+    // fails closed on them (no header), which is the safe side.
+    for (const url of ['http://[0:0:0:0:0:0:0:1]:4242/x', 'http://2130706433:4242/x', 'http://127.0.0.1./x']) {
+      expect([url, isLoopbackUrl(url), bashSays(url)]).toEqual([url, true, false])
+    }
+  })
+
+  it.skipIf(!bash)('bash hook and status line: send the header to loopback, none elsewhere', async () => {
+    const env = await stub('tok-sh')
+    const port = new URL(env.FREMKIT_HOOK_URL).port
+    for (const [script, input] of [['claude-hook.sh', '{"hook_event_name":"Stop"}'], ['claude-statusline.sh', fixture]] as const) {
+      seen.length = 0
+      const r = spawnSync('bash', [join(scripts, script)], { input, env: { PATH: process.env.PATH ?? '', ...env }, encoding: 'utf8' })
+      expect(r.status).toBe(0)
+      await new Promise((ok) => setTimeout(ok, 300))
+      expect(seen.map((x) => x.headers.authorization)).toEqual(['Bearer tok-sh'])
+    }
+    // The same token file, a URL that is not this machine: connection fails, but no header may be built.
+    const probe = spawnSync('bash', ['-c', `. "${join(scripts, 'lib', 'access.sh')}"; fremkit_is_loopback_url "$1" && fremkit_auth_header ${port}`, 'x', 'http://192.0.2.1:' + port + '/x'], { env: { PATH: process.env.PATH ?? '', ...env }, encoding: 'utf8' })
+    expect(probe.stdout).toBe('')
+  })
+
   // The bash script is the reference: same input, same bytes. Needs bash and jq, so not on Windows.
   const reference = process.platform !== 'win32' && spawnSync('jq', ['--version']).status === 0
   const inputs: Record<string, string> = {

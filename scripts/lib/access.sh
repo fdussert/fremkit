@@ -23,6 +23,37 @@ fremkit_port_of() {
     esac
 }
 
+# Succeeds when a URL names this machine (127.0.0.1, localhost, [::1]): the only place the secret
+# is sent. A user-info part (http://127.0.0.1@example.com) is looked past, not trusted. Other
+# spellings of loopback (an IPv6 long form, a decimal IPv4) are not recognised: it fails closed.
+fremkit_is_loopback_url() {
+    local rest=${1#*://} port=''
+    # The authority ends at the first of / \ ? #, whatever follows is not the host (a URL parser
+    # reads a backslash as a slash in http and https).
+    rest=${rest%%[/\\?#]*}
+    rest=${rest##*@}
+    local host
+    case "$rest" in
+        \[*)
+            host=${rest%%]*}]
+            port=${rest#*]}
+            case "$port" in '') ;; :*) port=${port#:} ;; *) return 1 ;; esac
+            ;;
+        *:*) host=${rest%%:*}; port=${rest#*:} ;;
+        *) host=$rest ;;
+    esac
+    # A port is empty or digits up to 65535; anything else is no URL a client would connect to.
+    case "$port" in *[!0-9]*) return 1 ;; esac
+    port=${port#"${port%%[!0]*}"}
+    [ "${#port}" -le 5 ] && [ "${port:-0}" -le 65535 ] || return 1
+    # Lower-cased with tr (bash 3.2 on macOS has no ${var,,}), as URL parsing does.
+    host=$(printf '%s' "$host" | tr 'A-Z' 'a-z')
+    case "$host" in
+        127.0.0.1|localhost|'[::1]') return 0 ;;
+    esac
+    return 1
+}
+
 # The token file for a port (default 4242).
 fremkit_token_file() {
     if [ -n "${FREMKIT_ACCESS_TOKEN_FILE:-}" ]; then
