@@ -20,6 +20,8 @@ export interface SessionClient {
   pid?: number
   tty?: string
   terminalSession?: string
+  /** The WSL distribution the session runs in, as the hook read `WSL_DISTRO_NAME`. */
+  wslDistro?: string
   cmux?: { workspace: string; surface: string }
   orca?: { pane?: string; tab?: string; terminal?: string }
 }
@@ -182,6 +184,7 @@ const claudeSessionSchema = z.object({
     pid: z.number().optional(),
     tty: z.string().optional(),
     terminalSession: z.string().optional(),
+    wslDistro: z.string().optional(),
     orca: z.object({ pane: z.string().optional(), tab: z.string().optional(), terminal: z.string().optional() }).optional(),
   }).optional(),
 })
