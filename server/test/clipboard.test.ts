@@ -377,6 +377,31 @@ describe('clipboard on Windows', () => {
     }
   })
 
+  it('logs a failed host once per streak, with the code and no text', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    let mode: 'dead' | 'ok' = 'dead'
+    const { host } = fakeHost({
+      'clipboard.private': () => { if (mode === 'dead') throw new HostError('host-exited'); return [] },
+      'clipboard.read': () => { if (mode === 'dead') throw new HostError('host-exited'); return 'secret-looking text here' },
+    })
+    const pasteboard = createWinPasteboard(() => host)
+    await pasteboard.types!(); await pasteboard.types!(); await expect(pasteboard.read()).rejects.toThrow()
+    expect(warn).toHaveBeenCalledTimes(1)
+    expect(warn.mock.calls[0][0]).toContain('host-exited')
+    expect(warn.mock.calls[0][0]).not.toContain('secret')
+    mode = 'ok'
+    await pasteboard.read()
+    mode = 'dead'
+    await pasteboard.types!()
+    expect(warn).toHaveBeenCalledTimes(2)
+    // busy and too-large are not host failures
+    warn.mockClear()
+    const quiet = fakeHost({ 'clipboard.read': failing('busy') })
+    await expect(createWinPasteboard(() => quiet.host).read()).rejects.toThrow()
+    expect(warn).not.toHaveBeenCalled()
+    warn.mockRestore()
+  })
+
   it('treats an empty clipboard as nothing to record', async () => {
     const { host } = fakeHost({ 'clipboard.private': [], 'clipboard.read': '' })
     const p = createClipboardProvider(createWinPasteboard(() => host), now)

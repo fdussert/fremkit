@@ -167,10 +167,22 @@ export const pbPasteboard: Pasteboard = {
  * The text travels in the host's request body only, never in an argument list or a log.
  */
 export function createWinPasteboard(host: () => PowerShellHost = sharedHost): Pasteboard {
+  /** Host failures that read as private (see `types`): worth one line per streak, so a dead host differs from a private copy. */
+  const HOST_FAILURES = ['host-exited', 'timeout', 'host-start-timeout']
+  let failing = false
+  const noteFailure = (err: unknown): void => {
+    if (!(err instanceof HostError) || !HOST_FAILURES.includes(err.code)) return
+    if (failing) return
+    failing = true
+    console.warn(`[clipboard] the Windows host failed (${err.code}); nothing is recorded until it answers`)
+  }
   const types = async (): Promise<string[]> => {
     try {
-      return await host().call<string[]>('clipboard.private')
-    } catch {
+      const answer = await host().call<string[]>('clipboard.private')
+      failing = false
+      return answer
+    } catch (err) {
+      noteFailure(err)
       return ['private']
     }
   }
@@ -180,9 +192,12 @@ export function createWinPasteboard(host: () => PowerShellHost = sharedHost): Pa
       // answers the code `private` instead of the text, so nothing can change between the check
       // and the read. '' reads as "nothing new".
       try {
-        return await host().call<string>('clipboard.read')
+        const text = await host().call<string>('clipboard.read')
+        failing = false
+        return text
       } catch (err) {
         if (err instanceof HostError && err.code === 'private') return ''
+        noteFailure(err)
         // `too-large`, `busy` and a failed host reject: the poll leaves the history as it is.
         throw err
       }
