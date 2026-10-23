@@ -53,17 +53,17 @@ describe('appAddresses', () => {
   const all = lanAddresses(ifaces)
 
   it('keeps private addresses on Wi-Fi and Ethernet only, by interface number', () => {
-    expect(appAddresses(all, ifaces, null)).toEqual(['10.20.0.30', '10.20.0.31', '192.168.1.30', '192.168.1.40'])
+    expect(appAddresses(all, ifaces, null, 'darwin')).toEqual(['10.20.0.30', '10.20.0.31', '192.168.1.30', '192.168.1.40'])
   })
 
   it('puts the default route first when it is Wi-Fi or Ethernet, and never lets a VPN in by being it', () => {
-    expect(appAddresses(all, ifaces, 'en10')).toEqual(['192.168.1.40', '10.20.0.30', '10.20.0.31', '192.168.1.30'])
-    expect(appAddresses(all, ifaces, 'utun3')).toEqual(['10.20.0.30', '10.20.0.31', '192.168.1.30', '192.168.1.40'])
+    expect(appAddresses(all, ifaces, 'en10', 'darwin')).toEqual(['192.168.1.40', '10.20.0.30', '10.20.0.31', '192.168.1.30'])
+    expect(appAddresses(all, ifaces, 'utun3', 'darwin')).toEqual(['10.20.0.30', '10.20.0.31', '192.168.1.30', '192.168.1.40'])
   })
 
   it('lists only addresses it was given', () => {
-    expect(appAddresses(['192.168.1.30', '10.10.0.5'], ifaces, 'en0')).toEqual(['192.168.1.30'])
-    expect(appAddresses([], ifaces, 'en0')).toEqual([])
+    expect(appAddresses(['192.168.1.30', '10.10.0.5'], ifaces, 'en0', 'darwin')).toEqual(['192.168.1.30'])
+    expect(appAddresses([], ifaces, 'en0', 'darwin')).toEqual([])
   })
 })
 
@@ -71,25 +71,25 @@ describe('pickAddress', () => {
   const all = lanAddresses(IFACES)
 
   it('prefers the default-route interface', () => {
-    expect(pickAddress(all, IFACES, 'en1')).toBe('198.51.100.7')
-    expect(pickAddress(all, IFACES, 'bridge100')).toBe('192.0.2.1')
+    expect(pickAddress(all, IFACES, 'en1', 'darwin')).toBe('198.51.100.7')
+    expect(pickAddress(all, IFACES, 'bridge100', 'darwin')).toBe('192.0.2.1')
   })
 
   it('then a private address on an en* interface', () => {
-    expect(pickAddress(all, IFACES, null)).toBe('10.20.0.30')
+    expect(pickAddress(all, IFACES, null, 'darwin')).toBe('10.20.0.30')
     // A default route through an interface with no usable address falls through too.
-    expect(pickAddress(all, IFACES, 'utun4')).toBe('10.20.0.30')
+    expect(pickAddress(all, IFACES, 'utun4', 'darwin')).toBe('10.20.0.30')
   })
 
   it('then the first address left', () => {
     const ifaces: InterfaceMap = { utun2: [v4('10.10.0.5')], en1: [v4('198.51.100.7')] }
-    expect(pickAddress(lanAddresses(ifaces), ifaces, null)).toBe('10.10.0.5')
-    expect(pickAddress([], {}, null)).toBeNull()
+    expect(pickAddress(lanAddresses(ifaces), ifaces, null, 'darwin')).toBe('10.10.0.5')
+    expect(pickAddress([], {}, null, 'darwin')).toBeNull()
   })
 
   it('only ever picks one of the addresses it was given', () => {
-    expect(pickAddress(['192.0.2.1'], IFACES, 'en0')).toBe('192.0.2.1')
-    expect(pickAddress(['192.0.2.10'], IFACES, 'en0')).toBe('192.0.2.10')
+    expect(pickAddress(['192.0.2.1'], IFACES, 'en0', 'darwin')).toBe('192.0.2.1')
+    expect(pickAddress(['192.0.2.10'], IFACES, 'en0', 'darwin')).toBe('192.0.2.10')
   })
 })
 
@@ -139,7 +139,34 @@ describe('the host on Windows', () => {
 
   it('picks the default route\'s address for the QR code', async () => {
     const iface = await defaultRouteInterface(ranNothing, win({ defaultInterface: async () => 'Ethernet 2' }))
-    expect(pickAddress(['192.0.2.10', '198.51.100.7'], WIN_IFACES, iface)).toBe('198.51.100.7')
+    expect(pickAddress(['192.0.2.10', '198.51.100.7'], WIN_IFACES, iface, 'win32')).toBe('198.51.100.7')
+  })
+
+  // What a Windows PC with WSL, Hyper-V, a VPN and Wi-Fi looks like to os.networkInterfaces().
+  const PC: InterfaceMap = {
+    'Loopback Pseudo-Interface 1': [v4('127.0.0.1', true)],
+    'vEthernet (WSL)': [v4('172.20.16.1')],
+    'vEthernet (Default Switch)': [v4('172.25.0.1')],
+    'Company VPN': [v4('10.10.0.5')],
+    'Wi-Fi': [v4('192.168.1.30'), v6('fe80::1')],
+    'Ethernet 3': [v4('192.168.7.2')],
+  }
+  const all = lanAddresses(PC)
+
+  it('lists only the default route\'s private addresses for the app to follow', () => {
+    expect(appAddresses(all, PC, 'Wi-Fi', 'win32')).toEqual(['192.168.1.30'])
+    // A VPN as the default route lists no more than itself, and there is nothing with no route.
+    expect(appAddresses(all, PC, 'Company VPN', 'win32')).toEqual(['10.10.0.5'])
+    expect(appAddresses(all, PC, null, 'win32')).toEqual([])
+    expect(appAddresses(['192.168.1.30'], PC, 'Ethernet 3', 'win32')).toEqual([])
+  })
+
+  it('never falls back to a Hyper-V or WSL switch for the QR code', () => {
+    expect(pickAddress(all, PC, 'Wi-Fi', 'win32')).toBe('192.168.1.30')
+    expect(pickAddress(['172.20.16.1', '172.25.0.1', '192.168.7.2'], PC, null, 'win32')).toBe('192.168.7.2')
+    expect(pickAddress(['172.20.16.1', '172.25.0.1'], PC, null, 'win32')).toBeNull()
+    // The default route is taken as it is, even a switch's: it is what the PC itself routes through.
+    expect(pickAddress(['172.20.16.1', '192.168.1.30'], PC, 'vEthernet (WSL)', 'win32')).toBe('172.20.16.1')
   })
 })
 

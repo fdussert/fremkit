@@ -142,13 +142,19 @@ export async function defaultRouteInterface(exec: Exec = execFileAsync, deps: Ho
  * first, then any RFC 1918 address on an `en*` interface (Wi-Fi, Ethernet), then the first one
  * left. A VPN or a bridge that happens to sort first is not what an iPad on the LAN can reach.
  */
-export function pickAddress(addresses: string[], ifaces: InterfaceMap, defaultInterface: string | null): string | null {
+export function pickAddress(addresses: string[], ifaces: InterfaceMap, defaultInterface: string | null, platform: NodeJS.Platform = process.platform): string | null {
   const allowed = new Set(addresses)
   const of = (name: string): string[] =>
     (ifaces[name] ?? []).filter((i) => usable(i) && allowed.has(i.address)).map((i) => i.address).sort()
   if (defaultInterface !== null) {
     const first = of(defaultInterface)[0]
     if (first !== undefined) return first
+  }
+  if (onWindows({ platform })) {
+    // No `en*` on Windows. Hyper-V's and WSL's switches (`vEthernet (WSL)`, `vEthernet (Default
+    // Switch)`) carry private 172.x addresses no tablet can reach: never the fallback.
+    const virtual = new Set(Object.entries(ifaces).filter(([name]) => /^vEthernet\b/i.test(name)).flatMap(([, list]) => (list ?? []).map((i) => i.address)))
+    return addresses.find((a) => !virtual.has(a)) ?? null
   }
   const ethernet = Object.keys(ifaces).filter((n) => /^en\d+$/.test(n)).sort((x, y) => Number(x.slice(2)) - Number(y.slice(2)))
   for (const name of ethernet) {
@@ -170,8 +176,15 @@ function isEthernet(name: string): boolean {
  * virtual machine's `bridge100` or `vmnet*` are never listed: the iPad cannot reach them, and the
  * list would tell it about networks the Mac is on.
  */
-export function appAddresses(addresses: string[], ifaces: InterfaceMap, defaultInterface: string | null): string[] {
+export function appAddresses(addresses: string[], ifaces: InterfaceMap, defaultInterface: string | null, platform: NodeJS.Platform = process.platform): string[] {
   const allowed = new Set(addresses.filter(isPrivate))
+  if (onWindows({ platform })) {
+    // Windows names its adapters by what the user called them ("Ethernet", "Wi-Fi", "vEthernet
+    // (WSL)", a VPN's own name): nothing tells Wi-Fi from a VPN by name, so the default route's
+    // adapter is the only one listed.
+    if (defaultInterface === null) return []
+    return (ifaces[defaultInterface] ?? []).filter((i) => usable(i) && allowed.has(i.address)).map((i) => i.address).sort()
+  }
   const names = Object.keys(ifaces).filter(isEthernet).sort((x, y) => Number(x.slice(2)) - Number(y.slice(2)))
   if (defaultInterface !== null && names.includes(defaultInterface)) {
     names.splice(names.indexOf(defaultInterface), 1)
@@ -188,7 +201,7 @@ export function appAddresses(addresses: string[], ifaces: InterfaceMap, defaultI
 
 /** `appAddresses` on this Mac's own interfaces and default route. */
 export async function lanAppAddresses(addresses: string[], exec: Exec = execFileAsync, deps: HostDeps = {}): Promise<string[]> {
-  return appAddresses(addresses, networkInterfaces(), await defaultRouteInterface(exec, deps))
+  return appAddresses(addresses, (deps.interfaces ?? networkInterfaces)(), await defaultRouteInterface(exec, deps), deps.platform)
 }
 
 /** How long `cachedPick` keeps an answer for the same addresses. */
@@ -220,5 +233,5 @@ export function cachedPick<T>(
 
 /** `pickAddress` on this Mac's own interfaces and default route. */
 export async function preferredAddress(addresses: string[], exec: Exec = execFileAsync, deps: HostDeps = {}): Promise<string | null> {
-  return pickAddress(addresses, networkInterfaces(), await defaultRouteInterface(exec, deps))
+  return pickAddress(addresses, (deps.interfaces ?? networkInterfaces)(), await defaultRouteInterface(exec, deps), deps.platform)
 }
