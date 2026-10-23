@@ -1,5 +1,7 @@
 import type { Provider } from './types.js'
 import { execCommand, type Exec } from './exec.js'
+import { targetPlatform } from '../platform/index.js'
+import { sharedHost, type HostBattery } from '../win/powershell-host.js'
 
 export const BATTERY_INTERVAL_MS = 30_000
 
@@ -21,6 +23,13 @@ export interface BatterySnapshot {
   /** Absent on a Mac with no internal battery — a Mac mini, a Studio, a Mac Pro. */
   mac?: MacBattery
   devices: BatteryDevice[]
+  /** Set when the last read failed: the rest is then the last good snapshot. */
+  error?: string
+}
+
+export interface BatteryDeps {
+  platform?: NodeJS.Platform
+  host?: { call<T>(op: 'battery', arg?: undefined, timeoutMs?: number): Promise<T> }
 }
 
 /**
@@ -213,7 +222,10 @@ export function mergeBatteryDevices(bluetooth: BluetoothDevice[], ioreg: IoregBa
  * level moves by a point every few minutes. A command that fails — `pmset` on a machine without
  * one, `system_profiler` under a sandbox — costs its own section and not the whole snapshot.
  */
-export function createBatteryProvider(exec: Exec = execCommand): Provider<BatterySnapshot> {
+export function createBatteryProvider(exec: Exec = execCommand, deps: BatteryDeps = {}): Provider<BatterySnapshot> {
+  const windows = targetPlatform(deps.platform) === 'win32'
+  let last: BatterySnapshot = { devices: [] }
+
   const run = async (file: string, args: string[]): Promise<string> => {
     try { return await exec(file, args) } catch { return '' }
   }
@@ -222,6 +234,21 @@ export function createBatteryProvider(exec: Exec = execCommand): Provider<Batter
     channel: 'battery',
     intervalMs: BATTERY_INTERVAL_MS,
     async poll(): Promise<BatterySnapshot> {
+      if (windows) {
+        // On Windows `mac` is "this computer": the field keeps its name for the widget. A desktop
+        // has no Win32_Battery, so it has no `mac` either. Readings come from the host in 10 s at most.
+        try {
+          const battery = await (deps.host ?? sharedHost()).call<HostBattery>('battery', undefined, 10_000)
+          const { internal } = battery
+          const devices = mergeBatteryDevices(
+            battery.devices.map((d) => ({ name: d.name, address: '', percent: d.percent })),
+            [],
+          )
+          return (last = { ...(internal ? { mac: internal } : {}), devices })
+        } catch {
+          return { ...last, error: 'offline' }
+        }
+      }
       const [pmset, bluetooth, ioreg] = await Promise.all([
         run('/usr/bin/pmset', ['-g', 'batt']),
         run('/usr/sbin/system_profiler', ['SPBluetoothDataType', '-json']),

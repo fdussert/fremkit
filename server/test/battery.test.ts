@@ -128,3 +128,42 @@ describe('battery provider', () => {
     expect(snapshot.devices.map((d) => d.percent)).toEqual([15, 64, 99])
   })
 })
+
+describe('battery provider on Windows', () => {
+  const host = (value: unknown) => ({ call: vi.fn(async () => value) }) as any
+
+  it('reads this computer from the host and sorts the Bluetooth devices lowest first', async () => {
+    const h = host({
+      internal: { percent: 72, charging: false, minutesLeft: 180 },
+      devices: [{ name: 'Example Headset', percent: 40 }, { name: 'Example Mouse', percent: 15 }],
+    })
+    const exec = vi.fn(async () => '')
+    const snapshot = (await createBatteryProvider(exec, { platform: 'win32', host: h }).poll!()) as BatterySnapshot
+    expect(snapshot).toEqual({
+      mac: { percent: 72, charging: false, minutesLeft: 180 },
+      devices: [{ name: 'Example Mouse', kind: 'mouse', percent: 15 }, { name: 'Example Headset', kind: 'headphones', percent: 40 }],
+    })
+    expect(h.call).toHaveBeenCalledWith('battery', undefined, expect.any(Number))
+    expect(exec).not.toHaveBeenCalled()
+  })
+
+  it('has no mac field on a desktop', async () => {
+    const snapshot = (await createBatteryProvider(undefined, { platform: 'win32', host: host({ internal: null, devices: [] }) }).poll!()) as BatterySnapshot
+    expect(snapshot).toEqual({ devices: [] })
+    expect('mac' in snapshot).toBe(false)
+  })
+
+  it('publishes the last snapshot with an error when the host fails', async () => {
+    const h = host({ internal: { percent: 50, charging: true }, devices: [] })
+    const provider = createBatteryProvider(undefined, { platform: 'win32', host: h })
+    const good = await provider.poll!()
+    h.call.mockRejectedValue(new Error('host-exited'))
+    expect(await provider.poll!()).toEqual({ ...good, error: 'offline' })
+  })
+
+  it('never calls the host on macOS', async () => {
+    const h = host({})
+    await createBatteryProvider(vi.fn(async () => ''), { platform: 'darwin', host: h }).poll!()
+    expect(h.call).not.toHaveBeenCalled()
+  })
+})
