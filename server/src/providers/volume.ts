@@ -50,6 +50,7 @@ export function createVolumeProvider(run: Runner = osascript, deps: VolumeDeps =
 /** Windows: the same payload checks and the same clamp, with the host in place of osascript. */
 function createWindowsVolumeProvider(deps: VolumeDeps): Provider {
   const host = () => deps.host ?? sharedHost()
+  // Before a first success the snapshot type still needs a level, so it is 0 with the error; the widget ignores error snapshots.
   let last: { level: number; muted: boolean } = { level: 0, muted: false }
   return {
     channel: 'volume',
