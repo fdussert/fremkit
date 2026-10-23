@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify'
 import '@fastify/static'
 import { readFile } from 'node:fs/promises'
-import { join, normalize } from 'node:path'
+import { join, posix } from 'node:path'
 import { WIDGET_ID_RE } from '../config/schema.js'
 import type { WidgetCatalog } from './catalog.js'
 import type { ConfigStore } from '../config/store.js'
@@ -199,8 +199,11 @@ export async function widgetRoutes(
     // which of the two owns an id is the catalogue's answer, decided once at scan time.
     const folder = opts.catalog.folderOf(id)
     if (!WIDGET_ID_RE.test(id) || !folder) return reply.code(404).send({ error: tr(undefined, 'widgets.unknown') })
-    const safeRel = normalize(rel)
-    if (safeRel.startsWith('..') || safeRel.includes('/../')) return reply.code(400).send({ error: tr(undefined, 'widgets.badPath') })
+    // posix.normalize on every platform: the request path is URL-shaped, and the native one would
+    // turn `sub/a.html` into `sub\a.html` on Windows, which the static handler refuses. A
+    // backslash in the request is refused outright, it is a separator there and nowhere else.
+    const safeRel = posix.normalize(rel)
+    if (rel.includes('\\') || safeRel.startsWith('..') || safeRel.includes('/../')) return reply.code(400).send({ error: tr(undefined, 'widgets.badPath') })
     if (safeRel.toLowerCase() === 'index.html') {
       let html: string
       try {

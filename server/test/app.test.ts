@@ -278,9 +278,7 @@ describe('widget routes', () => {
   it('runs no script in a document that is not the widget\'s page', async () => {
     // Only index.html gets the bridge, and the bridge is what takes WebRTC away: a second page,
     // an SVG or an XML file the frame navigated to would otherwise run with it intact.
-    // A subfolder's file is served by a normalised path that is backslashed on Windows, which the
-    // static handler refuses: nested widget files on Windows are the paths task's to fix.
-    const names = ['popup.html', 'page.HTM', 'image.svg', 'feed.xml', 'doc.xhtml', ...(process.platform === 'win32' ? [] : ['sub/index.html'])]
+    const names = ['popup.html', 'page.HTM', 'image.svg', 'feed.xml', 'doc.xhtml', 'sub/index.html']
     for (const name of names) {
       await mkdir(join(dir, 'widgets', 'clock', 'sub'), { recursive: true })
       await writeFile(join(dir, 'widgets', 'clock', name), '<svg xmlns="http://www.w3.org/2000/svg"><script>1</script></svg>')
@@ -392,6 +390,10 @@ describe('widget routes', () => {
     // through the installed one, and neither is anything else beside it.
     expect((await app.inject({ url: '/widgets/synology/..%2fclock%2fstyle.css' })).statusCode).toBeGreaterThanOrEqual(400)
     expect((await app.inject({ url: '/widgets/synology/..%2f..%2ffremkit.json' })).statusCode).toBeGreaterThanOrEqual(400)
+    // A backslash is a separator on Windows only: refused everywhere (a raw one never arrives: the URL parser turns it into a slash).
+    for (const url of ['/widgets/synology/sub%5c..%5c..%5cclock%5cstyle.css', '/widgets/synology/..%5cclock%5cstyle.css']) {
+      expect((await app.inject({ url })).statusCode, url).toBe(400)
+    }
   })
 
   it('says where each widget came from', async () => {
