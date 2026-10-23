@@ -1,5 +1,6 @@
 import { execFileSync, spawn } from 'node:child_process'
 import { createCiaoAdvertiser, type CiaoDeps } from './advertise-ciao.js'
+import { txtRecord } from './txt.js'
 
 /** A running advertisement; `stop` withdraws it. */
 export interface Advertisement {
@@ -40,13 +41,10 @@ export interface AdvertiserDeps {
 /** The exact argument list `dns-sd` is run with, so a stale one can be recognised by it. */
 function dnsSdArgs(port: number, name: string, address: string | null): string[] {
   const args = ['-R', name, '_fremkit._tcp', 'local', String(port)]
-  // `p` repeats the SRV port: a device that cannot resolve the SRV target cannot read it there.
-  if (address !== null && TXT_ADDRESS.test(address)) args.push(`a=${address}`, `p=${port}`)
+  const txt = txtRecord(address, port)
+  if (txt !== null) args.push(`a=${txt.a}`, `p=${txt.p}`)
   return args
 }
-
-/** An IPv4 or IPv6 literal, possibly with a zone: all a TXT `a=` may carry. */
-const TXT_ADDRESS = /^[0-9A-Fa-f.:]+(%[0-9A-Za-z]+)?$/
 
 const realDeps: Required<AdvertiserDeps> = {
   platform: process.platform,

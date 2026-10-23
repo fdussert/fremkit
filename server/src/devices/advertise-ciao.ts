@@ -1,6 +1,7 @@
 import { networkInterfaces } from 'node:os'
 import type { Advertisement, Advertiser } from './bonjour.js'
 import { lanAddresses, localHostName, type InterfaceMap } from './host.js'
+import { txtRecord } from './txt.js'
 
 /**
  * Windows has no `dns-sd`: the pairing listener is announced by an mDNS responder in the server's
@@ -33,9 +34,6 @@ export interface CiaoDeps {
   /** The host name (`localHostName`) the SRV target is made from; ciao's default when null. */
   hostName?: () => Promise<string | null>
 }
-
-/** An IPv4 or IPv6 literal, possibly with a zone: all a TXT `a=` may carry (as `dnsSdArgs`). */
-const TXT_ADDRESS = /^[0-9A-Fa-f.:]+(%[0-9A-Za-z]+)?$/
 
 async function realGetResponder(options: { interface: string[] }): Promise<CiaoResponderLike> {
   // The responder module, not the package's index: that one installs source-map-support for the
@@ -87,13 +85,13 @@ export function createCiaoAdvertiser(deps: CiaoDeps = {}): Advertiser {
         await responder.shutdown()
         return
       }
+      const txt = txtRecord(address, port)
       const service = responder.createService({
         name,
         type: 'fremkit',
         port,
         ...(host !== null ? { hostname: ciaoHostName(host) } : {}),
-        // `p` repeats the SRV port: a device that cannot resolve the SRV target cannot read it there.
-        ...(address !== null && TXT_ADDRESS.test(address) ? { txt: { a: address, p: String(port) } } : {}),
+        ...(txt !== null ? { txt } : {}),
       })
       // A name taken by another machine is renamed by ciao (`Name (2)`), which is all there is to do.
       service.on('name-change', () => undefined)
