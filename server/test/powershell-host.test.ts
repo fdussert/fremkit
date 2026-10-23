@@ -1,0 +1,243 @@
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { EventEmitter } from 'node:events'
+import { PassThrough } from 'node:stream'
+import { readFileSync } from 'node:fs'
+import { HOST_ARGS, HostError, PowerShellHost, encodeLine, type SpawnHost } from '../src/win/powershell-host.js'
+import { shippedPaths } from '../src/paths.js'
+
+/** A stand-in for the PowerShell child: what the host writes on stdin, and a way to answer. */
+class FakeChild extends EventEmitter {
+  stdin = new PassThrough()
+  stdout = new PassThrough()
+  stderr = new PassThrough()
+  killed = false
+  written: string[] = []
+  private buffer = ''
+
+  constructor() {
+    super()
+    this.stdin.setEncoding('utf8')
+    this.stdin.on('data', (chunk: string) => {
+      this.buffer += chunk
+      let at: number
+      while ((at = this.buffer.indexOf('\n')) >= 0) {
+        this.written.push(this.buffer.slice(0, at))
+        this.buffer = this.buffer.slice(at + 1)
+      }
+    })
+  }
+
+  /** The requests, i.e. every line after the bootstrap. */
+  requests(): { id: number; op: string; arg?: unknown }[] {
+    return this.written.slice(1).map((line) => JSON.parse(line))
+  }
+
+  ready(): void { this.stdout.write('{"ready":true}\n') }
+  answer(value: unknown): void { this.stdout.write(`${JSON.stringify(value)}\n`) }
+
+  kill(): boolean {
+    this.killed = true
+    queueMicrotask(() => this.emit('exit', null, 'SIGTERM'))
+    return true
+  }
+}
+
+function setup() {
+  const children: FakeChild[] = []
+  const calls: { file: string; args: string[] }[] = []
+  const spawn: SpawnHost = (file, args) => {
+    calls.push({ file, args: [...args] })
+    const child = new FakeChild()
+    children.push(child)
+    return child as unknown as ReturnType<SpawnHost>
+  }
+  const host = new PowerShellHost({ spawn, script: 'Write-Output "fixture"', env: { SystemRoot: 'D:\\Win' } })
+  return { host, children, calls }
+}
+
+/** Lets the stream plumbing (PassThrough, readline) deliver what was written. */
+const flush = () => new Promise<void>((resolve) => setImmediate(resolve))
+
+afterEach(() => { vi.useRealTimers() })
+
+describe('PowerShellHost', () => {
+  it('waits for the script to say it is ready before sending a request', async () => {
+    const { host, children } = setup()
+    const pending = host.call('volume.get')
+    await flush()
+    expect(children).toHaveLength(1)
+    expect(children[0].written).toHaveLength(1) // the bootstrap only
+    children[0].ready()
+    await flush()
+    expect(children[0].requests()).toEqual([{ id: 1, op: 'volume.get' }])
+    children[0].answer({ id: 1, ok: true, value: { level: 30, muted: false } })
+    await expect(pending).resolves.toEqual({ level: 30, muted: false })
+    host.close()
+  })
+
+  it('matches answers to requests by id when they arrive out of order', async () => {
+    const { host, children } = setup()
+    const first = host.call('battery')
+    const second = host.call('clipboard.read')
+    children[0].ready()
+    await flush()
+    children[0].answer({ id: 2, ok: true, value: 'second' })
+    children[0].answer({ id: 1, ok: true, value: 'first' })
+    await expect(first).resolves.toBe('first')
+    await expect(second).resolves.toBe('second')
+    expect(children).toHaveLength(1)
+    host.close()
+  })
+
+  it('times out, kills the child, and spawns a new one for the next call', async () => {
+    vi.useFakeTimers()
+    const { host, children } = setup()
+    const pending = host.call('battery', undefined, 1000)
+    const outcome = pending.catch((error: unknown) => error)
+    children[0].ready()
+    await vi.advanceTimersByTimeAsync(1000)
+    const error = await outcome
+    expect(error).toBeInstanceOf(HostError)
+    expect((error as HostError).code).toBe('timeout')
+    expect(children[0].killed).toBe(true)
+
+    const next = host.call('volume.get')
+    expect(children).toHaveLength(2)
+    children[1].ready()
+    await vi.advanceTimersByTimeAsync(0)
+    children[1].answer({ id: 2, ok: true, value: { level: 1, muted: true } })
+    await expect(next).resolves.toEqual({ level: 1, muted: true })
+    host.close()
+  })
+
+  it('rejects every pending call with host-exited when the child exits', async () => {
+    const { host, children } = setup()
+    const a = host.call('battery').catch((error: HostError) => error.code)
+    const b = host.call('wsl.list').catch((error: HostError) => error.code)
+    children[0].ready()
+    await flush()
+    children[0].emit('exit', 1, null)
+    expect(await a).toBe('host-exited')
+    expect(await b).toBe('host-exited')
+    // and the next call starts a fresh child
+    void host.call('battery').catch(() => {})
+    expect(children).toHaveLength(2)
+    host.close()
+  })
+
+  it('rejects with host-exited when the child cannot be started', async () => {
+    const { host, children } = setup()
+    const pending = host.call('battery').catch((error: HostError) => error.code)
+    children[0].emit('error', new Error('spawn ENOENT'))
+    expect(await pending).toBe('host-exited')
+    host.close()
+  })
+
+  it('passes a well-formed code through and turns anything else into error', async () => {
+    const { host, children } = setup()
+    const wellFormed = host.call('network.wifi').catch((error: HostError) => error.code)
+    const path = host.call('dpapi.unprotect', 'AAAA').catch((error: HostError) => error.code)
+    const missing = host.call('sound', 'ding').catch((error: HostError) => error.code)
+    children[0].ready()
+    await flush()
+    children[0].answer({ id: 1, ok: false, code: 'no-wifi' })
+    children[0].answer({ id: 2, ok: false, code: 'C:\\Users\\a' })
+    children[0].answer({ id: 3, ok: false })
+    expect(await wellFormed).toBe('no-wifi')
+    expect(await path).toBe('error')
+    expect(await missing).toBe('error')
+    host.close()
+  })
+
+  it('never carries the child text in the error message', async () => {
+    const { host, children } = setup()
+    const pending = host.call<never>('dpapi.unprotect', 'c2VjcmV0').catch((error: unknown) => error as HostError)
+    children[0].ready()
+    await flush()
+    children[0].answer({ id: 1, ok: false, code: 'Access denied for C:\\Users\\a' })
+    const error = await pending
+    expect(error.message).toBe('error')
+    expect(JSON.stringify(error)).not.toContain('Users')
+    host.close()
+  })
+
+  it('ignores lines that are not answers', async () => {
+    const { host, children } = setup()
+    const pending = host.call('volume.get')
+    children[0].stdout.write('PS C:\\> \n')
+    children[0].ready()
+    await flush()
+    children[0].stdout.write('not json\n{"id":99,"ok":true,"value":1}\n')
+    children[0].answer({ id: 1, ok: true, value: 7 })
+    await expect(pending).resolves.toBe(7)
+    host.close()
+  })
+
+  it('puts only the fixed flags on argv, and the script and data on stdin', async () => {
+    const { host, children, calls } = setup()
+    const secret = 'c2VjcmV0LXZhbHVl'
+    const pending = host.call('dpapi.protect', secret)
+    children[0].ready()
+    await flush()
+    expect(calls).toEqual([{
+      file: 'D:\\Win\\System32\\WindowsPowerShell\\v1.0\\powershell.exe',
+      args: ['-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', '-'],
+    }])
+    expect(HOST_ARGS).toEqual(calls[0].args)
+    // The bootstrap carries the script, base64 encoded, on one line.
+    const encoded = /FromBase64String\('([A-Za-z0-9+/=]+)'\)/.exec(children[0].written[0])?.[1]
+    expect(Buffer.from(encoded ?? '', 'base64').toString('utf8')).toBe('Write-Output "fixture"')
+    expect(children[0].requests()).toEqual([{ id: 1, op: 'dpapi.protect', arg: secret }])
+    children[0].answer({ id: 1, ok: true, value: 'cHJvdGVjdGVk' })
+    await pending
+    host.close()
+  })
+
+  it('drains stderr without keeping it', async () => {
+    const { host, children } = setup()
+    const pending = host.call('volume.get')
+    // More than a pipe buffer: a child that writes this much must not block on it.
+    children[0].stderr.write('x'.repeat(256 * 1024))
+    children[0].ready()
+    await flush()
+    expect(children[0].stderr.readableLength).toBe(0)
+    children[0].answer({ id: 1, ok: true, value: 0 })
+    await pending
+    host.close()
+  })
+
+  it('rejects pending calls and kills the child on close', async () => {
+    const { host, children } = setup()
+    const pending = host.call('battery').catch((error: HostError) => error.code)
+    host.close()
+    expect(await pending).toBe('host-exited')
+    expect(children[0].killed).toBe(true)
+  })
+})
+
+describe('encodeLine', () => {
+  it('writes ASCII only, so any console code page reads non-ASCII text back intact', () => {
+    const line = encodeLine({ id: 1, op: 'clipboard.write', arg: { text: 'café — 日本 😀' } })
+    expect(/^[\x20-\x7e]*$/.test(line)).toBe(true)
+    expect(JSON.parse(line)).toEqual({ id: 1, op: 'clipboard.write', arg: { text: 'café — 日本 😀' } })
+  })
+})
+
+describe('host.ps1', () => {
+  const script = readFileSync(shippedPaths({}).winHostScript, 'utf8')
+
+  it('ships beside the server', () => {
+    expect(script).toContain("'unknown-op'")
+  })
+
+  it('handles every op the TypeScript side can send', () => {
+    for (const op of ['clipboard.read', 'clipboard.write', 'clipboard.private', 'volume.get', 'volume.set', 'volume.mute',
+      'battery', 'network.wifi', 'sound', 'dpapi.protect', 'dpapi.unprotect', 'wsl.list']) {
+      expect(script).toContain(`'${op}'`)
+    }
+  })
+
+  it('runs system tools by absolute path', () => {
+    expect(script).not.toMatch(/(^|[\s&'"(])(netsh|wsl)(\.exe)?\s+(wlan|--list)/m)
+  })
+})

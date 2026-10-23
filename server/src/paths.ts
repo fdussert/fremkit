@@ -11,6 +11,8 @@ export interface ShippedPaths {
   bridgePath: string
   /** The wallpaper a fresh install starts with. */
   wallpaperDir: string
+  /** The script the Windows PowerShell host runs (`win/powershell-host.ts`), beside the bridge. */
+  winHostScript: string
 }
 
 /**
@@ -23,7 +25,7 @@ export interface ShippedPaths {
  * The server there is one bundled file, and `import.meta.url` inside a bundle says where the
  * bundle is, not where this module was — so the layout is spelled out rather than guessed:
  *
- *     <root>/server/bridge/fremkit.js
+ *     <root>/server/bridge/fremkit.js  <root>/server/win/host.ps1
  *     <root>/widgets/  <root>/themes/  <root>/ui/dist/  <root>/brand/wallpaper/
  *
  * `scripts/build-app.sh` builds that layout; the two must change together. The checkout branch
@@ -41,6 +43,7 @@ export function shippedPaths(env: NodeJS.ProcessEnv = process.env): ShippedPaths
       uiDist: join(installed, 'ui', 'dist'),
       bridgePath: join(installed, 'server', 'bridge', 'fremkit.js'),
       wallpaperDir: join(installed, 'brand', 'wallpaper'),
+      winHostScript: join(installed, 'server', 'win', 'host.ps1'),
     }
   }
   const root = fileURLToPath(new URL('../..', import.meta.url))
@@ -51,5 +54,6 @@ export function shippedPaths(env: NodeJS.ProcessEnv = process.env): ShippedPaths
     uiDist: join(root, 'ui', 'dist'),
     bridgePath: join(root, 'server', 'src', 'bridge', 'fremkit.js'),
     wallpaperDir: join(root, 'brand', 'wallpaper'),
+    winHostScript: join(root, 'server', 'src', 'win', 'host.ps1'),
   }
 }

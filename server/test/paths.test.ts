@@ -7,10 +7,11 @@ describe('shippedPaths', () => {
   it('finds the checkout from the source tree when FREMKIT_ROOT is unset', async () => {
     const paths = shippedPaths({})
     // Every one of these is a real file or folder of this repository.
-    for (const path of [paths.widgetsDir, paths.themesDir, paths.bridgePath, paths.wallpaperDir]) {
+    for (const path of [paths.widgetsDir, paths.themesDir, paths.bridgePath, paths.wallpaperDir, paths.winHostScript]) {
       await expect(access(path)).resolves.toBeUndefined()
     }
     expect(paths.bridgePath.endsWith(join('server', 'src', 'bridge', 'fremkit.js'))).toBe(true)
+    expect(paths.winHostScript.endsWith(join('server', 'src', 'win', 'host.ps1'))).toBe(true)
   })
 
   it('treats an empty FREMKIT_ROOT as unset', () => {
@@ -26,6 +27,7 @@ describe('shippedPaths', () => {
       uiDist: join(root, 'ui', 'dist'),
       bridgePath: join(root, 'server', 'bridge', 'fremkit.js'),
       wallpaperDir: join(root, 'brand', 'wallpaper'),
+      winHostScript: join(root, 'server', 'win', 'host.ps1'),
     })
   })
 
