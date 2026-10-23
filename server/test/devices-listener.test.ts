@@ -8,14 +8,14 @@ import type { FastifyInstance } from 'fastify'
 import { buildApp } from '../src/app.js'
 import { closeRemoteListenersNow, RemoteListener, remotePortFrom } from '../src/devices/listener.js'
 import { Hub } from '../src/ws/hub.js'
-import { hasOpenssl, remote, tlsMaterial, upgrade } from './helpers/remote.js'
+import { canIssueCertificates, remote, tlsMaterial, upgrade } from './helpers/remote.js'
 
 let dir: string
 let app: FastifyInstance
 let listener: RemoteListener
 let tls: { key: string; cert: string }
 
-describe.skipIf(!hasOpenssl)('RemoteListener', () => {
+describe.skipIf(!canIssueCertificates)('RemoteListener', () => {
   beforeAll(async () => { tls = await tlsMaterial() })
   beforeEach(async () => {
     dir = await mkdtemp(join(tmpdir(), 'fremkit-listener-'))

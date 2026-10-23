@@ -10,7 +10,7 @@ import { noAdvertise } from '../src/devices/bonjour.js'
 import { generateToken, isPublicRoute, isCompanionRoute } from '../src/http/access.js'
 import { execFileAsync, type Exec } from '../src/secrets/keychain.js'
 import { pairClientMac, pairKey, pairServerMac } from '../src/companion/pairProof.js'
-import { hasOpenssl, remote } from './helpers/remote.js'
+import { canIssueCertificates, remote } from './helpers/remote.js'
 
 const SECRET = generateToken()
 /** Companion's own id, which needs no listing. */
@@ -340,7 +340,7 @@ describe('companion routes', () => {
     expect((await app.inject({ method: 'POST', url: '/api/companion/requests/x/refuse', remoteAddress, headers: { host: HOST, ...auth }, payload: { code: 'AAAA' } })).statusCode).toBe(404)
   })
 
-  it.skipIf(!hasOpenssl)('pair on the remote listener is 404', async () => {
+  it.skipIf(!canIssueCertificates)('pair on the remote listener is 404', async () => {
     const on = await app.inject({ method: 'PUT', url: '/api/devices/settings', headers: { host: HOST, ...auth }, payload: { enabled: true } })
     expect(on.statusCode).toBe(200)
     const port = on.json().port as number

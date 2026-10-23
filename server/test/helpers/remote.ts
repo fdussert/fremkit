@@ -8,7 +8,11 @@ import { spawnSync } from 'node:child_process'
 import { DEFAULT_OPENSSL, ensureKey, issueCertificate } from '../../src/devices/certificate.js'
 import { FileSecretStore } from '../../src/secrets/file.js'
 
-export const hasOpenssl = spawnSync(DEFAULT_OPENSSL, ['version']).status === 0
+/**
+ * Whether this machine can make the pairing key and certificate: always on Windows, where they are
+ * made in process (`x509.ts`); elsewhere when openssl runs, as the Mac makes them through it.
+ */
+export const canIssueCertificates = process.platform === 'win32' || spawnSync(DEFAULT_OPENSSL, ['version']).status === 0
 
 /** A key and certificate made the way the app makes them (Task 3), for a listener in a test. */
 export async function tlsMaterial(): Promise<{ key: string; cert: string }> {

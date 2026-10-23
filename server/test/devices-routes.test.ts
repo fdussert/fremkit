@@ -23,14 +23,18 @@ import { readKey, spkiHash, TLS_KEY_SECRET } from '../src/devices/certificate.js
 import { FileSecretStore } from '../src/secrets/file.js'
 import { MAX_WRONG_PER_MINUTE, PairingCodes } from '../src/devices/codes.js'
 import { codeProof } from '../src/devices/codeProof.js'
+import type { HostDeps } from '../src/devices/host.js'
 import { FREMKIT_VERSION } from '../src/version.js'
-import { hasOpenssl, remote } from './helpers/remote.js'
+import { canIssueCertificates, remote } from './helpers/remote.js'
 
 const ADDRESS = '192.0.2.10'
 
 /** `scutil` answers a fixed name; `openssl` is the real one. */
 const exec: Exec = (cmd, args) =>
   cmd === '/usr/sbin/scutil' ? Promise.resolve({ stdout: 'example\n' }) : execFileAsync(cmd, args)
+
+/** The same name on Windows, where it is the host name and no `scutil` runs. */
+const EXAMPLE_HOST: HostDeps = { hostname: () => 'example' }
 
 const screen = (id: string, kind: 'edge' | 'device', viewport?: { width: number; height: number }) => ({
   id, name: id, kind,
@@ -94,7 +98,7 @@ async function me(token: string) {
   return remote(port, { path: '/api/devices/me?id=someone-else', host: host(), headers: cookie(token) })
 }
 
-describe.skipIf(!hasOpenssl)('device routes', () => {
+describe.skipIf(!canIssueCertificates)('device routes', () => {
   beforeAll(async () => {
     dir = await mkdtemp(join(tmpdir(), 'fremkit-devices-'))
     await writeFile(join(dir, 'fremkit.json'), JSON.stringify(CONFIG))
@@ -106,7 +110,7 @@ describe.skipIf(!hasOpenssl)('device routes', () => {
       providers: [],
       devicesPort: 0,
       brightness,
-      devices: { exec, advertise: noAdvertise, lanAddresses: () => [ADDRESS] },
+      devices: { exec, host: EXAMPLE_HOST, advertise: noAdvertise, lanAddresses: () => [ADDRESS] },
     })
     const on = await app.inject({ method: 'PUT', url: '/api/devices/settings', payload: { enabled: true } })
     expect(on.statusCode).toBe(200)
@@ -607,7 +611,7 @@ describe.skipIf(!hasOpenssl)('device routes', () => {
   })
 })
 
-describe.skipIf(!hasOpenssl)('a remote port already taken', () => {
+describe.skipIf(!canIssueCertificates)('a remote port already taken', () => {
   let taken: Server
   let tdir: string
   let tapp: FastifyInstance
@@ -622,7 +626,7 @@ describe.skipIf(!hasOpenssl)('a remote port already taken', () => {
       widgetsDir: join(process.cwd(), '..', 'widgets'),
       providers: [],
       devicesPort: (taken.address() as AddressInfo).port,
-      devices: { exec, advertise: noAdvertise, lanAddresses: () => [ADDRESS], bindRetry: { attempts: 2, delayMs: 10 } },
+      devices: { exec, host: EXAMPLE_HOST, advertise: noAdvertise, lanAddresses: () => [ADDRESS], bindRetry: { attempts: 2, delayMs: 10 } },
     })
   })
   afterAll(async () => {
@@ -643,7 +647,7 @@ describe.skipIf(!hasOpenssl)('a remote port already taken', () => {
   })
 })
 
-describe.skipIf(!hasOpenssl)('a remote port the previous server still holds', () => {
+describe.skipIf(!canIssueCertificates)('a remote port the previous server still holds', () => {
   /** A free port, taken by a plain server for as long as the test wants it. */
   async function holdPort(): Promise<{ port: number; release: () => Promise<void> }> {
     const held = createServer()
@@ -657,7 +661,7 @@ describe.skipIf(!hasOpenssl)('a remote port the previous server still holds', ()
       widgetsDir: join(process.cwd(), '..', 'widgets'),
       providers: [],
       devicesPort,
-      devices: { exec, advertise: noAdvertise, lanAddresses: () => [ADDRESS], bindRetry },
+      devices: { exec, host: EXAMPLE_HOST, advertise: noAdvertise, lanAddresses: () => [ADDRESS], bindRetry },
     })
   }
   const until = async (ok: () => Promise<boolean>): Promise<void> => {
@@ -743,7 +747,7 @@ describe.skipIf(!hasOpenssl)('a remote port the previous server still holds', ()
   })
 })
 
-describe.skipIf(!hasOpenssl)('following a change of address', () => {
+describe.skipIf(!canIssueCertificates)('following a change of address', () => {
   let adir: string
   let aapp: FastifyInstance
   let addresses = ['192.0.2.10']
@@ -764,7 +768,7 @@ describe.skipIf(!hasOpenssl)('following a change of address', () => {
       widgetsDir: join(process.cwd(), '..', 'widgets'),
       providers: [],
       devicesPort: 0,
-      devices: { exec, advertise: recordingAdvertise, lanAddresses: () => addresses, preferredAddress: async (a) => a[0] ?? null },
+      devices: { exec, host: EXAMPLE_HOST, advertise: recordingAdvertise, lanAddresses: () => addresses, preferredAddress: async (a) => a[0] ?? null },
     })
   })
   afterAll(async () => {
@@ -862,7 +866,7 @@ describe('browser extensions in the device list', () => {
       widgetsDir: join(process.cwd(), '..', 'widgets'),
       providers: [],
       devicesPort: 0,
-      devices: { exec, advertise: noAdvertise, lanAddresses: () => [ADDRESS] },
+      devices: { exec, host: EXAMPLE_HOST, advertise: noAdvertise, lanAddresses: () => [ADDRESS] },
     })
   })
   afterAll(async () => {
@@ -901,7 +905,7 @@ describe('browser extensions in the device list', () => {
     expect((await eapp.inject({ method: 'PATCH', url: '/api/devices/nobody', headers: { host: HOST }, payload: { name: 'x' } })).statusCode).toBe(404)
   })
 
-  it.skipIf(!hasOpenssl)('remove every tablet and a certificate reset take both platforms and leave the extensions paired', async () => {
+  it.skipIf(!canIssueCertificates)('remove every tablet and a certificate reset take both platforms and leave the extensions paired', async () => {
     const { deviceId } = await pairExtension()
     const kinds = async () => ((await eapp.inject({ url: '/api/devices', headers: { host: HOST } })).json().devices as { id: string; kind: string }[])
     for (const [method, url] of [['DELETE', '/api/devices'], ['POST', '/api/devices/reset-certificate']] as const) {
@@ -948,7 +952,7 @@ describe('the device status reads the companion through its closures', () => {
   })
 })
 
-describe.skipIf(!hasOpenssl)('telling a paired device where else to find the Mac', () => {
+describe.skipIf(!canIssueCertificates)('telling a paired device where else to find the Mac', () => {
   let mdir: string
   let mapp: FastifyInstance
   let mport: number
@@ -976,7 +980,7 @@ describe.skipIf(!hasOpenssl)('telling a paired device where else to find the Mac
       providers: [],
       devicesPort: 0,
       devices: {
-        exec, advertise: noAdvertise, lanAddresses: () => [...OTHERS, ...PRIVATE].sort(),
+        exec, host: EXAMPLE_HOST, advertise: noAdvertise, lanAddresses: () => [...OTHERS, ...PRIVATE].sort(),
         preferredAddress: async (a) => a[0] ?? null,
         // A VPN's address is left out, and an address the listener does not answer on is dropped
         // by the service even if the lookup names it.

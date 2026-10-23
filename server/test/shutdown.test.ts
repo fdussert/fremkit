@@ -9,7 +9,7 @@ import { CONFIG_VERSION } from '../src/config/schema.js'
 import { noAdvertise } from '../src/devices/bonjour.js'
 import { execFileAsync, type Exec } from '../src/secrets/keychain.js'
 import { closeAppListenersNow, installShutdown, SHUTDOWN_DEADLINE_MS, WATCHDOG_MS } from '../src/shutdown.js'
-import { hasOpenssl } from './helpers/remote.js'
+import { canIssueCertificates } from './helpers/remote.js'
 
 /** Whether a TCP connection to the port is refused. */
 const refused = (port: number, host = '127.0.0.1') => new Promise<boolean>((resolve) => {
@@ -86,7 +86,7 @@ describe('shutdown', () => {
     expect(Date.now() - sentAt).toBeLessThan(WATCHDOG_MS + 1_500)
   }, 15_000)
 
-  it.skipIf(!hasOpenssl)('the server\'s own wiring stops the loopback port and the remote listener at once, and the app still closes', async () => {
+  it.skipIf(!canIssueCertificates)('the server\'s own wiring stops the loopback port and the remote listener at once, and the app still closes', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'fremkit-shutdown-'))
     await writeFile(join(dir, 'fremkit.json'), JSON.stringify({
       version: CONFIG_VERSION, locale: 'en', secrets: { backend: 'file' }, connections: [], widgets: {},

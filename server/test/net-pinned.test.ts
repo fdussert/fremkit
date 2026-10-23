@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import type { LookupAddress } from 'node:dns'
 import { guardedLookup, PrivateAddressError } from '../src/net/pinned.js'
-import { hasOpenssl } from './helpers/remote.js'
+import { canIssueCertificates } from './helpers/remote.js'
 
 /** A resolver that answers `addresses`, for every name. */
 const answering = (addresses: LookupAddress[]) =>
@@ -38,13 +38,13 @@ describe('loading undici', () => {
   // has long since used fetch by the time this file runs. And HTTP/2 over TLS, because that is
   // where it broke — GitHub, Azure DevOps and the Claude API answer h2; an HTTP/1.1 test passes
   // on the broken code too.
-  // Needs the app's openssl (/usr/bin/openssl on the Mac); the Windows certificate path is a later task.
-  it.skipIf(!hasOpenssl)('leaves the global fetch decoding gzip answers, as at server start', async () => {
+  // The certificate comes the app's way: openssl on the Mac, in process on Windows.
+  it.skipIf(!canIssueCertificates)('leaves the global fetch decoding gzip answers, as at server start', async () => {
     const { createSecureServer } = await import('node:http2')
     const { gzipSync } = await import('node:zlib')
     const { generateKeyPairSync } = await import('node:crypto')
     const { execFile } = await import('node:child_process')
-    const { fileURLToPath } = await import('node:url')
+    const { fileURLToPath, pathToFileURL } = await import('node:url')
     const { issueCertificate } = await import('../src/devices/certificate.js')
     const key = generateKeyPairSync('ec', { namedCurve: 'prime256v1' }).privateKey.export({ type: 'pkcs8', format: 'pem' }) as string
     const cert = await issueCertificate(key, { host: 'localhost', addresses: ['127.0.0.1'] })
@@ -57,14 +57,21 @@ describe('loading undici', () => {
     const pinned = fileURLToPath(new URL('../src/net/pinned.ts', import.meta.url))
     // What the server does under tsx: the module is loaded as CommonJS before any fetch, then
     // something publicFetches, then a provider uses the global fetch.
-    const script = `import(${JSON.stringify(pinned)})
+    // Node's ESM loader takes a file URL on Windows, never a drive path.
+    const target = process.platform === 'win32' ? pathToFileURL(pinned).href : pinned
+    const script = `import(${JSON.stringify(target)})
       .then((m) => m.publicFetch(${JSON.stringify(url)}).then((r) => r.arrayBuffer()))
       .then(() => fetch(${JSON.stringify(url)})).then((r) => r.json())
       .then((j) => console.log(JSON.stringify(j)), (e) => { console.error(e.message); process.exit(1) })`
-    const tsx = fileURLToPath(new URL('../node_modules/.bin/tsx', import.meta.url))
+    // The way the server is started: the tsx CLI on the Mac; on Windows `node --import tsx`, as
+    // the `.bin/tsx` shim there is a `.cmd` that is never run.
+    const [cmd, args] = process.platform === 'win32'
+      ? [process.execPath, ['--import', 'tsx', '-e', script]]
+      : [fileURLToPath(new URL('../node_modules/.bin/tsx', import.meta.url)), ['-e', script]]
+    const cwd = fileURLToPath(new URL('..', import.meta.url))
     try {
       const out = await new Promise<string>((resolve, reject) =>
-        execFile(tsx, ['-e', script], { timeout: 20_000, env: { ...process.env, NODE_TLS_REJECT_UNAUTHORIZED: '0', NODE_NO_WARNINGS: '1' } },
+        execFile(cmd, args, { cwd, timeout: 20_000, env: { ...process.env, NODE_TLS_REJECT_UNAUTHORIZED: '0', NODE_NO_WARNINGS: '1' } },
           (err, stdout, stderr) => (err ? reject(new Error(stderr || err.message)) : resolve(stdout))))
       expect(JSON.parse(out.trim())).toEqual({ ok: true })
     } finally {

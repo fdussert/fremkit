@@ -9,7 +9,7 @@ import { remoteAccess } from '../src/devices/allowlist.js'
 import { readCookie } from '../src/http/cookies.js'
 import { generateToken } from '../src/http/access.js'
 import { hostAddresses } from '../src/widgets/webrtc.js'
-import { hasOpenssl, remote, tlsMaterial, upgrade } from './helpers/remote.js'
+import { canIssueCertificates, remote, tlsMaterial, upgrade } from './helpers/remote.js'
 
 let dir: string
 let app: FastifyInstance
@@ -96,7 +96,7 @@ describe('readCookie', () => {
   })
 })
 
-describe.skipIf(!hasOpenssl)('the remote gate, through a real TLS listener', () => {
+describe.skipIf(!canIssueCertificates)('the remote gate, through a real TLS listener', () => {
   beforeAll(async () => {
     dir = await mkdtemp(join(tmpdir(), 'fremkit-gate-'))
     await writeFixture(dir)
@@ -335,7 +335,7 @@ describe.skipIf(!hasOpenssl)('the remote gate, through a real TLS listener', () 
   })
 })
 
-describe.skipIf(!hasOpenssl)('the remote gate beside the local access secret', () => {
+describe.skipIf(!canIssueCertificates)('the remote gate beside the local access secret', () => {
   const ACCESS_PORT = 4301
   const accessToken = generateToken()
   let adir: string

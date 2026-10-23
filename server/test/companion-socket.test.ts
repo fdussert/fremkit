@@ -16,7 +16,7 @@ import { CONFIG_VERSION } from '../src/config/schema.js'
 import { noAdvertise } from '../src/devices/bonjour.js'
 import { generateToken } from '../src/http/access.js'
 import { execFileAsync, type Exec } from '../src/secrets/keychain.js'
-import { hasOpenssl, upgrade } from './helpers/remote.js'
+import { canIssueCertificates, upgrade } from './helpers/remote.js'
 
 const ORIGIN = `chrome-extension://${'c'.repeat(32)}`
 const OTHER = `chrome-extension://${'d'.repeat(32)}`
@@ -564,7 +564,7 @@ describe('companion socket in the app', () => {
     expect(res.statusCode).toBe(404)
   })
 
-  it.skipIf(!hasOpenssl)('the companion socket is 404 on the remote listener', async () => {
+  it.skipIf(!canIssueCertificates)('the companion socket is 404 on the remote listener', async () => {
     const on = await full.inject({ method: 'PUT', url: '/api/devices/settings', headers: { host: HOST, authorization: `Bearer ${SECRET}` }, payload: { enabled: true } })
     expect(on.statusCode).toBe(200)
     const remotePort = on.json().port as number

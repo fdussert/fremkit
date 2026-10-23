@@ -8,7 +8,7 @@ import { RemoteListener } from '../src/devices/listener.js'
 import { deviceBrightnessView } from '../src/devices/service.js'
 import { commandScope, deviceConfigView, iconInScope, instanceInScope, tileIconInScope, widgetInScope, type ScreenScope } from '../src/devices/scope.js'
 import { ConfigSchema, type Config } from '../src/config/schema.js'
-import { hasOpenssl, remote, tlsMaterial, TinyWs, upgrade } from './helpers/remote.js'
+import { canIssueCertificates, remote, tlsMaterial, TinyWs, upgrade } from './helpers/remote.js'
 
 /**
  * Three screens: the Edge, and two device screens. Each shows its own clock and its own
@@ -196,7 +196,7 @@ describe('deviceConfigView', () => {
 /** What a device must never read in the config, whatever its screen. */
 const MAC_ONLY = ['connections', 'secrets', 'marketplace', 'privacy']
 
-describe.skipIf(!hasOpenssl)('a paired device acts on its own screen only', () => {
+describe.skipIf(!canIssueCertificates)('a paired device acts on its own screen only', () => {
   let dir: string
   let app: FastifyInstance
   let listener: RemoteListener
@@ -407,7 +407,8 @@ describe.skipIf(!hasOpenssl)('a paired device acts on its own screen only', () =
     }
   })
 
-  it('presses only the shortcuts of its own screen', async () => {
+  // The Shortcuts provider is macOS's own: on Windows the channel has no provider to answer.
+  it.skipIf(process.platform === 'win32')('presses only the shortcuts of its own screen', async () => {
     const ws = await openWs(tokenB)
     try {
       const edge = await command(ws, 'shortcuts', 'open', { instanceId: 'sc-edge', index: 0 })
@@ -489,7 +490,7 @@ describe.skipIf(!hasOpenssl)('a paired device acts on its own screen only', () =
   })
 })
 
-describe.skipIf(!hasOpenssl)('the unavailable list of a paired device on Windows', () => {
+describe.skipIf(!canIssueCertificates)('the unavailable list of a paired device on Windows', () => {
   let dir: string
   let app: FastifyInstance
   let listener: RemoteListener
@@ -520,7 +521,8 @@ describe.skipIf(!hasOpenssl)('the unavailable list of a paired device on Windows
   afterAll(async () => {
     await listener?.stop()
     await app?.close()
-    await rm(dir, { recursive: true, force: true })
+    // Windows may still hold a file the closed app wrote a moment ago: rm retries ENOTEMPTY there.
+    await rm(dir, { recursive: true, force: true, maxRetries: 5 })
   })
 
   it('keeps the platform and limits unavailable to the widgets of its own screen', async () => {
