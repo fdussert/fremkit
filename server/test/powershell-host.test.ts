@@ -352,6 +352,12 @@ describe('host.ps1', () => {
 
   const code = script.split('\n').filter((line) => !/^\s*(#|\/\/)/.test(line)).join('\n')
 
+  it('answers dpapi-foreign only to an unprotect, for the HRESULTs of a blob that never opens here', () => {
+    expect(code).toContain('!protect && IsForeign(e.HResult) ? "dpapi-foreign" : "dpapi-failed"')
+    const list = /static readonly int\[\] Foreign = \{([^}]*)\}/.exec(code)?.[1] ?? ''
+    expect([...list.matchAll(/0x([0-9A-F]{8})/g)].map((m) => m[1]).sort()).toEqual(['8007000D', '80070057', '80090005', '8009000B'])
+  })
+
   it('runs system tools by absolute path', () => {
     // The only place a tool's name appears is its path under %SystemRoot%.
     const tools = [...code.matchAll(/\b(netsh|wsl)\.exe\b/gi)]

@@ -34,7 +34,8 @@
 #   network.wifi       -                        { ssid: string|null, signal: 0-100|null }   no-wifi, location-denied, tool-timeout
 #   sound              'chimes'|'chord'|'ding'|'notify'|'tada'   true                       no-sound
 #   dpapi.protect      base64 (<= 90000 chars)  base64 (CurrentUser scope)                  dpapi-failed
-#   dpapi.unprotect    base64 (<= 90000 chars)  base64                                      dpapi-failed
+#   dpapi.unprotect    base64 (<= 90000 chars)  base64                                      dpapi-foreign (never opens here:
+#                                                   another user or machine, altered), dpapi-failed (may pass)
 #   wsl.list           -                        [names matching ^[A-Za-z0-9._-]{1,64}$]     no-wsl, tool-timeout
 #
 # Common codes: invalid-arg, unknown-op, bad-request, failed (anything unexpected).
@@ -179,6 +180,14 @@ namespace Fremkit {
   }
 
   public static class Dpapi {
+    // What Unprotect answers for a blob this user on this machine will never open, checked in the
+    // VM: NTE_BAD_KEY_STATE, its master key is not this user's (another user or machine, measured by
+    // altering the blob's master key id); ERROR_INVALID_DATA, altered data or another entropy;
+    // E_INVALIDARG, a truncated or empty blob; NTE_BAD_DATA, bad data at the provider.
+    static readonly int[] Foreign = { unchecked((int)0x8009000B), unchecked((int)0x8007000D), unchecked((int)0x80070057), unchecked((int)0x80090005) };
+
+    static bool IsForeign(int hresult) { return Array.IndexOf(Foreign, hresult) >= 0; }
+
     public static string Run(object arg, bool protect) {
       string text = arg as string;
       if (text == null || text.Length > 90000) throw new CodeException("invalid-arg");
@@ -190,8 +199,10 @@ namespace Fremkit {
           ? ProtectedData.Protect(input, null, DataProtectionScope.CurrentUser)
           : ProtectedData.Unprotect(input, null, DataProtectionScope.CurrentUser);
         return Convert.ToBase64String(output);
-      } catch (CryptographicException) {
-        throw new CodeException("dpapi-failed");
+      } catch (CryptographicException e) {
+        // Only an unprotect can meet a blob that will never open here; everything else (a profile
+        // not loaded, the master key out of reach) may pass, and is answered as such.
+        throw new CodeException(!protect && IsForeign(e.HResult) ? "dpapi-foreign" : "dpapi-failed");
       } finally {
         Array.Clear(input, 0, input.Length);
         if (output != null) Array.Clear(output, 0, output.Length);

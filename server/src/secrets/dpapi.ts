@@ -13,18 +13,20 @@ const TAG_BYTES = 16
 /**
  * A DPAPI call's own budget. The host's start-up (spawn plus its Add-Type, up to 20 s) is timed
  * separately and before this starts, but a cold DPAPI on a loaded machine is still not instant.
+ * Worst case a first read (a connection's Test) waits about 50 s, then fails with a code: never forever.
  */
 const DPAPI_TIMEOUT_MS = 30_000
 
 /**
- * What DPAPI answering means "this blob will never open here": another Windows user's or
- * machine's key file (a copied data folder, a restored backup) or one that is not DPAPI output at
- * all. Anything else (`timeout`, `host-exited`, …) may pass, and must never cost the user a file.
+ * What the host answering means "this blob will never open here": another Windows user's or
+ * machine's key file (a copied data folder, a restored backup), an altered one, or one that is not
+ * base64 at all. Anything else (`dpapi-failed`: a profile not loaded, the master key out of reach;
+ * `timeout`, `host-exited`, …) may pass, and must never cost the user a file.
  */
-const UNREADABLE_HOST_CODES = new Set(['dpapi-failed', 'invalid-arg'])
+const UNREADABLE_HOST_CODES = new Set(['dpapi-foreign', 'invalid-arg'])
 
 /** Why the store started empty: fixed codes for the log, never a byte of a key or a value. */
-export type DpapiUnreadable = 'dpapi-failed' | 'invalid-arg' | 'key-invalid' | 'key-missing' | 'index-corrupt'
+export type DpapiUnreadable = 'dpapi-foreign' | 'invalid-arg' | 'key-invalid' | 'key-missing' | 'index-corrupt'
 
 /** The part of `PowerShellHost` the store uses; the tests give a fake. */
 export interface DpapiHost {
@@ -166,14 +168,17 @@ export class DpapiSecretStore implements SecretStore {
     return { key, entries: index.kind === 'ok' ? index.entries : {} }
   }
 
-  /** Moves an unreadable store's files out of the way; a name already taken is never replaced. */
+  /**
+   * Moves an unreadable store's files out of the way, under one stamp free for both names, so the
+   * key and the index it opened stay a pair; a name already taken is never replaced.
+   */
   private async setAside(): Promise<void> {
-    const stamp = Date.now()
-    for (const path of [this.keyPath, this.indexPath]) {
-      let target = `${path}.unreadable-${stamp}`
-      for (let n = stamp + 1; await exists(target); n++) target = `${path}.unreadable-${n}`
+    let stamp = Date.now()
+    const paths = [this.keyPath, this.indexPath]
+    while ((await Promise.all(paths.map((p) => exists(`${p}.unreadable-${stamp}`)))).some(Boolean)) stamp++
+    for (const path of paths) {
       try {
-        await rename(path, target)
+        await rename(path, `${path}.unreadable-${stamp}`)
       } catch (err) {
         if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
           throw new Error(`${tr(undefined, 'secrets.storeWriteFailed')} (${(err as NodeJS.ErrnoException).code ?? 'io'})`)

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -121,7 +121,7 @@ describe('DpapiSecretStore', () => {
     const oldIndex = await readFile(join(d, 'secrets.dpapi.json'), 'utf8')
 
     const host = new FakeHost(0x33)
-    host.failUnprotect = 'dpapi-failed'
+    host.failUnprotect = 'dpapi-foreign'
     const logged: unknown[] = []
     const s = store(d, host, (code) => logged.push(code))
     expect(await s.get('gh-x1z9/token')).toBeNull()
@@ -142,7 +142,7 @@ describe('DpapiSecretStore', () => {
     expect(indexAside).toBeDefined()
     expect(await readFile(join(d, keyAside!), 'utf8')).toBe(oldKey)
     expect(await readFile(join(d, indexAside!), 'utf8')).toBe(oldIndex)
-    expect(logged).toEqual(['dpapi-failed'])
+    expect(logged).toEqual(['dpapi-foreign'])
     // Reopened by the user the new key belongs to, the new store reads.
     expect(await store(d, new FakeHost(0x33)).get('gh-x1z9/token')).toBe('retyped')
   })
@@ -163,38 +163,77 @@ describe('DpapiSecretStore', () => {
     ] as const) {
       const d = await dir()
       await prepare(d)
-      const before = await readFile(join(d, 'secrets.dpapi.json'), 'utf8').catch(() => null)
+      const before = {
+        'secrets.key': await readFile(join(d, 'secrets.key'), 'utf8').catch(() => null),
+        'secrets.dpapi.json': await readFile(join(d, 'secrets.dpapi.json'), 'utf8').catch(() => null),
+      }
       const logged: string[] = []
       const s = store(d, new FakeHost(), (c) => logged.push(c))
       expect(await s.get('c1/token'), name).toBeNull()
       await s.set('c2/token', 'new')
       expect(await s.get('c2/token'), name).toBe('new')
       expect(logged, name).toEqual([code])
-      if (before !== null) {
-        const aside = (await readdir(d)).find((f) => f.startsWith('secrets.dpapi.json.unreadable-'))
-        expect(aside, name).toBeDefined()
-        expect(await readFile(join(d, aside!), 'utf8'), name).toBe(before)
+      const files = await readdir(d)
+      for (const [file, bytes] of Object.entries(before)) {
+        const aside = files.find((f) => f.startsWith(`${file}.unreadable-`))
+        if (bytes === null) {
+          expect(aside, `${name}: ${file}`).toBeUndefined()
+          continue
+        }
+        expect(aside, `${name}: ${file}`).toBeDefined()
+        expect(await readFile(join(d, aside!), 'utf8'), `${name}: ${file}`).toBe(bytes)
       }
     }
   })
 
-  it('throws a code, not a value, when DPAPI is not reachable, and keeps the files for the next try', async () => {
-    const d = await dir()
-    await store(d, new FakeHost()).set('gh-x1z9/token', 'placeholder-token')
-    const host = new FakeHost()
-    host.failUnprotect = 'host-start-timeout'
-    const logged: string[] = []
-    const s = store(d, host, (c) => logged.push(c))
-    const err = await s.get('gh-x1z9/token').catch((e: Error) => e)
-    expect(err).toBeInstanceOf(Error)
-    expect((err as Error).message).toMatch(/host-start-timeout/)
-    expect((err as Error).message).not.toContain('placeholder-token')
-    await expect(s.set('gh-x1z9/token', 'x')).rejects.toThrow(/host-start-timeout/)
-    expect((await readdir(d)).filter((f) => f.includes('unreadable'))).toEqual([])
-    expect(logged).toEqual([])
-    // The host is back: the same store unwraps and reads what was there.
-    host.failUnprotect = null
-    expect(await s.get('gh-x1z9/token')).toBe('placeholder-token')
+  // `dpapi-failed` is DPAPI failing for a reason that may pass (a profile not loaded, the master
+  // key out of reach): it must not cost the user the file any more than a dead host does.
+  for (const code of ['host-start-timeout', 'timeout', 'host-exited', 'dpapi-failed']) {
+    it(`throws ${code}, not a value, and keeps the files for the next try`, async () => {
+      const d = await dir()
+      await store(d, new FakeHost()).set('gh-x1z9/token', 'placeholder-token')
+      const host = new FakeHost()
+      host.failUnprotect = code
+      const logged: string[] = []
+      const s = store(d, host, (c) => logged.push(c))
+      const err = await s.get('gh-x1z9/token').catch((e: Error) => e)
+      expect(err).toBeInstanceOf(Error)
+      expect((err as Error).message).toContain(`(${code})`)
+      expect((err as Error).message).not.toContain('placeholder-token')
+      await expect(s.set('gh-x1z9/token', 'x')).rejects.toThrow(`(${code})`)
+      await expect(s.keysOf('gh-x1z9')).rejects.toThrow(`(${code})`)
+      expect((await readdir(d)).filter((f) => f.includes('unreadable'))).toEqual([])
+      expect(logged).toEqual([])
+      // The host is back: the same store unwraps and reads what was there.
+      host.failUnprotect = null
+      expect(await s.get('gh-x1z9/token')).toBe('placeholder-token')
+    })
+  }
+
+  describe('setting an unreadable store aside', () => {
+    afterEach(() => { vi.restoreAllMocks() })
+
+    it('uses one stamp free for both names, and replaces nothing already set aside', async () => {
+      const d = await dir()
+      await store(d, new FakeHost()).set('c1/token', 'v')
+      const key = await readFile(join(d, 'secrets.key'), 'utf8')
+      const index = await readFile(join(d, 'secrets.dpapi.json'), 'utf8')
+      // Earlier casualties: 1000 is taken for the index, 1001 for the key.
+      await writeFile(join(d, 'secrets.dpapi.json.unreadable-1000'), 'older index')
+      await writeFile(join(d, 'secrets.key.unreadable-1001'), 'older key')
+      vi.spyOn(Date, 'now').mockReturnValue(1000)
+      const host = new FakeHost()
+      host.failUnprotect = 'dpapi-foreign'
+      await store(d, host).set('c2/token', 'new')
+      expect(await readFile(join(d, 'secrets.key.unreadable-1002'), 'utf8')).toBe(key)
+      expect(await readFile(join(d, 'secrets.dpapi.json.unreadable-1002'), 'utf8')).toBe(index)
+      expect(await readFile(join(d, 'secrets.dpapi.json.unreadable-1000'), 'utf8')).toBe('older index')
+      expect(await readFile(join(d, 'secrets.key.unreadable-1001'), 'utf8')).toBe('older key')
+      expect((await readdir(d)).filter((f) => f.includes('unreadable')).sort()).toEqual([
+        'secrets.dpapi.json.unreadable-1000', 'secrets.dpapi.json.unreadable-1002',
+        'secrets.key.unreadable-1001', 'secrets.key.unreadable-1002',
+      ])
+    })
   })
 
   it('refuses to write when the key cannot be wrapped, and leaves nothing behind', async () => {
@@ -225,6 +264,30 @@ describe('DpapiSecretStore', () => {
       try {
         expect(await store(d, again).get('gh-x1z9/token')).toBe('placeholder-token')
       } finally { again.close() }
+    } finally { host.close() }
+  }, 60_000)
+
+  // A key file whose master key id is not this user's is what another user's or machine's looks
+  // like (bytes 24-39 of a DPAPI blob); an altered body is the other way a blob never opens.
+  it.runIf(process.platform === 'win32')('tells a key file that will never open here from a failure that may pass, through real DPAPI', async () => {
+    const host = new PowerShellHost()
+    try {
+      const wrapped = Buffer.from(await host.call<string>('dpapi.protect', Buffer.alloc(32, 7).toString('base64'), 30_000), 'base64')
+      const otherUser = Buffer.from(wrapped)
+      otherUser[30] ^= 0xff
+      const altered = Buffer.from(wrapped)
+      altered[altered.length - 5] ^= 1
+      for (const blob of [otherUser, altered, wrapped.subarray(0, 40)]) {
+        await expect(host.call('dpapi.unprotect', blob.toString('base64'), 30_000)).rejects.toMatchObject({ code: 'dpapi-foreign' })
+      }
+      const d = await dir()
+      await store(d, host).set('gh-x1z9/token', 'placeholder-token')
+      const keyFile = Buffer.from((await readFile(join(d, 'secrets.key'), 'utf8')).trim(), 'base64')
+      keyFile[30] ^= 0xff
+      await writeFile(join(d, 'secrets.key'), keyFile.toString('base64'))
+      const logged: string[] = []
+      expect(await store(d, host, (c) => logged.push(c)).get('gh-x1z9/token')).toBeNull()
+      expect(logged).toEqual(['dpapi-foreign'])
     } finally { host.close() }
   }, 60_000)
 })

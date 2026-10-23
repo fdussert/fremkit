@@ -64,7 +64,7 @@ export interface HostOpTypes {
   'network.wifi': { arg: undefined; value: HostWifi } // codes: no-wifi, location-denied, tool-timeout
   'sound': { arg: HostSound; value: true } // codes: no-sound
   'dpapi.protect': { arg: string; value: string } // base64 in (≤ 90000 chars), base64 out; codes: dpapi-failed
-  'dpapi.unprotect': { arg: string; value: string } // base64 in (≤ 90000 chars), base64 out; codes: dpapi-failed
+  'dpapi.unprotect': { arg: string; value: string } // base64 in (≤ 90000 chars), base64 out; codes: dpapi-foreign (never opens here), dpapi-failed (may pass)
   'wsl.list': { arg: undefined; value: string[] } // codes: no-wsl, tool-timeout
 }
 
