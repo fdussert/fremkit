@@ -16,7 +16,7 @@ import { createSystemProvider } from '../src/providers/system.js'
 it('never runs the optional sensor before consent and keeps polling without waiting for it', async () => {
   let enabled = false
   const readMacTemperature = vi.fn(() => ({ cpuCelsius: 55, updatedAt: 1800000000000, error: null as null }))
-  const provider = createSystemProvider({ macmonTemperatureEnabled: () => enabled, readMacTemperature })
+  const provider = createSystemProvider({ macmonTemperatureEnabled: () => enabled, readMacTemperature, readNetwork: async () => [] })
   expect((await provider.poll!() as { cpu: { temp: number | null; tempSource: string | null; tempError: string | null } }).cpu)
     .toMatchObject({ temp: null, tempSource: null, tempError: null })
   expect(readMacTemperature).not.toHaveBeenCalled()
@@ -29,7 +29,7 @@ it('never runs the optional sensor before consent and keeps polling without wait
 it('reports a missing macmon tool while preserving the system fallback', async () => {
   const readMacTemperature = vi.fn(() => ({ cpuCelsius: null, updatedAt: null, error: 'unconfigured' as const }))
   vi.mocked(si.cpuTemperature).mockResolvedValueOnce({ main: 42 } as Awaited<ReturnType<typeof si.cpuTemperature>>)
-  const provider = createSystemProvider({ macmonTemperatureEnabled: () => true, readMacTemperature })
+  const provider = createSystemProvider({ macmonTemperatureEnabled: () => true, readMacTemperature, readNetwork: async () => [] })
   expect((await provider.poll!() as { cpu: { temp: number | null; tempSource: string | null; tempError: string | null } }).cpu)
     .toMatchObject({ temp: 42, tempSource: 'system', tempError: 'unconfigured' })
 })

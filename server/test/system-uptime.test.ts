@@ -16,6 +16,8 @@ describe('OS uptime in the system snapshot', () => {
   const systemProvider = createSystemProvider({
     readDisks: async () => [],
     readMemory: async () => ({ total: 100, active: 50, available: 50, swapused: 0, swaptotal: 0 }),
+    // And the network: on Windows the default reader asks the real PowerShell host.
+    readNetwork: async () => [],
   })
   beforeEach(() => vi.mocked(uptime).mockReset())
 

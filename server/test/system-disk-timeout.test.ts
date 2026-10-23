@@ -19,6 +19,7 @@ describe('timedDisks', () => {
     const provider = createSystemProvider({
       readDisks: timedDisks(() => new Promise(() => {})),
       readMemory: async () => ({ total: 100, active: 50, available: 50, swapused: 0, swaptotal: 0 }),
+      readNetwork: async () => [],
     })
     const polled = provider.poll!()
     await vi.advanceTimersByTimeAsync(3_000)
