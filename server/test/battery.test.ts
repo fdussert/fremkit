@@ -169,7 +169,17 @@ describe('battery provider on Windows', () => {
   })
 })
 
-describe('battery snapshot computer field', () => {
+describe('battery provider retry on Windows', () => {
+  it('polls sooner after a failure and back to normal after a success', async () => {
+    const h = { call: vi.fn().mockRejectedValueOnce(new Error('x')).mockResolvedValue({ internal: null, devices: [] }) } as any
+    const provider = createBatteryProvider(undefined, { platform: 'win32', host: h })
+    expect(provider.intervalMs).toBe(30_000)
+    await provider.poll!()
+    expect(provider.intervalMs).toBe(5_000)
+    await provider.poll!()
+    expect(provider.intervalMs).toBe(30_000)
+  })
+
   it("marks the Windows snapshot computer: 'pc' and leaves the Mac one alone", async () => {
     const h = { call: vi.fn(async () => ({ internal: { percent: 50, charging: false }, devices: [] })) } as any
     expect(((await createBatteryProvider(undefined, { platform: 'win32', host: h }).poll!()) as BatterySnapshot).computer).toBe('pc')

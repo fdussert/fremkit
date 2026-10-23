@@ -4,6 +4,7 @@ import { targetPlatform } from '../platform/index.js'
 import { sharedHost, type HostBattery } from '../win/powershell-host.js'
 
 export const BATTERY_INTERVAL_MS = 30_000
+export const BATTERY_RETRY_MS = 5_000
 
 export type BatteryKind = 'keyboard' | 'mouse' | 'trackpad' | 'headphones' | 'other'
 
@@ -227,6 +228,8 @@ export function mergeBatteryDevices(bluetooth: BluetoothDevice[], ioreg: IoregBa
 export function createBatteryProvider(exec: Exec = execCommand, deps: BatteryDeps = {}): Provider<BatterySnapshot> {
   const windows = targetPlatform(deps.platform) === 'win32'
   let last: BatterySnapshot = { devices: [] }
+  /** After a failed read the next poll comes sooner, as the calendar's does (`intervalMs` is read per cycle). */
+  let failed = false
 
   const run = async (file: string, args: string[]): Promise<string> => {
     try { return await exec(file, args) } catch { return '' }
@@ -234,7 +237,7 @@ export function createBatteryProvider(exec: Exec = execCommand, deps: BatteryDep
 
   return {
     channel: 'battery',
-    intervalMs: BATTERY_INTERVAL_MS,
+    get intervalMs() { return failed ? BATTERY_RETRY_MS : BATTERY_INTERVAL_MS },
     async poll(): Promise<BatterySnapshot> {
       if (windows) {
         // On Windows `mac` is "this computer": the field keeps its name for the widget. A desktop
@@ -246,8 +249,10 @@ export function createBatteryProvider(exec: Exec = execCommand, deps: BatteryDep
             battery.devices.map((d) => ({ name: d.name, address: '', percent: d.percent })),
             [],
           )
+          failed = false
           return (last = { ...(internal ? { mac: internal } : {}), devices, computer: 'pc' })
         } catch {
+          failed = true
           return { ...last, error: 'offline' }
         }
       }
