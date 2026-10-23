@@ -220,6 +220,19 @@ describe('network provider on Windows', () => {
     expect(await createNetworkProvider(undefined, { platform: 'win32', ...f }).poll!()).toEqual({ iface: null, kind: 'other', downBps: 0, upBps: 0, history: [] })
   })
 
+  it('does not cache details from a failed read, and retries on the next poll', async () => {
+    const f = fakes()
+    f.host.call.mockRejectedValueOnce(new Error('tool-timeout'))
+    const provider = createNetworkProvider(undefined, { platform: 'win32', ...f })
+    expect(((await provider.poll!()) as NetworkSnapshot).ssid).toBeUndefined()
+    expect(((await provider.poll!()) as NetworkSnapshot).ssid).toBe('Example Net')
+    expect(f.host.call).toHaveBeenCalledTimes(2)
+    f.si.networkInterfaces.mockRejectedValueOnce(new Error('ps'))
+    const p2 = createNetworkProvider(undefined, { platform: 'win32', ...f })
+    expect(((await p2.poll!()) as NetworkSnapshot).kind).toBe('other')
+    expect(((await p2.poll!()) as NetworkSnapshot).kind).toBe('wifi')
+  })
+
   it('never touches systeminformation or the host on macOS', async () => {
     const f = fakes()
     const exec = vi.fn(async () => '')

@@ -175,16 +175,23 @@ export function createNetworkProvider(exec: Exec = execCommand, deps: NetworkDep
       }
 
       if (!details || details.iface !== iface || Date.now() - details.at >= WINDOWS_DETAILS_TTL_MS) {
-        const known = (await sys.networkInterfaces().catch(() => [])).find((i) => i.iface === iface)
-        const kind: NetworkKind = known?.type === 'wireless' ? 'wifi' : known?.type === 'wired' ? 'ethernet' : 'other'
+        // A failed read is never cached: `details` stays stale (or empty) and the next poll retries.
+        let ok = true
+        const found = await sys.networkInterfaces().then((all) => all.find((i) => i.iface === iface), () => { ok = false; return undefined })
+        const kind: NetworkKind = found?.type === 'wireless' ? 'wifi' : found?.type === 'wired' ? 'ethernet' : 'other'
         let ssid: string | undefined
         if (kind === 'wifi') {
           // No SSID (no Wi-Fi service, Location denied, netsh slow) costs the name and not the snapshot.
-          try { ssid = (await (deps.host ?? sharedHost()).call<HostWifi>('network.wifi', undefined, WIFI_TIMEOUT_MS)).ssid ?? undefined } catch { /* no name */ }
+          try { ssid = (await (deps.host ?? sharedHost()).call<HostWifi>('network.wifi', undefined, WIFI_TIMEOUT_MS)).ssid ?? undefined } catch { ok = false }
         }
-        details = { iface, kind, ...(known?.ip4 ? { ip: known.ip4 } : {}), ...(ssid ? { ssid } : {}), at: Date.now() }
+        const fresh = { iface, kind, ...(found?.ip4 ? { ip: found.ip4 } : {}), ...(ssid ? { ssid } : {}), at: Date.now() }
+        if (ok) details = fresh
+        else {
+          const { kind: k, ip, ssid: n } = fresh
+          return (last = { iface, kind: k, ...(ip ? { ip } : {}), ...(n ? { ssid: n } : {}), ...rates, history })
+        }
       }
-      const { kind, ip, ssid } = details
+      const { kind, ip, ssid } = details!
       return (last = { iface, kind, ...(ip ? { ip } : {}), ...(ssid ? { ssid } : {}), ...rates, history })
     } catch {
       return { ...last, history, error: 'offline' }
