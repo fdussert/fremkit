@@ -1,8 +1,7 @@
 import type { Provider } from './types.js'
 import { execCommand, type Exec } from './exec.js'
-import si from 'systeminformation'
 import { targetPlatform } from '../platform/index.js'
-import { sharedHost, type HostWifi } from '../win/powershell-host.js'
+import { sharedHost, type HostDefaultRoute, type HostWifi } from '../win/powershell-host.js'
 
 /** How many samples the snapshot carries, so a freshly opened widget draws a graph at once. */
 export const NETWORK_HISTORY = 60
@@ -23,15 +22,16 @@ export interface NetworkSnapshot {
   error?: string
 }
 
-/** The two systeminformation calls Windows reads, and the one host call; a test hands in fakes. */
+/** The host calls Windows reads; a test hands in a fake. */
 export interface NetworkDeps {
   platform?: NodeJS.Platform
-  si?: Pick<typeof si, 'networkInterfaceDefault' | 'networkStats' | 'networkInterfaces'>
-  host?: { call<T>(op: 'network.wifi', arg?: undefined, timeoutMs?: number): Promise<T> }
+  host?: { call<T>(op: 'network.default' | 'network.wifi', arg?: undefined, timeoutMs?: number): Promise<T> }
 }
 
-/** How long a Windows adapter's kind, address and SSID stand before they are read again. */
+/** How long a Windows adapter's SSID stands before it is read again. */
 export const WINDOWS_DETAILS_TTL_MS = 30_000
+/** `network.default` reads the route table and the adapter's counters in process. */
+const ROUTE_TIMEOUT_MS = 4000
 /** `network.wifi` runs netsh, which may take its whole 4 s budget. */
 const WIFI_TIMEOUT_MS = 6000
 
@@ -132,8 +132,9 @@ export function createNetworkProvider(exec: Exec = execCommand, deps: NetworkDep
   /** Hardware ports change only when an adapter is plugged in, so they are read once per start. */
   let ports: Record<string, string> | null = null
 
-  /** Windows only: what is read less often than the counters. */
-  let details: { iface: string; kind: NetworkKind; ip?: string; ssid?: string; at: number } | null = null
+  /** Windows only: the SSID, read less often than the counters, and the adapter `previous` counts. */
+  let wifi: { iface: string; ssid?: string; at: number } | null = null
+  let counted: string | null = null
   let last: NetworkSnapshot = { iface: null, kind: 'other', downBps: 0, upBps: 0, history }
 
   const run = async (file: string, args: string[]): Promise<string> => {
@@ -157,40 +158,48 @@ export function createNetworkProvider(exec: Exec = execCommand, deps: NetworkDep
     return { downBps, upBps }
   }
 
-  const reset = () => { previous = null; history = []; ports = null; details = null; last = { iface: null, kind: 'other', downBps: 0, upBps: 0, history } }
+  const reset = () => { previous = null; history = []; ports = null; wifi = null; counted = null; last = { iface: null, kind: 'other', downBps: 0, upBps: 0, history } }
 
+  /**
+   * One host call a poll: the default route's adapter, its kind, address and byte counters, read in
+   * process (`network.default`), never through `netstat`, `ipconfig` or `netsh lan` as
+   * systeminformation would. The SSID comes from `network.wifi`, on Wi-Fi only, kept 30 s per adapter.
+   */
   async function pollWindows(): Promise<NetworkSnapshot> {
-    const sys = deps.si ?? si
+    const host = deps.host ?? sharedHost()
     try {
-      const iface = await sys.networkInterfaceDefault()
-      if (!iface) {
+      const route = await host.call<HostDefaultRoute | null>('network.default', undefined, ROUTE_TIMEOUT_MS)
+      if (!route || typeof route.name !== 'string' || route.name === '') {
         previous = null
-        details = null
+        counted = null
+        wifi = null
         return (last = { iface: null, kind: 'other', downBps: 0, upBps: 0, history })
       }
-      const stats = (await sys.networkStats(iface))[0]
-      let rates = { downBps: 0, upBps: 0 }
-      if (stats && Number.isFinite(stats.rx_bytes) && Number.isFinite(stats.tx_bytes)) {
-        rates = advance({ rx: stats.rx_bytes, tx: stats.tx_bytes })
+      const iface = route.name
+      const kind: NetworkKind = route.kind === 'wifi' || route.kind === 'ethernet' ? route.kind : 'other'
+      // Another adapter's counters are not a delta of this one's.
+      if (counted !== iface) {
+        previous = null
+        counted = iface
       }
-
-      let shown = details?.iface === iface ? details : null
-      if (!shown || Date.now() - shown.at >= WINDOWS_DETAILS_TTL_MS) {
-        // A failed read is never cached: `details` stays as it was and the next poll retries. This
-        // snapshot shows the stale details of the same adapter when there are some.
-        let ok = true
-        const found = await sys.networkInterfaces().then((all) => all.find((i) => i.iface === iface), () => { ok = false; return undefined })
-        const kind: NetworkKind = found?.type === 'wireless' ? 'wifi' : found?.type === 'wired' ? 'ethernet' : 'other'
-        let ssid: string | undefined
-        if (kind === 'wifi') {
-          // No SSID (no Wi-Fi service, Location denied, netsh slow) costs the name and not the snapshot.
-          try { ssid = (await (deps.host ?? sharedHost()).call<HostWifi>('network.wifi', undefined, WIFI_TIMEOUT_MS)).ssid ?? undefined } catch { ok = false }
+      const rates = Number.isFinite(route.rx) && Number.isFinite(route.tx) ? advance({ rx: route.rx, tx: route.tx }) : { downBps: 0, upBps: 0 }
+      let ssid: string | undefined
+      if (kind === 'wifi') {
+        const known = wifi?.iface === iface ? wifi : null
+        if (known && Date.now() - known.at < WINDOWS_DETAILS_TTL_MS) {
+          ssid = known.ssid
+        } else {
+          // No SSID (no Wi-Fi service, Location denied, netsh slow) costs the name, not the snapshot;
+          // a failed read is not kept, and the adapter's last name stands meanwhile.
+          try {
+            ssid = (await host.call<HostWifi>('network.wifi', undefined, WIFI_TIMEOUT_MS)).ssid ?? undefined
+            wifi = { iface, ...(ssid ? { ssid } : {}), at: Date.now() }
+          } catch {
+            ssid = known?.ssid
+          }
         }
-        const fresh = { iface, kind, ...(found?.ip4 ? { ip: found.ip4 } : {}), ...(ssid ? { ssid } : {}), at: Date.now() }
-        if (ok) details = shown = fresh
-        else shown ??= fresh
       }
-      const { kind, ip, ssid } = shown
+      const ip = typeof route.ip4 === 'string' ? parseIfaddr(route.ip4) : undefined
       return (last = { iface, kind, ...(ip ? { ip } : {}), ...(ssid ? { ssid } : {}), ...rates, history })
     } catch {
       return { ...last, history, error: 'offline' }

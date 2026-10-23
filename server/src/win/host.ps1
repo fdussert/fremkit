@@ -33,6 +33,8 @@
 #   battery            -                        { internal: null | { percent, charging,     -
 #                                                   minutesLeft? }, devices: [{ name, percent }] }
 #   network.wifi       -                        { ssid: string|null, signal: 0-100|null }   no-wifi, location-denied, tool-timeout
+#   network.default    -                        null | { name, kind: 'wifi'|'ethernet'|'other', -
+#                                                   ip4: string|null, rx, tx } (the default route's adapter, its byte counters)
 #   sound              'chimes'|'chord'|'ding'|'notify'|'tada'   true                       no-sound
 #   dpapi.protect      base64 (<= 90000 chars)  base64 (CurrentUser scope)                  dpapi-failed
 #   dpapi.unprotect    base64 (<= 90000 chars)  base64                                      dpapi-foreign (never opens here:
@@ -535,6 +537,54 @@ namespace Fremkit {
       return text.Length == 0 ? null : text;
     }
   }
+
+  public static class Route {
+    [DllImport("iphlpapi.dll")]
+    static extern int GetBestInterface(uint destAddr, out uint bestIfIndex);
+
+    // The adapter the IPv4 default route goes out of, as { name, kind, ip4, rx, tx }, or null when
+    // there is no default route. `name` is the adapter's friendly name, the key Node's
+    // os.networkInterfaces() uses ("Ethernet", "Wi-Fi"). The route table answers the lookup for
+    // 0.0.0.0 with the default route alone; nothing is run and no cmdlet sees anything.
+    public static System.Collections.Specialized.OrderedDictionary Default() {
+      uint index;
+      if (GetBestInterface(0, out index) != 0) return null;
+      foreach (System.Net.NetworkInformation.NetworkInterface adapter in System.Net.NetworkInformation.NetworkInterface.GetAllNetworkInterfaces()) {
+        System.Net.NetworkInformation.IPInterfaceProperties properties;
+        System.Net.NetworkInformation.IPv4InterfaceProperties v4;
+        try {
+          properties = adapter.GetIPProperties();
+          v4 = properties.GetIPv4Properties();
+        } catch (Exception) { continue; }
+        if (v4 == null || (uint)v4.Index != index) continue;
+        string ip4 = null;
+        foreach (System.Net.NetworkInformation.UnicastIPAddressInformation address in properties.UnicastAddresses) {
+          if (address.Address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork) { ip4 = address.Address.ToString(); break; }
+        }
+        System.Net.NetworkInformation.IPInterfaceStatistics counters = adapter.GetIPStatistics();
+        System.Collections.Specialized.OrderedDictionary result = new System.Collections.Specialized.OrderedDictionary();
+        result["name"] = adapter.Name;
+        result["kind"] = Kind(adapter.NetworkInterfaceType);
+        result["ip4"] = ip4;
+        result["rx"] = counters.BytesReceived;
+        result["tx"] = counters.BytesSent;
+        return result;
+      }
+      return null;
+    }
+
+    static string Kind(System.Net.NetworkInformation.NetworkInterfaceType type) {
+      switch (type) {
+        case System.Net.NetworkInformation.NetworkInterfaceType.Wireless80211: return "wifi";
+        case System.Net.NetworkInformation.NetworkInterfaceType.Ethernet:
+        case System.Net.NetworkInformation.NetworkInterfaceType.Ethernet3Megabit:
+        case System.Net.NetworkInformation.NetworkInterfaceType.FastEthernetT:
+        case System.Net.NetworkInformation.NetworkInterfaceType.FastEthernetFx:
+        case System.Net.NetworkInformation.NetworkInterfaceType.GigabitEthernet: return "ethernet";
+        default: return "other";
+      }
+    }
+  }
 }
 '@
 
@@ -659,6 +709,7 @@ while ($true) {
       'volume.mute' { $value = FkVolumeMute $arg; break }
       'battery' { $value = [ordered]@{ internal = [Fremkit.Power]::Internal(); devices = [Fremkit.Bluetooth]::Levels() }; break }
       'network.wifi' { $value = FkWifi; break }
+      'network.default' { $value = [Fremkit.Route]::Default(); break }
       'sound' { $value = FkSound $arg; break }
       'dpapi.protect' { $value = [Fremkit.Dpapi]::Run($arg, $true); break }
       'dpapi.unprotect' { $value = [Fremkit.Dpapi]::Run($arg, $false); break }

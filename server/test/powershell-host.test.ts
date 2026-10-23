@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { EventEmitter } from 'node:events'
 import { PassThrough } from 'node:stream'
 import { readFileSync } from 'node:fs'
-import { HOST_ARGS, HostError, MAX_LINE, PowerShellHost, START_TIMEOUT_MS, encodeLine, type SpawnHost } from '../src/win/powershell-host.js'
+import { HOST_ARGS, HostError, MAX_LINE, PowerShellHost, START_TIMEOUT_MS, encodeLine, type HostDefaultRoute, type SpawnHost } from '../src/win/powershell-host.js'
 import { shippedPaths } from '../src/paths.js'
 
 /** A stand-in for the PowerShell child: what the host writes on stdin, and a way to answer. */
@@ -345,7 +345,7 @@ describe('host.ps1', () => {
 
   it('handles every op the TypeScript side can send', () => {
     for (const op of ['clipboard.read', 'clipboard.write', 'clipboard.private', 'volume.get', 'volume.set', 'volume.mute',
-      'battery', 'network.wifi', 'sound', 'dpapi.protect', 'dpapi.unprotect', 'wsl.list']) {
+      'battery', 'network.wifi', 'network.default', 'sound', 'dpapi.protect', 'dpapi.unprotect', 'wsl.list']) {
       expect(script).toContain(`'${op}'`)
     }
   })
@@ -415,4 +415,21 @@ describe('host.ps1', () => {
       expect(code).toMatch(new RegExp(`'${op.replace('.', '\\.')}' \\{ \\$value = \\[Fremkit\\.\\w+\\]::`))
     }
   })
+})
+
+describe('network.default through the real host', () => {
+  it.runIf(process.platform === 'win32')('names the default route\'s adapter as os.networkInterfaces() does', async () => {
+    const { networkInterfaces } = await import('node:os')
+    const host = new PowerShellHost()
+    try {
+      const route = await host.call<HostDefaultRoute | null>('network.default', undefined, 30_000)
+      // The test machine has a network; a null here would mean the lookup is broken.
+      expect(route).not.toBeNull()
+      expect(Object.keys(networkInterfaces())).toContain(route!.name)
+      expect(['wifi', 'ethernet', 'other']).toContain(route!.kind)
+      expect(Number.isSafeInteger(route!.rx) && route!.rx >= 0).toBe(true)
+      expect(Number.isSafeInteger(route!.tx) && route!.tx >= 0).toBe(true)
+      if (route!.ip4 !== null) expect(networkInterfaces()[route!.name]!.map((i) => i.address)).toContain(route!.ip4)
+    } finally { host.close() }
+  }, 60_000)
 })

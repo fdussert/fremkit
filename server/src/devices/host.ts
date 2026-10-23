@@ -1,7 +1,7 @@
 import { hostname, networkInterfaces, type NetworkInterfaceInfo } from 'node:os'
-import si from 'systeminformation'
 import { execFileAsync, type Exec } from '../secrets/keychain.js'
 import { targetPlatform } from '../platform/index.js'
+import { sharedHost, type HostDefaultRoute } from '../win/powershell-host.js'
 
 /** What a Bonjour local host name may contain; anything else is treated as unknown. */
 const HOST_NAME_RE = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$/
@@ -17,12 +17,17 @@ export interface HostDeps {
   platform?: NodeJS.Platform
   /** `os.hostname()`. */
   hostname?: () => string
-  /** `si.networkInterfaceDefault()`: the name of the interface the default route goes out of. */
+  /** The name of the interface the default route goes out of; by default the host's `network.default`. */
   defaultInterface?: () => Promise<string>
   interfaces?: () => InterfaceMap
 }
 
 const onWindows = (deps: HostDeps): boolean => targetPlatform(deps.platform) === 'win32'
+
+async function windowsDefaultInterface(): Promise<string> {
+  const route = await sharedHost().call<HostDefaultRoute | null>('network.default', undefined, 4000)
+  return route?.name ?? ''
+}
 
 /** Windows has no LocalHostName: its mDNS name is the host name, when it is one plain label. */
 function windowsHostName(deps: HostDeps): string | null {
@@ -110,13 +115,14 @@ export function lanAddresses(ifaces: InterfaceMap = networkInterfaces()): string
 }
 
 /**
- * The interface the default route goes out of (`route -n get default`), or null. On Windows,
- * `systeminformation`'s answer, kept only when it names one of `os.networkInterfaces()`.
+ * The interface the default route goes out of (`route -n get default`), or null. On Windows, the
+ * PowerShell host's route lookup (`network.default`, in process: no `netstat`), kept only when it
+ * names one of `os.networkInterfaces()`.
  */
 export async function defaultRouteInterface(exec: Exec = execFileAsync, deps: HostDeps = {}): Promise<string | null> {
   if (onWindows(deps)) {
     try {
-      const name = await (deps.defaultInterface ?? (() => si.networkInterfaceDefault()))()
+      const name = await (deps.defaultInterface ?? windowsDefaultInterface)()
       return typeof name === 'string' && name !== '' && Object.hasOwn((deps.interfaces ?? networkInterfaces)(), name) ? name : null
     } catch {
       return null

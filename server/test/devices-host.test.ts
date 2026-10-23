@@ -129,7 +129,7 @@ describe('the host on Windows', () => {
     expect(await localHostName(ranNothing, win({ hostname: () => { throw new Error('no') } }))).toBeNull()
   })
 
-  it('reads the default route through systeminformation, kept only when it names an interface', async () => {
+  it('reads the default route through the host, kept only when it names an interface', async () => {
     expect(await defaultRouteInterface(ranNothing, win({ defaultInterface: async () => 'Wi-Fi' }))).toBe('Wi-Fi')
     expect(await defaultRouteInterface(ranNothing, win({ defaultInterface: async () => 'Ethernet 9' }))).toBeNull()
     expect(await defaultRouteInterface(ranNothing, win({ defaultInterface: async () => '' }))).toBeNull()

@@ -3,6 +3,39 @@ import { uptime } from 'node:os'
 import type { Provider } from './types.js'
 import { createMacTemperatureReader } from './mac-thermals.js'
 import { cachedDisks, readMemory, type MemoryReading } from './mac-readings.js'
+import { targetPlatform } from '../platform/index.js'
+import { sharedHost, type HostDefaultRoute } from '../win/powershell-host.js'
+
+/** One interface's throughput in the system snapshot, in bytes per second. */
+export interface SystemNetwork { iface: string; rx: number; tx: number }
+
+/**
+ * The default route's throughput on Windows, from the host's `network.default` counters.
+ *
+ * Not `si.networkStats()`: on Windows it finds the default interface with `netstat -r` and the
+ * adapters with `ipconfig /all` and `netsh`, each through a shell with `execSync`, on every poll.
+ * The first reading, a change of adapter, a counter going backwards or a failed read give no entry.
+ */
+export function windowsNetworkRates(
+  readRoute: () => Promise<HostDefaultRoute | null> = () => sharedHost().call<HostDefaultRoute | null>('network.default', undefined, 4000),
+  now: () => number = Date.now,
+): () => Promise<SystemNetwork[]> {
+  let previous: { iface: string; rx: number; tx: number; at: number } | null = null
+  return async () => {
+    let route: HostDefaultRoute | null
+    try { route = await readRoute() } catch { route = null }
+    if (!route || typeof route.name !== 'string' || !Number.isFinite(route.rx) || !Number.isFinite(route.tx)) {
+      previous = null
+      return []
+    }
+    const at = now()
+    const before = previous
+    previous = { iface: route.name, rx: route.rx, tx: route.tx, at }
+    if (!before || before.iface !== route.name || at <= before.at || route.rx < before.rx || route.tx < before.tx) return []
+    const seconds = (at - before.at) / 1000
+    return [{ iface: route.name, rx: Math.round((route.rx - before.rx) / seconds), tx: Math.round((route.tx - before.tx) / seconds) }]
+  }
+}
 
 const round = (n: number) => Math.round(n * 10) / 10
 
@@ -114,17 +147,27 @@ export function createSystemProvider(options: {
   /** Disks and memory; on macOS read without `systeminformation`'s blocking calls (`mac-readings.ts`). */
   readDisks?: () => Promise<DiskReading[]>
   readMemory?: () => Promise<Pick<MemoryReading, 'total' | 'active' | 'available' | 'swapused' | 'swaptotal'>>
+  /** The per-interface throughput; on Windows `windowsNetworkRates()`, elsewhere `si.networkStats()`. */
+  readNetwork?: () => Promise<SystemNetwork[]>
+  platform?: NodeJS.Platform
 } = {}): Provider {
   const readMacTemperature = options.readMacTemperature ?? createMacTemperatureReader()
   const mac = process.platform === 'darwin'
   const disks = options.readDisks ?? (mac ? cachedDisks() : timedDisks(() => si.fsSize()))
   const memory = options.readMemory ?? (mac ? () => readMemory() : () => si.mem())
+  const network = options.readNetwork ?? (targetPlatform(options.platform) === 'win32'
+    ? windowsNetworkRates()
+    : async () => (await si.networkStats()).map((n) => ({
+      iface: n.iface,
+      rx: Math.max(0, Math.round(n.rx_sec ?? 0)),
+      tx: Math.max(0, Math.round(n.tx_sec ?? 0)),
+    })))
   return {
     channel: 'system',
     intervalMs: 2000,
     async poll() {
       const [load, mem, fs, net, temp] = await Promise.all([
-        si.currentLoad(), memory(), disks(), si.networkStats(), si.cpuTemperature(),
+        si.currentLoad(), memory(), disks(), network(), si.cpuTemperature(),
       ])
       const measured = options.macmonTemperatureEnabled?.() ? readMacTemperature() : null
       const macmonTemp = measured?.cpuCelsius ?? null
@@ -146,11 +189,7 @@ export function createSystemProvider(options: {
           swapTotal: mem.swaptotal,
         },
         disks: normalizeDisks(fs),
-        network: net.map((n) => ({
-          iface: n.iface,
-          rx: Math.max(0, Math.round(n.rx_sec ?? 0)),
-          tx: Math.max(0, Math.round(n.tx_sec ?? 0)),
-        })),
+        network: net,
       }
     },
   }

@@ -34,7 +34,7 @@ import { windowsTool } from '../platform/windows-tools.js'
 export type HostOp =
   | 'clipboard.read' | 'clipboard.write' | 'clipboard.private'
   | 'volume.get' | 'volume.set' | 'volume.mute'
-  | 'battery' | 'network.wifi' | 'sound'
+  | 'battery' | 'network.wifi' | 'network.default' | 'sound'
   | 'dpapi.protect' | 'dpapi.unprotect'
   | 'wsl.list'
 
@@ -47,6 +47,8 @@ export interface HostInternalBattery { percent: number; charging: boolean; minut
 export interface HostBluetoothBattery { name: string; percent: number }
 export interface HostBattery { internal: HostInternalBattery | null; devices: HostBluetoothBattery[] }
 export interface HostWifi { ssid: string | null; signal: number | null }
+/** The adapter the IPv4 default route goes out of: its `os.networkInterfaces()` name and byte counters. */
+export interface HostDefaultRoute { name: string; kind: 'wifi' | 'ethernet' | 'other'; ip4: string | null; rx: number; tx: number }
 
 /**
  * Each op's argument and value, the same table as the top of `host.ps1`. Failure codes besides
@@ -62,6 +64,7 @@ export interface HostOpTypes {
   'volume.mute': { arg: { muted: boolean }; value: true } // codes: no-device
   'battery': { arg: undefined; value: HostBattery }
   'network.wifi': { arg: undefined; value: HostWifi } // codes: no-wifi, location-denied, tool-timeout
+  'network.default': { arg: undefined; value: HostDefaultRoute | null } // null: no default route
   'sound': { arg: HostSound; value: true } // codes: no-sound
   'dpapi.protect': { arg: string; value: string } // base64 in (≤ 90000 chars), base64 out; codes: dpapi-failed
   'dpapi.unprotect': { arg: string; value: string } // base64 in (≤ 90000 chars), base64 out; codes: dpapi-foreign (never opens here), dpapi-failed (may pass)
