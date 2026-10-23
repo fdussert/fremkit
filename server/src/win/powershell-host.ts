@@ -192,14 +192,17 @@ export class PowerShellHost {
     stdout.on('error', () => {})
     stdout.on('data', (chunk: string) => {
       if (running !== this.running) return
-      buffer += chunk
+      // Only the new chunk is searched: a long line arriving in many chunks stays linear.
+      let from = 0
       let at: number
-      while ((at = buffer.indexOf('\n')) >= 0) {
-        const line = buffer.slice(0, at).replace(/\r$/, '')
-        buffer = buffer.slice(at + 1)
+      while ((at = chunk.indexOf('\n', from)) >= 0) {
+        const line = (buffer + chunk.slice(from, at)).replace(/\r$/, '')
+        buffer = ''
+        from = at + 1
         this.onLine(running, line)
         if (running !== this.running) return
       }
+      buffer += chunk.slice(from)
       if (buffer.length > MAX_LINE) {
         buffer = ''
         this.stop(running)

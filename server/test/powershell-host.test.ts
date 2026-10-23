@@ -260,6 +260,20 @@ describe('PowerShellHost', () => {
     host.close()
   })
 
+  it('reassembles a line split across chunks and splits several in one chunk', async () => {
+    const { host, children } = setup()
+    const a = host.call('clipboard.read')
+    const b = host.call('volume.get')
+    children[0].ready()
+    await flush()
+    children[0].stdout.write('{"id":1,"ok":tr')
+    children[0].stdout.write('ue,"value":"x"}\r\n{"id":2,')
+    children[0].stdout.write('"ok":true,"value":2}\n')
+    await expect(a).resolves.toBe('x')
+    await expect(b).resolves.toBe(2)
+    host.close()
+  })
+
   it('ignores lines that are not answers', async () => {
     const { host, children } = setup()
     const pending = host.call('volume.get')
@@ -336,7 +350,7 @@ describe('host.ps1', () => {
     }
   })
 
-  const code = script.split('\n').filter((line) => !/^\s*#/.test(line)).join('\n')
+  const code = script.split('\n').filter((line) => !/^\s*(#|\/\/)/.test(line)).join('\n')
 
   it('runs system tools by absolute path', () => {
     // The only place a tool's name appears is its path under %SystemRoot%.
@@ -360,7 +374,9 @@ describe('host.ps1', () => {
 
   it('hands no request value or secret to a cmdlet', () => {
     // Module Logging records cmdlet parameter bindings: JSON, clipboard and paths go through .NET.
-    for (const cmdlet of ['ConvertFrom-Json', 'ConvertTo-Json', 'Set-Clipboard', 'Get-Clipboard', 'Test-Path', 'Write-Output', 'Out-String']) {
+    for (const cmdlet of ['ConvertFrom-Json', 'ConvertTo-Json', 'Set-Clipboard', 'Get-Clipboard', 'Test-Path', 'Write-Output', 'Out-String',
+      // a pipeline hands each object to these, device ids and names included
+      'Get-PnpDevice', 'Get-CimInstance', 'Where-Object', 'Select-Object', 'ForEach-Object']) {
       expect(code).not.toContain(cmdlet)
     }
     for (const op of ['clipboard.read', 'clipboard.write', 'dpapi.protect', 'dpapi.unprotect']) {

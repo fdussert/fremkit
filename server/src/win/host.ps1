@@ -11,7 +11,10 @@
 # a DPAPI value passed to ConvertTo-Json or clipboard text passed to Set-Clipboard would land in
 # the event log. Requests are parsed, answers written, the clipboard read and written and DPAPI
 # called through the C# below (method calls, which nothing logs); the script's own functions
-# receive only the non-secret args of volume and sound, and pass them on to .NET only.
+# receive only the non-secret args of volume and sound, and pass them on to .NET only. The same
+# goes for what identifies someone: the batteries and the Bluetooth devices (whose instance ids
+# carry their address) are read in C#, and no cmdlet is fed a pipeline of objects, since Module
+# Logging records what a cmdlet is given and what it returns.
 #
 # A failure answers a short code and nothing else: no exception text, no path, no value. Every arg
 # is type-checked here before use, whatever the server already checked. A line that does not
@@ -47,7 +50,7 @@ $FkPlayer = $null
 
 # The wire is needed for everything: without it the host cannot even answer, so a failed compile
 # ends the script and the server sees `host-exited`.
-Add-Type -ReferencedAssemblies System.Web.Extensions, System.Security -TypeDefinition @'
+Add-Type -ReferencedAssemblies System.Web.Extensions, System.Security, System.Management -TypeDefinition @'
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -280,20 +283,24 @@ namespace Fremkit {
     [DllImport("user32.dll")] static extern IntPtr SetClipboardData(uint format, IntPtr memory);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     static extern IntPtr CreateWindowEx(int exStyle, string className, string name, int style, int x, int y, int width, int height, IntPtr parent, IntPtr menu, IntPtr instance, IntPtr param);
+    [DllImport("user32.dll")] static extern bool DestroyWindow(IntPtr window);
     [DllImport("kernel32.dll")] static extern IntPtr GlobalAlloc(uint flags, UIntPtr bytes);
     [DllImport("kernel32.dll")] static extern IntPtr GlobalFree(IntPtr memory);
     [DllImport("kernel32.dll")] static extern IntPtr GlobalLock(IntPtr memory);
     [DllImport("kernel32.dll")] static extern bool GlobalUnlock(IntPtr memory);
     [DllImport("kernel32.dll")] static extern UIntPtr GlobalSize(IntPtr memory);
 
-    // A message-only window to own the clipboard: SetClipboardData fails after EmptyClipboard
-    // when the clipboard was opened with no owner.
-    static IntPtr owner = IntPtr.Zero;
+    // SetClipboardData fails after EmptyClipboard when the clipboard was opened with no owner, so a
+    // write opens it with a message-only window, made for that write and destroyed after it. A
+    // window left owning the clipboard would stall the next app that copies: EmptyClipboard sends
+    // the owner WM_DESTROYCLIPBOARD, and this thread pumps no messages while it waits on stdin.
+    static IntPtr NewOwner() {
+      return CreateWindowEx(0, "STATIC", "", 0, 0, 0, 0, 0, new IntPtr(-3), IntPtr.Zero, IntPtr.Zero, IntPtr.Zero);
+    }
 
-    static void Open() {
-      if (owner == IntPtr.Zero) owner = CreateWindowEx(0, "STATIC", "", 0, 0, 0, 0, 0, new IntPtr(-3), IntPtr.Zero, IntPtr.Zero, IntPtr.Zero);
+    static void Open(IntPtr window) {
       for (int i = 0; i < 10; i++) {
-        if (OpenClipboard(owner)) return;
+        if (OpenClipboard(window)) return;
         Thread.Sleep(20);
       }
       throw new CodeException("busy");
@@ -301,15 +308,18 @@ namespace Fremkit {
 
     public static string Read() {
       if (!IsClipboardFormatAvailable(CF_UNICODETEXT)) return "";
-      Open();
+      Open(IntPtr.Zero);
       try {
         IntPtr memory = GetClipboardData(CF_UNICODETEXT);
         if (memory == IntPtr.Zero) return "";
-        if (GlobalSize(memory).ToUInt64() > (ulong)(MaxChars + 1) * 2) throw new CodeException("too-large");
         IntPtr data = GlobalLock(memory);
         if (data == IntPtr.Zero) return "";
         try {
-          string text = Marshal.PtrToStringUni(data);
+          // Bounded by the allocation: another app's text need not end with a NUL.
+          ulong chars = GlobalSize(memory).ToUInt64() / 2;
+          string text = Marshal.PtrToStringUni(data, (int)Math.Min(chars, (ulong)MaxChars + 1));
+          int end = text.IndexOf('\0');
+          if (end >= 0) text = text.Substring(0, end);
           if (text.Length > MaxChars) throw new CodeException("too-large");
           return text;
         } finally { GlobalUnlock(memory); }
@@ -319,21 +329,37 @@ namespace Fremkit {
     public static bool Write(object arg) {
       string text = Wire.Prop(arg, "text") as string;
       if (text == null || text.Length > MaxChars) throw new CodeException("invalid-arg");
-      Open();
+      // Without an owner the write would fail after emptying the user's clipboard: refuse first.
+      IntPtr window = NewOwner();
+      if (window == IntPtr.Zero) throw new CodeException("failed");
+      try {
+        Put(window, text);
+      } finally {
+        DestroyWindow(window);
+      }
+      return true;
+    }
+
+    static void Put(IntPtr window, string text) {
+      Open(window);
       try {
         if (!EmptyClipboard()) throw new CodeException("busy");
-        if (text.Length == 0) return true;
+        if (text.Length == 0) return;
         IntPtr memory = GlobalAlloc(GMEM_MOVEABLE, new UIntPtr((ulong)(text.Length + 1) * 2));
         if (memory == IntPtr.Zero) throw new CodeException("failed");
         IntPtr data = GlobalLock(memory);
         if (data == IntPtr.Zero) { GlobalFree(memory); throw new CodeException("failed"); }
+        bool copied = false;
         try {
           Marshal.Copy(text.ToCharArray(), 0, data, text.Length);
           Marshal.WriteInt16(data, text.Length * 2, 0);
-        } finally { GlobalUnlock(memory); }
+          copied = true;
+        } finally {
+          GlobalUnlock(memory);
+          if (!copied) GlobalFree(memory);
+        }
         // The system owns the memory once SetClipboardData succeeds, and not before.
         if (SetClipboardData(CF_UNICODETEXT, memory) == IntPtr.Zero) { GlobalFree(memory); throw new CodeException("failed"); }
-        return true;
       } finally { CloseClipboard(); }
     }
 
@@ -343,7 +369,7 @@ namespace Fremkit {
       if (IsClipboardFormatAvailable(RegisterClipboardFormat("Clipboard Viewer Ignore"))) return 1;
       uint history = RegisterClipboardFormat("CanIncludeInClipboardHistory");
       if (!IsClipboardFormatAvailable(history)) return 0;
-      try { Open(); } catch (CodeException) { return -1; }
+      try { Open(IntPtr.Zero); } catch (CodeException) { return -1; }
       try {
         IntPtr memory = GetClipboardData(history);
         if (memory == IntPtr.Zero) return 0;
@@ -352,6 +378,131 @@ namespace Fremkit {
         try { return GlobalSize(memory).ToUInt64() >= 4 && Marshal.ReadInt32(data) == 0 ? 1 : 0; }
         finally { GlobalUnlock(memory); }
       } finally { CloseClipboard(); }
+    }
+  }
+
+  // The internal battery, through WMI from here rather than Get-CimInstance: Module Logging would
+  // record the objects a cmdlet returns, battery names included.
+  public static class Power {
+    // { percent, charging, minutesLeft? }, or null without an internal battery.
+    public static System.Collections.Specialized.OrderedDictionary Internal() {
+      using (System.Management.ManagementObjectSearcher searcher = new System.Management.ManagementObjectSearcher(
+          "root\\CIMV2", "SELECT BatteryStatus, EstimatedChargeRemaining, EstimatedRunTime FROM Win32_Battery")) {
+        foreach (System.Management.ManagementBaseObject battery in searcher.Get()) {
+          int status = Number(battery["BatteryStatus"]);
+          // BatteryStatus 6-9 are the charging states; many laptops report 2 ("on AC") while
+          // charging, which root\WMI's BatteryStatus.Charging gets right where it exists.
+          bool charging = status >= 6 && status <= 9;
+          bool? wmi = Charging();
+          if (wmi.HasValue) charging = wmi.Value;
+          System.Collections.Specialized.OrderedDictionary result = new System.Collections.Specialized.OrderedDictionary();
+          result["percent"] = Math.Max(0, Math.Min(100, Number(battery["EstimatedChargeRemaining"])));
+          result["charging"] = charging;
+          long run = Number(battery["EstimatedRunTime"]);
+          // 71582788 is "unknown"; the estimate means something only while on battery.
+          if (status == 1 && run > 0 && run < 71582788) result["minutesLeft"] = (int)run;
+          return result;
+        }
+      }
+      return null;
+    }
+
+    static bool? Charging() {
+      try {
+        using (System.Management.ManagementObjectSearcher searcher = new System.Management.ManagementObjectSearcher(
+            "root\\WMI", "SELECT Charging FROM BatteryStatus")) {
+          foreach (System.Management.ManagementBaseObject status in searcher.Get()) {
+            object charging = status["Charging"];
+            if (charging is bool) return (bool)charging;
+          }
+        }
+      } catch (System.Management.ManagementException) { }
+      return null;
+    }
+
+    static int Number(object value) {
+      return value == null ? -1 : (int)Math.Min(int.MaxValue, Convert.ToInt64(value, CultureInfo.InvariantCulture));
+    }
+  }
+
+  // Bluetooth devices that report a battery level, read with SetupAPI. Not with Get-PnpDevice:
+  // Module Logging would record every device's instance id (it carries the device's address) and
+  // name as cmdlet parameters.
+  public static class Bluetooth {
+    [StructLayout(LayoutKind.Sequential)]
+    struct DeviceInfo { public int Size; public Guid ClassGuid; public int DevInst; public IntPtr Reserved; }
+
+    [StructLayout(LayoutKind.Sequential)]
+    struct PropertyKey {
+      public Guid Format; public int Id;
+      public PropertyKey(string format, int id) { Format = new Guid(format); Id = id; }
+    }
+
+    [DllImport("setupapi.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    static extern IntPtr SetupDiGetClassDevs(IntPtr classGuid, string enumerator, IntPtr parent, int flags);
+    [DllImport("setupapi.dll", SetLastError = true)]
+    static extern bool SetupDiEnumDeviceInfo(IntPtr set, int index, ref DeviceInfo info);
+    [DllImport("setupapi.dll", SetLastError = true)]
+    static extern bool SetupDiDestroyDeviceInfoList(IntPtr set);
+    [DllImport("setupapi.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    static extern bool SetupDiGetDeviceInstanceId(IntPtr set, ref DeviceInfo info, StringBuilder id, int size, out int required);
+    [DllImport("setupapi.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    static extern bool SetupDiGetDeviceProperty(IntPtr set, ref DeviceInfo info, ref PropertyKey key, out int type, byte[] buffer, int size, out int required, int flags);
+
+    const int DIGCF_PRESENT = 0x2, DIGCF_ALLCLASSES = 0x4;
+    const int DEVPROP_TYPE_BYTE = 0x3, DEVPROP_TYPE_STRING = 0x12;
+    static readonly string[] Prefixes = { "BTHENUM\\", "BTHLE", "BTHHFENUM\\" };
+    static PropertyKey BatteryLevel = new PropertyKey("104EA319-6EE2-4701-BD47-8DDBF425BBE5", 2);
+    static PropertyKey FriendlyName = new PropertyKey("A45C254E-DF1C-4EFD-8020-67D146A850E0", 14);
+    static PropertyKey DeviceDesc = new PropertyKey("A45C254E-DF1C-4EFD-8020-67D146A850E0", 2);
+
+    // [{ name, percent }], one per name.
+    public static ArrayList Levels() {
+      ArrayList devices = new ArrayList();
+      HashSet<string> seen = new HashSet<string>();
+      IntPtr set = SetupDiGetClassDevs(IntPtr.Zero, null, IntPtr.Zero, DIGCF_PRESENT | DIGCF_ALLCLASSES);
+      if (set == new IntPtr(-1)) return devices;
+      try {
+        DeviceInfo info = new DeviceInfo();
+        info.Size = Marshal.SizeOf(typeof(DeviceInfo));
+        StringBuilder id = new StringBuilder(512);
+        for (int i = 0; SetupDiEnumDeviceInfo(set, i, ref info); i++) {
+          int required;
+          if (!SetupDiGetDeviceInstanceId(set, ref info, id, id.Capacity, out required)) continue;
+          string instance = id.ToString();
+          bool bluetooth = false;
+          foreach (string prefix in Prefixes) {
+            if (instance.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) { bluetooth = true; break; }
+          }
+          if (!bluetooth) continue;
+          byte[] level = Property(set, ref info, BatteryLevel, DEVPROP_TYPE_BYTE);
+          if (level == null || level.Length < 1) continue;
+          string name = Text(Property(set, ref info, FriendlyName, DEVPROP_TYPE_STRING)) ?? Text(Property(set, ref info, DeviceDesc, DEVPROP_TYPE_STRING));
+          if (string.IsNullOrEmpty(name) || !seen.Add(name)) continue;
+          System.Collections.Specialized.OrderedDictionary device = new System.Collections.Specialized.OrderedDictionary();
+          device["name"] = name;
+          device["percent"] = Math.Min(100, (int)level[0]);
+          devices.Add(device);
+        }
+      } finally {
+        SetupDiDestroyDeviceInfoList(set);
+      }
+      return devices;
+    }
+
+    static byte[] Property(IntPtr set, ref DeviceInfo info, PropertyKey key, int expected) {
+      byte[] buffer = new byte[1024];
+      int type, required;
+      if (!SetupDiGetDeviceProperty(set, ref info, ref key, out type, buffer, buffer.Length, out required, 0)) return null;
+      if (type != expected || required > buffer.Length) return null;
+      Array.Resize(ref buffer, required);
+      return buffer;
+    }
+
+    static string Text(byte[] bytes) {
+      if (bytes == null) return null;
+      string text = Encoding.Unicode.GetString(bytes).TrimEnd('\0').Trim();
+      return text.Length == 0 ? null : text;
     }
   }
 }
@@ -408,39 +559,6 @@ function FkVolumeMute($arg) {
   if ($muted -isnot [bool]) { FkFail 'invalid-arg' }
   if (-not [Fremkit.Audio]::Mute($muted)) { FkFail 'no-device' }
   $true
-}
-
-function FkBattery {
-  $internal = $null
-  $battery = Get-CimInstance -ClassName Win32_Battery -ErrorAction SilentlyContinue | Select-Object -First 1
-  if ($null -ne $battery) {
-    # BatteryStatus 6-9 are the charging states; many laptops report 2 ("on AC") while charging,
-    # which root\wmi's BatteryStatus.Charging gets right where it exists.
-    $status = [int]$battery.BatteryStatus
-    $charging = $status -ge 6 -and $status -le 9
-    try {
-      $wmi = Get-CimInstance -Namespace root/wmi -ClassName BatteryStatus -ErrorAction Stop | Select-Object -First 1
-      if ($null -ne $wmi) { $charging = [bool]$wmi.Charging }
-    } catch { }
-    $internal = [ordered]@{ percent = [int]$battery.EstimatedChargeRemaining; charging = $charging }
-    $run = $battery.EstimatedRunTime
-    # 71582788 is "unknown"; the estimate means something only while on battery.
-    if ($status -eq 1 -and $null -ne $run -and $run -gt 0 -and $run -lt 71582788) { $internal.minutesLeft = [int]$run }
-  }
-  $devices = @()
-  $seen = @{}
-  $nodes = @(Get-PnpDevice -PresentOnly -ErrorAction SilentlyContinue | Where-Object {
-    $_.InstanceId -like 'BTHENUM\*' -or $_.InstanceId -like 'BTHLE*' -or $_.InstanceId -like 'BTHHFENUM\*'
-  })
-  foreach ($node in $nodes) {
-    $property = Get-PnpDeviceProperty -InstanceId $node.InstanceId -KeyName '{104EA319-6EE2-4701-BD47-8DDBF425BBE5} 2' -ErrorAction SilentlyContinue
-    if ($null -eq $property -or $null -eq $property.Data) { continue }
-    $name = [string]$node.FriendlyName
-    if ($name -eq '' -or $seen.ContainsKey($name)) { continue }
-    $seen[$name] = $true
-    $devices += [ordered]@{ name = $name; percent = [int]$property.Data }
-  }
-  [ordered]@{ internal = $internal; devices = @($devices) }
 }
 
 function FkWifi {
@@ -509,7 +627,7 @@ while ($true) {
       'volume.get' { $value = FkVolumeGet; break }
       'volume.set' { $value = FkVolumeSet $arg; break }
       'volume.mute' { $value = FkVolumeMute $arg; break }
-      'battery' { $value = FkBattery; break }
+      'battery' { $value = [ordered]@{ internal = [Fremkit.Power]::Internal(); devices = [Fremkit.Bluetooth]::Levels() }; break }
       'network.wifi' { $value = FkWifi; break }
       'sound' { $value = FkSound $arg; break }
       'dpapi.protect' { $value = [Fremkit.Dpapi]::Run($arg, $true); break }
