@@ -34,7 +34,7 @@ vi.mock('../src/shared/socket', async () => {
 })
 vi.mock('../src/shared/api', () => ({
   api: {
-    getWidgets: async () => ({ widgets: {} }),
+    getWidgets: async () => ({ widgets: {}, platform: 'darwin', unavailable: [] }),
     getConfig: async () => fake.config,
     refuseCompanion: (id: string, code: string) => fake.refuse(id, code),
   },

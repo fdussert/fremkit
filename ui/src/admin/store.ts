@@ -41,6 +41,9 @@ export interface AdminState {
   sources: Record<string, WidgetSource>
   /** What each manifest asks for, beside what it was granted. See `WidgetsResponse.asks`. */
   asks: Record<string, WidgetPermissionSet>
+  /** The platform the server runs on, and the widget ids it cannot run (`WidgetsResponse`). */
+  platform: WidgetsResponse['platform']
+  unavailable: string[]
   catalogErrors: { id: string; error: string }[]
   /**
    * The screen being edited. Empty until a config is loaded, and whenever the screen it named
@@ -394,7 +397,7 @@ export function createAdminStore(deps: StoreDeps): AdminStore {
   const state = reactive<AdminState>({
     newConnectionType: '', editConnectionId: '', aboutId: '',
     clipboard: null, styleClipboard: null, reloads: {},
-    config: null, manifests: {}, sources: {}, asks: {}, catalogErrors: [],
+    config: null, manifests: {}, sources: {}, asks: {}, platform: 'darwin', unavailable: [], catalogErrors: [],
     screenId: '', pageIndex: 0, selection: [], dragWidgetId: null,
     get selectedId(): string | null { return this.selection.length === 1 ? this.selection[0] : null },
     set selectedId(id: string | null) { this.selection = id ? [id] : [] },
@@ -624,6 +627,8 @@ export function createAdminStore(deps: StoreDeps): AdminStore {
       state.manifests = widgets.widgets
       state.sources = widgets.sources
       state.asks = widgets.asks
+      state.platform = widgets.platform
+      state.unavailable = widgets.unavailable
       state.catalogErrors = widgets.errors
       undoStack.length = 0
       redoStack.length = 0
@@ -636,6 +641,8 @@ export function createAdminStore(deps: StoreDeps): AdminStore {
       state.manifests = widgets.widgets
       state.sources = widgets.sources
       state.asks = widgets.asks
+      state.platform = widgets.platform
+      state.unavailable = widgets.unavailable
       state.catalogErrors = widgets.errors
     },
 

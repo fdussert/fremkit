@@ -34,15 +34,17 @@ export { COMPANION_WIDGETS } from '../shared/companionGate'
 /**
  * Whether a widget is offered to place (the library, the bar's list, the palette). Fremplay is
  * left out while `labs.companion` is off; one already placed stays where it is, greyed on the
- * canvas and not drawn on the dashboard (`shared/companionGate.ts`).
+ * canvas and not drawn on the dashboard (`shared/companionGate.ts`). A widget this platform
+ * cannot run (`unavailable`, from `GET /api/widgets`) is never offered, whatever the switch says.
  */
-export function widgetOffered(config: Config | null | undefined, widgetId: string): boolean {
+export function widgetOffered(config: Config | null | undefined, widgetId: string, unavailable: readonly string[] = []): boolean {
+  if (unavailable.includes(widgetId)) return false
   return labsCompanion(config) || !COMPANION_WIDGETS.includes(widgetId)
 }
 
 /** The catalogue's manifests a widget list offers, per `widgetOffered`. */
-export function offeredManifests(config: Config | null | undefined, manifests: Record<string, WidgetManifest>): WidgetManifest[] {
-  return Object.values(manifests).filter((m) => widgetOffered(config, m.id))
+export function offeredManifests(config: Config | null | undefined, manifests: Record<string, WidgetManifest>, unavailable: readonly string[] = []): WidgetManifest[] {
+  return Object.values(manifests).filter((m) => widgetOffered(config, m.id, unavailable))
 }
 
 /**

@@ -17,6 +17,8 @@ const props = defineProps<{
   /** Where the item's widget and settings are read. */
   widgets: Config['widgets']
   manifest?: WidgetManifest
+  /** The platform cannot run the widget: the notice, no frame. */
+  unavailable?: boolean
   cell: number
   anchor: Anchor
   /** The box the popover must stay inside, in the same space as the anchor. */
@@ -86,9 +88,10 @@ onUnmounted(() => emit('root', null))
   <div ref="root" class="popover" :style="style">
     <div class="title">{{ title }}</div>
     <div class="body">
-      <iframe v-if="manifest" ref="iframe" :src="`/widgets/${instance.widgetId}/index.html`" sandbox="allow-scripts" :title="title" />
+      <div v-if="unavailable" class="missing" data-test="not-on-platform">{{ t('dashboard.widget.notOnPlatform') }}</div>
+      <iframe v-else-if="manifest" ref="iframe" :src="`/widgets/${instance.widgetId}/index.html`" sandbox="allow-scripts" :title="title" />
       <!-- One line of room here, so the words take the place of the id rather than joining it. -->
-      <div v-if="!manifest || state === 'error'" class="missing">{{ manifest ? title : t('dashboard.widget.notInstalled') }}</div>
+      <div v-if="!unavailable && (!manifest || state === 'error')" class="missing">{{ manifest ? title : t('dashboard.widget.notInstalled') }}</div>
     </div>
   </div>
 </template>

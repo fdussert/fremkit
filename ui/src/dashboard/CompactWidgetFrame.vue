@@ -15,7 +15,10 @@ const props = defineProps<{
   item: NavItem; widgets: Config['widgets']; manifest?: WidgetManifest; cell: number; height: number; edit?: boolean
   /** Its experimental feature is off: greyed and labelled, no frame running (the admin's canvas). */
   off?: boolean
+  /** The platform cannot run the widget: greyed and labelled, no frame; it wins over `off`. */
+  unavailable?: boolean
 }>()
+const idle = computed(() => props.off === true || props.unavailable === true)
 const emit = defineEmits<{ tap: [el: Element] }>()
 const iframe = ref<HTMLIFrameElement>()
 const root = ref<HTMLElement>()
@@ -81,11 +84,12 @@ const title = computed(() => pick(props.manifest?.name) || instance.value.widget
 </script>
 
 <template>
-  <div ref="root" class="compact" :class="{ edit, off }" :style="{ width: width + 'px' }">
-    <div v-if="off" class="missing" data-test="feature-off">{{ t('dashboard.widget.featureOff') }}</div>
+  <div ref="root" class="compact" :class="{ edit, off: idle }" :style="{ width: width + 'px' }">
+    <div v-if="unavailable" class="missing" data-test="not-on-platform">{{ t('dashboard.widget.notOnPlatform') }}</div>
+    <div v-else-if="off" class="missing" data-test="feature-off">{{ t('dashboard.widget.featureOff') }}</div>
     <iframe v-else-if="manifest" ref="iframe" :src="`/widgets/${instance.widgetId}/index.html`" sandbox="allow-scripts" :title="title" />
     <!-- One line of room here, so the words take the place of the id rather than joining it. -->
-    <div v-if="!off && (!manifest || state === 'error')" class="missing">{{ manifest ? title : t('dashboard.widget.notInstalled') }}</div>
+    <div v-if="!idle && (!manifest || state === 'error')" class="missing">{{ manifest ? title : t('dashboard.widget.notInstalled') }}</div>
     <!-- Pointer events still bubble to the bar, so a swipe starting here keeps changing page. -->
     <div v-if="tappable" class="tap" :class="{ pressed }" @pointerdown="down" />
     <!-- The editor's right click must land on the bar, which opens the widget's menu. WebKit sends

@@ -250,6 +250,7 @@ export const fr: Record<string, string> = {
   'admin.settings.pane.about': 'À propos',
   'admin.tabs.connections': 'Connexions',
 
+  'admin.inspector.notOnPlatform': 'Ce widget a besoin de macOS. La tuile reste dans la disposition et revient si elle est ouverte sur un Mac.',
   'admin.inspector.widget.empty': "Sélectionnez un widget sur l'aperçu.",
   'admin.inspector.widget.missing': 'Dossier du widget introuvable.',
   'admin.inspector.widget.onSietch': 'Il est sur le sietch : {name}',
@@ -620,6 +621,7 @@ export const fr: Record<string, string> = {
   'dashboard.widget.notInstalled': 'non installé',
   /** A placed widget whose experimental feature is off (`labs.companion`): the admin's canvas only. */
   'dashboard.widget.featureOff': 'Fonction désactivée',
+  'dashboard.widget.notOnPlatform': 'Indisponible sous Windows',
   'dashboard.remote.noScreen': 'Choisissez un écran pour cette tablette dans l’admin du Mac',
   'dashboard.remote.noScreen.ipad': 'Choisissez un écran pour cet iPad dans l’admin du Mac',
   'dashboard.remote.unauthorized': 'Cette tablette n’est plus autorisée',

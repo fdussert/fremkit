@@ -624,6 +624,13 @@ describe('copying settings from another instance', () => {
     await vi.advanceTimersByTimeAsync(SAVE_DEBOUNCE_MS)
   })
 
+  it('keeps the platform and the unavailable widget ids the server reports', async () => {
+    const { store } = make({ getWidgets: vi.fn(async (): Promise<WidgetsResponse> => ({ widgets: { clock: clockManifest }, errors: [], sources: {}, asks: {}, sdk: 1, platform: 'win32', unavailable: ['spotify'] })) })
+    await store.load()
+    expect(store.state.platform).toBe('win32')
+    expect(store.state.unavailable).toEqual(['spotify'])
+  })
+
   it('copies a tile’s settings onto a bar widget, as one undo step', async () => {
     const { store } = make({ getWidgets: vi.fn(async () => barWidgets) })
     await store.load()

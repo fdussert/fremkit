@@ -41,6 +41,8 @@ const wellness = computed(() => {
 /** A newer version in the registry: a calm note of its own, not part of the banner. */
 const update = computed(() => (inst.value ? health.of(inst.value.instanceId).update : null))
 const manifest = computed(() => (inst.value ? s.state.manifests[inst.value.widgetId] : undefined))
+/** The platform cannot run this widget: the tile stays in the layout, its settings are not offered. */
+const unavailable = computed(() => !!inst.value && s.state.unavailable.includes(inst.value.widgetId))
 /**
  * What the widget's manifest asks for, beside what it may do.
  *
@@ -126,7 +128,7 @@ function onSetting(key: string, value: unknown): void {
 /** The sections "expand all" folds and unfolds: the settings one only when the widget has settings. */
 const sectionIds = computed(() => [
   'widget.background', 'widget.accent',
-  ...(manifest.value && Object.keys(schema.value).length ? ['widget.settings'] : []),
+  ...(manifest.value && !unavailable.value && Object.keys(schema.value).length ? ['widget.settings'] : []),
   'widget.geometry',
 ])
 
@@ -222,7 +224,8 @@ function moveToPage(): void {
     </BaseSection>
 
     <!-- The one section that opens by itself: a widget is selected to be set up. -->
-    <BaseSection v-if="manifest && Object.keys(schema).length" id="widget.settings"
+    <p v-if="unavailable" class="hint" data-test="not-on-platform">{{ t('admin.inspector.notOnPlatform') }}</p>
+    <BaseSection v-else-if="manifest && Object.keys(schema).length" id="widget.settings"
       :title="t('admin.inspector.widget.settings')" default-open>
       <CopySettingsFrom :widget-id="inst.widgetId" :instance-id="inst.instanceId"
         @copy="s.updateInstance(inst!.instanceId, { settings: $event })" />

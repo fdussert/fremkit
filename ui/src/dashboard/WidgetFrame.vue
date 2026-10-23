@@ -12,7 +12,13 @@ import TileIcon from '../shared/TileIcon.vue'
  * `off`: the widget's experimental feature is off (`labs.companion`). The admin's canvas then
  * draws the tile greyed and labelled, with no frame running in it; the dashboard draws no tile.
  */
-const props = defineProps<{ instance: WidgetInstance; manifest?: WidgetManifest; cell: number; edit?: boolean; off?: boolean }>()
+const props = defineProps<{
+  instance: WidgetInstance; manifest?: WidgetManifest; cell: number; edit?: boolean; off?: boolean
+  /** The platform cannot run the widget: the same greyed tile, labelled for the platform; it wins over `off`. */
+  unavailable?: boolean
+}>()
+/** Greyed for either reason, with no frame running. */
+const idle = computed(() => props.off === true || props.unavailable === true)
 const iframe = ref<HTMLIFrameElement>()
 const { state } = useWidgetBridge(iframe, () => props.instance, () => props.manifest, () => props.cell)
 
@@ -70,21 +76,25 @@ const dimStyle = computed(() => ({ opacity: String(widgetDim(props.instance.back
 
 <template>
   <div class="frame" :style="style">
-    <div class="box" :class="[`accent-${mode}`, { edit, off }]">
+    <div class="box" :class="[`accent-${mode}`, { edit, off: idle }]">
       <div v-if="instance.showTitle" class="title">
         <TileIcon v-if="instance.icon" :icon="instance.icon" />
         <span class="text">{{ title }}</span>
       </div>
       <div class="body">
         <div v-if="imageStyle" class="image" :style="imageStyle"><div class="dim" :style="dimStyle" /></div>
-        <div v-if="off" class="missing turned-off" data-test="feature-off">
+        <div v-if="unavailable" class="missing turned-off" data-test="not-on-platform">
+          <span>{{ title }}</span>
+          <small>{{ t('dashboard.widget.notOnPlatform') }}</small>
+        </div>
+        <div v-else-if="off" class="missing turned-off" data-test="feature-off">
           <span>{{ title }}</span>
           <small>{{ t('dashboard.widget.featureOff') }}</small>
         </div>
         <iframe v-else-if="manifest" ref="iframe" :src="`/widgets/${instance.widgetId}/index.html`" sandbox="allow-scripts" :title="title" />
         <!-- No manifest is a widget that is not here: a raw id told nobody anything, and the
              admin can offer to install it from the registry once it is named as missing. -->
-        <div v-if="!off && (!manifest || state === 'error')" class="missing">
+        <div v-if="!idle && (!manifest || state === 'error')" class="missing">
           <span>{{ title }}</span>
           <small v-if="!manifest">{{ t('dashboard.widget.notInstalled') }}</small>
         </div>

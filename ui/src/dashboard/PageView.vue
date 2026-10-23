@@ -18,7 +18,9 @@ const props = withDefaults(defineProps<{
   reloads?: Record<string, number>
   /** Instances whose experimental feature is off, drawn greyed (the admin's canvas). */
   off?: ReadonlySet<string>
-}>(), { paintBackground: true, reloads: () => ({}), off: () => new Set<string>() })
+  /** Instances whose widget this platform cannot run: greyed and labelled, no frame. */
+  unavailable?: ReadonlySet<string>
+}>(), { paintBackground: true, reloads: () => ({}), off: () => new Set<string>(), unavailable: () => new Set<string>() })
 
 /** Each placement joined with the shared widget it names: the tile shape every frame and the bridge speak. */
 const tiles = computed(() => props.page.items.map((p) => tileOf(props.config, p)))
@@ -47,6 +49,7 @@ const style = computed(() => ({
       :cell="display.cell"
       :edit="edit"
       :off="off.has(w.instanceId)"
+      :unavailable="unavailable.has(w.instanceId)"
     />
   </div>
 </template>

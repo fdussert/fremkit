@@ -28,6 +28,18 @@ export function turnedOff(config: Pick<Config, 'labs' | 'widgets'> | null | unde
 }
 
 /**
+ * The placed instances whose widget this platform cannot run (`WidgetsResponse.unavailable`).
+ * Unlike `turnedOff`, the dashboard draws them too, greyed and labelled, so the layout stays
+ * whole and comes back on a platform that runs them.
+ */
+export function unavailableInstances(config: Pick<Config, 'widgets'> | null | undefined, unavailable: readonly string[]): Set<string> {
+  const out = new Set<string>()
+  if (!config || unavailable.length === 0) return out
+  for (const [id, widget] of Object.entries(config.widgets)) if (unavailable.includes(widget.widgetId)) out.add(id)
+  return out
+}
+
+/**
  * The screen as the dashboard draws it: the same object with the switch on, else one without the
  * companion's tiles and bar items, and without the pages that held only those. A page that was
  * empty to begin with stays. If every page would go, the first one stays, emptied, so the

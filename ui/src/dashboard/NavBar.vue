@@ -28,7 +28,9 @@ const props = withDefaults(defineProps<{
   navStyle?: NavStyle
   /** Bar items whose experimental feature is off, drawn greyed (the admin's canvas). */
   off?: ReadonlySet<string>
-}>(), { navItems: () => [], widgets: () => ({}), manifests: () => ({}), cell: 40, off: () => new Set<string>() })
+  /** Bar items whose widget this platform cannot run: greyed and labelled, no frame. */
+  unavailable?: ReadonlySet<string>
+}>(), { navItems: () => [], widgets: () => ({}), manifests: () => ({}), cell: 40, off: () => new Set<string>(), unavailable: () => new Set<string>() })
 const emit = defineEmits<{
   select: [index: number]; swipe: [delta: 1 | -1]
   /** A compact widget with `popup` on was tapped; the element is where its popover hangs from. */
@@ -399,6 +401,7 @@ const style = computed<Record<string, string | number>>(() => {
         :height="height"
         :edit="edit"
         :off="off.has(item.instanceId)"
+        :unavailable="unavailable.has(item.instanceId)"
         :data-nav-instance="item.instanceId"
         @tap="emit('tap', item, $event)"
       />

@@ -6,7 +6,7 @@ import { useSocket } from '../shared/socket'
 import type { Config, NavItem, WidgetManifest } from '../shared/types'
 import { navHeightOf, navItemsOf } from '../shared/types'
 import { pickScreen } from '../shared/screens'
-import { visibleScreen } from '../shared/companionGate'
+import { unavailableInstances, visibleScreen } from '../shared/companionGate'
 import { pageBackground, rootBackgroundStyle } from '../shared/background'
 import { followThemeSchedule, useConfigTheme } from '../shared/theme'
 import PageView from './PageView.vue'
@@ -28,6 +28,14 @@ const socket = useSocket()
 const { t } = useI18n()
 const config = ref<Config | null>(null)
 const manifests = ref<Record<string, WidgetManifest>>({})
+/** Widget ids this platform cannot run: their tiles are drawn greyed and labelled, with no frame. */
+const unavailableIds = ref<string[]>([])
+const unavailable = computed(() => unavailableInstances(config.value, unavailableIds.value))
+async function loadCatalogue(): Promise<void> {
+  const res = await api.getWidgets()
+  manifests.value = res.widgets
+  unavailableIds.value = res.unavailable
+}
 /**
  * A paired device loads this page over HTTPS from the Mac's TLS listener. It shows the screen the
  * server assigned to it and nothing else: `?screen=` is ignored, and an unassigned device gets a
@@ -189,7 +197,7 @@ function setupCycle() {
 
 onMounted(async () => {
   try {
-    manifests.value = (await api.getWidgets()).widgets
+    await loadCatalogue()
     config.value = await api.getConfig()
   } catch (e) {
     // A revoked device is refused here too; `/api/devices/me` says so, and the socket below still
@@ -197,7 +205,7 @@ onMounted(async () => {
     if (!remote) throw e
   }
   unsub = socket.subscribe('config', async (c) => {
-    manifests.value = (await api.getWidgets()).widgets
+    await loadCatalogue()
     config.value = c as Config
   })
   if (!remote) {
@@ -229,7 +237,7 @@ onMounted(async () => {
   window.addEventListener('keydown', onKey)
   // A widget's manifest was saved while it is being written: the frames wait for this catalogue.
   offReload = onWidgetReload(async (reload) => {
-    if (reload.manifest) manifests.value = (await api.getWidgets()).widgets
+    if (reload.manifest) await loadCatalogue()
   })
 })
 // Another screen for the device: start it on its first page, which every screen has.
@@ -271,7 +279,7 @@ watch(() => config.value?.locale, (l) => setLocale(l))
     >
       <Transition :name="direction === 1 ? 'slide-left' : 'slide-right'">
         <PageView :key="page.id" :page="page" :config="config" :display="display" :manifests="manifests"
-          :paint-background="false" />
+          :paint-background="false" :unavailable="unavailable" />
       </Transition>
       <div class="edge left" @pointerdown.stop="edgeDown($event, 'left')" @pointerup.stop="edgeUp" @pointercancel.stop="edgeCancel" @wheel.stop="edgeWheel" />
       <div class="edge right" @pointerdown.stop="edgeDown($event, 'right')" @pointerup.stop="edgeUp" @pointercancel.stop="edgeCancel" @wheel.stop="edgeWheel" />
@@ -279,7 +287,7 @@ watch(() => config.value?.locale, (l) => setLocale(l))
     <NavBar class="bar" :style="{ width: gridWidth }" :pages="shown.pages" :active="pageIndex" :height="navHeightOf(display)"
       :opacity="display.navOpacity" :nav-items="navItemsOf(shown)" :widgets="config.widgets"
       :manifests="manifests" :cell="display.cell" :admin-gesture="display.adminGesture"
-      :nav-style="display.navStyle"
+      :nav-style="display.navStyle" :unavailable="unavailable"
       @select="select" @swipe="go"
       @tap="popover.toggle" @admin="openAdmin" />
     <!-- Drawn by the root, above the stage and the bar, so it is never clipped by either. -->
@@ -288,6 +296,7 @@ watch(() => config.value?.locale, (l) => setLocale(l))
       :item="popover.open.value.item"
       :widgets="config.widgets"
       :manifest="manifestOf(popover.open.value.item)"
+      :unavailable="unavailable.has(popover.open.value.item.instanceId)"
       :cell="display.cell"
       :anchor="popover.open.value.anchor"
       :screen="popover.open.value.screen"

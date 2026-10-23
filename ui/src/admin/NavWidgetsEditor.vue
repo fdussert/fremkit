@@ -37,7 +37,7 @@ const SLOT_OPTIONS = computed(() => NAV_SLOTS.map((value) => ({
 const sameSide = (slot: NavSlot) => navWidgets.value.filter((w) => w.slot === slot)
 const sidePosition = (id: string, slot: NavSlot): number => sameSide(slot).findIndex((w) => w.instanceId === id)
 /** Only widgets with a compact rendering may go in the bar; the server refuses the others. */
-const addable = computed(() => offeredManifests(s.state.config, s.state.manifests).filter((m) => m.compact))
+const addable = computed(() => offeredManifests(s.state.config, s.state.manifests, s.state.unavailable).filter((m) => m.compact))
 
 const manifestOf = (widgetId: string) => s.state.manifests[widgetId]
 const label = (widgetId: string): string => pick(manifestOf(widgetId)?.name) || widgetId

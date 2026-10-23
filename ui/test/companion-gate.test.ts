@@ -8,7 +8,7 @@ import { describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
 import PageView from '../src/dashboard/PageView.vue'
 import NavBar from '../src/dashboard/NavBar.vue'
-import { turnedOff, visibleScreen } from '../src/shared/companionGate'
+import { turnedOff, unavailableInstances, visibleScreen } from '../src/shared/companionGate'
 import { setLocale } from '../src/shared/i18n'
 import type { Config, Page, Screen, WidgetManifest } from '../src/shared/types'
 
@@ -84,5 +84,41 @@ describe('the admin canvas with Fremplay off', () => {
     expect(w.find('.compact').classes()).toContain('off')
     expect(w.find('.compact [data-test="feature-off"]').text()).toBe('Feature turned off')
     w.unmount()
+  })
+})
+
+describe('widgets this platform cannot run', () => {
+  const placed = { ...widgets, sp: { widgetId: 'spotify', showTitle: false, settings: {} } }
+  const config = { labs: { devices: false, companion: true }, widgets: placed } as unknown as Config
+
+  it('lists the placed instances of an unavailable widget', () => {
+    expect([...unavailableInstances(config, ['spotify'])]).toEqual(['sp'])
+    expect(unavailableInstances(config, []).size).toBe(0)
+    expect(unavailableInstances(null, ['spotify']).size).toBe(0)
+  })
+
+  it('greys the tile and mounts no frame, ahead of the feature-off label', () => {
+    setLocale('en')
+    const page: Page = { id: 'p0', name: 'P0', items: [at('sp')] }
+    const display = { cols: 20, rows: 10, cell: 40, autoCycleSeconds: 0 } as Screen['display']
+    const manifests = { spotify: { id: 'spotify' } as unknown as WidgetManifest }
+    const wrapper = mount(PageView, {
+      props: { page, config: config, display, manifests, off: new Set(['sp']), unavailable: new Set(['sp']) },
+    })
+    expect(wrapper.find('[data-test="not-on-platform"]').text()).toContain('Not available on Windows')
+    expect(wrapper.find('[data-test="feature-off"]').exists()).toBe(false)
+    expect(wrapper.find('iframe').exists()).toBe(false)
+    expect(wrapper.find('.box.off').exists()).toBe(true)
+  })
+
+  it('does the same for a bar item', () => {
+    setLocale('en')
+    const manifests = { spotify: { id: 'spotify', compact: { width: 4 } } as unknown as WidgetManifest }
+    const wrapper = mount(NavBar, {
+      props: { pages: [{ id: 'p0', name: 'P0', items: [] }], active: 0, height: 60, navItems: [{ instanceId: 'sp', slot: 'left' }],
+        widgets: placed, manifests, unavailable: new Set(['sp']) },
+    })
+    expect(wrapper.find('[data-test="not-on-platform"]').exists()).toBe(true)
+    expect(wrapper.find('iframe').exists()).toBe(false)
   })
 })

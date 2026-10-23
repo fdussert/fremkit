@@ -187,7 +187,7 @@ export function buildCommands(src: PaletteSources): Command[] {
   })
 
   // --- Add: every widget of the library, onto this page. → opens its card's menu.
-  const manifests = offeredManifests(s.state.config, s.state.manifests).sort((a, b) => pick(a.name).localeCompare(pick(b.name)))
+  const manifests = offeredManifests(s.state.config, s.state.manifests, s.state.unavailable).sort((a, b) => pick(a.name).localeCompare(pick(b.name)))
   for (const m of manifests) {
     const name = pick(m.name) || m.id
     out.push({

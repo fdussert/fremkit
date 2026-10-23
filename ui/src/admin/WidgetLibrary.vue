@@ -92,7 +92,7 @@ const filtering = computed(() => searching.value || hidePlaced.value)
  * language in force. The category's own name is searched too, so "dev" lists the whole shelf.
  */
 const groups = computed(() => groupByCategory(
-  offeredManifests(s.state.config, s.state.manifests),
+  offeredManifests(s.state.config, s.state.manifests, s.state.unavailable),
   (a, b) => pick(a.name).localeCompare(pick(b.name)),
 ).map((g) => {
   const title = t(`admin.library.category.${g.id}`)
@@ -117,7 +117,7 @@ const nothingFound = computed(() => filtering.value && !groups.value.length && !
 /** Every shelf this list can show, found or not, so "fold all" also folds the ones a search hid. */
 const sectionIds = computed(() => [
   'library.elsewhere',
-  ...groupByCategory(offeredManifests(s.state.config, s.state.manifests), () => 0).map((g) => `library.${g.id}`),
+  ...groupByCategory(offeredManifests(s.state.config, s.state.manifests, s.state.unavailable), () => 0).map((g) => `library.${g.id}`),
 ])
 
 /** Enter places the first card the search left, the same as clicking it. */

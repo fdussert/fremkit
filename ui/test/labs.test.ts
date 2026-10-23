@@ -189,6 +189,14 @@ describe('labs.companion', () => {
     expect(labs.offeredManifests(withCompanion(true), manifests).map((m) => m.id)).toEqual(['clock', 'fremplay'])
   })
 
+  it('leaves out the widgets this platform cannot run, whatever the companion switch says', () => {
+    const manifests = { clock: manifest('clock'), spotify: manifest('spotify'), fremplay: manifest('fremplay') }
+    expect(labs.widgetOffered(withCompanion(true), 'spotify', ['spotify'])).toBe(false)
+    expect(labs.widgetOffered(withCompanion(true), 'spotify')).toBe(true)
+    expect(labs.offeredManifests(withCompanion(true), manifests, ['spotify']).map((m) => m.id)).toEqual(['clock', 'fremplay'])
+    expect(labs.offeredManifests(withCompanion(false), manifests, ['spotify']).map((m) => m.id)).toEqual(['clock'])
+  })
+
   it('counts a paired extension for its own part of the Devices pane, not for the iPad one', () => {
     const ext = { id: 'ext-1', kind: 'extension', name: 'Chrome', pairedAt: '2026-10-02T08:00:00.000Z', lastSeen: null,
       origin: `chrome-extension://${'a'.repeat(32)}`, installId: '3a9c1d2e-5b6f-4a7b-8c9d-0e1f2a3b4c5d', connected: false } as PublicDevice
