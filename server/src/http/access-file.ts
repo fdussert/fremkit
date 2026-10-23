@@ -40,6 +40,19 @@ export function supportDirectory(env: NodeJS.ProcessEnv = process.env, home: str
   return join(home, 'Library', 'Application Support', 'Fremkit')
 }
 
+/**
+ * Why a win32 support-folder variable was set but not used (not an absolute `X:\\` path), as a
+ * code for the log; null when nothing was ignored. Never the value.
+ */
+export function supportDirectoryIgnored(env: NodeJS.ProcessEnv = process.env, platform: NodeJS.Platform = process.platform): string | null {
+  if (platform !== 'win32') return null
+  const override = env.FREMKIT_SUPPORT_DIR
+  if (override && !ABSOLUTE_WINDOWS.test(override)) return 'support-dir-ignored'
+  const local = env.LOCALAPPDATA
+  if (local && !ABSOLUTE_WINDOWS.test(local)) return 'localappdata-ignored'
+  return null
+}
+
 /** The token file for a port. */
 export function accessTokenPath(port: number, env: NodeJS.ProcessEnv = process.env, home: string = homedir(), platform: NodeJS.Platform = process.platform): string {
   const dir = supportDirectory(env, home, platform)

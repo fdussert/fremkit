@@ -6,7 +6,7 @@ import { shippedPaths } from './paths.js'
 import { DEFAULT_BACKGROUND } from './backgrounds/seed.js'
 import { safePath } from './system-path.js'
 import { widgetDevDir } from './widgets/dev.js'
-import { accessTokenPath, removeAccessToken, resolveAccessToken, writeAccessToken } from './http/access-file.js'
+import { accessTokenPath, removeAccessToken, resolveAccessToken, supportDirectoryIgnored, writeAccessToken } from './http/access-file.js'
 
 import { helperLogPath, LogTail } from './diagnostics/log-tail.js'
 import { closeAppListenersNow, installShutdown } from './shutdown.js'
@@ -20,6 +20,8 @@ process.umask(0o077)
 process.env.PATH = safePath(process.env.PATH)
 
 // First, so the diagnostics report sees every line this process writes, the boot's included.
+const supportIgnored = supportDirectoryIgnored()
+if (supportIgnored) console.error(`fremkit: ${supportIgnored}: using the default support folder`)
 const logTail = new LogTail(helperLogPath())
 logTail.install()
 

@@ -8,7 +8,7 @@ import {
   AccessGate, accessProof, CODE_TTL_MS, MAX_PENDING_CODES, MAX_SESSIONS, SESSION_IDLE_MS, SESSION_MAX_MS, cookieName, generateToken, isPublicRoute, isWellFormedToken,
   readBearer, readCookie, safeEqual, safeNext,
 } from '../src/http/access.js'
-import { ACCESS_TOKEN_ENV, accessTokenPath, removeAccessToken, resolveAccessToken, supportDirectory, writeAccessToken } from '../src/http/access-file.js'
+import { ACCESS_TOKEN_ENV, accessTokenPath, removeAccessToken, resolveAccessToken, supportDirectory, supportDirectoryIgnored, writeAccessToken } from '../src/http/access-file.js'
 import { ACCESS_CHALLENGE } from '../src/http/access-routes.js'
 import { serializeRequest } from '../src/http/logging.js'
 import { expectMode } from './helpers/modes.js'
@@ -361,6 +361,12 @@ describe('the token file', () => {
     expect(supportDirectory({ FREMKIT_SUPPORT_DIR: '/tmp/s' }, '/Users/u', 'darwin')).toBe('/tmp/s')
     expect(supportDirectory({ FREMKIT_SUPPORT_DIR: 'relative' }, '/Users/u', 'darwin')).toBe(support)
     expect(supportDirectory({}, '/Users/a', 'darwin')).toBe(join('/Users/a', 'Library', 'Application Support', 'Fremkit'))
+  })
+  it('names, by code only, a Windows support variable it did not use', () => {
+    expect(supportDirectoryIgnored({ FREMKIT_SUPPORT_DIR: 'rel' }, 'win32')).toBe('support-dir-ignored')
+    expect(supportDirectoryIgnored({ LOCALAPPDATA: 'rel' }, 'win32')).toBe('localappdata-ignored')
+    expect(supportDirectoryIgnored({ LOCALAPPDATA: 'C:\\L', FREMKIT_SUPPORT_DIR: 'D:\\s' }, 'win32')).toBeNull()
+    expect(supportDirectoryIgnored({ FREMKIT_SUPPORT_DIR: 'rel' }, 'darwin')).toBeNull()
   })
   it('lives under LocalAppData on Windows, never at a relative path', () => {
     const home = 'C:\\Users\\a'
