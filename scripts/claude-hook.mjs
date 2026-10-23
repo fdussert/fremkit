@@ -12,7 +12,8 @@
 // The server's access secret is read from its token file and sent in a header; it is never on a
 // command line, in a child's environment, or printed.
 import { readFileSync } from 'node:fs'
-import { authHeader, portOf } from './lib/access.mjs'
+import { pathToFileURL } from 'node:url'
+import { authHeader, isLoopbackUrl, portOf } from './lib/access.mjs'
 
 const env = process.env
 const URL_ = env.FREMKIT_HOOK_URL || 'http://127.0.0.1:4242/api/hooks/claude'
@@ -26,11 +27,13 @@ const put = (target, key, value) => {
 }
 
 /** The `client` object from the environment; empty when nothing is known. */
-export function clientFrom(environment, ppid) {
+export function clientFrom(environment, ppid, platform = process.platform) {
   const client = {}
   put(client, 'bundleId', environment.__CFBundleIdentifier)
   put(client, 'program', environment.TERM_PROGRAM)
-  if (Number.isInteger(ppid) && ppid > 1) client.pid = ppid
+  // Not on Windows: Claude Code runs a hook through a shell there, so our parent may be that shell
+  // and not `claude`; a wrong pid would point the server at the wrong process.
+  if (platform !== 'win32' && Number.isInteger(ppid) && ppid > 1) client.pid = ppid
   put(client, 'terminalSession', environment.TERM_SESSION_ID || environment.ITERM_SESSION_ID)
   // Only a plain distribution name: the server drops anything else, so do not send it.
   if (/^[A-Za-z0-9._-]{1,64}$/.test(environment.WSL_DISTRO_NAME ?? '')) client.wslDistro = environment.WSL_DISTRO_NAME
@@ -62,7 +65,9 @@ async function main() {
   try {
     const res = await fetch(URL_, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', ...authHeader(portOf(URL_)) },
+      // The secret goes to this machine only, and a redirect is never followed.
+      headers: { 'content-type': 'application/json', ...(isLoopbackUrl(URL_) ? authHeader(portOf(URL_)) : {}) },
+      redirect: 'manual',
       body: merge(body, clientFrom(env, process.ppid)),
       signal: AbortSignal.timeout(1000),
     })
@@ -70,6 +75,8 @@ async function main() {
   } catch { /* offline, refused, timed out: the session must not notice */ }
 }
 
-// Not process.exit(): every wait above is bounded.
-process.exitCode = 0
-main().catch(() => {})
+// Not process.exit(): every wait above is bounded. Only when run, not when a test imports clientFrom().
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  process.exitCode = 0
+  main().catch(() => {})
+}

@@ -6,6 +6,11 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+// @ts-expect-error plain JavaScript beside the shell scripts, no declaration file
+import { clientFrom } from '../../scripts/claude-hook.mjs'
+// @ts-expect-error plain JavaScript beside the shell scripts, no declaration file
+import { isLoopbackUrl } from '../../scripts/lib/access.mjs'
+
 const scripts = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'scripts')
 const fixture = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'claude-statusline-input.json'), 'utf8')
 
@@ -60,7 +65,7 @@ describe('the Node Claude Code scripts', () => {
     const body = JSON.parse(seen[0].body)
     expect(body).toMatchObject({ hook_event_name: 'Stop', session_id: 's1' })
     expect(body.client).toMatchObject({ program: 'WindowsTerminal', wslDistro: 'Ubuntu-24.04', orca: { pane: 'p:q' } })
-    expect(typeof body.client.pid).toBe('number')
+    expect(typeof body.client.pid).toBe(process.platform === 'win32' ? 'undefined' : 'number')
     expect(seen[0].body).not.toContain('must-not-travel')
     expect(seen[0].body).not.toContain('nor-this')
     expect(seen[0].body).not.toContain('tok-123')
@@ -82,6 +87,74 @@ describe('the Node Claude Code scripts', () => {
     expect(seen).toHaveLength(2)
     expect(JSON.parse(seen[0].body).client.wslDistro).toBeUndefined()
     expect(seen[1].body).toBe('[1,2]')
+  })
+
+  it('hook: leaves the pid out on Windows and keeps it elsewhere', () => {
+    expect(clientFrom({ TERM_PROGRAM: 'x' }, 4321, 'win32').pid).toBeUndefined()
+    expect(clientFrom({ TERM_PROGRAM: 'x' }, 4321, 'darwin').pid).toBe(4321)
+    expect(clientFrom({ TERM_PROGRAM: 'x' }, 4321, 'linux').pid).toBe(4321)
+  })
+
+  it('sends the secret to loopback hosts only', () => {
+    for (const url of ['http://127.0.0.1:4242/x', 'http://localhost:4242/x', 'http://[::1]:4242/x']) expect(isLoopbackUrl(url)).toBe(true)
+    for (const url of ['http://192.0.2.1:4242/x', 'http://example.com/x', 'http://127.0.0.1.example.com/x', 'nonsense', '']) expect(isLoopbackUrl(url)).toBe(false)
+  })
+
+  async function redirecting(token: string) {
+    const env = await stub(token)
+    const hits: string[] = []
+    const elsewhere = createServer((req, res) => { hits.push(String(req.headers.authorization)); res.writeHead(204).end() })
+    await new Promise<void>((ok) => elsewhere.listen(0, '127.0.0.1', ok))
+    const target = `http://127.0.0.1:${(elsewhere.address() as { port: number }).port}/landed`
+    server!.removeAllListeners('request')
+    server!.on('request', (req, res) => { seen.push({ method: req.method, headers: req.headers, body: '' }); req.resume(); res.writeHead(307, { location: target }).end() })
+    return { env, hits, close: () => new Promise<void>((done) => elsewhere.close(() => done())) }
+  }
+
+  it('hook: never follows a redirect with the secret', async () => {
+    const r = await redirecting('tok-r')
+    expect((await run('claude-hook.mjs', '{"a":1}', r.env)).code).toBe(0)
+    await r.close()
+    expect(seen).toHaveLength(1)
+    expect(r.hits).toEqual([])
+  })
+
+  it('status line: never follows a redirect with the secret', async () => {
+    const r = await redirecting('tok-r')
+    expect((await run('claude-statusline.mjs', fixture, r.env)).code).toBe(0)
+    await r.close()
+    expect(seen).toHaveLength(1)
+    expect(r.hits).toEqual([])
+  })
+
+  async function hanging() {
+    dir = mkdtempSync(join(tmpdir(), 'fk-claude-'))
+    const sockets = new Set<import('node:net').Socket>()
+    server = createServer(() => { /* never answers */ })
+    server.on('connection', (s) => { sockets.add(s); s.on('close', () => sockets.delete(s)) })
+    server.on('close', () => { for (const s of sockets) s.destroy() })
+    await new Promise<void>((ok) => server!.listen(0, '127.0.0.1', ok))
+    const port = (server.address() as { port: number }).port
+    return { FREMKIT_HOOK_URL: `http://127.0.0.1:${port}/api/hooks/claude`, FREMKIT_SUPPORT_DIR: dir, destroy: () => { for (const s of sockets) s.destroy() } }
+  }
+
+  it('hook: a server that never answers holds it for about a second at most', async () => {
+    const { destroy, ...env } = await hanging()
+    const started = Date.now()
+    const r = await run('claude-hook.mjs', '{"a":1}', env)
+    destroy()
+    expect(r.code).toBe(0)
+    expect(Date.now() - started).toBeLessThan(2500)
+  })
+
+  it('status line: a server that never answers does not hold the line up', async () => {
+    const { destroy, ...env } = await hanging()
+    const started = Date.now()
+    const r = await run('claude-statusline.mjs', fixture, env)
+    destroy()
+    expect(r.code).toBe(0)
+    expect(r.stdout).toContain('Opus 5')
+    expect(Date.now() - started).toBeLessThan(1500)
   })
 
   it('hook: exits 0 when nothing listens', async () => {

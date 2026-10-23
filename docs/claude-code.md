@@ -66,8 +66,11 @@ JSON.
   follows `FREMKIT_HOOK_URL`; `FREMKIT_SUPPORT_DIR` and `FREMKIT_ACCESS_TOKEN_FILE` work as on the
   Mac). The scripts read it themselves and send it in a header only, never on a command line.
   They load `lib/access.mjs` from beside themselves, so keep them together if you copy them.
-- The `client` object carries `TERM_PROGRAM`, the pid of the process that started the hook (the
-  `claude` process) and, when set, the distribution name from `WSL_DISTRO_NAME`.
+- The `client` object carries `TERM_PROGRAM` and, when set, the distribution name from
+  `WSL_DISTRO_NAME`. It carries no pid on Windows: Claude Code runs a hook through a shell there,
+  so the hook's parent may not be `claude`, and sessions rely on the hooks and the tracker's own
+  fallback instead.
+- The secret is sent only to `127.0.0.1`, `localhost` or `[::1]`, and a redirect is never followed.
 - The status line prints the same text as the bash version, with the folder name taken from
   either kind of path separator.
 - Account usage reads Claude Code's credentials from `%USERPROFILE%\.claude\.credentials.json`,

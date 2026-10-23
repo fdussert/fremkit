@@ -51,6 +51,15 @@ function readToken(port, env, platform) {
   }
 }
 
+/** Whether a URL names this machine (127.0.0.1, localhost, [::1]): the only place the secret is sent. */
+export function isLoopbackUrl(url) {
+  try {
+    return ['127.0.0.1', 'localhost', '[::1]'].includes(new URL(String(url)).hostname)
+  } catch {
+    return false
+  }
+}
+
 /** Headers to spread into a `fetch`: `{ Authorization }`, or `{}` when there is no secret. */
 export function authHeader(port = 4242, env = process.env, platform = process.platform) {
   const token = readToken(port, env, platform)

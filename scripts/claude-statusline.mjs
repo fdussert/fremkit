@@ -6,7 +6,8 @@
 // Always exits 0. The server's access secret is read from its token file and sent in a header only.
 import { execFile } from 'node:child_process'
 import { readFileSync } from 'node:fs'
-import { authHeader, portOf } from './lib/access.mjs'
+import { pathToFileURL } from 'node:url'
+import { authHeader, isLoopbackUrl, portOf } from './lib/access.mjs'
 
 const URL_ = process.env.FREMKIT_HOOK_URL || 'http://127.0.0.1:4242/api/hooks/claude'
 
@@ -27,6 +28,8 @@ const num = (x) => {
   return x
 }
 
+// Bare `git`, as the bash version: on Windows git is user-installed (Git for Windows) and found
+// on PATH; execFile runs the .exe directly, with no shell.
 function gitBranch(cwd) {
   return new Promise((resolve) => {
     execFile('git', ['-C', cwd || '.', 'rev-parse', '--abbrev-ref', 'HEAD'], { timeout: 3000, windowsHide: true }, (err, stdout) => {
@@ -60,7 +63,7 @@ export function statusLine(input, branch) {
 
 async function main() {
   let input
-  try { input = JSON.parse(readFileSync(0, 'utf8')) } catch { process.stdout.write('\n'); return }
+  try { input = JSON.parse(readFileSync(0, 'utf8')) } catch { await new Promise((done) => process.stdout.write('\n', done)); return }
 
   let cwd = '.'
   try { cwd = alt(get(get(input, 'workspace'), 'current_dir'), get(input, 'cwd'), '.') } catch { /* the line below fails the same way */ }
@@ -71,7 +74,9 @@ async function main() {
   if (input && typeof input === 'object' && !Array.isArray(input)) {
     sent = fetch(URL_, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', ...authHeader(portOf(URL_)) },
+      // The secret goes to this machine only, and a redirect is never followed.
+      headers: { 'content-type': 'application/json', ...(isLoopbackUrl(URL_) ? authHeader(portOf(URL_)) : {}) },
+      redirect: 'manual',
       body: JSON.stringify({ ...input, hook_event_name: 'StatusLine', fremkit_branch: branch }),
       signal: AbortSignal.timeout(500),
     }).then((res) => res.body?.cancel(), () => {})
@@ -79,10 +84,12 @@ async function main() {
 
   let line = ''
   try { line = statusLine(input, branch) } catch { /* jq fails the same way: an empty line */ }
-  process.stdout.write(`${line}\n`)
-  await sent
+  // The line is out first. The request gets a moment to leave (a local server answers in
+  // milliseconds), but a server that hangs does not hold the status line up for its full timeout.
+  await new Promise((done) => process.stdout.write(`${line}\n`, done))
+  await Promise.race([sent, new Promise((done) => setTimeout(done, 250))])
 }
 
-// Not process.exit(): a piped stdout may still be flushing. Every wait above is bounded.
-process.exitCode = 0
-main().catch(() => {})
+// Exit once the line has been written (awaited above) rather than when the socket closes.
+// Only when run, not when a test imports statusLine().
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) main().catch(() => {}).finally(() => process.exit(0))
