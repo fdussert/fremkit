@@ -10,7 +10,7 @@ describe('volume', () => {
   })
   it('set clamps and mute forwards', async () => {
     const run = vi.fn(async () => '')
-    const p = createVolumeProvider(run)
+    const p = createVolumeProvider(run, { platform: 'darwin' })
     await p.commands!.set({ level: 150 })
     expect(run).toHaveBeenLastCalledWith('set volume output volume 100')
     await p.commands!.mute({ muted: true })
@@ -81,7 +81,7 @@ describe('mutedeck', () => {
 describe('volume payloads', () => {
   it('refuses a level that is not a number instead of sending NaN to osascript', async () => {
     const run = vi.fn(async () => '')
-    const p = createVolumeProvider(run)
+    const p = createVolumeProvider(run, { platform: 'darwin' })
     for (const bad of [{ level: 'loud' }, { level: null }, {}, null, { level: NaN }, { level: Infinity }]) {
       await expect(p.commands!.set(bad), JSON.stringify(bad)).rejects.toThrow()
     }
@@ -89,7 +89,7 @@ describe('volume payloads', () => {
   })
   it('refuses a mute value that is not a boolean', async () => {
     const run = vi.fn(async () => '')
-    const p = createVolumeProvider(run)
+    const p = createVolumeProvider(run, { platform: 'darwin' })
     for (const bad of [{ muted: 'yes' }, {}, null, { muted: 1 }]) {
       await expect(p.commands!.mute(bad), JSON.stringify(bad)).rejects.toThrow()
     }
@@ -97,7 +97,7 @@ describe('volume payloads', () => {
   })
   it('still takes the real payloads', async () => {
     const run = vi.fn(async () => '')
-    const p = createVolumeProvider(run)
+    const p = createVolumeProvider(run, { platform: 'darwin' })
     expect(await p.commands!.set({ level: 42 })).toEqual({ level: 42 })
     expect(await p.commands!.mute({ muted: false })).toEqual({ muted: false })
   })

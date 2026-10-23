@@ -99,7 +99,7 @@ describe('network provider', () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-01-01T00:00:00Z'))
     const exec = fakeExec({ rx: 1_000_000, tx: 500_000 })
-    const provider = createNetworkProvider(exec)
+    const provider = createNetworkProvider(exec, { platform: 'darwin' })
     provider.start?.()
 
     const first = (await provider.poll!()) as NetworkSnapshot
@@ -119,7 +119,7 @@ describe('network provider', () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-01-01T00:00:00Z'))
     const exec = fakeExec({ rx: 5_000_000, tx: 5_000_000 })
-    const provider = createNetworkProvider(exec)
+    const provider = createNetworkProvider(exec, { platform: 'darwin' })
     provider.start?.()
     await provider.poll!()
 
@@ -144,13 +144,13 @@ describe('network provider', () => {
       if (file === '/usr/sbin/ipconfig' && args[0] === 'getsummary') return '  SSID : Example Network'
       return ''
     })
-    const snapshot = (await createNetworkProvider(exec).poll!()) as NetworkSnapshot
+    const snapshot = (await createNetworkProvider(exec, { platform: 'darwin' }).poll!()) as NetworkSnapshot
     expect(snapshot).toMatchObject({ iface: 'en0', kind: 'wifi', ssid: 'Example Network' })
   })
 
   it('survives a Mac with no default route', async () => {
     const exec = vi.fn(async () => '')
-    const snapshot = (await createNetworkProvider(exec).poll!()) as NetworkSnapshot
+    const snapshot = (await createNetworkProvider(exec, { platform: 'darwin' }).poll!()) as NetworkSnapshot
     expect(snapshot).toEqual({ iface: null, kind: 'other', downBps: 0, upBps: 0, history: [] })
   })
 })

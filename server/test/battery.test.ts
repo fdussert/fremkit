@@ -112,7 +112,7 @@ describe('battery provider', () => {
       if (file === '/usr/sbin/ioreg') return IOREG
       return ''
     })
-    const snapshot = (await createBatteryProvider(exec).poll!()) as BatterySnapshot
+    const snapshot = (await createBatteryProvider(exec, { platform: 'darwin' }).poll!()) as BatterySnapshot
     expect(snapshot.mac).toEqual({ percent: 80, charging: true, minutesLeft: 60 })
     expect(snapshot.devices).toHaveLength(5)
     expect(exec).toHaveBeenCalledWith('/usr/sbin/system_profiler', ['SPBluetoothDataType', '-json'])
@@ -123,7 +123,7 @@ describe('battery provider', () => {
       if (file === '/usr/sbin/ioreg') return IOREG
       throw new Error('command not found')
     })
-    const snapshot = (await createBatteryProvider(exec).poll!()) as BatterySnapshot
+    const snapshot = (await createBatteryProvider(exec, { platform: 'darwin' }).poll!()) as BatterySnapshot
     expect(snapshot.mac).toBeUndefined()
     expect(snapshot.devices.map((d) => d.percent)).toEqual([15, 64, 99])
   })
