@@ -425,6 +425,7 @@ export class ClaudeTracker {
       pid: cur.pid ?? incoming.pid,
       tty: cur.tty ?? incoming.tty,
       terminalSession: cur.terminalSession ?? incoming.terminalSession,
+      wslDistro: cur.wslDistro ?? incoming.wslDistro,
     }
     const orca = { ...(incoming.orca ?? {}), ...(cur.orca ?? {}) }
     if (Object.values(orca).some((v) => v !== undefined)) merged.orca = orca

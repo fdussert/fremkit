@@ -88,6 +88,18 @@ describe('what the tracker keeps', () => {
     await b.load()
     expect(b.clientOf('s1')?.orca?.terminal).toBe('term_abc123')
   })
+
+  it('keeps the WSL distribution a later event names, across a restart', async () => {
+    const path = `${await import('node:os').then((m) => m.tmpdir())}/claude-wsl-${process.pid}.json`
+    const a = new ClaudeTracker({ filePath: path, persistMs: 0 })
+    a.handle(ev({ client: { program: 'WindowsTerminal' } }))
+    a.handle(ev({ hook_event_name: 'StatusLine', client: { wslDistro: 'Ubuntu-24.04' } }))
+    expect(a.clientOf('s1')?.wslDistro).toBe('Ubuntu-24.04')
+    await a.flush()
+    const b = new ClaudeTracker({ filePath: path })
+    await b.load()
+    expect(b.clientOf('s1')?.wslDistro).toBe('Ubuntu-24.04')
+  })
 })
 
 describe('the kind and the label a card sees', () => {
