@@ -341,7 +341,7 @@ export const ConnectionSchema = z.object({
 export type Connection = z.infer<typeof ConnectionSchema>
 
 export const SecretsSchema = z.object({
-  backend: z.enum(['keychain', 'file']).default(defaultSecretsBackend()),
+  backend: z.enum(['keychain', 'file', 'dpapi']).default(defaultSecretsBackend()),
 })
 
 export const LocaleSchema = z.enum(['fr', 'en'])

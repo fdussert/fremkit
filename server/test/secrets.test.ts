@@ -3,6 +3,7 @@ import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { FileSecretStore } from '../src/secrets/file.js'
+import { DpapiSecretStore } from '../src/secrets/dpapi.js'
 import { KeychainSecretStore, accountsInDump, instanceService, parsePassword, passwordArgument, runSecurity } from '../src/secrets/keychain.js'
 import { assertSecretKey, createSecretStore, defaultSecretsBackend } from '../src/secrets/index.js'
 import { expectMode } from './helpers/modes.js'
@@ -287,8 +288,23 @@ describe('backend selection', () => {
     expect(defaultSecretsBackend('linux')).toBe('file')
   })
 
+  it('defaults to DPAPI on Windows', () => {
+    expect(defaultSecretsBackend('win32')).toBe('dpapi')
+  })
+
   it('builds the store the backend asks for', async () => {
-    expect(createSecretStore('file', await dir())).toBeInstanceOf(FileSecretStore)
-    expect(createSecretStore('keychain', await dir())).toBeInstanceOf(KeychainSecretStore)
+    expect(createSecretStore('file', await dir(), {}, 'darwin')).toBeInstanceOf(FileSecretStore)
+    expect(createSecretStore('keychain', await dir(), {}, 'darwin')).toBeInstanceOf(KeychainSecretStore)
+  })
+
+  it('keeps secrets under DPAPI on Windows, whatever a config from a Mac says, unless it asks for the file', async () => {
+    expect(createSecretStore('keychain', await dir(), {}, 'win32')).toBeInstanceOf(DpapiSecretStore)
+    expect(createSecretStore('dpapi', await dir(), {}, 'win32')).toBeInstanceOf(DpapiSecretStore)
+    expect(createSecretStore('file', await dir(), {}, 'win32')).toBeInstanceOf(FileSecretStore)
+  })
+
+  it('maps a DPAPI config opened elsewhere to the platform default', async () => {
+    expect(createSecretStore('dpapi', await dir(), {}, 'darwin')).toBeInstanceOf(KeychainSecretStore)
+    expect(createSecretStore('dpapi', await dir(), {}, 'linux')).toBeInstanceOf(FileSecretStore)
   })
 })

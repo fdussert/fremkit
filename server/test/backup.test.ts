@@ -424,6 +424,15 @@ describe('what an archive or a PUT cannot change', () => {
     sharedConnections: ['gh-x1z9'],
   }
 
+  it('restoring keeps this Mac\'s secrets backend, whichever one the archive names', async () => {
+    const before = (await app.inject({ url: '/api/config' })).json()
+    for (const backend of ['keychain', 'file', 'dpapi'].filter((b) => b !== before.secrets.backend)) {
+      const archive = writeZip([{ name: CONFIG_ENTRY, data: Buffer.from(JSON.stringify({ ...CONFIG, secrets: { backend } })) }])
+      expect((await post(archive)).statusCode).toBe(200)
+      expect((await app.inject({ url: '/api/config' })).json().secrets).toEqual(before.secrets)
+    }
+  })
+
   it('restoring keeps this Mac\'s secrets backend, privacy choices and consent records', async () => {
     const before = (await app.inject({ url: '/api/config' })).json()
     const crafted = {

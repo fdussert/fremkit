@@ -127,7 +127,7 @@ export interface BrightnessSettings {
   followMac: { enabled: boolean; scale: number; offset: number }
 }
 export interface Connection { id: string; type: string; name: string; fields: Record<string, string> }
-export type SecretsBackend = 'keychain' | 'file'
+export type SecretsBackend = 'keychain' | 'file' | 'dpapi'
 
 /**
  * What Fremkit is allowed to read on this Mac beyond its own files. Everything is off until the

@@ -344,7 +344,10 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   // A demo never asks the keychain, whatever its config says: a file in its own data folder.
   const secrets = demo
     ? new FileSecretStore(join(opts.dataDir, 'secrets.json'))
-    : createSecretStore(store.get().secrets.backend, opts.dataDir, { adoptLegacyKeychain: opts.adoptLegacyKeychain === true })
+    : createSecretStore(store.get().secrets.backend, opts.dataDir, {
+      adoptLegacyKeychain: opts.adoptLegacyKeychain === true,
+      log: (code) => app.log.warn({ code }, 'stored secrets unreadable here, starting empty'),
+    })
   // v2 → v3 moved the Homey connection to the type its widget declares, and the declaration
   // calls the key `token` where the coded type called it `apiKey`. The config half of that is in
   // `migrateConfig`; this is the half that needs the secret store. Idempotent, so it costs one

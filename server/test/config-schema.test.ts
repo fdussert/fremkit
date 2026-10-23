@@ -9,6 +9,7 @@ import {
   navCentreWidth, navHasRoom, navWiderClusterWidth,
 } from '../src/config/nav.js'
 import { migrateConfig } from '../src/config/migrate.js'
+import { defaultSecretsBackend } from '../src/secrets/index.js'
 import { ManifestSchema } from '../src/widgets/manifest.js'
 import { readFileSync } from 'node:fs'
 
@@ -630,7 +631,14 @@ describe('connections in the config', () => {
   it('defaults connections to an empty list and picks a secrets backend', () => {
     const parsed = ConfigSchema.parse(base)
     expect(parsed.connections).toEqual([])
-    expect(['keychain', 'file']).toContain(parsed.secrets.backend)
+    expect(parsed.secrets.backend).toBe(defaultSecretsBackend())
+  })
+
+  it('accepts every secrets backend, DPAPI included, and nothing else', () => {
+    for (const backend of ['keychain', 'file', 'dpapi'] as const) {
+      expect(ConfigSchema.parse({ ...base, secrets: { backend } }).secrets.backend).toBe(backend)
+    }
+    expect(ConfigSchema.safeParse({ ...base, secrets: { backend: 'plaintext' } }).success).toBe(false)
   })
 
   it('keeps a declared connection and its non-secret fields', () => {

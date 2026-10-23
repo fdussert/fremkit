@@ -545,10 +545,12 @@ describe('PUT /api/config and connections', () => {
   it('ignores the secrets backend a config save carries', async () => {
     const cfg = await readConfig()
     expect(cfg.secrets.backend).toBe('file')
-    cfg.secrets = { backend: 'keychain' }
-    const res = await app.inject({ method: 'PUT', url: '/api/config', payload: cfg })
-    expect(res.statusCode).toBe(200)
-    expect(res.json().secrets.backend).toBe('file')
+    for (const backend of ['keychain', 'dpapi']) {
+      cfg.secrets = { backend }
+      const res = await app.inject({ method: 'PUT', url: '/api/config', payload: cfg })
+      expect(res.statusCode).toBe(200)
+      expect(res.json().secrets.backend).toBe('file')
+    }
   })
 
   it('still saves everything else in the same request', async () => {
