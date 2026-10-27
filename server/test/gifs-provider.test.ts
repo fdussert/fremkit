@@ -159,10 +159,13 @@ describe('gif-board provider', () => {
     expect(paste).not.toHaveBeenCalled()
   })
 
-  it('answers a pasteboard failure instead of throwing', async () => {
+  it('answers a pasteboard failure with a fixed message, osascript\'s own text kept for the log', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const { provider, paste } = setup()
-    paste.mockRejectedValueOnce(new Error('write failed'))
-    expect(await provider.commands!.copy!({ id: 'item02' }, LOCAL)).toEqual({ ok: false, error: 'write failed' })
+    paste.mockRejectedValueOnce(new Error('execution error: Error: write failed (-2700)'))
+    expect(await provider.commands!.copy!({ id: 'item02' }, LOCAL)).toEqual({ ok: false, error: tr(undefined, 'gifs.pasteFailed') })
+    expect(String(warn.mock.calls[0]?.[0])).toContain('write failed')
+    warn.mockRestore()
   })
 
   it('pastes one copy at a time', async () => {

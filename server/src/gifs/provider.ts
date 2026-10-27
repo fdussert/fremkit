@@ -99,7 +99,10 @@ export function createGifBoardProvider(opts: GifBoardProviderOptions): Provider<
       return { ok: true }
     } catch (err) {
       if (err instanceof GifFetchError) return { ok: false, error: tr(undefined, `gifs.${err.code}` as MessageKey) }
-      return { ok: false, error: err instanceof Error ? err.message : String(err) }
+      // osascript's stderr (or a file system error naming a path) stays in the log; the widget
+      // gets a fixed sentence.
+      console.warn(`gif-board: copy failed (${err instanceof Error ? err.message : String(err)})`)
+      return { ok: false, error: tr(undefined, 'gifs.pasteFailed') }
     }
   }
 
