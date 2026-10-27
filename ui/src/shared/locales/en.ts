@@ -607,6 +607,7 @@ export const en: Record<string, string> = {
 
   'bridge.badRequest': 'invalid widget request',
   'bridge.noIcon': 'no icon for this site',
+  'bridge.noGif': 'this GIF is not saved on this Mac',
   'bridge.noAppIcon': 'no icon for this application',
   'bridge.noApps': 'installed applications unavailable',
   'bridge.channelNotAllowed': 'channel not allowed: {channel}',

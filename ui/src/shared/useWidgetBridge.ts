@@ -5,7 +5,7 @@ import { isHexColor, tileText } from './color'
 import { useAppliedTheme, useThemeColors } from './theme'
 import { channelAllowed, mergeSettings, type AccentMode, type NavSlot, type WidgetInstance, type WidgetManifest, type WidgetSize } from './types'
 import { onWidgetReload } from './widgetDev'
-import { FrameTrust, HOLD_SWIPE_EVENT, appIconTarget, connRequest, faviconTarget, fetchTarget, helloNonce, imageTarget, mayListApps, nonEmptyString, stampInstance } from './widgetMessages'
+import { FrameTrust, HOLD_SWIPE_EVENT, appIconTarget, connRequest, faviconTarget, fetchTarget, gifTarget, helloNonce, imageTarget, mayListApps, nonEmptyString, stampInstance } from './widgetMessages'
 
 export type BridgeState = 'loading' | 'ready' | 'error'
 
@@ -243,6 +243,22 @@ export function useWidgetBridge(
         fetch(`/api/favicon?url=${encodeURIComponent(origin)}`)
           .then(async (r) => {
             if (!r.ok) { reply(id, undefined, t('bridge.noIcon')); return }
+            reply(id, await dataUrl(await r.blob()))
+          })
+          .catch((e: Error) => reply(id, undefined, e.message))
+        break
+      }
+      case 'fremkit:gif': {
+        // A GIF the server keeps, fetched from this page's origin for the reason a favicon is
+        // (see above). Only for the GIF board: the catalogue never lets an installed or dev
+        // folder take a built-in's id, so the id alone says this is the built-in.
+        const id = str(m.id)
+        if (!id) break
+        const url = gifTarget(m)
+        if (instance().widgetId !== 'gif-board' || !url) { reply(id, undefined, t('bridge.badRequest')); break }
+        fetch(`/api/gifs/cached?url=${encodeURIComponent(url)}`)
+          .then(async (r) => {
+            if (!r.ok) { reply(id, undefined, t('bridge.noGif')); return }
             reply(id, await dataUrl(await r.blob()))
           })
           .catch((e: Error) => reply(id, undefined, e.message))

@@ -243,6 +243,15 @@ describe('widget routes', () => {
     expect((await app.inject({ url: '/fremkit.js' })).statusCode).toBe(200)
     expect((await app.inject({ url: '/widgets/clock/app.js' })).body).toBe('window.widgetLoaded = true')
   })
+  it('lets the GIF board alone show images from Giphy', () => {
+    const img = (csp: string) => csp.split('; ').find((d) => d.startsWith('img-src'))
+    expect(img(widgetCsp(4242, false, undefined, 'gif-board', 'builtin'))).toContain('https://i.giphy.com https://media.giphy.com')
+    // Any other widget, and a non-built-in folder claiming the id, gets today's policy, byte for byte.
+    expect(widgetCsp(4242, false, undefined, 'clock', 'builtin')).toBe(widgetCsp(4242))
+    expect(widgetCsp(4242, false, undefined, 'gif-board', 'installed')).toBe(widgetCsp(4242))
+    expect(widgetCsp(4242, false, undefined, 'gif-board', 'dev')).toBe(widgetCsp(4242))
+    expect(widgetCsp(4242)).not.toContain('giphy')
+  })
   it('scopes explicit subresource origins to the server port and development proxy', () => {
     const csp = widgetCsp(4301, true)
     for (const directive of ['script-src', 'style-src', 'img-src', 'font-src', 'media-src']) {

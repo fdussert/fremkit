@@ -328,7 +328,7 @@
      * lowest generation it needs, and the server refuses to install one asking for more than it
      * has. Kept in step with `SDK_VERSION` in ./sdk.ts by bridge.test.ts.
      */
-    sdk: 3,
+    sdk: 4,
     instanceId: null,
     /**
      * The id of the screen this frame is drawn on (the Edge, a paired device), or null when the
@@ -431,6 +431,16 @@
      */
     image: function (url) {
       return request({ type: 'fremkit:image', url: url })
+    },
+    /**
+     * A GIF the server already keeps, as a `data:` URL; rejects when it has none for `url`. Only
+     * the GIF board, a built-in, is answered: the host refuses any other widget.
+     *
+     * Asked of the host for the same reason as a favicon: a frame with an opaque origin cannot
+     * load the server's own route, and the host page can.
+     */
+    gif: function (url) {
+      return request({ type: 'fremkit:gif', url: url })
     },
     /**
      * The applications installed on this Mac, as `{ name, bundleId, file }` — enough to name one

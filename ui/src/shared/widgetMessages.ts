@@ -51,6 +51,20 @@ export function imageTarget(message: { url?: unknown }, settings: unknown): stri
   return settingsHold(settings, url) ? url : null
 }
 
+/**
+ * The address a `fremkit:gif` message asks the host for, or null.
+ *
+ * The server only answers for a GIF it already keeps, so this is shape alone: an `https:` link
+ * of a sane length, which is what every Giphy address and every saved board link is.
+ */
+export function gifTarget(message: { url?: unknown }): string | null {
+  const url = nonEmptyString(message.url)
+  if (!url || url.length > 2048) return null
+  let parsed: URL
+  try { parsed = new URL(url) } catch { return null }
+  return parsed.protocol === 'https:' ? url : null
+}
+
 function settingsHold(value: unknown, wanted: string): boolean {
   if (typeof value === 'string') return value.trim() === wanted
   if (Array.isArray(value)) return value.some((v) => settingsHold(v, wanted))
