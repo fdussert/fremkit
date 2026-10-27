@@ -204,7 +204,7 @@ export class GifStore {
   }
 
   /**
-   * One GET, following at most `MAX_REDIRECTS` hops over http/https only, each host checked for a
+   * One GET, following at most `MAX_REDIRECTS` hops (https only after the first), each host checked for a
    * private address before it is asked (the URL given included). Mirrors the favicon store.
    * `refuseGiphy` also refuses Giphy's hosts on every hop: the cache never holds Giphy content.
    */
@@ -214,6 +214,8 @@ export class GifStore {
       let parsed: URL
       try { parsed = new URL(current) } catch { throw new GifFetchError('unreachable') }
       if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') throw new GifFetchError('unreachable')
+      // A redirect never downgrades to http: the URL given had to be https when it was added.
+      if (hop > 0 && parsed.protocol !== 'https:') throw new GifFetchError('unreachable')
       // A URL with credentials is never fetched: they would travel to whoever answers.
       if (parsed.username || parsed.password) throw new GifFetchError('unreachable')
       // A cache download that starts at, or is redirected to, Giphy would keep Giphy's content.

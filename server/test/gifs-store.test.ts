@@ -126,7 +126,7 @@ describe('GifStore.ensureCached', () => {
   it('refuses a redirect to a private host', async () => {
     const isPrivate = vi.fn(async (host: string) => host === '127.0.0.1')
     const { s, fn } = store(async (url) => url === A
-      ? new Response(null, { status: 302, headers: { location: 'http://127.0.0.1/x.gif' } })
+      ? new Response(null, { status: 302, headers: { location: 'https://127.0.0.1/x.gif' } })
       : gifResponse(), { isPrivate })
     expect(await codeOf(s.ensureCached(A))).toBe('privateHost')
     expect(isPrivate).toHaveBeenCalledWith('127.0.0.1')
@@ -150,6 +150,15 @@ describe('GifStore.ensureCached', () => {
     const { s, fn } = store(async () => gifResponse(), { isPrivate: async () => true })
     expect(await codeOf(s.ensureCached('http://192.0.2.1/x.gif'))).toBe('privateHost')
     expect(fn).not.toHaveBeenCalled()
+  })
+
+  it('refuses a redirect that downgrades to http', async () => {
+    const { s, fn } = store(async (url) => url === A
+      ? new Response(null, { status: 302, headers: { location: 'http://example.com/a.gif' } })
+      : gifResponse())
+    expect(await codeOf(s.ensureCached(A))).toBe('unreachable')
+    expect(fn).toHaveBeenCalledTimes(1)
+    expect(await list('cache')).toEqual([])
   })
 
   it('gives up after three redirects', async () => {
