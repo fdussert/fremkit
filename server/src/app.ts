@@ -66,6 +66,7 @@ import { createServiceStatusProvider } from './providers/service-status.js'
 import { createSystemProvider } from './providers/system.js'
 import { createDiskMapProvider } from './providers/disk-map.js'
 import { GifStore } from './gifs/store.js'
+import { gifRoutes } from './gifs/routes.js'
 import { createGifBoardProvider } from './gifs/provider.js'
 import { BrightnessService } from './brightness/service.js'
 import { createBrightnessProvider, BRIGHTNESS_INTERVAL_MS } from './brightness/provider.js'
@@ -512,6 +513,8 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     onRestored: async (config) => { await connections.sync(config.connections); retainCameras(config) },
   })
   await app.register(faviconRoutes, { dir: join(opts.dataDir, 'icons', 'favicons'), config: () => store.get(), screenOfDevice })
+  // The editor's GIF search and link check, on the one GIF store the provider shares.
+  await app.register(gifRoutes, { store, gifs, secretsFor: (c) => connections.secretsFor(c), demo })
   await app.register(claudeRoutes, { tracker, usage })
   await app.register(dockRoutes, {
     state: dock,
