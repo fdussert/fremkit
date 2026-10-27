@@ -260,9 +260,9 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   await tracker.load()
   const usage = new ClaudeUsage({ filePath: join(opts.dataDir, 'claude-usage.json'), transcriptsDir: demo ? join(opts.dataDir, 'demo-transcripts') : opts.claudeTranscriptsDir ?? join(homedir(), '.claude', 'projects') })
   await usage.load()
-  // The GIF board's files, shared by its provider and its routes. A demo downloads nothing: its
-  // fetch answers the hosts the demo knows and refuses the rest.
-  const gifs = new GifStore({ dataDir: opts.dataDir, ...(demo ? { fetchImpl: demoPublicFetch() } : {}) })
+  // The GIF board's files, shared by its provider and its routes. A demo reaches no network: its
+  // fetch answers the hosts the demo knows and refuses the rest, and no host is looked up in DNS.
+  const gifs = new GifStore({ dataDir: opts.dataDir, ...(demo ? { fetchImpl: demoPublicFetch(), isPrivate: async () => false } : {}) })
 
   /**
    * The device screen a paired device is attached to, asked of the device service at call time:
