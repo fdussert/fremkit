@@ -304,6 +304,26 @@ describe('a paired socket', () => {
     registry.stop()
   })
 
+  it('refuses gif-board to a paired socket even when its screen holds the GIF board', async () => {
+    const { hub, paired, registry, setPolicy } = pairedSetup()
+    const copied: unknown[] = []
+    registry.register({ channel: 'gif-board', intervalMs: 1000, commands: { copy: async (p) => { copied.push(p); return { ok: true } } } })
+    hub.broadcast('gif-board', { items: [{ src: 'https://example.com/a.gif' }] })
+    setPolicy({ 'dev-a': { subscriptions: ['gif-board'], commands: ['gif-board'] } })
+    const socket = paired('dev-a')
+    socket.receive({ type: 'subscribe', channel: 'gif-board' })
+    socket.receive({ type: 'command', id: 'c1', channel: 'gif-board', name: 'copy', payload: {} })
+    await new Promise((r) => setTimeout(r, 0))
+    expect(socket.sent).toEqual([REFUSED, { ...REFUSED, id: 'c1' }])
+    expect(copied).toEqual([])
+    expect((registry as any).states.get('gif-board').subscribers).toBe(0)
+    const local = new FakeSocket()
+    hub.attach(local, { loopback: true, paired: false })
+    local.receive({ type: 'subscribe', channel: 'gif-board' })
+    expect(local.sent).toEqual([{ type: 'data', channel: 'gif-board', data: { items: [{ src: 'https://example.com/a.gif' }] } }])
+    registry.stop()
+  })
+
   it('is not heard once closed, even before the close handshake ends', async () => {
     const { hub, count, focused, attach, registry } = pairedSetup()
     const socket = attach(new LingeringSocket(), 'dev-a')
