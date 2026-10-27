@@ -166,6 +166,8 @@ export interface Config {
   theme?: string
   /** A night theme and when it takes over; absent means one theme, day and night. A paired device gets only `night`. */
   themeSchedule?: ThemeSchedule
+  /** The GIF board's collection, one per Mac; absent means no GIF saved yet. */
+  gifs?: GifBoard
   connections: Connection[]
   secrets: { backend: SecretsBackend }
   locale?: Locale
@@ -669,6 +671,20 @@ export interface ThemeSchedule {
   longitude?: number
   dayAt: string
   nightAt: string
+}
+/** Mirrors `GifItemSchema`: a Giphy GIF by its id, or an `https:` link to a GIF elsewhere. */
+export type GifItem =
+  | { id: string; kind: 'giphy'; giphyId: string; label?: string }
+  | { id: string; kind: 'link'; url: string; label?: string }
+/** Mirrors `GifGroupSchema`. */
+export interface GifGroup {
+  id: string
+  name: string
+  items: GifItem[]
+}
+/** Mirrors `GifBoardSchema`. */
+export interface GifBoard {
+  groups: GifGroup[]
 }
 /** Mirrors `ThemeInForce` in `server/src/themes/schedule.ts`: what the `theme` channel publishes. */
 export interface ThemeInForce {
