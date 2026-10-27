@@ -65,6 +65,8 @@ import { createShortcutsProvider } from './providers/shortcuts.js'
 import { createServiceStatusProvider } from './providers/service-status.js'
 import { createSystemProvider } from './providers/system.js'
 import { createDiskMapProvider } from './providers/disk-map.js'
+import { GifStore } from './gifs/store.js'
+import { createGifBoardProvider } from './gifs/provider.js'
 import { BrightnessService } from './brightness/service.js'
 import { createBrightnessProvider, BRIGHTNESS_INTERVAL_MS } from './brightness/provider.js'
 import { brightnessRoutes } from './brightness/routes.js'
@@ -258,6 +260,9 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   await tracker.load()
   const usage = new ClaudeUsage({ filePath: join(opts.dataDir, 'claude-usage.json'), transcriptsDir: demo ? join(opts.dataDir, 'demo-transcripts') : opts.claudeTranscriptsDir ?? join(homedir(), '.claude', 'projects') })
   await usage.load()
+  // The GIF board's files, shared by its provider and its routes. A demo downloads nothing: its
+  // fetch answers the hosts the demo knows and refuses the rest.
+  const gifs = new GifStore({ dataDir: opts.dataDir, ...(demo ? { fetchImpl: demoPublicFetch() } : {}) })
 
   /**
    * The device screen a paired device is attached to, asked of the device service at call time:
@@ -307,6 +312,9 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     registry.register(createDockProvider(dock))
     // Registered here, not in providers/index.ts, because its last scan is saved under the data dir.
     registry.register(createDiskMapProvider({ dataDir: opts.dataDir }))
+    // Here because it reads the config store and shares the GIF store with the routes. It writes
+    // to this Mac's pasteboard, so a demo never constructs it.
+    registry.register(createGifBoardProvider({ config: () => store.get(), gifs }))
     // Registered here, not in providers/index.ts, because that is where the config store lives.
     registry.register(createShortcutsProvider(undefined, instances))
     registry.register(createServiceStatusProvider({}, instances))
