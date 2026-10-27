@@ -174,6 +174,44 @@ describe('GifStore.tempCopy', () => {
     expect(await list('tmp')).toHaveLength(1)
     expect(await list('cache')).toEqual([])
   })
+
+  it('runs one copy at a time, so a later call never deletes an earlier one mid-download', async () => {
+    const pending: ((res: Response) => void)[] = []
+    const { s, fn } = store(() => new Promise<Response>((resolve) => pending.push(resolve)))
+    const first = s.tempCopy('abc')
+    const second = s.tempCopy('def')
+    await vi.waitFor(() => expect(fn).toHaveBeenCalledTimes(1))
+    // The second download has not started: the first still owns the temp slot.
+    await new Promise((r) => setTimeout(r, 20))
+    expect(fn).toHaveBeenCalledTimes(1)
+    pending[0]!(gifResponse())
+    const a = await first
+    await expect(stat(a)).resolves.toBeTruthy()
+    await vi.waitFor(() => expect(fn).toHaveBeenCalledTimes(2))
+    expect(fn).toHaveBeenLastCalledWith('https://i.giphy.com/def.gif', expect.anything())
+    pending[1]!(gifResponse())
+    const b = await second
+    await expect(stat(a)).rejects.toThrow()
+    await expect(stat(b)).resolves.toBeTruthy()
+    expect(await list('tmp')).toHaveLength(1)
+  })
+
+  it('keeps the queue going after a failed copy', async () => {
+    let calls = 0
+    const { s } = store(async () => (++calls === 1 ? new Response('nope', { status: 500 }) : gifResponse()))
+    const failed = s.tempCopy('abc')
+    const ok = s.tempCopy('def')
+    expect(await codeOf(failed)).toBe('unreachable')
+    await expect(stat(await ok)).resolves.toBeTruthy()
+  })
+
+  it('refuses an id that is not a Giphy id without asking the network', async () => {
+    const { s, fn } = store(async () => gifResponse())
+    for (const bad of ['', '../x', 'a/b', 'a'.repeat(65), 'abc.gif', 'é']) {
+      expect(await codeOf(s.tempCopy(bad))).toBe('unreachable')
+    }
+    expect(fn).not.toHaveBeenCalled()
+  })
 })
 
 describe('GifStore.sweepTemp', () => {

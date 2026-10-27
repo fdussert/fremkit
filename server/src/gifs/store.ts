@@ -14,6 +14,8 @@ const MAX_REDIRECTS = 3
 const TIMEOUT_MS = 10_000
 const USER_AGENT_HEADER = `Mozilla/5.0 (compatible; ${USER_AGENT})`
 const GIF_ACCEPT = 'image/gif,image/*;q=0.8,*/*;q=0.5'
+/** Same rule as the config schema's `giphyId`: it ends up in a URL path. */
+const GIPHY_ID = /^[A-Za-z0-9]{1,64}$/
 
 export type GifError = 'notGif' | 'tooLarge' | 'unreachable' | 'privateHost'
 
@@ -65,6 +67,7 @@ export class GifStore {
   private readonly now: () => number
   private readonly inFlight = new Map<string, Promise<string>>()
   private lastTemp: string | null = null
+  private tempQueue: Promise<unknown> = Promise.resolve()
 
   constructor(opts: GifStoreOptions) {
     this.cacheDir = join(opts.dataDir, 'gifs', 'cache')
@@ -97,8 +100,20 @@ export class GifStore {
     return job
   }
 
-  /** Downloads a Giphy GIF to a fresh temp file, deleting the previous one, and returns its path. */
-  async tempCopy(giphyId: string): Promise<string> {
+  /**
+   * Downloads a Giphy GIF to a fresh temp file, deleting the previous one, and returns its path.
+   *
+   * Calls run one after the other: two interleaved downloads could each take the other's file
+   * for "the previous one" and delete a path that was just handed out.
+   */
+  tempCopy(giphyId: string): Promise<string> {
+    if (!GIPHY_ID.test(giphyId)) return Promise.reject(new GifFetchError('unreachable'))
+    const job = this.tempQueue.then(() => this.writeTemp(giphyId))
+    this.tempQueue = job.catch(() => {})
+    return job
+  }
+
+  private async writeTemp(giphyId: string): Promise<string> {
     const body = await this.download(giphyFullUrl(giphyId))
     const path = join(this.tmpDir, `${randomUUID()}.gif`)
     await this.writeAtomically(this.tmpDir, path, body)
