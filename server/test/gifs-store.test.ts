@@ -254,6 +254,40 @@ describe('GifStore.sweepTemp', () => {
   })
 })
 
+describe('GifStore temp deadline', () => {
+  it('deletes a temp file after TEMP_TTL_MS without any sweep', async () => {
+    const timers: { fn: () => void; ms: number }[] = []
+    const s = new GifStore({
+      dataDir,
+      fetchImpl: async () => gifResponse(),
+      isPrivate: async () => false,
+      schedule: (fn, ms) => { timers.push({ fn, ms }) },
+    })
+    const path = await s.tempCopy('abc')
+    expect(timers).toHaveLength(1)
+    expect(timers[0]!.ms).toBe(TEMP_TTL_MS)
+    await expect(stat(path)).resolves.toBeTruthy()
+    timers[0]!.fn()
+    await vi.waitFor(async () => { await expect(stat(path)).rejects.toThrow() })
+    expect(await list('tmp')).toEqual([])
+  })
+
+  it('ignores a temp file a newer copy already replaced', async () => {
+    const timers: (() => void)[] = []
+    const s = new GifStore({
+      dataDir,
+      fetchImpl: async () => gifResponse(),
+      isPrivate: async () => false,
+      schedule: (fn) => { timers.push(fn) },
+    })
+    await s.tempCopy('abc')
+    const second = await s.tempCopy('def')
+    expect(() => timers[0]!()).not.toThrow()
+    await new Promise((r) => setTimeout(r, 20))
+    await expect(stat(second)).resolves.toBeTruthy()
+  })
+})
+
 describe('GifStore.prune', () => {
   it('keeps the files of the URLs given and deletes the others', async () => {
     const { s } = store(async () => gifResponse())

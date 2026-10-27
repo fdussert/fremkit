@@ -50,6 +50,12 @@ export interface GifStoreOptions {
   fetchImpl?: PublicFetch
   isPrivate?: (host: string) => Promise<boolean>
   now?: () => number
+  /** Runs `fn` after `ms`; the default is an unref'd `setTimeout`, so it never holds the process open. */
+  schedule?: (fn: () => void, ms: number) => void
+}
+
+function scheduleUnref(fn: () => void, ms: number): void {
+  setTimeout(fn, ms).unref()
 }
 
 function hashOf(url: string): string {
@@ -75,6 +81,7 @@ export class GifStore {
   private readonly fetchImpl: PublicFetch
   private readonly isPrivate: (host: string) => Promise<boolean>
   private readonly now: () => number
+  private readonly schedule: (fn: () => void, ms: number) => void
   private readonly inFlight = new Map<string, Promise<string>>()
   private lastTemp: string | null = null
   private tempQueue: Promise<unknown> = Promise.resolve()
@@ -85,6 +92,7 @@ export class GifStore {
     this.fetchImpl = opts.fetchImpl ?? publicFetch
     this.isPrivate = opts.isPrivate ?? ((host) => resolvesToPrivate(host))
     this.now = opts.now ?? Date.now
+    this.schedule = opts.schedule ?? scheduleUnref
   }
 
   cachedPath(url: string): string {
@@ -130,6 +138,12 @@ export class GifStore {
     const previous = this.lastTemp
     this.lastTemp = path
     if (previous) await unlink(previous).catch(() => {})
+    // The sweep only runs while a board is on screen (a provider polls only with subscribers), so
+    // each temp file also carries its own deadline: it goes after TEMP_TTL_MS whatever is shown.
+    this.schedule(() => {
+      if (this.lastTemp === path) this.lastTemp = null
+      unlink(path).catch(() => {})
+    }, TEMP_TTL_MS)
     return path
   }
 

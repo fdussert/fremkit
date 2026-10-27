@@ -264,6 +264,8 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   // The GIF board's files, shared by its provider and its routes. A demo reaches no network: its
   // fetch answers the hosts the demo knows and refuses the rest, and no host is looked up in DNS.
   const gifs = new GifStore({ dataDir: opts.dataDir, ...(demo ? { fetchImpl: demoPublicFetch(), isPrivate: async () => false } : {}) })
+  // A temp copy left by an earlier run goes now, not whenever a board is next on screen.
+  void gifs.sweepTemp().catch(() => {})
 
   /**
    * The device screen a paired device is attached to, asked of the device service at call time:
