@@ -19,6 +19,7 @@ To write your own, see [writing-widgets.md](writing-widgets.md).
 | [disk](#disk) | Disk usage and available space | — | — | 16 × 4 |
 | [disk-map](#disk-map) | What fills the disk, as rings you drill into | — | 2 cells | 24 × 9 |
 | [fremplay](#fremplay) | The video of a Chrome tab, with touch controls | — | 3 cells | 28 × 16 |
+| [gif-board](#gif-board) | Favourite GIFs in groups, tap to copy one | Giphy (search only, optional) | — | 16 × 8 |
 | [memory](#memory) | Memory usage, available RAM and swap | — | 4 cells | 8 × 4 |
 | [uptime](#uptime) | Time since the Mac last booted | — | — | 8 × 4 |
 | [network](#network) | Live network throughput | — | 6 cells | 12 × 4 |
@@ -223,6 +224,27 @@ bar it is a live thumbnail; a tap opens the full widget in the popover.
 
 The picture goes from Chrome to the dashboard directly, over this Mac; the server only passes
 the connection details along.
+
+## gif-board
+
+*GIFs* — your favourite GIFs, sorted into groups shown as tabs. Touching one copies it to the
+pasteboard as an animated GIF, so the next ⌘V sends it animated in Teams, Slack or Messages.
+
+The collection is one per Mac: every GIF board tile shows the same groups. Fill it from the tile's
+inspector, **Manage the GIFs…**: create and rename groups, search Giphy and add a result to the
+chosen group, or paste a GIF's address. Drag a GIF to reorder it or move it to another group;
+right-click it to label or remove it, right-click a group to rename or delete it. Every change is
+undoable like any other edit.
+
+Searching needs a [Giphy connection](connections.md#giphy); pasting an address works without one.
+A Giphy GIF is kept as its id and fetched from Giphy when touched; a GIF added by its own `https:`
+address is checked and copied to a cache on this Mac when it is added, and shown from there.
+
+Minimum size 8 × 4, default 16 × 8.
+
+| Setting | Type | Default | Scope | What it is |
+|---|---|---|---|---|
+| `showLabels` | boolean | `true` | both | Show each GIF's label on it |
 
 ## memory
 

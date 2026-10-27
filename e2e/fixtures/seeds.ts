@@ -23,7 +23,14 @@ export interface ConfigSeed {
   locale: 'en'
   widgets: Record<string, { widgetId: string; showTitle: boolean; settings: Record<string, unknown>; title?: string; opacity?: number }>
   screens: ScreenSeed[]
+  /** The GIF board's collection (`GifBoardSchema`); absent means an empty board. */
+  gifs?: { groups: GifGroupSeed[] }
 }
+
+export type GifItemSeed =
+  | { id: string; kind: 'giphy'; giphyId: string; label?: string }
+  | { id: string; kind: 'link'; url: string; label?: string }
+export interface GifGroupSeed { id: string; name: string; items: GifItemSeed[] }
 
 /** The Edge's grid: 64 × 16 cells of 40 px under an 80 px bar. */
 export const EDGE_DISPLAY = { cols: 64, rows: 16, cell: 40, autoCycleSeconds: 0 }
