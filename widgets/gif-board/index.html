@@ -98,13 +98,22 @@
   /** Giphy's CDN and the demo's data URLs load as they are; a link goes through the host's cache. */
   function direct(src) { return /^https:\/\/i\.giphy\.com\//.test(src) || /^data:image\//.test(src) }
 
+  /** The placeholder stays over the card until the GIF has loaded, and comes back if it fails to. */
   function showImage(card, src) {
     if (!card.isConnected || card.querySelector('img')) return
     var img = document.createElement('img')
     img.alt = ''
+    img.onload = function () {
+      var ph = card.querySelector('.ph')
+      if (ph) ph.remove()
+    }
+    img.onerror = function () {
+      // Dropped so that the card asks again the next time it comes on screen.
+      img.remove()
+      if (resolved[card._item.src] === src) delete resolved[card._item.src]
+      if (!card.querySelector('.ph')) card.insertBefore(Fremkit.el('div', 'ph', 'GIF'), card.firstChild)
+    }
     img.src = src
-    var ph = card.querySelector('.ph')
-    if (ph) ph.remove()
     card.insertBefore(img, card.firstChild)
   }
 
