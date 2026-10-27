@@ -322,6 +322,17 @@ const fr = {
   'brightness.unknownScreen': 'écran inconnu',
   'brightness.unavailable': 'luminosité non réglable sur cet écran',
   'brightness.placesUnavailable': 'recherche de lieu indisponible',
+
+  // gifs/ — the GIF board
+  'gifs.notGif': 'Cette adresse n’est pas un GIF',
+  'gifs.tooLarge': 'GIF trop volumineux (15 Mo maximum)',
+  'gifs.unreachable': 'GIF injoignable',
+  'gifs.privateHost': 'adresse locale refusée',
+  'gifs.unknownItem': 'GIF inconnu',
+  'gifs.unconfigured': 'aucune connexion Giphy configurée',
+  'gifs.rateLimited': 'trop de recherches Giphy, réessayez plus tard',
+  'gifs.unauthorized': 'clé Giphy refusée',
+  'giphy.connected': 'connecté : {count} résultats',
 }
 
 export type MessageKey = keyof typeof fr
@@ -611,6 +622,16 @@ const en: Record<MessageKey, string> = {
   'brightness.unknownScreen': 'unknown screen',
   'brightness.unavailable': 'brightness cannot be set on this screen',
   'brightness.placesUnavailable': 'place search unavailable',
+
+  'gifs.notGif': 'That address is not a GIF',
+  'gifs.tooLarge': 'GIF too large (15 MB maximum)',
+  'gifs.unreachable': 'GIF unreachable',
+  'gifs.privateHost': 'local address refused',
+  'gifs.unknownItem': 'unknown GIF',
+  'gifs.unconfigured': 'no Giphy connection configured',
+  'gifs.rateLimited': 'too many Giphy searches, try again later',
+  'gifs.unauthorized': 'Giphy key refused',
+  'giphy.connected': 'connected: {count} results',
 }
 
 const DICTIONARIES: Record<Locale, Record<string, string>> = { fr, en }
