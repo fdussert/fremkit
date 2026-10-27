@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, rm, unlink } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import Fastify, { type FastifyInstance } from 'fastify'
@@ -28,20 +28,24 @@ afterEach(async () => {
 function respond(url: string): Response {
   if (url.startsWith('https://api.giphy.com/')) return Response.json(SEARCH_PAYLOAD)
   if (url === 'https://example.com/page.html') return new Response('<!doctype html><p>hi</p>', { headers: { 'content-type': 'text/html' } })
+  if (url === 'https://example.com/to-giphy') return new Response(null, { status: 302, headers: { location: 'https://media.giphy.com/media/abc/200w.gif' } })
   if (url === 'https://example.com/a.gif') return new Response(GIF, { headers: { 'content-type': 'image/gif' } })
   return new Response('', { status: 404 })
 }
 
-async function build(opts: { connections?: Connection[]; demo?: boolean } = {}) {
+async function build(opts: { connections?: Connection[]; demo?: boolean; secretsFail?: boolean } = {}) {
   const config: Config = { ...DEFAULT_CONFIG, connections: opts.connections ?? [] }
   const store = { get: () => config } as unknown as ConfigStore
   const fetchImpl = vi.fn(async (input: string | URL) => respond(String(input)))
   const gifFetch = vi.fn(async (input: string | URL) => respond(String(input)))
   const gifs = new GifStore({ dataDir, fetchImpl: gifFetch, isPrivate: async () => false })
-  const secretsFor = vi.fn(async (c: Connection): Promise<Record<string, string>> => (c.id === GIPHY.id ? { apiKey: KEY } : {}))
+  const secretsFor = vi.fn(async (c: Connection): Promise<Record<string, string>> => {
+    if (opts.secretsFail) throw new Error('keychain item fremkit/giphy-1 is locked')
+    return c.id === GIPHY.id ? { apiKey: KEY } : {}
+  })
   app = Fastify()
   await app.register(gifRoutes, { store, gifs, secretsFor, fetchImpl: fetchImpl as unknown as typeof fetch, demo: opts.demo })
-  return { app, fetchImpl, gifFetch }
+  return { app, fetchImpl, gifFetch, gifs }
 }
 
 describe('GET /api/gifs/search', () => {
@@ -62,6 +66,15 @@ describe('GET /api/gifs/search', () => {
     expect(called.searchParams.get('api_key')).toBe(KEY)
     expect(called.searchParams.get('offset')).toBe('24')
     expect(res.body).not.toContain(KEY)
+  })
+
+  it('answers unreachable when the key cannot be read, without the error text', async () => {
+    const { app, fetchImpl } = await build({ connections: [GIPHY], secretsFail: true })
+    const res = await app.inject({ method: 'GET', url: '/api/gifs/search?q=hello' })
+    expect(res.statusCode).toBe(200)
+    expect(res.json()).toEqual({ ok: false, error: 'unreachable' })
+    expect(res.body).not.toContain('keychain')
+    expect(fetchImpl).not.toHaveBeenCalled()
   })
 
   it('refuses a query shorter than two characters', async () => {
@@ -130,11 +143,28 @@ describe('POST /api/gifs/check and GET /api/gifs/cached', () => {
 
   it('refuses a Giphy link, which must never be cached', async () => {
     const { app, gifFetch } = await build()
-    for (const url of ['https://media.giphy.com/x.gif', 'https://giphy.com/gifs/x', 'https://i.GIPHY.com/x.gif']) {
+    for (const url of ['https://media.giphy.com/x.gif', 'https://giphy.com/gifs/x', 'https://i.GIPHY.com/x.gif', 'https://media.giphy.com./x.gif', 'https://gph.is/abc']) {
       const res = await app.inject({ method: 'POST', url: '/api/gifs/check', payload: { url } })
       expect(res.statusCode).toBe(400)
     }
     expect(gifFetch).not.toHaveBeenCalled()
+  })
+
+  it('refuses a link that redirects to Giphy, and caches nothing', async () => {
+    const { app, gifs } = await build()
+    const res = await app.inject({ method: 'POST', url: '/api/gifs/check', payload: { url: 'https://example.com/to-giphy' } })
+    expect(res.statusCode).toBe(200)
+    expect(res.json()).toEqual({ ok: false, error: expect.stringContaining('Giphy') })
+    expect(await gifs.isCached('https://example.com/to-giphy')).toBe(false)
+  })
+
+  it('answers 404 for a GIF pruned after it was cached', async () => {
+    const { app, gifs } = await build()
+    const url = 'https://example.com/a.gif'
+    await app.inject({ method: 'POST', url: '/api/gifs/check', payload: { url } })
+    await unlink(gifs.cachedPath(url))
+    const res = await app.inject({ method: 'GET', url: `/api/gifs/cached?url=${encodeURIComponent(url)}` })
+    expect(res.statusCode).toBe(404)
   })
 
   it('refuses a URL that is not https or too long', async () => {

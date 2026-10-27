@@ -9,6 +9,7 @@ import {
   TEMP_TTL_MS,
   giphyFullUrl,
   giphyThumbUrl,
+  isGiphyHost,
 } from '../src/gifs/store.js'
 
 const GIF = Buffer.concat([Buffer.from('GIF89a'), Buffer.alloc(32, 1)])
@@ -45,6 +46,17 @@ async function codeOf(p: Promise<unknown>): Promise<string> {
 async function list(sub: string): Promise<string[]> {
   try { return await readdir(join(dataDir, 'gifs', sub)) } catch { return [] }
 }
+
+describe('isGiphyHost', () => {
+  it('knows Giphy and its short links, with or without a trailing dot', () => {
+    for (const host of ['giphy.com', 'media.giphy.com', 'i.giphy.com', 'media.giphy.com.', 'GIPHY.COM', 'gph.is']) {
+      expect(isGiphyHost(host), host).toBe(true)
+    }
+    for (const host of ['example.com', 'notgiphy.com', 'giphy.com.example.com', 'gph.island']) {
+      expect(isGiphyHost(host), host).toBe(false)
+    }
+  })
+})
 
 describe('giphy urls', () => {
   it('builds the full and thumbnail forms', () => {
@@ -119,6 +131,19 @@ describe('GifStore.ensureCached', () => {
     expect(await codeOf(s.ensureCached(A))).toBe('privateHost')
     expect(isPrivate).toHaveBeenCalledWith('127.0.0.1')
     expect(fn).toHaveBeenCalledTimes(1)
+  })
+
+  it('never caches Giphy content, given directly or reached by a redirect', async () => {
+    const { s, fn } = store(async (url) => url === A
+      ? new Response(null, { status: 302, headers: { location: 'https://media.giphy.com/media/abc/200w.gif' } })
+      : gifResponse())
+    expect(await codeOf(s.ensureCached(A))).toBe('giphyLink')
+    expect(fn).toHaveBeenCalledTimes(1)
+    for (const url of ['https://media.giphy.com./x.gif', 'https://GIPHY.com/gifs/x', 'https://gph.is/abc']) {
+      expect(await codeOf(s.ensureCached(url))).toBe('giphyLink')
+    }
+    expect(fn).toHaveBeenCalledTimes(1)
+    expect(await list('cache')).toEqual([])
   })
 
   it('refuses a private host given directly', async () => {

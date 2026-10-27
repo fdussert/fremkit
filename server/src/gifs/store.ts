@@ -17,7 +17,7 @@ const GIF_ACCEPT = 'image/gif,image/*;q=0.8,*/*;q=0.5'
 /** Same rule as the config schema's `giphyId`: it ends up in a URL path. */
 const GIPHY_ID = /^[A-Za-z0-9]{1,64}$/
 
-export type GifError = 'notGif' | 'tooLarge' | 'unreachable' | 'privateHost'
+export type GifError = 'notGif' | 'tooLarge' | 'unreachable' | 'privateHost' | 'giphyLink'
 
 /** A download that failed. The message names the reason only, never the URL. */
 export class GifFetchError extends Error {
@@ -25,6 +25,16 @@ export class GifFetchError extends Error {
     super(`GIF download failed: ${code}`)
     this.name = 'GifFetchError'
   }
+}
+
+/**
+ * Giphy's own hosts, its short links included. A link to one becomes a giphy item in the editor,
+ * and Giphy's content is never cached: `ensureCached` refuses them on every hop. A trailing dot
+ * names the same host, so it is ignored.
+ */
+export function isGiphyHost(hostname: string): boolean {
+  const host = hostname.toLowerCase().replace(/\.$/, '')
+  return host === 'giphy.com' || host.endsWith('.giphy.com') || host === 'gph.is' || host.endsWith('.gph.is')
 }
 
 export function giphyFullUrl(giphyId: string): string {
@@ -92,7 +102,7 @@ export class GifStore {
     if (pending) return pending
     const job = (async () => {
       if (await this.isCached(url)) return path
-      const body = await this.download(url)
+      const body = await this.download(url, { refuseGiphy: true })
       await this.writeAtomically(this.cacheDir, path, body)
       return path
     })().finally(() => this.inFlight.delete(path))
@@ -165,8 +175,8 @@ export class GifStore {
   }
 
   /** The checked bytes of a GIF, or a `GifFetchError`. Nothing is written until they pass. */
-  private async download(url: string): Promise<Buffer> {
-    const res = await this.request(url)
+  private async download(url: string, rules: { refuseGiphy?: boolean } = {}): Promise<Buffer> {
+    const res = await this.request(url, rules)
     try {
       if (!res.ok) throw new GifFetchError('unreachable')
       const declared = Number(res.headers.get('content-length'))
@@ -182,8 +192,9 @@ export class GifStore {
   /**
    * One GET, following at most `MAX_REDIRECTS` hops over http/https only, each host checked for a
    * private address before it is asked (the URL given included). Mirrors the favicon store.
+   * `refuseGiphy` also refuses Giphy's hosts on every hop: the cache never holds Giphy content.
    */
-  private async request(url: string): Promise<Response> {
+  private async request(url: string, rules: { refuseGiphy?: boolean }): Promise<Response> {
     let current = url
     for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
       let parsed: URL
@@ -191,6 +202,8 @@ export class GifStore {
       if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') throw new GifFetchError('unreachable')
       // A URL with credentials is never fetched: they would travel to whoever answers.
       if (parsed.username || parsed.password) throw new GifFetchError('unreachable')
+      // A cache download that starts at, or is redirected to, Giphy would keep Giphy's content.
+      if (rules.refuseGiphy && isGiphyHost(parsed.hostname)) throw new GifFetchError('giphyLink')
       if (await this.isPrivate(parsed.hostname)) throw new GifFetchError('privateHost')
       let res: Response
       try {

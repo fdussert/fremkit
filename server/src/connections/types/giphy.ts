@@ -36,6 +36,7 @@ export const giphyType: ConnectionType = {
     if (key === '') return { ok: false, error: tr(undefined, 'gifs.unauthorized') }
     const result = await searchGiphy(key, 'hello', 0, deps.fetchFn ?? fetch)
     if (result.ok) return { ok: true, detail: tr(undefined, 'giphy.connected', { count: result.total }) }
-    return { ok: false, error: tr(undefined, `gifs.${result.error}`) }
+    // `gifs.unreachable` says the GIF could not be reached; here it is Giphy itself.
+    return { ok: false, error: tr(undefined, result.error === 'unreachable' ? 'giphy.unreachable' : `gifs.${result.error}`) }
   },
 }

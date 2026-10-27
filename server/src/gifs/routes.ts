@@ -1,4 +1,4 @@
-import { createReadStream } from 'node:fs'
+import { open } from 'node:fs/promises'
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import type { Connection } from '../config/schema.js'
@@ -7,7 +7,7 @@ import { isCrossSiteFetch } from '../http/guard.js'
 import { tr } from '../i18n.js'
 import { isLocalRequest } from '../net/remote.js'
 import { searchGiphy } from './giphy.js'
-import { GifFetchError, type GifStore } from './store.js'
+import { GifFetchError, isGiphyHost, type GifStore } from './store.js'
 
 const MIN_QUERY = 2
 /** Giphy's API refuses offsets past this one. */
@@ -16,16 +16,6 @@ const MAX_OFFSET = 4999
 const CheckBody = z.object({
   url: z.string().max(2048).url().refine((u) => u.startsWith('https://')),
 })
-
-/** Giphy's own hosts: a pasted Giphy link becomes a giphy item, and its content is never cached. */
-function isGiphyHost(url: string): boolean {
-  try {
-    const host = new URL(url).hostname
-    return host === 'giphy.com' || host.endsWith('.giphy.com')
-  } catch {
-    return false
-  }
-}
 
 /**
  * The editor's GIF routes, for filling the GIF board under its settings.
@@ -59,7 +49,13 @@ export async function gifRoutes(
     if (opts.demo) return { ok: false, error: 'unconfigured' }
     const connection = opts.store.get().connections.find((c) => c.type === 'giphy')
     if (!connection) return { ok: false, error: 'unconfigured' }
-    const apiKey = (await opts.secretsFor(connection)).apiKey
+    let apiKey: string | undefined
+    try {
+      apiKey = (await opts.secretsFor(connection)).apiKey
+    } catch {
+      // A keychain error message is never sent on: it could name the item.
+      return { ok: false, error: 'unreachable' }
+    }
     if (!apiKey) return { ok: false, error: 'unconfigured' }
     return searchGiphy(apiKey, q, Number(rawOffset), opts.fetchImpl ?? fetch)
   })
@@ -69,7 +65,9 @@ export async function gifRoutes(
     const parsed = CheckBody.safeParse(req.body)
     if (!parsed.success) return reply.code(400).send()
     const { url } = parsed.data
-    if (isGiphyHost(url)) return reply.code(400).send()
+    // A pasted Giphy link becomes a giphy item in the editor; its content is never cached. The
+    // store refuses Giphy again on every redirect hop.
+    if (isGiphyHost(new URL(url).hostname)) return reply.code(400).send()
     try {
       await opts.gifs.ensureCached(url)
       return { ok: true }
@@ -83,10 +81,17 @@ export async function gifRoutes(
     if (!isLocalRequest(req)) return reply.code(404).send()
     if (isCrossSiteFetch(req.headers)) return reply.code(404).send()
     const url = req.query.url
-    if (typeof url !== 'string' || url === '' || !(await opts.gifs.isCached(url))) return reply.code(404).send()
+    if (typeof url !== 'string' || url === '') return reply.code(404).send()
+    // Opened before answering, so a file pruned in the meantime is a 404, not a failed stream.
+    let file
+    try {
+      file = await open(opts.gifs.cachedPath(url), 'r')
+    } catch {
+      return reply.code(404).send()
+    }
     return reply
       .type('image/gif')
       .header('cache-control', 'private, max-age=86400')
-      .send(createReadStream(opts.gifs.cachedPath(url)))
+      .send(file.createReadStream())
   })
 }

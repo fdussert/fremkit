@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { searchGiphy } from '../src/gifs/giphy.js'
 import { giphyThumbUrl } from '../src/gifs/store.js'
 import { giphyType } from '../src/connections/types/giphy.js'
+import { tr } from '../src/i18n.js'
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
@@ -90,6 +91,11 @@ describe('giphyType', () => {
     const result = await giphyType.test({}, { apiKey: 'SECRETKEY' }, { fetchFn: async () => json({}, 403) })
     expect(result.ok).toBe(false)
     expect(JSON.stringify(result)).not.toContain('SECRETKEY')
+  })
+
+  it('says Giphy, not the GIF, is unreachable', async () => {
+    const result = await giphyType.test({}, { apiKey: 'k' }, { fetchFn: async () => { throw new Error('down') } })
+    expect(result).toEqual({ ok: false, error: tr(undefined, 'giphy.unreachable') })
   })
 
   it('refuses an empty key without calling Giphy', async () => {
