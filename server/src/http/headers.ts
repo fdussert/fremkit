@@ -39,7 +39,8 @@ export function isByteRoute(url: string): boolean {
  * is another widget document (`/widgets/…`, served under the widget CSP with the bridge first).
  * Without it a widget sent its data off in the URL of its own frame (`location = 'https://…?d=…'`),
  * since a sandboxed frame may always navigate itself. The rest is the usual: our own scripts and
- * nothing else, no plugins, no `<base>`, never framed by another page.
+ * nothing else, no plugins, no `<base>`, never framed by another page. Images may also come from
+ * Giphy's two media hosts, for the GIF board's editor panel (search results and thumbnails).
  *
  * Written for the origin the page was loaded from — `host` is the request's Host, already checked
  * against the names this server answers to (the loopback gate, or the devices gate on 4243) — so
@@ -55,7 +56,7 @@ export function hostCsp(host: string, secure = false): string {
     "default-src 'self'",
     "script-src 'self'",
     "style-src 'self' 'unsafe-inline'",
-    "img-src 'self' data: blob:",
+    "img-src 'self' data: blob: https://i.giphy.com https://media.giphy.com",
     "font-src 'self' data:",
     `connect-src 'self' ${ws}`,
     `frame-src ${http}/widgets/`,

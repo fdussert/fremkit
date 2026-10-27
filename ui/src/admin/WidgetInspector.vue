@@ -224,6 +224,7 @@ function moveToPage(): void {
     <!-- The one section that opens by itself: a widget is selected to be set up. -->
     <BaseSection v-if="manifest && Object.keys(schema).length" id="widget.settings"
       :title="t('admin.inspector.widget.settings')" default-open>
+      <BaseButton v-if="inst.widgetId === 'gif-board'" class="gifs-open" @click="s.openModal('gifs')">{{ t('admin.gifs.open') }}</BaseButton>
       <CopySettingsFrom :widget-id="inst.widgetId" :instance-id="inst.instanceId"
         @copy="s.updateInstance(inst!.instanceId, { settings: $event })" />
       <SettingsForm :schema="manifest.settingsSchema" scope="tile" :values="inst.settings"
@@ -278,6 +279,7 @@ function moveToPage(): void {
 h3 { font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: .08em; color: var(--text-muted);
   margin: var(--space-4) 0 var(--space-2); }
 .grid4 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 var(--space-2); }
+.gifs-open { width: 100%; justify-content: center; margin-bottom: var(--space-3); }
 .hint { font-size: var(--fs-xs); color: var(--text-dim); margin: 0 0 var(--space-3); }
 .hint.bad { color: var(--danger); }
 .hint.shared { display: flex; align-items: center; gap: var(--space-1); color: var(--text-muted); }

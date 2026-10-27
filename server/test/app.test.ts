@@ -47,6 +47,8 @@ describe('the host pages', () => {
         expect(csp, url).toContain("connect-src 'self' ws://127.0.0.1:4301")
         expect(csp, url).toContain("script-src 'self'")
         expect(csp, url).not.toContain("script-src 'self' 'unsafe-inline'")
+        // The GIF board's editor panel shows Giphy's search results and thumbnails.
+        expect(csp.split('; ').find((d) => d.startsWith('img-src')), url).toBe("img-src 'self' data: blob: https://i.giphy.com https://media.giphy.com")
         for (const d of ["frame-ancestors 'none'", "object-src 'none'", "base-uri 'none'"]) expect(csp, url).toContain(d)
       }
       // Under localhost the page's origin is localhost, and so are its frames.

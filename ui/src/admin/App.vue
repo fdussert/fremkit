@@ -12,6 +12,7 @@ import BaseModal from '../shared/ui/BaseModal.vue'
 import SettingsWindow from './settings/SettingsWindow.vue'
 import ConnectionsInspector from './ConnectionsInspector.vue'
 import MarketplacePanel from './MarketplacePanel.vue'
+import GifBoardPanel from './GifBoardPanel.vue'
 import WidgetAbout from './WidgetAbout.vue'
 import KeyboardShortcuts from './KeyboardShortcuts.vue'
 import ShareExportDialog from './ShareExportDialog.vue'
@@ -245,6 +246,10 @@ onUnmounted(() => {
     <BaseModal v-else-if="s.state.modal === 'shortcuts'" :title="t('admin.shortcuts.title')"
       :width="480" :close-label="t('common.close')" @close="s.closeModal()">
       <KeyboardShortcuts />
+    </BaseModal>
+    <BaseModal v-else-if="s.state.modal === 'gifs'" :title="t('admin.gifs.title')"
+      :width="960" :height="720" flush :close-label="t('common.close')" @close="s.closeModal()">
+      <GifBoardPanel />
     </BaseModal>
     <BaseModal v-else-if="s.state.modal === 'export' && share.exporting" :title="t('admin.share.export.title')"
       :width="560" :close-label="t('common.close')" @close="closeShare()">
