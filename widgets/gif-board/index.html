@@ -81,6 +81,10 @@
   var feedbackTimers = {}
   /** link src -> data URL, once the host had it. Pruned to the srcs of the latest snapshot. */
   var resolved = {}
+  /** item id -> true while its copy command has not answered. */
+  var pending = {}
+  /** A copy that has not answered after this long says so, whatever the item. */
+  var COPYING_AFTER_MS = 300
   var observer = null
   /** The card being pressed: { card, item, x, y, scroll }. */
   var press = null
@@ -154,15 +158,21 @@
   }
 
   function copy(item) {
-    var f = feedback[item.id]
-    if (f && f.state === 'copying') return
+    if (pending[item.id]) return
+    pending[item.id] = true
+    // A Giphy copy always downloads, so it says so at once; a link copy is usually instant from the
+    // cache, and says so only if it is not (a cache miss downloads too).
+    var slow = null
     if (item.kind === 'giphy') setFeedback(item.id, 'copying', Fremkit.t(L.copying))
+    else slow = setTimeout(function () { if (pending[item.id]) setFeedback(item.id, 'copying', Fremkit.t(L.copying)) }, COPYING_AFTER_MS)
+    function done() { delete pending[item.id]; clearTimeout(slow) }
     Fremkit.sendCommand('gif-board', 'copy', { id: item.id })
       .then(function (result) {
+        done()
         if (result && result.ok) setFeedback(item.id, 'ok', Fremkit.t(L.copied), COPIED_MS)
         else setFeedback(item.id, 'error', (result && typeof result.error === 'string' && result.error) || Fremkit.t(L.failed), ERROR_MS)
       })
-      .catch(function () { setFeedback(item.id, 'error', Fremkit.t(L.failed), ERROR_MS) })
+      .catch(function () { done(); setFeedback(item.id, 'error', Fremkit.t(L.failed), ERROR_MS) })
   }
 
   /** Forgets the data URLs of links the board no longer holds: each can weigh megabytes. */
