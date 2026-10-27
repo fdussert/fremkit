@@ -78,7 +78,13 @@ async function addPasted(): Promise<void> {
     }
   }
   const item = parsed.kind === 'giphy' ? { kind: 'giphy' as const, giphyId: parsed.giphyId } : { kind: 'link' as const, url: parsed.url }
-  s.apply((c) => { if (c.gifs) addItem(c.gifs, group.id, item) })
+  // The group may have gone, or filled up, while the link was being checked.
+  const live = groups.value.find((g) => g.id === group.id)
+  if (!live) { pasteError.value = t('admin.gifs.groupGone'); return }
+  if (live.items.length >= MAX_ITEMS) { pasteError.value = t('admin.gifs.full'); return }
+  let added = ''
+  s.apply((c) => { if (c.gifs) added = addItem(c.gifs, group.id, item) })
+  if (!added) { pasteError.value = t('admin.gifs.groupGone'); return }
   address.value = ''
 }
 watch(address, () => { pasteError.value = '' })

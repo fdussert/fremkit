@@ -185,6 +185,7 @@ export const en: Record<string, string> = {
   'admin.gifs.addTo': 'Add a GIF to {name}',
   'admin.gifs.checking': 'Checking…',
   'admin.gifs.already': 'This GIF is already in {name}.',
+  'admin.gifs.groupGone': 'This group was deleted in the meantime.',
   'admin.gifs.full': 'This group is full.',
   'admin.gifs.notHttps': 'Only https:// addresses are accepted.',
   'admin.gifs.invalid': 'This is not a GIF address.',

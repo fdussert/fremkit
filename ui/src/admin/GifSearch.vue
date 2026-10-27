@@ -21,10 +21,14 @@ const { t } = useI18n()
 
 const DEBOUNCE_MS = 400
 const MIN_QUERY = 2
+/** The server refuses offsets past Giphy's own limit (`MAX_OFFSET` in `server/src/gifs/routes.ts`). */
+const MAX_OFFSET = 4999
 
 const query = ref('')
 const results = ref<GifSearchResult[]>([])
 const total = ref(0)
+/** Giphy's offset for the next page: what it has sent so far, overlaps included. */
+const nextOffset = ref(0)
 const error = ref<GifSearchError | null>(null)
 const loading = ref(false)
 const full = ref(false)
@@ -49,7 +53,9 @@ async function search(offset: number): Promise<void> {
     // Giphy's pages can overlap: a GIF already listed is not listed twice.
     const fresh = res.results.filter((r) => !known.has(r.giphyId) && known.add(r.giphyId))
     results.value = offset ? [...results.value, ...fresh] : fresh
-    total.value = res.total
+    nextOffset.value = offset + res.results.length
+    // An empty page ends the list whatever the total says, so the button cannot stick.
+    total.value = res.results.length ? res.total : nextOffset.value
   } catch {
     if (mine === seq) error.value = 'unreachable'
   } finally {
@@ -63,6 +69,7 @@ watch(query, (q) => {
     seq++
     results.value = []
     total.value = 0
+    nextOffset.value = 0
     loading.value = false
     if (error.value !== 'unconfigured') error.value = null
     return
@@ -70,6 +77,7 @@ watch(query, (q) => {
   timer = setTimeout(() => void search(0), DEBOUNCE_MS)
 })
 onUnmounted(() => clearTimeout(timer))
+watch(() => props.target, () => { full.value = false })
 
 const inTarget = (giphyId: string): boolean => {
   const b = s.state.config?.gifs
@@ -127,8 +135,8 @@ function openGiphy(): void {
           </li>
         </ul>
         <p v-else-if="!loading && !error && query.trim().length >= MIN_QUERY" class="msg">{{ t('admin.gifs.noResults') }}</p>
-        <BaseButton v-if="results.length && results.length < total" class="more" :disabled="loading"
-          @click="search(results.length)">{{ t('admin.gifs.loadMore') }}</BaseButton>
+        <BaseButton v-if="results.length && nextOffset < total && nextOffset <= MAX_OFFSET" class="more" :disabled="loading"
+          @click="search(nextOffset)">{{ t('admin.gifs.loadMore') }}</BaseButton>
       </div>
       <p class="powered">{{ t('admin.gifs.poweredBy') }}</p>
     </template>

@@ -221,10 +221,11 @@ function moveToPage(): void {
     </BaseField>
     </BaseSection>
 
+    <!-- The GIF board's collection has its own panel; reachable whether or not the tile has settings. -->
+    <BaseButton v-if="inst.widgetId === 'gif-board'" class="gifs-open" @click="s.openModal('gifs')">{{ t('admin.gifs.open') }}</BaseButton>
     <!-- The one section that opens by itself: a widget is selected to be set up. -->
     <BaseSection v-if="manifest && Object.keys(schema).length" id="widget.settings"
       :title="t('admin.inspector.widget.settings')" default-open>
-      <BaseButton v-if="inst.widgetId === 'gif-board'" class="gifs-open" @click="s.openModal('gifs')">{{ t('admin.gifs.open') }}</BaseButton>
       <CopySettingsFrom :widget-id="inst.widgetId" :instance-id="inst.instanceId"
         @copy="s.updateInstance(inst!.instanceId, { settings: $event })" />
       <SettingsForm :schema="manifest.settingsSchema" scope="tile" :values="inst.settings"

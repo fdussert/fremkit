@@ -8,6 +8,7 @@ describe('parseGifAddress', () => {
     expect(parseGifAddress(`https://giphy.com/gifs/happy-dance-${ID}`)).toEqual({ kind: 'giphy', giphyId: ID })
     expect(parseGifAddress(`https://giphy.com/gifs/${ID}`)).toEqual({ kind: 'giphy', giphyId: ID })
     expect(parseGifAddress(`  https://www.giphy.com/gifs/cat-${ID}?utm=x  `)).toEqual({ kind: 'giphy', giphyId: ID })
+    expect(parseGifAddress(`https://giphy.com/embed/${ID}`)).toEqual({ kind: 'giphy', giphyId: ID })
   })
 
   it('reads the id of a media link, versioned or not', () => {
@@ -26,6 +27,7 @@ describe('parseGifAddress', () => {
     expect(parseGifAddress('https://gph.is/g/abc123')).toEqual({ error: 'giphyLink' })
     expect(parseGifAddress('https://giphy.com/explore/cats')).toEqual({ error: 'giphyLink' })
     expect(parseGifAddress('https://giphy.com./gifs/')).toEqual({ error: 'giphyLink' })
+    expect(parseGifAddress(`https://developers.giphy.com/gifs/${ID}`)).toEqual({ error: 'giphyLink' })
   })
 
   it('takes any other https address as a link', () => {

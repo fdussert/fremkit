@@ -2,18 +2,19 @@
 /**
  * The GIF board panel's left column: the groups, each with its thumbnails.
  *
- * Thumbnails drag (HTML drag and drop, as the widget library's cards do) to reorder within a group
- * or move to another; a group's `+` asks the panel to point its paste field at that group. A
+ * Thumbnails drag (pointer events, as the pages list's rows do) to reorder within a group or move
+ * to another; a group's `+` asks the panel to point its paste field at that group. A
  * group's name and a GIF's label are edited inline, from the right-click menus (`gifMenus.ts`) or
  * a double click. Every edit is one `apply()`.
  */
-import { nextTick, ref } from 'vue'
+import { nextTick, onUnmounted, ref } from 'vue'
 import BaseButton from '../shared/ui/BaseButton.vue'
 import BaseIcon from '../shared/ui/BaseIcon.vue'
 import { useI18n } from '../shared/i18n'
 import { openContextMenu } from '../shared/ui/contextMenu'
 import type { GifGroup } from '../shared/types'
 import { MAX_GROUPS, MAX_LABEL, MAX_NAME, moveItem, renameGroup, setLabel, thumbOf } from './gifBoard'
+import { dropMarker, gridDropIndex } from './gifDrag'
 import { gifGroupMenu, gifItemMenu, type GifMenuUi } from './gifMenus'
 import { useAdminStore } from './store'
 
@@ -40,10 +41,11 @@ function cancelEdit(): void {
   cancelling = true
   editing.value = null
 }
-function commit(e: Event): void {
-  const edit = editing.value
-  editing.value = null
-  if (cancelling || !edit) { cancelling = false; return }
+/** `kind` and `id` come from the input that blurred, not from `editing`, which may have moved on. */
+function commit(e: Event, kind: 'name' | 'label', id: string): void {
+  const edit = { kind, id }
+  if (editing.value?.kind === kind && editing.value.id === id) editing.value = null
+  if (cancelling) { cancelling = false; return }
   const value = (e.target as HTMLInputElement).value
   if (edit.kind === 'name') {
     const group = props.groups.find((g) => g.id === edit.id)
@@ -61,43 +63,74 @@ const ui: GifMenuUi = {
   rename: (id) => void startEdit('name', id),
 }
 
-/** The drag: which GIF is lifted, and where it would land. */
-const MIME = 'application/x-fremkit-gif'
-const dragging = ref<{ id: string; group: string; index: number } | null>(null)
-const over = ref<{ group: string; index: number } | null>(null)
+/**
+ * The drag, with pointer events as the pages list does it (a WKWebView does not deliver HTML drag
+ * and drop reliably). A press on a thumbnail arms it; past a few pixels it starts, the thumbnail
+ * dims and a line shows where it lands, in its group or another; the release drops it there in
+ * one `apply()`. Escape, or a release outside every group, puts it back.
+ */
+const DRAG_THRESHOLD = 4
+const drag = ref<{ id: string; group: string; from: number } | null>(null)
+const over = ref<{ group: string; to: number } | null>(null)
+let pressed: { id: string; group: string; from: number; x: number; y: number; pointer: number; el: HTMLElement } | null = null
 
-function onDragStart(e: DragEvent, groupId: string, index: number, id: string): void {
-  if (editing.value) { e.preventDefault(); return }
-  dragging.value = { id, group: groupId, index }
-  e.dataTransfer?.setData(MIME, id)
-  if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move'
+function onDown(e: PointerEvent, groupId: string, from: number, id: string): void {
+  if (e.button !== 0 || editing.value) return
+  if ((e.target as HTMLElement).closest('input, button')) return
+  pressed = { id, group: groupId, from, x: e.clientX, y: e.clientY, pointer: e.pointerId, el: e.currentTarget as HTMLElement }
 }
-function onDragEnd(): void {
-  dragging.value = null
-  over.value = null
+function onMove(e: PointerEvent): void {
+  if (!pressed || e.pointerId !== pressed.pointer) return
+  if (!drag.value) {
+    if (Math.hypot(e.clientX - pressed.x, e.clientY - pressed.y) < DRAG_THRESHOLD) return
+    drag.value = { id: pressed.id, group: pressed.group, from: pressed.from }
+    // Captured so the release lands here even off the thumbnail.
+    try { pressed.el.setPointerCapture(e.pointerId) } catch { /* the pointer is already gone */ }
+    // Focused, and marked an overlay while lifted (below), so the Escape that drops the drag is
+    // not also the dialog's: BaseModal hears Escape on the window before this listener does.
+    pressed.el.focus({ preventScroll: true })
+    window.addEventListener('keydown', onDragKey, true)
+  }
+  over.value = landing(e.clientX, e.clientY)
 }
-/** `index` is where the GIF lands once moved: the place of the thumbnail it is dropped on. */
-function onDragOver(e: DragEvent, groupId: string, index: number): void {
-  if (!dragging.value) return
-  e.preventDefault()
-  if (e.dataTransfer) e.dataTransfer.dropEffect = 'move'
-  over.value = { group: groupId, index }
+/** The group under the pointer and the index the GIF would have there, or null off every group. */
+function landing(x: number, y: number): { group: string; to: number } | null {
+  const d = drag.value
+  const section = document.elementFromPoint(x, y)?.closest<HTMLElement>('[data-gif-group]')
+  const groupId = section?.dataset.gifGroup
+  if (!d || !section || !groupId) return null
+  const boxes = [...section.querySelectorAll<HTMLElement>('li.thumb')].map((el) => el.getBoundingClientRect())
+  return { group: groupId, to: gridDropIndex(boxes, x, y, groupId === d.group ? d.from : -1) }
 }
-function onDrop(e: DragEvent, groupId: string, index: number): void {
-  const d = dragging.value
-  onDragEnd()
-  if (!d) return
-  e.preventDefault()
-  if (d.group === groupId && Math.min(index, props.groups.find((g) => g.id === groupId)!.items.length - 1) === d.index) return
-  s.apply((c) => { if (c.gifs) moveItem(c.gifs, d.id, groupId, index) })
-}
-/** The line the lifted GIF lands on: after the thumbnail when it moves right in its group, else before. */
-function dropClass(groupId: string, index: number): Record<string, boolean> {
-  const d = dragging.value
+function onUp(e: PointerEvent): void {
+  if (!pressed || e.pointerId !== pressed.pointer) return
+  const d = drag.value
   const o = over.value
-  if (!d || !o || o.group !== groupId || o.index !== index || (d.group === groupId && d.index === index)) return {}
-  const after = d.group === groupId && d.index < index
-  return { 'drop-before': !after, 'drop-after': after }
+  endDrag()
+  if (!d || !o || (o.group === d.group && o.to === d.from)) return
+  s.apply((c) => { if (c.gifs) moveItem(c.gifs, d.id, o.group, o.to) })
+}
+function endDrag(): void {
+  pressed = null
+  drag.value = null
+  over.value = null
+  window.removeEventListener('keydown', onDragKey, true)
+}
+function onDragKey(e: KeyboardEvent): void {
+  if (e.key !== 'Escape') return
+  // Escape drops the drag where it started, and must not also close the dialog.
+  e.preventDefault()
+  e.stopPropagation()
+  endDrag()
+}
+onUnmounted(endDrag)
+
+/** Where the drop line goes in group `g`: before one thumbnail's id, `null` after the last. */
+function markerOf(g: GifGroup): string | null | undefined {
+  const d = drag.value
+  const o = over.value
+  if (!d || !o || o.group !== g.id) return undefined
+  return dropMarker(g.items.map((x) => x.id), d.id, o.to)
 }
 
 defineExpose({ rename: (groupId: string) => void startEdit('name', groupId) })
@@ -106,27 +139,25 @@ defineExpose({ rename: (groupId: string) => void startEdit('name', groupId) })
 <template>
   <div ref="root" class="groups">
     <p v-if="!groups.length" class="empty">{{ t('admin.gifs.empty') }}</p>
-    <section v-for="g in groups" :key="g.id" class="group" :class="{ on: g.id === target }">
+    <section v-for="g in groups" :key="g.id" class="group" :data-gif-group="g.id" :class="{ on: g.id === target }">
       <header @click="emit('target', g.id)" @contextmenu="openContextMenu($event, gifGroupMenu(s, g.id, ui))">
         <!-- data-overlay: Escape here cancels the edit and must not also close the dialog. -->
         <input v-if="editing?.kind === 'name' && editing.id === g.id" class="inline" :value="g.name" :maxlength="MAX_NAME"
           :aria-label="t('admin.gifs.groupName')" data-overlay
-          @click.stop @blur="commit" @keydown.enter="($event.target as HTMLInputElement).blur()" @keydown.esc.stop="cancelEdit()" />
+          @click.stop @blur="commit($event, 'name', g.id)" @keydown.enter="($event.target as HTMLInputElement).blur()" @keydown.esc.stop="cancelEdit()" />
         <span v-else class="name" @dblclick.stop="startEdit('name', g.id)">{{ g.name }}</span>
         <span class="count">{{ g.items.length }}</span>
       </header>
-      <ul class="thumbs" :class="{ 'drop-end': over?.group === g.id && over.index === g.items.length && dragging?.group !== g.id }"
-        @dragover="onDragOver($event, g.id, g.items.length)" @drop="onDrop($event, g.id, g.items.length)">
+      <ul class="thumbs" :class="{ 'drop-end': markerOf(g) === null, dragging: !!drag }">
         <li v-for="(item, i) in g.items" :key="item.id" class="thumb"
-          :class="{ lifted: dragging?.id === item.id, ...dropClass(g.id, i) }"
-          :draggable="!editing" :title="item.label || t('admin.gifs.drag')"
-          @dragstart="onDragStart($event, g.id, i, item.id)" @dragend="onDragEnd"
-          @dragover.stop="onDragOver($event, g.id, i)" @drop.stop="onDrop($event, g.id, i)"
+          :class="{ lifted: drag?.id === item.id, 'drop-before': markerOf(g) === item.id }"
+          :title="item.label || t('admin.gifs.drag')" tabindex="-1" :data-overlay="drag?.id === item.id ? '' : undefined"
+          @pointerdown="onDown($event, g.id, i, item.id)" @pointermove="onMove" @pointerup="onUp" @pointercancel="endDrag"
           @contextmenu="openContextMenu($event, gifItemMenu(s, item.id, ui))">
           <img :src="thumbOf(item)" alt="" loading="lazy" draggable="false" />
           <input v-if="editing?.kind === 'label' && editing.id === item.id" class="inline caption" :value="item.label ?? ''"
             :maxlength="MAX_LABEL" :placeholder="t('admin.gifs.labelPlaceholder')" data-overlay
-            @blur="commit" @keydown.enter="($event.target as HTMLInputElement).blur()" @keydown.esc.stop="cancelEdit()" />
+            @blur="commit($event, 'label', item.id)" @keydown.enter="($event.target as HTMLInputElement).blur()" @keydown.esc.stop="cancelEdit()" />
           <span v-else-if="item.label" class="caption" @dblclick="startEdit('label', item.id)">{{ item.label }}</span>
         </li>
         <li class="plus">
@@ -153,12 +184,14 @@ input.inline { flex: 1; min-width: 0; box-sizing: border-box; font: inherit; fon
   background: var(--surface); border: 1px solid var(--accent); border-radius: var(--radius-sm); padding: 2px 6px; }
 .thumbs { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(88px, 1fr)); gap: var(--space-2);
   border-radius: var(--radius-sm); }
-.thumbs.drop-end { outline: 2px dashed var(--accent); outline-offset: 2px; }
-.thumb { position: relative; aspect-ratio: 1; border-radius: var(--radius-sm); overflow: hidden; background: var(--surface-2); cursor: grab; }
+.thumb { position: relative; aspect-ratio: 1; border-radius: var(--radius-sm); overflow: hidden; background: var(--surface-2); cursor: grab;
+  touch-action: none; user-select: none; -webkit-user-select: none; }
+.dragging .thumb { cursor: grabbing; }
+.thumb:focus { outline: none; }
 .thumb img { width: 100%; height: 100%; object-fit: cover; display: block; pointer-events: none; }
 .thumb.lifted { opacity: .4; }
-.thumb.drop-before { box-shadow: inset 3px 0 0 var(--accent); }
-.thumb.drop-after { box-shadow: inset -3px 0 0 var(--accent); }
+/* The line the lifted GIF lands on: before a thumbnail, or before the + tile when it lands last. */
+.thumb.drop-before, .drop-end .plus button { box-shadow: -3px 0 0 var(--accent); }
 .caption { position: absolute; left: 0; right: 0; bottom: 0; padding: 2px 4px; font-size: var(--fs-xs); color: #fff;
   background: rgba(0, 0, 0, .6); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 input.caption { width: 100%; border-radius: 0; color: var(--text); background: var(--surface); }
