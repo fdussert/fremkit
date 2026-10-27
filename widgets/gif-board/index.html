@@ -79,7 +79,7 @@
   var feedback = {}
   /** item id -> the timer that clears its feedback. */
   var feedbackTimers = {}
-  /** link src -> data URL, once the host had it. */
+  /** link src -> data URL, once the host had it. Pruned to the srcs of the latest snapshot. */
   var resolved = {}
   var observer = null
   /** The card being pressed: { card, item, x, y, scroll }. */
@@ -163,6 +163,13 @@
         else setFeedback(item.id, 'error', (result && typeof result.error === 'string' && result.error) || Fremkit.t(L.failed), ERROR_MS)
       })
       .catch(function () { setFeedback(item.id, 'error', Fremkit.t(L.failed), ERROR_MS) })
+  }
+
+  /** Forgets the data URLs of links the board no longer holds: each can weigh megabytes. */
+  function pruneResolved() {
+    var keep = {}
+    itemsOf(ALL).forEach(function (i) { if (i && typeof i.src === 'string') keep[i.src] = true })
+    Object.keys(resolved).forEach(function (src) { if (!keep[src]) delete resolved[src] })
   }
 
   function cardFor(item) {
@@ -289,7 +296,7 @@
     Fremkit.onResize(applySize)
     Fremkit.onLocale(render)
     Fremkit.onSettings(function (next) { settings = next || {}; render() })
-    Fremkit.subscribe('gif-board', function (data) { snapshot = data; render() })
+    Fremkit.subscribe('gif-board', function (data) { snapshot = data; pruneResolved(); render() })
     render()
   })
 </script></body></html>
