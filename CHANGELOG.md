@@ -32,6 +32,10 @@ tagged `vX.Y.Z`.
   version) has **Enter the Mac's address** under its list of Macs: for networks where the tablet
   never sees the Mac on its own, such as a Mac on both Wi-Fi and Ethernet. You still check the
   four words before typing the code.
+- **GIF board.** A widget of your favourite GIFs, sorted into groups: touch one on the Edge and
+  press ⌘V in Teams (or Slack) to send it, animated. Fill it from the widget's settings in
+  **/admin**, by searching Giphy or by pasting a GIF's address; Giphy search needs a free Giphy API
+  key, added under **Connections**, and pasting an address works without one.
 
 ### Changed
 

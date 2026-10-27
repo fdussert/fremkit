@@ -252,6 +252,18 @@ describe('widget routes', () => {
     expect(widgetCsp(4242, false, undefined, 'gif-board', 'dev')).toBe(widgetCsp(4242))
     expect(widgetCsp(4242)).not.toContain('giphy')
   })
+  it('serves the built-in GIF board with Giphy in its img-src, and nothing else with it', async () => {
+    await mkdir(join(dir, 'widgets', 'gif-board'))
+    await writeFile(join(dir, 'widgets', 'gif-board', 'manifest.json'), JSON.stringify({ id: 'gif-board', name: 'GIFs', version: '1.0.0', minSize: [8, 4], defaultSize: [16, 8] }))
+    await writeFile(join(dir, 'widgets', 'gif-board', 'index.html'), '<html></html>')
+    await app.inject({ method: 'POST', url: '/api/widgets/rescan' })
+    const img = (res: { headers: Record<string, unknown> }) => String(res.headers['content-security-policy']).split('; ').find((d) => d.startsWith('img-src'))
+    const board = await app.inject({ url: '/widgets/gif-board/index.html' })
+    expect(board.statusCode).toBe(200)
+    expect(img(board)).toContain('https://i.giphy.com https://media.giphy.com')
+    const clock = await app.inject({ url: '/widgets/clock/index.html' })
+    expect(img(clock)).not.toContain('giphy')
+  })
   it('scopes explicit subresource origins to the server port and development proxy', () => {
     const csp = widgetCsp(4301, true)
     for (const directive of ['script-src', 'style-src', 'img-src', 'font-src', 'media-src']) {

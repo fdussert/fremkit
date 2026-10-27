@@ -9,6 +9,7 @@ import {
   DEMO_APPS, DEMO_CLIPBOARD, DEMO_PROCESSES, DEMO_SESSIONS, DEMO_TRACKS,
   clamp, coverArt, round1, wander,
 } from './world.js'
+import { DEMO_GIF_COLOUR_BARS, DEMO_GIF_MANDELBROT, DEMO_GIF_RGB_BARS, DEMO_GIF_TEST_PATTERN } from './gif-samples.js'
 
 /**
  * Every channel the server publishes, answered from the invented machine of `world.ts`.
@@ -62,6 +63,7 @@ export function createDemoProviders(opts: DemoProviderOptions): Provider[] {
     { channel: 'cleanshot', commands: { run: ACTED } },
     rtkProvider(now),
     { channel: 'shortcuts', commands: { open: ACTED } },
+    gifBoardProvider(),
     serviceStatusProvider(now, opts.instances ?? ((id) => findInstance(opts.config(), id))),
   ]
 }
@@ -601,5 +603,28 @@ function serviceStatusProvider(now: () => number, instances: InstanceLookup): Pr
         return { ok: true, results }
       },
     },
+  }
+}
+
+/** Two groups of license-free test-pattern GIFs; a touch answers `ok` and copies nothing. */
+function gifBoardProvider(): Provider {
+  const item = (id: string, src: string, label?: string) => ({ id, kind: 'link' as const, ...(label ? { label } : {}), src, thumb: src })
+  return {
+    channel: 'gif-board',
+    intervalMs: 60_000,
+    poll: async () => ({
+      groups: [
+        { id: 'demo-reactions', name: 'Reactions', items: [
+          item('demo-gif-1', DEMO_GIF_TEST_PATTERN, 'Stand by'),
+          item('demo-gif-2', DEMO_GIF_MANDELBROT, 'Mind blown'),
+          item('demo-gif-3', DEMO_GIF_COLOUR_BARS),
+        ] },
+        { id: 'demo-team', name: 'Team', items: [
+          item('demo-gif-4', DEMO_GIF_RGB_BARS, 'Ship it'),
+          item('demo-gif-5', DEMO_GIF_TEST_PATTERN),
+        ] },
+      ],
+    }),
+    commands: { copy: ACTED },
   }
 }

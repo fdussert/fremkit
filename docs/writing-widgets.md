@@ -357,13 +357,14 @@ document.documentElement.style.setProperty('--h', Fremkit.size.px.height + 'px')
 `system`, `processes`, `volume`, `spotify`, `mutedeck`, `clipboard`, `shortcuts`, `cleanshot`,
 `network`, `battery`, `service-status`, `config`, `claude-sessions`, `claude-usage`,
 `claude-account`, `claude-identity`, `codex`, `codex-live`, `dock`, `docker-local`,
-`local-models`, `rtk`, `disk-map`, plus one per connection: `azure-devops:<connectionId>`,
+`local-models`, `rtk`, `disk-map`, `gif-board`, plus one per connection: `azure-devops:<connectionId>`,
 `bambu:<connectionId>`, `github:<connectionId>`, `synology:<connectionId>`,
 and `calendar:<connectionId>` for an ICS connection.
 
 `disk-map` and `clipboard` are reserved for their built-in widgets and refused in a third-party
 manifest — at install and when the catalogue reads `data/widgets` — because the first carries the
-names of your folders and files and the second a preview of everything you copy. `brightness`
+names of your folders and files and the second a preview of everything you copy. `gif-board`
+is reserved the same way: its `copy` command writes your clipboard. `brightness`
 may be subscribed to, but listing it in `commands` is refused the same way: setting the screen's
 level is for the built-in widget, the admin and the helper. `config` is refused in every manifest.
 

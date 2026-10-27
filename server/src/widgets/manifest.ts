@@ -182,7 +182,7 @@ const ChannelSchema = z.string().min(1).refine((channel) => {
  * `widgets/`, which ships with the server and is reviewed with it. Unlike `RESERVED_CHANNELS`, the
  * schema alone cannot say: it does not know where a manifest came from.
  */
-export const BUILTIN_ONLY_CHANNELS: ReadonlySet<string> = new Set(['disk-map', 'clipboard', 'companion'])
+export const BUILTIN_ONLY_CHANNELS: ReadonlySet<string> = new Set(['disk-map', 'clipboard', 'companion', 'gif-board'])
 
 /**
  * Channels any widget may read but only a built-in one may command. `brightness` changes the
