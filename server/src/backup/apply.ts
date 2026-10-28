@@ -68,10 +68,20 @@ export async function applyConfig(deps: ApplyConfigDeps, incoming: Config, save:
   try {
     saved = await store.save(incoming, save)
   } catch (err) {
-    for (const [key, value] of dropped) {
-      await deps.secrets.set(key, value).catch((putBack: unknown) => {
-        log.warn({ err: putBack }, 'restore could not put back a secret after a failed save')
-      })
+    // Only onto the config they were issued under: if the config in force is no longer the one
+    // this restore started from (a save that committed and then failed, a concurrent change), an
+    // old secret could land beside a host it was never issued for. And never over a secret
+    // entered again meanwhile.
+    if (dropped.length && store.get() !== here) {
+      log.warn('restore did not put back the dropped secrets: the config in force changed')
+    } else {
+      for (const [key, value] of dropped) {
+        try {
+          if ((await deps.secrets.get(key)) === null) await deps.secrets.set(key, value)
+        } catch (putBack) {
+          log.warn({ err: putBack }, 'restore could not put back a secret after a failed save')
+        }
+      }
     }
     dropped = []
     if (err instanceof DegradedStoreError) return { ok: false, failure: 'degraded' }
