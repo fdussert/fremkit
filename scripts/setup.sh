@@ -57,18 +57,20 @@ else
     fi
 fi
 
-# --- Node 22 or later --------------------------------------------------------------------
+# --- Node 22.13 or later (node:sqlite, without a flag) -----------------------------------
 if ! command -v node >/dev/null 2>&1; then
     fail "Node.js not found"
-    hint "install Node 22 or later (https://nodejs.org, or: brew install node)"
+    hint "install Node 22.13 or later (https://nodejs.org, or: brew install node)"
 else
     NODE_VERSION="$(node -v)"
-    NODE_MAJOR="${NODE_VERSION#v}"
-    NODE_MAJOR="${NODE_MAJOR%%.*}"
-    if [ "$NODE_MAJOR" -ge 22 ] 2>/dev/null; then
-        ok "Node $NODE_VERSION (22 or later required)"
+    NODE_NUMBERS="${NODE_VERSION#v}"
+    NODE_MAJOR="${NODE_NUMBERS%%.*}"
+    NODE_REST="${NODE_NUMBERS#*.}"
+    NODE_MINOR="${NODE_REST%%.*}"
+    if { [ "$NODE_MAJOR" -gt 22 ] || { [ "$NODE_MAJOR" -eq 22 ] && [ "$NODE_MINOR" -ge 13 ]; }; } 2>/dev/null; then
+        ok "Node $NODE_VERSION (22.13 or later required)"
     else
-        fail "Node $NODE_VERSION is too old; 22 or later is required"
+        fail "Node $NODE_VERSION is too old; 22.13 or later is required"
     fi
 fi
 

@@ -48,7 +48,7 @@ without it.
 ### Windows
 
 On Windows the same two scripts exist as Node programs, `claude-hook.mjs` and
-`claude-statusline.mjs`, which need only the Node that runs Claude Code's tooling (Node 22 or
+`claude-statusline.mjs`, which need only the Node that runs Claude Code's tooling (Node 22.13 or
 later) and no `bash` or `jq`. In `%USERPROFILE%\.claude\settings.json` (or the file `CLAUDE_CONFIG_DIR`
 names), use the same layout as above with these commands, replacing `<repo>` with the checkout:
 
