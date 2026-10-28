@@ -12,7 +12,8 @@ import { windowsTool } from '../platform/windows-tools.js'
  *
  * - argv holds the fixed flags of `HOST_ARGS` and nothing else: no script path, no data. Any
  *   account on the machine can read every process's command line.
- * - stdin's first line is a bootstrap that decodes the script from base64 and runs it. Windows
+ * - stdin's first line is a bootstrap that decodes the script from base64, runs it, and ends the
+ *   process whenever the script ends (`finally { [Environment]::Exit(1) }`). Windows
  *   PowerShell 5.1 under `-Command -` runs stdin line by line, which breaks a multi-line script
  *   (functions, here-strings); a single line does not have that problem.
  * - The script prints `{"ready":true}` once it has compiled what it needs. Requests are held
@@ -213,7 +214,10 @@ export class PowerShellHost {
     }, START_TIMEOUT_MS)
 
     const encoded = Buffer.from(this.script, 'utf8').toString('base64')
-    this.write(running, `& ([ScriptBlock]::Create([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${encoded}'))))`)
+    // The child ends with its script, however the script ends: otherwise `-Command -` would go on
+    // reading stdin, and the next request lines would be parsed as PowerShell. `finally` runs on a
+    // terminating error too, where a plain `; exit` after the call would not.
+    this.write(running, `try { & ([ScriptBlock]::Create([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${encoded}')))) } finally { [Environment]::Exit(1) }`)
     return running
   }
 

@@ -357,6 +357,8 @@ describe('PowerShellHost', () => {
     // The bootstrap carries the script, base64 encoded, on one line.
     const encoded = /FromBase64String\('([A-Za-z0-9+/=]+)'\)/.exec(children[0].written[0])?.[1]
     expect(Buffer.from(encoded ?? '', 'base64').toString('utf8')).toBe('Write-Output "fixture"')
+    // ...and ends PowerShell with the script, so no later stdin line is ever read as a command.
+    expect(children[0].written[0]).toMatch(/^try \{ & \(\[ScriptBlock\]::Create\(.*\)\) \} finally \{ \[Environment\]::Exit\(1\) \}$/)
     expect(children[0].requests()).toEqual([{ id: 1, op: 'dpapi.protect', arg: secret }])
     children[0].answer({ id: 1, ok: true, value: 'cHJvdGVjdGVk' })
     await pending
