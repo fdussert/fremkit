@@ -2,11 +2,12 @@ import { reactive, computed, watch, type ComputedRef } from 'vue'
 import { api as realApi } from '../shared/api'
 import { pick, setLocale, t } from '../shared/i18n'
 import { useSocket } from '../shared/socket'
-import type { Background, Config, NavHeight, NavItem, Page, Placement, Screen, ScreenDisplay, Widget, WidgetInstance, WidgetManifest, WidgetPermissionSet, WidgetSource, WidgetsResponse } from '../shared/types'
+import type { Background, Config, NavHeight, NavItem, NavSlot, Page, Placement, Screen, ScreenDisplay, Widget, WidgetInstance, WidgetManifest, WidgetPermissionSet, WidgetSource, WidgetsResponse } from '../shared/types'
 import { DEFAULT_NAV_HEIGHT, MAX_NAV_WIDGETS, ROWS_BY_NAV_HEIGHT, compactWidth, mergeSettings, navHasRoom, navWiderClusterWidth } from '../shared/types'
 import { DEVICE_CELL, DEVICE_NAV_HEIGHT, deviceGrid, pickScreen, screensShowing, tileOf } from '../shared/screens'
 import { firstFreeBlock, fits, groupDelta, largestFreeSpot, moveRect, resizeRect, shiftAll, type Grid, type Rect } from './layout'
 import { arrangeInto } from './arrange'
+import { navStep, placeNav } from './navOrder'
 
 export type Mode = 'edit' | 'test'
 /** The modal dialogs opened from the top bar. Kept in the store so a widget setting can open one. */
@@ -311,7 +312,8 @@ export interface AdminStore {
   removeScreen(id: string): void
   addNavWidget(widgetId: string): void
   removeNavWidget(instanceId: string): void
-  moveNavWidget(instanceId: string, delta: number): void
+  moveNavWidget(instanceId: string, delta: -1 | 1): void
+  placeNavWidget(instanceId: string, slot: NavSlot, index: number): void
   updateNavWidget(instanceId: string, patch: NavWidgetPatch): void
 }
 
@@ -1443,25 +1445,38 @@ export function createAdminStore(deps: StoreDeps): AdminStore {
     },
 
     /**
-     * Reordering happens within a cluster: a widget swaps places with its neighbour on the same
-     * side, whatever sits between them in the stored list. At either end of its own side it is
-     * a no-op rather than a jump across the dots.
+     * One step left or right along the bar: past its neighbour on the same side, whatever sits
+     * between them in the stored list, or across the dots at the end of a side (`navStep`). At
+     * either end of the bar it is a no-op.
      */
-    moveNavWidget(instanceId: string, delta: number): void {
-      const list = screen.value?.nav ?? []
-      const current = list.find((w) => w.instanceId === instanceId)
-      if (!current) return
-      const sameSide = list.filter((w) => w.slot === current.slot)
-      const at = sameSide.indexOf(current)
-      const to = at + delta
-      if (to < 0 || to >= sameSide.length) return
-      const i = list.indexOf(current)
-      const j = list.indexOf(sameSide[to])
+    moveNavWidget(instanceId: string, delta: -1 | 1): void {
+      const step = navStep(screen.value?.nav ?? [], instanceId, delta)
+      if (step) store.placeNavWidget(instanceId, step.slot, step.index)
+    },
+
+    /**
+     * Puts a bar widget on one side, at an index among that side's others: one undo step for a
+     * drag, even across the dots. A move to the other side that widens the wider cluster past its
+     * room is refused, as `updateNavWidget` refuses a slot change.
+     */
+    placeNavWidget(instanceId: string, slot: NavSlot, index: number): void {
+      const cfg = state.config
+      const scr = screen.value
+      const nav = scr ? placeNav(scr.nav, instanceId, slot, index) : null
+      if (!cfg || !scr || !nav) return
+      if (nav.every((x, i) => x.instanceId === scr.nav[i].instanceId && x.slot === scr.nav[i].slot)) return
+      const candidate: Screen = { ...scr, nav }
+      const grows = navWiderClusterWidth(candidate, cfg.widgets, state.manifests)
+        > navWiderClusterWidth(scr, cfg.widgets, state.manifests)
+      if (grows && !navHasRoom(candidate, cfg.widgets, state.manifests, 0)) {
+        const widget = cfg.widgets[instanceId]
+        const manifest = widget ? state.manifests[widget.widgetId] : undefined
+        state.toast = t('admin.store.navFull', { id: pick(manifest?.name) || widget?.widgetId || instanceId })
+        return
+      }
       apply((c) => {
-        const nav = here(c).nav
-        const moved = nav[i]
-        nav[i] = nav[j]
-        nav[j] = moved
+        const placed = placeNav(here(c).nav, instanceId, slot, index)
+        if (placed) here(c).nav = placed
       })
     },
 

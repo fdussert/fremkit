@@ -301,7 +301,8 @@ named-page layout that would hide compact widgets. A single page keeps its
 button so the admin shortcut remains available.
 
 **Compact widgets.** Widgets can live *in* the bar, in a left or a right cluster, in the order
-you set, as many as fit beside the page buttons. A compact rendering is one readable line, as wide
+you set, as many as fit beside the page buttons. The screen's settings list them as the bar reads,
+left of the dots then right of them; drag one to move it, to the other side too. A compact rendering is one readable line, as wide
 as the widget's manifest asks for and as tall as the bar; the bar is its surface, so it has no
 title and no tile of its own. Ten of the built-ins have one: `clock`, `weather`, `pomodoro`,
 `cpu`, `memory`, `network`, `battery`, `calendar`, `claude-usage` and `service-status`. Registry

@@ -14,6 +14,10 @@ tagged `vX.Y.Z`.
 
 ### Added
 
+- **Arranging the bar's widgets.** The screen's settings now list the bar's widgets as the bar
+  reads them, under *Left of the dots* and *Right of the dots*. Drag a widget to move it, within a
+  side or to the other one; its arrows and the *Move left / right* menu also step across the dots.
+
 - **Shape of a bar widget's popover.** A bar widget opened in full on touch can now open *Low and
   wide* or *Large* as well as in the standard shape: pick it under the widget in the navigation
   bar's list.
