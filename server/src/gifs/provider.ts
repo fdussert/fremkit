@@ -9,6 +9,8 @@ export interface GifSnapshotItem { id: string; kind: 'giphy' | 'link'; label?: s
 export interface GifSnapshot { groups: { id: string; name: string; items: GifSnapshotItem[] }[] }
 
 const POLL_MS = 5000
+/** Copies queued at once beyond which a new one is refused: two touches in quick succession pass. */
+const MAX_PENDING_COPIES = 2
 /** How often the cache is pruned and old temp copies swept; also how long a failed warm-up waits. */
 const MAINTENANCE_MS = 60_000
 
@@ -69,6 +71,9 @@ export function createGifBoardProvider(opts: GifBoardProviderOptions): Provider<
   const failedWarm = new Map<string, number>()
   // One copy at a time, paste included: the next Giphy copy deletes the previous temp file.
   let copyQueue: Promise<unknown> = Promise.resolve()
+  // Copies waiting or running. A touch is one copy; a client retrying in a loop (a tablet's
+  // included) would otherwise queue a Giphy download per message.
+  let pending = 0
 
   /** Downloads the links nobody has fetched yet, so a touch pastes at once. A failure waits a minute. */
   async function warm(urls: string[]): Promise<void> {
@@ -126,7 +131,9 @@ export function createGifBoardProvider(opts: GifBoardProviderOptions): Provider<
         if (!isTrusted(ctx)) return { ok: false, error: tr(undefined, 'provider.localOnly') }
         const parsed = CopyPayloadSchema.safeParse(payload)
         if (!parsed.success) return { ok: false, error: tr(undefined, 'provider.invalidPayload') }
-        const job = copyQueue.then(() => copy(parsed.data.id))
+        if (pending >= MAX_PENDING_COPIES) return { ok: false, error: tr(undefined, 'gifs.busy') }
+        pending++
+        const job = copyQueue.then(() => copy(parsed.data.id)).finally(() => { pending-- })
         copyQueue = job.catch(() => {})
         return job
       },

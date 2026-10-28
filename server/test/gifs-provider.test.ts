@@ -190,4 +190,18 @@ describe('gif-board provider', () => {
     await Promise.all([first, second])
     expect(order).toEqual(['temp:abc', 'paste:/t/abc.gif', 'paste:/data/gifs/cache/hash.gif'])
   })
+
+  it('refuses a third copy while two are queued, and takes one again once they are done', async () => {
+    let release!: () => void
+    const { provider, paste } = setup()
+    paste.mockImplementationOnce(async () => { await new Promise<void>((r) => { release = r }) })
+    const first = provider.commands!.copy!({ id: 'item01' }, LOCAL)
+    const second = provider.commands!.copy!({ id: 'item02' }, LOCAL)
+    expect(await provider.commands!.copy!({ id: 'item01' }, LOCAL)).toEqual({ ok: false, error: tr(undefined, 'gifs.busy') })
+    await vi.waitFor(() => expect(paste).toHaveBeenCalledTimes(1))
+    release()
+    expect(await Promise.all([first, second])).toEqual([{ ok: true }, { ok: true }])
+    expect(await provider.commands!.copy!({ id: 'item01' }, LOCAL)).toEqual({ ok: true })
+    expect(paste).toHaveBeenCalledTimes(3)
+  })
 })
