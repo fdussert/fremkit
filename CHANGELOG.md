@@ -82,6 +82,9 @@ tagged `vX.Y.Z`.
   application now move under the name instead.
 - **Claude sessions says what its count counts.** The top of the tile read a bare "· 4" when the
   tile's title was hidden; it now reads "4 sessions".
+- **The disk map's centre fits its name.** "Dossier personnel" and long folder names ran past the
+  hole in the middle of the ring; the name now goes on two lines, and shrinks or is cut short
+  only when that is not enough.
 - **Backgrounds with dots at the end of their name.** A background uploaded from a file called,
   say, "a..png" was saved under a name the dashboard then refused: it never showed in the
   library and could not be deleted. It is now saved under a clean name.
