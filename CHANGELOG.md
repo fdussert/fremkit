@@ -45,6 +45,10 @@ tagged `vX.Y.Z`.
 
 ### Fixed
 
+- **Claude limits recovers from a long rate limit.** When Anthropic asked it to wait the best
+  part of an hour, the widget asked again every two minutes, which kept it rate-limited and its
+  gauges stale for days. It now waits as long as it is told (up to an hour), even across a
+  reload of the widget.
 - **Tapping the Edge dashboard no longer steals the keyboard.** The dashboard window took the
   key focus on every tap, so the app you were typing into on the main display lost it and a
   shortcut such as ⌘V landed in the dashboard. The window is now a non-activating panel that

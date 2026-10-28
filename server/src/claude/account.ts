@@ -36,9 +36,13 @@ const NO_TOKEN_STREAK = 3
 const NO_TOKEN_BACKOFF_MS = 60 * 60_000
 /** Normal cadence; the endpoint is shared with every Claude Code session, so keep it slow. */
 const BASE_INTERVAL_MS = 300_000
-/** Cadence after a 429: the Retry-After the server asks for, bounded so a slot is caught soon. */
+/**
+ * Cadence after a 429: the Retry-After the server asks for, never sooner than 30 s and never
+ * later than an hour. It used to be capped at two minutes, which ignored a server asking for fifty:
+ * the provider came back thirty times inside each penalty and never got out of it.
+ */
 const RATE_LIMITED_MIN_MS = 30_000
-const RATE_LIMITED_MAX_MS = 120_000
+const RATE_LIMITED_MAX_MS = 60 * 60_000
 
 interface Persisted { last: AccountUsage; updatedAt: number }
 
@@ -126,6 +130,9 @@ export function createClaudeAccountProvider(opts: {
   let updatedAt: number | null = null
   let noTokenStreak = 0
   let nextTokenAttempt = 0
+  // When the last 429 said to come back. A reload or a new subscriber polls at once; this keeps
+  // that poll off the network until the penalty is over.
+  let rateLimitedUntil = 0
   // The last good snapshot survives a server restart, so a restart into a rate-limited
   // endpoint still shows the per-model gauges, flagged as stale, instead of nothing.
   const loaded: Promise<void> = filePath
@@ -151,6 +158,7 @@ export function createClaudeAccountProvider(opts: {
         return fail('no-token')
       }
       noTokenStreak = 0
+      if (t < rateLimitedUntil) return fail('rate-limited')
       let res: Response
       try {
         res = await fetchFn(USAGE_URL, { headers: { Authorization: `Bearer ${token}`, 'anthropic-beta': 'oauth-2025-04-20', 'User-Agent': USER_AGENT, Accept: 'application/json' }, signal: AbortSignal.timeout(10_000) })
@@ -160,10 +168,15 @@ export function createClaudeAccountProvider(opts: {
         await res.body?.cancel().catch(() => { /* already closed */ })
         if (res.status === 401) return fail('unauthorized')
         if (res.status === 429) {
-          // Other clients share this quota (every Claude Code session polls it), so a 429 is
-          // usually a busy minute: come back soon, as the server asks, instead of in five minutes.
-          const retryAfter = Number(res.headers.get('retry-after')) * 1000
-          provider.intervalMs = Math.min(RATE_LIMITED_MAX_MS, Math.max(RATE_LIMITED_MIN_MS, Number.isFinite(retryAfter) ? retryAfter : 0))
+          // Other clients share this quota (every Claude Code session polls it), so a 429 can be a
+          // busy minute or a long penalty: come back when the server says, and no sooner. Without
+          // a usable header, keep the normal cadence rather than guess at a shorter one.
+          const header = res.headers.get('retry-after')
+          const retryAfter = header ? Number(header) * 1000 : NaN
+          provider.intervalMs = Number.isFinite(retryAfter)
+            ? Math.min(RATE_LIMITED_MAX_MS, Math.max(RATE_LIMITED_MIN_MS, retryAfter))
+            : BASE_INTERVAL_MS
+          rateLimitedUntil = t + provider.intervalMs
           return fail('rate-limited')
         }
         return fail(`http-${res.status}`)
