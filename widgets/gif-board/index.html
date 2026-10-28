@@ -47,8 +47,21 @@
   html.tight .wrap{padding:8px 12px;gap:8px}
   html.tight .row{gap:8px}
   html.tight .card{border-radius:10px}
+
+  /* In the navigation bar: a badge to touch, which opens the board in full when the bar item is
+     set to "Full widget on touch". Sized from the bar's height (--h), 80 or 40 px. */
+  .badge{display:none}
+  html.compact .wrap{display:none}
+  html.compact body{display:flex;align-items:center;justify-content:center}
+  html.compact.slot-left body{justify-content:flex-start}
+  html.compact.slot-right body{justify-content:flex-end}
+  html.compact .badge{display:flex;align-items:center;justify-content:center;box-sizing:border-box;
+    height:calc(var(--h, 80px) * .5);padding:0 calc(var(--h, 80px) * .14);border-radius:calc(var(--h, 80px) * .14);
+    background:var(--accent,#d9b36a);color:var(--on-accent,#0b0d10);
+    font-weight:800;letter-spacing:.06em;font-size:calc(var(--h, 80px) * .26);line-height:1}
+  html.compact.accent-fill .badge{background:var(--on-surface,#0b0d10);color:var(--accent,#d9b36a)}
 </style></head>
-<body><div class="wrap">
+<body><div class="badge">GIF</div><div class="wrap">
   <div class="tabs" id="tabs"></div>
   <div class="row" id="row"></div>
   <div class="dots" id="dots" hidden></div>
@@ -273,6 +286,8 @@
 
   function render() {
     document.documentElement.lang = Fremkit.locale
+    // The bar draws the badge alone: no card is built, no GIF fetched.
+    if (Fremkit.compact) return
     var tabs = document.getElementById('tabs'), row = document.getElementById('row')
     var empty = document.getElementById('empty')
     if (!snapshot) {
@@ -321,6 +336,7 @@
   function applySize(next) {
     if (!next) return
     var root = document.documentElement
+    if (next.px && next.px.height) root.style.setProperty('--h', next.px.height + 'px')
     root.classList.toggle('tight', next.h < 6)
     root.style.setProperty('--tab', (next.h < 6 ? 44 : 56) + 'px')
     root.style.setProperty('--body', (next.h < 6 ? 13 : next.h < 10 ? 15 : 17) + 'px')

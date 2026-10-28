@@ -19,7 +19,7 @@ To write your own, see [writing-widgets.md](writing-widgets.md).
 | [disk](#disk) | Disk usage and available space | — | — | 16 × 4 |
 | [disk-map](#disk-map) | What fills the disk, as rings you drill into | — | 2 cells | 24 × 9 |
 | [fremplay](#fremplay) | The video of a Chrome tab, with touch controls | — | 3 cells | 28 × 16 |
-| [gif-board](#gif-board) | Favourite GIFs in groups, tap to copy one | Giphy (search only, optional) | — | 16 × 8 |
+| [gif-board](#gif-board) | Favourite GIFs in groups, tap to copy one | Giphy (search only, optional) | 2 cells | 16 × 8 |
 | [memory](#memory) | Memory usage, available RAM and swap | — | 4 cells | 8 × 4 |
 | [uptime](#uptime) | Time since the Mac last booted | — | — | 8 × 4 |
 | [network](#network) | Live network throughput | — | 6 cells | 12 × 4 |
@@ -231,6 +231,9 @@ the connection details along.
 pasteboard as an animated GIF, so the next ⌘V sends it animated in Teams, Slack or Messages.
 When the GIFs do not fit the tile, the row loops: past the last one comes the first again, in
 either direction.
+
+In the navigation bar it is a **GIF** badge. Tick *Full widget on touch* for it (your screen →
+Navigation bar widgets) and touching the badge opens the whole board above the bar.
 
 The collection is one per Mac: every GIF board tile shows the same groups. Fill it from the tile's
 inspector, **Manage the GIFs…**: create and rename groups, search Giphy and add a result to the

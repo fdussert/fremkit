@@ -5,6 +5,7 @@
                    "en": "Your favourite GIFs, sorted into groups: touch one to copy it, then ⌘V sends it animated in Teams or Slack. Fill it from its settings, with a Giphy search or by pasting an address." },
   "category": "productivity",
   "icon": "video", "minSize": [8, 4], "defaultSize": [16, 8],
+  "compact": { "width": 2 },
   "subscriptions": ["gif-board"], "commands": ["gif-board"],
   "settingsSchema": {
     "showLabels": { "type": "boolean", "default": true, "label": { "fr": "Afficher les libellés", "en": "Show labels" } }
