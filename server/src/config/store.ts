@@ -1,6 +1,7 @@
 import { readFile, writeFile, rename, copyFile, mkdir, access } from 'node:fs/promises'
 import { constants } from 'node:fs'
 import { dirname } from 'node:path'
+import { renameRetrying } from '../platform/rename.js'
 import { CONFIG_VERSION, ConfigSchema, DEFAULT_CONFIG, type Config } from './schema.js'
 import { migrateConfig } from './migrate.js'
 import { normalizeInstances } from './normalize.js'
@@ -220,6 +221,7 @@ export class ConfigStore {
     if (exists) await copyFile(this.filePath, this.filePath + '.bak')
     const tmp = this.filePath + '.tmp'
     await writeFile(tmp, JSON.stringify(config, null, 2) + '\n', { encoding: 'utf8', mode: 0o600 })
-    await rename(tmp, this.filePath)
+    // Over a file a concurrent read, an antivirus or the indexer may have open for a moment on Windows.
+    await renameRetrying(rename, tmp, this.filePath)
   }
 }

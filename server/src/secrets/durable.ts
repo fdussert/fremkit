@@ -1,5 +1,6 @@
 import { chmod, mkdir, open, rename, unlink } from 'node:fs/promises'
 import { dirname } from 'node:path'
+import { renameRetrying } from '../platform/rename.js'
 
 /** The open file the durable writes use: write, flush to disk, close. */
 export interface DurableHandle {
@@ -24,7 +25,7 @@ export const nodeIo: DurableIo = { mkdir, open, chmod, rename, unlink }
  * a temporary written and flushed, renamed into place, then the folder flushed so the rename
  * is too. What a file whose loss would cost a secret needs before the plaintext copy goes.
  */
-export async function writeFileDurably(io: DurableIo, path: string, text: string, mode: number): Promise<void> {
+export async function writeFileDurably(io: DurableIo, path: string, text: string, mode: number, platform: NodeJS.Platform = process.platform): Promise<void> {
   await io.mkdir(dirname(path), { recursive: true })
   const tmp = `${path}.tmp`
   const handle = await io.open(tmp, 'w', mode)
@@ -36,7 +37,8 @@ export async function writeFileDurably(io: DurableIo, path: string, text: string
   }
   // The mode at creation and again after: `open` applies it only to a file it creates.
   await io.chmod(tmp, mode)
-  await io.rename(tmp, path)
+  // Over a file another reader, an antivirus or the indexer may have open for a moment on Windows.
+  await renameRetrying((from, to) => io.rename(from, to), tmp, path, platform)
   await syncDir(io, dirname(path))
 }
 

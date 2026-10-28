@@ -3,6 +3,7 @@ import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DpapiSecretStore, type DpapiHost } from '../src/secrets/dpapi.js'
+import { nodeIo } from '../src/secrets/durable.js'
 import { HostError, PowerShellHost } from '../src/win/powershell-host.js'
 import { expectMode } from './helpers/modes.js'
 
@@ -30,6 +31,29 @@ class FakeHost implements DpapiHost {
 const store = (dataDir: string, host: DpapiHost, log?: (code: string) => void) => new DpapiSecretStore(dataDir, { host, log })
 
 describe('DpapiSecretStore', () => {
+  it('reads in turn with the writes: a get never reads the index while a write renames over it', async () => {
+    const d = await dir()
+    const host = new FakeHost()
+    let release!: () => void
+    let renaming!: () => void
+    const renameStarted = new Promise<void>((resolve) => { renaming = resolve })
+    const gate = new Promise<void>((resolve) => { release = resolve })
+    const io = { ...nodeIo, rename: async (from: string, to: string) => { renaming(); await gate; await nodeIo.rename(from, to) } }
+    const s = new DpapiSecretStore(d, { host, io })
+    const written = s.set('gh-x1z9/token', 'placeholder-token')
+    await renameStarted
+    let read: string | null | undefined
+    const reading = s.get('gh-x1z9/token').then((value) => { read = value })
+    const listing = s.keysOf('gh-x1z9')
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    expect(read).toBeUndefined()
+    release()
+    await written
+    await reading
+    expect(read).toBe('placeholder-token')
+    expect(await listing).toEqual(['gh-x1z9/token'])
+  })
+
   it('round-trips set, get and delete, and a fresh store reads null without asking DPAPI', async () => {
     const d = await dir()
     const host = new FakeHost()

@@ -224,9 +224,12 @@ export class DpapiSecretStore implements SecretStore {
 
   async get(key: string): Promise<string | null> {
     assertSecretKey(key)
-    const opened = await this.open()
-    const sealed = opened?.entries[key]
-    return opened && sealed !== undefined ? unseal(opened.key, key, sealed) : null
+    // In the queue too: a read of the index while a write renames over it fails on Windows.
+    return this.enqueue(async () => {
+      const opened = await this.open()
+      const sealed = opened?.entries[key]
+      return opened && sealed !== undefined ? unseal(opened.key, key, sealed) : null
+    })
   }
 
   async set(key: string, value: string): Promise<void> {
@@ -257,14 +260,18 @@ export class DpapiSecretStore implements SecretStore {
 
   async keysOf(connectionId: string): Promise<string[]> {
     const prefix = `${connectionId}/`
-    const opened = await this.open()
-    return opened ? Object.keys(opened.entries).filter((k) => k.startsWith(prefix)) : []
+    return this.enqueue(async () => {
+      const opened = await this.open()
+      return opened ? Object.keys(opened.entries).filter((k) => k.startsWith(prefix)) : []
+    })
   }
 
   /** Every key the store can open: what the move from `secrets.json` checks it against. */
   async keys(): Promise<string[]> {
-    const opened = await this.open()
-    return opened ? Object.keys(opened.entries) : []
+    return this.enqueue(async () => {
+      const opened = await this.open()
+      return opened ? Object.keys(opened.entries) : []
+    })
   }
 }
 
