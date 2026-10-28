@@ -113,13 +113,19 @@ describe('gif-board provider', () => {
     expect(store.prune).toHaveBeenCalledTimes(2)
   })
 
-  it('refuses a copy from anything but this Mac, a paired device included', async () => {
+  it('refuses a copy from anything but this Mac or a paired device', async () => {
     const { provider, paste, store } = setup()
-    for (const ctx of [{ loopback: false, paired: true }, undefined]) {
+    for (const ctx of [{ loopback: false, paired: false }, undefined]) {
       expect(await provider.commands!.copy!({ id: 'item01' }, ctx)).toEqual({ ok: false, error: tr(undefined, 'provider.localOnly') })
     }
     expect(paste).not.toHaveBeenCalled()
     expect(store.tempCopy).not.toHaveBeenCalled()
+  })
+
+  it('copies for a paired device, a tablet beside the Mac being a second Edge', async () => {
+    const { provider, paste } = setup()
+    expect(await provider.commands!.copy!({ id: 'item01' }, { loopback: false, paired: true, deviceId: 'dev-1' })).toEqual({ ok: true })
+    expect(paste).toHaveBeenCalledTimes(1)
   })
 
   it('refuses a bad payload', async () => {

@@ -240,6 +240,10 @@ Searching needs a [Giphy connection](connections.md#giphy); pasting an address w
 A Giphy GIF is kept as its id and fetched from Giphy when touched; a GIF added by its own `https:`
 address is checked and copied to a cache on this Mac when it is added, and shown from there.
 
+On a paired iPad or Android tablet the board works the same way and copies to the **Mac's**
+clipboard: the tablet is a second Edge beside the Mac. It reaches the cached GIFs of the
+collection only, and only while its screen shows a GIF board.
+
 Minimum size 8 × 4, default 16 × 8.
 
 | Setting | Type | Default | Scope | What it is |

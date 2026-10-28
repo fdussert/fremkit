@@ -43,6 +43,8 @@ const RULES: Rule[] = [
   { method: 'GET', path: new RegExp(`^/api/proxy/${SEG}$`), access: 'token' },
   { method: 'POST', path: new RegExp(`^/api/proxy/${SEG}/conn$`), access: 'token' },
   { method: 'GET', path: /^\/api\/favicon$/, access: 'token' },
+  // The route itself holds a device to the GIF board's own links, on a screen that shows one.
+  { method: 'GET', path: /^\/api\/gifs\/cached$/, access: 'token' },
   { method: 'GET', path: new RegExp(`^/api/apps/icon/${SEG}$`), access: 'token' },
   { method: 'GET', path: /^\/api\/apps\/installed$/, access: 'token' },
 ]

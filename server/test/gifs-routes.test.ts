@@ -7,6 +7,7 @@ import { DEFAULT_CONFIG, type Config, type Connection } from '../src/config/sche
 import type { ConfigStore } from '../src/config/store.js'
 import { gifRoutes } from '../src/gifs/routes.js'
 import { GifStore } from '../src/gifs/store.js'
+import { markRemoteSocket } from '../src/net/remote.js'
 
 const GIF = Buffer.concat([Buffer.from('GIF89a'), Buffer.alloc(32, 1)])
 const KEY = 'SECRETKEY'
@@ -29,12 +30,12 @@ function respond(url: string): Response {
   if (url.startsWith('https://api.giphy.com/')) return Response.json(SEARCH_PAYLOAD)
   if (url === 'https://example.com/page.html') return new Response('<!doctype html><p>hi</p>', { headers: { 'content-type': 'text/html' } })
   if (url === 'https://example.com/to-giphy') return new Response(null, { status: 302, headers: { location: 'https://media.giphy.com/media/abc/200w.gif' } })
-  if (url === 'https://example.com/a.gif') return new Response(GIF, { headers: { 'content-type': 'image/gif' } })
+  if (url === 'https://example.com/a.gif' || url === 'https://example.com/b.gif') return new Response(GIF, { headers: { 'content-type': 'image/gif' } })
   return new Response('', { status: 404 })
 }
 
-async function build(opts: { connections?: Connection[]; demo?: boolean; secretsFail?: boolean } = {}) {
-  const config: Config = { ...DEFAULT_CONFIG, connections: opts.connections ?? [] }
+async function build(opts: { connections?: Connection[]; demo?: boolean; secretsFail?: boolean; config?: Partial<Config> } = {}) {
+  const config: Config = { ...DEFAULT_CONFIG, connections: opts.connections ?? [], ...opts.config }
   const store = { get: () => config } as unknown as ConfigStore
   const fetchImpl = vi.fn(async (input: string | URL) => respond(String(input)))
   const gifFetch = vi.fn(async (input: string | URL) => respond(String(input)))
@@ -44,7 +45,17 @@ async function build(opts: { connections?: Connection[]; demo?: boolean; secrets
     return c.id === GIPHY.id ? { apiKey: KEY } : {}
   })
   app = Fastify()
-  await app.register(gifRoutes, { store, gifs, secretsFor, fetchImpl: fetchImpl as unknown as typeof fetch, demo: opts.demo })
+  // A request carrying `x-device` arrives as the remote listener would hand it on: on a marked
+  // socket, from that paired device. Device `dev-a` is on screen `tab-a`, `dev-b` on `tab-b`.
+  app.decorateRequest('deviceId', null)
+  app.addHook('onRequest', async (req) => {
+    const device = req.headers['x-device']
+    if (typeof device !== 'string') return
+    markRemoteSocket(req.raw.socket)
+    if (device !== 'none') req.deviceId = device
+  })
+  const screenOfDevice = (id: string) => ({ 'dev-a': 'tab-a', 'dev-b': 'tab-b' } as Record<string, string>)[id] ?? null
+  await app.register(gifRoutes, { store, gifs, screenOfDevice, secretsFor, fetchImpl: fetchImpl as unknown as typeof fetch, demo: opts.demo })
   return { app, fetchImpl, gifFetch, gifs }
 }
 
@@ -185,6 +196,63 @@ describe('locality', () => {
     expect((await app.inject({ method: 'GET', url: '/api/gifs/search?q=hello', remoteAddress })).statusCode).toBe(404)
     expect((await app.inject({ method: 'POST', url: '/api/gifs/check', payload: { url: 'https://example.com/a.gif' }, remoteAddress })).statusCode).toBe(404)
     expect((await app.inject({ method: 'GET', url: `/api/gifs/cached?url=${url}`, remoteAddress })).statusCode).toBe(404)
+    expect(fetchImpl).not.toHaveBeenCalled()
+    expect(gifFetch).not.toHaveBeenCalled()
+  })
+})
+
+describe('GET /api/gifs/cached from a paired device', () => {
+  const LINK = 'https://example.com/a.gif'
+  const OTHER = 'https://example.com/b.gif'
+  const page = (instanceId: string) => [{ id: 'p', name: 'P', items: [{ instanceId, x: 0, y: 0, w: 16, h: 8 }] }]
+  const config: Partial<Config> = {
+    widgets: { 'gifs-a': { widgetId: 'gif-board', settings: {} }, 'clock-b': { widgetId: 'clock', settings: {} } },
+    screens: [
+      { id: 'tab-a', name: 'Tablet A', kind: 'device', display: { cols: 34, rows: 23 }, nav: [], pages: page('gifs-a') },
+      { id: 'tab-b', name: 'Tablet B', kind: 'device', display: { cols: 34, rows: 23 }, nav: [], pages: page('clock-b') },
+    ],
+    gifs: { groups: [{ id: 'g1', name: 'Work', items: [{ id: 'item01', kind: 'link', url: LINK }] }] },
+  } as unknown as Partial<Config>
+
+  async function cachedBoth() {
+    const built = await build({ config })
+    for (const url of [LINK, OTHER]) await built.gifs.ensureCached(url)
+    const get = (url: string, device: string) => built.app.inject({
+      method: 'GET', url: `/api/gifs/cached?url=${encodeURIComponent(url)}`, remoteAddress: '192.0.2.10', headers: { 'x-device': device },
+    })
+    return { ...built, get }
+  }
+
+  it('serves a link of the collection to a device whose screen shows a GIF board', async () => {
+    const { get } = await cachedBoth()
+    const res = await get(LINK, 'dev-a')
+    expect(res.statusCode).toBe(200)
+    expect(res.rawPayload.equals(GIF)).toBe(true)
+  })
+
+  it('answers 404 for a cached GIF the collection does not hold, a screen without a GIF board, or no device', async () => {
+    const { get } = await cachedBoth()
+    expect((await get(OTHER, 'dev-a')).statusCode).toBe(404)
+    expect((await get(LINK, 'dev-b')).statusCode).toBe(404)
+    expect((await get(LINK, 'dev-gone')).statusCode).toBe(404)
+    expect((await get(LINK, 'none')).statusCode).toBe(404)
+  })
+
+  it('judges a request from this Mac on the remote listener as a device, by its socket', async () => {
+    const { app } = await cachedBoth()
+    const get = (device: string) => app.inject({
+      method: 'GET', url: `/api/gifs/cached?url=${encodeURIComponent(OTHER)}`, remoteAddress: '127.0.0.1', headers: { 'x-device': device },
+    })
+    expect((await get('none')).statusCode).toBe(404)
+    expect((await get('dev-a')).statusCode).toBe(404)
+    expect((await app.inject({ method: 'GET', url: `/api/gifs/cached?url=${encodeURIComponent(OTHER)}`, remoteAddress: '127.0.0.1' })).statusCode).toBe(200)
+  })
+
+  it('keeps search and check from a paired device, even one showing a GIF board', async () => {
+    const { app, fetchImpl, gifFetch } = await build({ connections: [GIPHY], config })
+    const headers = { 'x-device': 'dev-a' }
+    expect((await app.inject({ method: 'GET', url: '/api/gifs/search?q=hello', remoteAddress: '127.0.0.1', headers })).statusCode).toBe(404)
+    expect((await app.inject({ method: 'POST', url: '/api/gifs/check', payload: { url: LINK }, remoteAddress: '127.0.0.1', headers })).statusCode).toBe(404)
     expect(fetchImpl).not.toHaveBeenCalled()
     expect(gifFetch).not.toHaveBeenCalled()
   })

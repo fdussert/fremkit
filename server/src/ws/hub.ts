@@ -42,11 +42,10 @@ export const DEVICE_TERMINATE_MS = 2000
 /**
  * Channels a paired device never reaches, whatever its screen holds. `companion` carries the
  * pairing code shown on the Edge, what a browser tab here is playing and the WebRTC offers to
- * watch it: this Mac's dashboard only, in this first version. `gif-board` lists the GIF
- * collection, which only a copy on this Mac can use (the config view withholds `gifs` from a
- * device too). Matched by family, so a `companion:<suffix>` is refused too.
+ * watch it: this Mac's dashboard only, in this first version. Matched by family, so a
+ * `companion:<suffix>` is refused too.
  */
-export const LOCAL_ONLY_CHANNELS: ReadonlySet<string> = new Set(['companion', 'gif-board'])
+export const LOCAL_ONLY_CHANNELS: ReadonlySet<string> = new Set(['companion'])
 
 function isLocalOnly(channel: string): boolean {
   return LOCAL_ONLY_CHANNELS.has(channel.split(':')[0])

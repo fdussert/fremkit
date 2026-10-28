@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import type { Config, GifBoard, GifItem } from '../config/schema.js'
 import { tr, type MessageKey } from '../i18n.js'
-import type { CommandContext, Provider } from '../providers/types.js'
+import { isTrusted, type CommandContext, type Provider } from '../providers/types.js'
 import { writeGifToPasteboard } from './pasteboard.js'
 import { GifFetchError, giphyFullUrl, giphyThumbUrl, type GifStore } from './store.js'
 
@@ -30,7 +30,7 @@ export function gifSnapshot(board: GifBoard | undefined): GifSnapshot {
   }
 }
 
-function linkUrls(board: GifBoard | undefined): string[] {
+export function linkUrls(board: GifBoard | undefined): string[] {
   const urls: string[] = []
   for (const g of board?.groups ?? []) for (const item of g.items) if (item.kind === 'link') urls.push(item.url)
   return urls
@@ -56,8 +56,10 @@ export interface GifBoardProviderOptions {
  * The `gif-board` channel: the saved board as a snapshot, and one command, `copy`, which puts a
  * GIF on this Mac's clipboard so the next ⌘V in Teams or Slack sends it.
  *
- * Copying writes to the pasteboard of whoever sits at the Mac, so it answers loopback callers
- * only — not paired devices, which `isTrusted` would let through.
+ * Copying writes to this Mac's pasteboard, so it answers this Mac and paired devices only
+ * (`isTrusted`), as the clipboard widget's `copy` does: a tablet beside the Mac is a second Edge.
+ * The hub has already held a device to a screen that shows a GIF board, and the payload names an
+ * item of the collection, never an address.
  */
 export function createGifBoardProvider(opts: GifBoardProviderOptions): Provider<GifSnapshot> {
   const { gifs } = opts
@@ -121,7 +123,7 @@ export function createGifBoardProvider(opts: GifBoardProviderOptions): Provider<
     },
     commands: {
       copy: async (payload: unknown, ctx?: CommandContext) => {
-        if (ctx?.loopback !== true) return { ok: false, error: tr(undefined, 'provider.localOnly') }
+        if (!isTrusted(ctx)) return { ok: false, error: tr(undefined, 'provider.localOnly') }
         const parsed = CopyPayloadSchema.safeParse(payload)
         if (!parsed.success) return { ok: false, error: tr(undefined, 'provider.invalidPayload') }
         const job = copyQueue.then(() => copy(parsed.data.id))

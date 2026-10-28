@@ -5,7 +5,9 @@ import type { Connection } from '../config/schema.js'
 import type { ConfigStore } from '../config/store.js'
 import { isCrossSiteFetch } from '../http/guard.js'
 import { tr } from '../i18n.js'
-import { isLocalRequest } from '../net/remote.js'
+import { requestScope, widgetInScope, type ScreenOfDevice } from '../devices/scope.js'
+import { isLocalRequest, isRemoteRequest } from '../net/remote.js'
+import { linkUrls } from './provider.js'
 import { searchGiphy } from './giphy.js'
 import { GifFetchError, isGiphyHost, type GifStore } from './store.js'
 
@@ -23,18 +25,23 @@ const CheckBody = z.object({
  * - `GET /api/gifs/search` — a Giphy search, made here with the key of the first Giphy
  *   connection so the key never reaches the page.
  * - `POST /api/gifs/check` — downloads a pasted GIF link into the cache, or says why not.
- * - `GET /api/gifs/cached` — a GIF already in the cache, for the editor's thumbnails. Never
- *   fetches.
+ * - `GET /api/gifs/cached` — a GIF already in the cache, for the editor's thumbnails and the
+ *   widget. Never fetches.
  *
- * All three are the editor's alone: anything but a request from this Mac gets a 404, and none is
- * on the paired devices' allow-list. A demo searches nothing: the GIF store it is handed is
- * already the demo's, and search answers `unconfigured` before any network call.
+ * Search and check are the editor's alone: anything but a request from this Mac gets a 404. The
+ * cached GIF is the one a paired device may read too (it is on the allow-list), and only a link
+ * of the collection, on a device whose screen shows a GIF board: the cache holds nothing else, but
+ * a device has no business probing which addresses this Mac has fetched.
+ *
+ * A demo searches nothing: the GIF store it is handed is already the demo's, and search answers
+ * `unconfigured` before any network call.
  */
 export async function gifRoutes(
   app: FastifyInstance,
   opts: {
     store: ConfigStore
     gifs: GifStore
+    screenOfDevice?: ScreenOfDevice
     secretsFor: (c: Connection) => Promise<Record<string, string>>
     fetchImpl?: typeof fetch
     demo?: boolean
@@ -78,10 +85,18 @@ export async function gifRoutes(
   })
 
   app.get<{ Querystring: { url?: string } }>('/api/gifs/cached', async (req, reply) => {
-    if (!isLocalRequest(req)) return reply.code(404).send()
+    const remote = isRemoteRequest(req)
+    if (!remote && !isLocalRequest(req)) return reply.code(404).send()
     if (isCrossSiteFetch(req.headers)) return reply.code(404).send()
     const url = req.query.url
     if (typeof url !== 'string' || url === '') return reply.code(404).send()
+    if (remote) {
+      const config = opts.store.get()
+      const scope = requestScope(req, opts.screenOfDevice ?? (() => null))
+      if (scope.kind !== 'screen' || !widgetInScope(config, scope, 'gif-board') || !linkUrls(config.gifs).includes(url)) {
+        return reply.code(404).send()
+      }
+    }
     // Opened before answering, so a file pruned in the meantime is a 404, not a failed stream.
     let file
     try {

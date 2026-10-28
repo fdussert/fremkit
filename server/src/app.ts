@@ -516,7 +516,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   })
   await app.register(faviconRoutes, { dir: join(opts.dataDir, 'icons', 'favicons'), config: () => store.get(), screenOfDevice })
   // The editor's GIF search and link check, on the one GIF store the provider shares.
-  await app.register(gifRoutes, { store, gifs, secretsFor: (c) => connections.secretsFor(c), demo })
+  await app.register(gifRoutes, { store, gifs, screenOfDevice, secretsFor: (c) => connections.secretsFor(c), demo })
   await app.register(claudeRoutes, { tracker, usage })
   await app.register(dockRoutes, {
     state: dock,

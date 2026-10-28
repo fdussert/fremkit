@@ -35,7 +35,8 @@ tagged `vX.Y.Z`.
 - **GIF board.** A widget of your favourite GIFs, sorted into groups: touch one on the Edge and
   press ⌘V in Teams (or Slack) to send it, animated. Fill it from the widget's settings in
   **/admin**, by searching Giphy or by pasting a GIF's address; Giphy search needs a free Giphy API
-  key, added under **Connections**, and pasting an address works without one.
+  key, added under **Connections**, and pasting an address works without one. On a paired tablet,
+  a touch copies to the Mac's clipboard the same way.
 
 ### Changed
 
