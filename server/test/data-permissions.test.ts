@@ -3,7 +3,7 @@ import { chmod, mkdir, mkdtemp, readdir, readFile, rm, stat, lstat, symlink, wri
 import { execFileSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { tightenDataDir, restrictToUser, type AclExec } from '../src/data-permissions.js'
+import { ACL_RESET_MARKER, tightenDataDir, restrictToUser, type AclExec } from '../src/data-permissions.js'
 import { windowsTool } from '../src/platform/windows-tools.js'
 import { writeAccessToken } from '../src/http/access-file.js'
 import { buildApp } from '../src/app.js'
@@ -91,18 +91,45 @@ describe('tightenDataDir on Windows', () => {
     await writeFile(join(root, 'fremkit.json'), '{}')
     const { calls, exec } = fake(`"a","${SID}"`)
     expect(await tightenDataDir(root, { platform: 'win32', exec })).toBe(1)
-    expect(calls).toHaveLength(4)
-    // A read of the folder's ACL first, to know whether it still inherits.
-    expect(calls[1]).toEqual({ file: windowsTool('icacls'), args: [root] })
-    expect(calls[3]).toEqual({ file: windowsTool('icacls'), args: [`${root}\\*`, '/reset', '/T', '/C', '/L', '/Q'] })
+    // No marker yet: no need to read the folder's ACL, the walk runs.
+    expect(calls).toHaveLength(3)
+    expect(calls[2]).toEqual({ file: windowsTool('icacls'), args: [`${root}\\*`, '/reset', '/T', '/C', '/L', '/Q'] })
     // The folder is protected without /T: a file would be left with an empty ACL.
-    expect(calls[2].args).not.toContain('/T')
+    expect(calls[1].args).not.toContain('/T')
+    // The completed walk is recorded.
+    expect(await readdir(root)).toContain(ACL_RESET_MARKER)
+  })
+
+  it('walks again at the next start when the first walk failed, though the folder is restricted', async () => {
+    root = await mkdtemp(join(tmpdir(), 'fremkit-perm-'))
+    await writeFile(join(root, 'fremkit.json'), '{}')
+    const restricted = `${root} NT AUTHORITY\\SYSTEM:(OI)(CI)(F)\r\n`
+    const start = async (resetFails: boolean) => {
+      const resets: string[][] = []
+      const exec: AclExec = async (file, args) => {
+        if (file.endsWith('whoami.exe')) return { stdout: `"a","${SID}"` }
+        if (args.length === 1) return { stdout: restricted }
+        if (args.includes('/reset')) {
+          resets.push(args)
+          if (resetFails) throw new Error('timed out')
+        }
+        return { stdout: '' }
+      }
+      await tightenDataDir(root, { platform: 'win32', exec })
+      return resets.length
+    }
+    expect(await start(true)).toBe(1)
+    expect(await readdir(root)).not.toContain(ACL_RESET_MARKER)
+    expect(await start(false)).toBe(1)
+    expect(await readdir(root)).toContain(ACL_RESET_MARKER)
+    expect(await start(false)).toBe(0)
   })
 
   it('skips the walk once the folder no longer inherits from its parent', async () => {
     root = await mkdtemp(join(tmpdir(), 'fremkit-perm-'))
     await writeFile(join(root, 'fremkit.json'), '{}')
     const read = (aces: string[]) => `${root} ${aces[0]}\r\n${aces.slice(1).map((a) => `${' '.repeat(root.length)} ${a}`).join('\r\n')}\r\n\r\nSuccessfully processed 1 files; Failed processing 0 files\r\n`
+    await writeFile(join(root, ACL_RESET_MARKER), '')
     const run = async (acl: string) => {
       const calls: string[][] = []
       const exec: AclExec = async (file, args) => {
@@ -161,7 +188,7 @@ describe('tightenDataDir on Windows', () => {
 
   it('restrictToUser serves a single folder the same way', async () => {
     const { calls, exec } = fake(`"a","${SID}"`)
-    expect(await restrictToUser('C:\\Users\\x\\AppData\\Local\\Fremkit', { platform: 'win32', exec })).toBe(true)
+    expect(await restrictToUser('C:\\Users\\x\\AppData\\Local\\Fremkit', { platform: 'win32', exec, recurse: false })).toBe(true)
     expect(calls[1].args[0]).toBe('C:\\Users\\x\\AppData\\Local\\Fremkit')
   })
 

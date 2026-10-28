@@ -117,8 +117,10 @@ removed, the grant inherited by everything created later (`icacls`, run by absol
 `server/src/data-permissions.ts`). The support folder that holds the access secret gets the same
 without the walk.
 
-The first time, and whenever the folder inherits from its parent again (inheritance turned back
-on), what the folder already holds is reset to inherit from it (`icacls … /reset /T /L`). That
+Until that has once completed cleanly (recorded by a `.acl-reset` file in the folder, so a walk
+that failed or timed out runs again at the next start), and whenever the folder inherits from its
+parent again (inheritance turned back on), what the folder already holds is reset to inherit from
+it (`icacls … /reset /T /L`). That
 walk clears **an explicit ACL entry inside the data folder**, a backup tool's grant or a hand-made
 "allow" on a file there. Once the folder is restricted the walk is skipped, since what is created
 in it inherits the grant by itself, so a start does not spend time on a big folder; an entry added

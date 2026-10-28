@@ -15,7 +15,7 @@
  */
 
 import { execFile } from 'node:child_process'
-import { chmod, lstat, mkdir, readdir } from 'node:fs/promises'
+import { access, chmod, lstat, mkdir, readdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { windowsTool } from './platform/windows-tools.js'
@@ -89,6 +89,13 @@ async function icacls(exec: AclExec, args: string[]): Promise<void> {
 }
 
 /**
+ * Written in the folder once a recursive reset has completed cleanly, and only then: a first walk
+ * that failed, timed out or was cut short by a crash leaves no marker, so the next start walks
+ * again even though the folder itself is already restricted.
+ */
+export const ACL_RESET_MARKER = '.acl-reset'
+
+/**
  * Whether the folder still inherits from its parent, i.e. has not been restricted yet (or someone
  * turned inheritance back on). One read-only icacls call: an inherited entry is marked `(I)`, in
  * every language. An answer with no entry at all, or a failure, counts as "yes": the walk runs.
@@ -113,10 +120,13 @@ export async function restrictToUser(dir: string, deps: AclDeps = {}): Promise<b
   const exec = deps.exec ?? defaultExec
   try {
     const sid = await currentUserSid(exec, deps.exec === undefined)
-    // The walk below can take long on a big data folder, so it runs only while the folder is not
-    // restricted yet: once it is, what is created in it inherits the grant by itself.
-    const walk = deps.recurse !== false && (await readdir(dir).catch(() => [])).length > 0
-      && await inheritsFromParent(exec, dir)
+    // The walk below can take long on a big data folder, so it runs only until it has once
+    // completed on a restricted folder: after that, what is created in it inherits the grant by
+    // itself. It runs again when the folder inherits from its parent once more.
+    const marker = join(dir, ACL_RESET_MARKER)
+    const walk = deps.recurse !== false
+      && (!(await access(marker).then(() => true, () => false)) || await inheritsFromParent(exec, dir))
+    const entries = walk ? (await readdir(dir).catch(() => [])).filter((name) => name !== ACL_RESET_MARKER) : []
     // The folder itself first: protected, user and SYSTEM only. No /T here: `/inheritance:r` on a
     // file strips what it inherited and the (OI)(CI) grant does not apply to a file, leaving an empty ACL.
     await icacls(exec, [dir, '/inheritance:r', '/grant:r', `*${sid}:(OI)(CI)F`, `*${SYSTEM_SID}:(OI)(CI)F`, '/C', '/Q'])
@@ -125,7 +135,9 @@ export async function restrictToUser(dir: string, deps: AclDeps = {}): Promise<b
     // when there is something to reset. `/L` acts on a symbolic link or junction itself, never on
     // its target: a `widgets-dev` linked to a source tree keeps its own ACL.
     if (walk) {
-      await icacls(exec, [`${dir.replace(/[\\/]+$/, '')}\\*`, '/reset', '/T', '/C', '/L', '/Q'])
+      if (entries.length > 0) await icacls(exec, [`${dir.replace(/[\\/]+$/, '')}\\*`, '/reset', '/T', '/C', '/L', '/Q'])
+      // Reached only when the reset (if any) answered with nothing failed.
+      await writeFile(marker, '', { mode: 0o600 })
     }
     return true
   } catch (error) {
