@@ -69,14 +69,18 @@ export function authHeader(port = 4242, env = process.env, platform = process.pl
 /**
  * A one-time link that signs a browser in and lands on `next` (a path, default `/`). `base` is
  * the server's URL, which mints the code; `page` is the origin the link is opened on when that is
- * not the server itself (the Vite dev server, which proxies /auth). Null on any failure.
+ * not the server itself (the Vite dev server, which proxies /auth). Null on any failure, and for a
+ * `base` that is not this machine: the secret goes to loopback only, as the hooks send it.
  */
 export async function authUrl(base, next = '/', page = base) {
   try {
     const root = String(base).replace(/\/+$/, '')
+    if (!isLoopbackUrl(root)) return null
     const res = await fetch(`${root}/api/auth/code`, {
       method: 'POST',
       headers: authHeader(portOf(root)),
+      // A redirect is never followed: the header would go along.
+      redirect: 'manual',
       signal: AbortSignal.timeout(3000),
     })
     if (!res.ok) return null

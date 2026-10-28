@@ -77,9 +77,11 @@ fremkit_auth_header() {
 # A one-time link that signs a browser in and lands on $2 (a path, default /).
 # $1 is the server's base URL, e.g. http://127.0.0.1:4242, which mints the code. $3 is the origin
 # the link is opened on when that is not the server itself (the Vite dev server, which proxies
-# /auth): the cookie belongs to the host the browser sees. Prints nothing on failure.
+# /auth): the cookie belongs to the host the browser sees. Prints nothing on failure, and nothing
+# for a base that is not this machine: the secret goes to loopback only, as the hooks send it.
 fremkit_auth_url() {
     local base=${1%/} next=${2:-/} page=${3:-$1} port answer code
+    fremkit_is_loopback_url "$base" || return 1
     port=$(fremkit_port_of "$base")
     answer=$(curl --silent --fail --max-time 3 -X POST -H @<(fremkit_auth_header "$port") "$base/api/auth/code") || return 1
     code=$(printf '%s' "$answer" | sed -n 's/.*"code":"\([A-Za-z0-9_-]*\)".*/\1/p')

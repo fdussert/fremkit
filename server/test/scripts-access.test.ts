@@ -77,6 +77,11 @@ describe('authHeader and authUrl', () => {
       writeFileSync(join(dir, `access-${port}.token`), 'tok\n')
       expect(await authUrl(base, '/admin?a=1&b#x', 'http://localhost:5173/')).toBe('http://localhost:5173/auth?code=abc_123-X&next=%2Fadmin%3Fa%3D1%26b%23x')
       expect(seen).toEqual([undefined, 'Bearer tok'])
+      // Another machine never gets the secret, even with a token file for its port.
+      writeFileSync(join(dir, 'access-4242.token'), 'tok\n')
+      expect(await authUrl('http://192.0.2.10:4242', '/')).toBeNull()
+      expect(await authUrl('http://127.0.0.1.example.com:4242', '/')).toBeNull()
+      expect(seen).toHaveLength(2)
     } finally {
       delete process.env.FREMKIT_SUPPORT_DIR
     }
