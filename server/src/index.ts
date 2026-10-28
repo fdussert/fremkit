@@ -1,5 +1,6 @@
 import { rmSync } from 'node:fs'
-import { isAbsolute, join } from 'node:path'
+import { join } from 'node:path'
+import { isAbsoluteFolder } from './platform/index.js'
 import { buildApp } from './app.js'
 import { DemoDataDirError, prepareDemoDataDir } from './demo/seed.js'
 import { shippedPaths } from './paths.js'
@@ -68,8 +69,8 @@ if (demo && !process.env.FREMKIT_PORT) process.env.FREMKIT_PORT = String(port)
  * to start in, which for the helper's child is the checkout and for a shell is anywhere.
  */
 const configured = process.env.FREMKIT_DATA_DIR
-if (configured && !isAbsolute(configured)) {
-  console.error(`fremkit: FREMKIT_DATA_DIR must be an absolute path, got ${configured}`)
+if (configured && !isAbsoluteFolder(configured)) {
+  console.error(`fremkit: FREMKIT_DATA_DIR must be an absolute ${process.platform === 'win32' ? 'drive path (X:\\…)' : 'path'}, got ${configured}`)
   process.exit(1)
 }
 // Inside the app, `<root>/data` would be inside the signed bundle, which every update replaces:

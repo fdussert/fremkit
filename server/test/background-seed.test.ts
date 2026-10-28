@@ -74,7 +74,8 @@ describe('FREMKIT_DATA_DIR', () => {
     // checkout for the helper's child, anywhere for a shell.
     const src = await readFile(new URL('../src/index.ts', import.meta.url), 'utf8')
     expect(src).toContain('FREMKIT_DATA_DIR')
-    expect(src).toContain('isAbsolute')
-    expect(src).toContain('must be an absolute path')
+    // isAbsoluteFolder: an absolute path, and on Windows an absolute drive path (platform.test.ts).
+    expect(src).toContain('!isAbsoluteFolder(configured)')
+    expect(src).toContain('must be an absolute ')
   })
 })

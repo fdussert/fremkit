@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { identityEnv } from '../src/claude/identity.js'
 import { localEnv } from '../src/providers/local-operations.js'
 import { resolveCodexBinary } from '../src/codex/adapter.js'
-import { envValue, safePath, systemRoot, targetPlatform, windowsEnvDir, windowsTool } from '../src/platform/index.js'
+import { envValue, isAbsoluteFolder, safePath, systemRoot, targetPlatform, windowsEnvDir, windowsTool } from '../src/platform/index.js'
 
 describe('targetPlatform', () => {
   it('knows darwin and win32 and treats anything else as darwin', () => {
@@ -86,5 +86,14 @@ describe('envValue (the one environment lookup)', () => {
     for (const appData of ['\\\\server\\share\\Roaming', '\\Roaming', 'Roaming']) {
       expect(resolveCodexBinary({ APPDATA: appData }, 'win32', () => true, 'x64')).toBeNull()
     }
+  })
+})
+
+describe('isAbsoluteFolder (FREMKIT_DATA_DIR)', () => {
+  it('takes an absolute drive path on Windows, as docs/windows.md says, and an absolute path elsewhere', () => {
+    expect(isAbsoluteFolder('D:\\fremkit-data', 'win32')).toBe(true)
+    for (const path of ['\\\\server\\share\\data', '\\data', 'data', 'D:data', '/data']) expect(isAbsoluteFolder(path, 'win32'), path).toBe(false)
+    expect(isAbsoluteFolder('/Users/example/data', 'darwin')).toBe(true)
+    expect(isAbsoluteFolder('data', 'darwin')).toBe(false)
   })
 })

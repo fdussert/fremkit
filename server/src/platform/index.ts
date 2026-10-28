@@ -6,6 +6,15 @@
  */
 export type Platform = 'darwin' | 'win32'
 
+/**
+ * A folder the server may be pointed at (`FREMKIT_DATA_DIR`): absolute, and on Windows an
+ * absolute drive path, `X:\…` (not UNC, not a rooted `\x` that depends on the current drive),
+ * like every other folder taken from the environment there.
+ */
+export function isAbsoluteFolder(path: string, platform: NodeJS.Platform = process.platform): boolean {
+  return targetPlatform(platform) === 'win32' ? ABSOLUTE_WINDOWS.test(path) : path.startsWith('/')
+}
+
 export function targetPlatform(p: NodeJS.Platform = process.platform): Platform {
   return p === 'win32' ? 'win32' : 'darwin'
 }
