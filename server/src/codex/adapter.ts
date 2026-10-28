@@ -4,7 +4,8 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir, homedir } from 'node:os'
 import { join, win32 } from 'node:path'
 import { z } from 'zod'
-import { targetPlatform, windowsTool, WINDOWS_CHILD_ENV_KEYS } from '../platform/index.js'
+import { ABSOLUTE_WINDOWS, envValue, targetPlatform, windowsTool, WINDOWS_CHILD_ENV_KEYS } from '../platform/index.js'
+import { isDistroName } from '../wsl/distros.js'
 import { HistorySourceSchema } from './sources.js'
 
 export type CodexFailure = 'offline' | 'unauthorized' | 'unsupported' | 'invalid' | 'refused' | 'unconfigured'
@@ -186,13 +187,6 @@ export class CodexReadClient implements CodexClient {
   }
 }
 
-/** An environment variable by name; Windows names ignore case, and an injected plain object does not. */
-function envValue(env: NodeJS.ProcessEnv, key: string, platform: NodeJS.Platform): string | undefined {
-  if (env[key] !== undefined || targetPlatform(platform) !== 'win32') return env[key]
-  const found = Object.keys(env).find(name => name.toLowerCase() === key.toLowerCase())
-  return found === undefined ? undefined : env[found]
-}
-
 /** Allowlist prevents unknown provider credentials and loader variables from leaking. */
 export function safeChildEnv(env: NodeJS.ProcessEnv, platform: NodeJS.Platform = process.platform): NodeJS.ProcessEnv {
   const out: NodeJS.ProcessEnv = {}
@@ -210,7 +204,7 @@ export function safeChildEnv(env: NodeJS.ProcessEnv, platform: NodeJS.Platform =
     'SYSTEMROOT',
     'WINDIR',
   ]) {
-    const value = envValue(env, key, platform)
+    const value = envValue(env, key, targetPlatform(platform))
     if (value !== undefined) out[key] = value
   }
   return out
@@ -232,8 +226,9 @@ export function resolveCodexBinary(
 ): string | null {
   if (targetPlatform(platform) !== 'win32') return 'codex'
   const triple = WINDOWS_TRIPLES[arch]
-  const appData = envValue(env, 'APPDATA', platform)
-  if (!triple || !appData || !win32.isAbsolute(appData)) return null
+  const appData = envValue(env, 'APPDATA', 'win32')
+  // A drive path only, as every Windows folder the server takes from the environment.
+  if (!triple || !appData || !ABSOLUTE_WINDOWS.test(appData)) return null
   const binary = win32.join(appData, 'npm', 'node_modules', '@openai', 'codex', 'vendor', triple, 'codex', 'codex.exe')
   return exists(binary) ? binary : null
 }
@@ -415,8 +410,6 @@ export async function createLocalCodexClient(
   return new CodexReadClient({ methods, connect: async () => createStdioTransport(options) })
 }
 
-/** A distribution name, the same rule as `privacy.wslDistros`. */
-const WSL_DISTRO = /^[A-Za-z0-9._-]{1,64}$/
 /**
  * What runs inside the distribution: the same app-server arguments as the Windows and Mac child
  * (`childArgs`), joined once at module load so the two cannot drift, with nothing user-derived in
@@ -436,7 +429,7 @@ const WSL_METHODS: ReadonlySet<string> = new Set(['initialize', 'account/read', 
 
 /** `wsl.exe`'s argument list for a distribution; the name is validated before it gets here. */
 export function wslCodexArgs(distro: string): string[] {
-  if (!WSL_DISTRO.test(distro) || /^\.+$/.test(distro) || distro.startsWith('-')) throw new CodexError('refused')
+  if (!isDistroName(distro)) throw new CodexError('refused')
   return ['-d', distro, '--cd', '~', '--exec', 'bash', '-lc', WSL_CODEX_SCRIPT]
 }
 

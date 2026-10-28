@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process'
-import { targetPlatform, windowsTool, WINDOWS_CHILD_ENV_KEYS } from '../platform/index.js'
+import { envValue, targetPlatform, windowsTool, WINDOWS_CHILD_ENV_KEYS } from '../platform/index.js'
 
 /**
  * The WSL distributions the user ticked under Privacy (`privacy.wslDistros`), and where their
@@ -101,8 +101,8 @@ const HOMES = new Map<string, HomeEntry>()
 function wslEnv(env: Record<string, string | undefined>): NodeJS.ProcessEnv {
   const out: NodeJS.ProcessEnv = {}
   for (const key of [...WINDOWS_CHILD_ENV_KEYS, 'PATH']) {
-    const found = Object.keys(env).find((name) => name.toLowerCase() === key.toLowerCase())
-    if (found !== undefined && env[found] !== undefined) out[key] = env[found]
+    const value = envValue(env, key, 'win32')
+    if (value !== undefined) out[key] = value
   }
   return out
 }

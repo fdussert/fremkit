@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { DISTRO_NAME } from '../wsl/distros.js'
 import { HistorySourceSchema } from '../codex/sources.js'
 import { BUILTIN_THEME } from '../themes/theme.js'
 import { defaultSecretsBackend } from '../secrets/index.js'
@@ -388,7 +389,7 @@ export const PrivacySchema = z.object({
    * or read. A plain distribution name, the same rule as the hook's `client.wslDistro`, so a
    * value can never be a path or an option once it reaches `wsl.exe`'s argument list.
    */
-  wslDistros: z.array(z.string().regex(/^[A-Za-z0-9._-]{1,64}$/)).max(16).default([]),
+  wslDistros: z.array(z.string().regex(DISTRO_NAME)).max(16).default([]),
 }).prefault({})
 
 /**

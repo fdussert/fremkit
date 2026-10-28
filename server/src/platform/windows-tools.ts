@@ -36,14 +36,24 @@ export const WINDOWS_CHILD_ENV_KEYS = [
 ] as const
 
 /**
+ * An environment variable by name. Windows names ignore case (`Path`, `SYSTEMROOT`), and an
+ * injected plain object does not do that by itself; elsewhere the name is exact. The one lookup
+ * every Windows child environment and folder goes through.
+ */
+export function envValue(env: Record<string, string | undefined>, name: string, platform: NodeJS.Platform = process.platform): string | undefined {
+  if (env[name] !== undefined || platform !== 'win32') return env[name]
+  const wanted = name.toLowerCase()
+  const key = Object.keys(env).find((k) => k.toLowerCase() === wanted)
+  return key === undefined ? undefined : env[key]
+}
+
+/**
  * A per-user or per-machine folder from the environment (`USERPROFILE`, `LOCALAPPDATA`,
  * `ProgramFiles`), only when it is an absolute `X:\…` path. A missing or relative value yields
  * null, so a caller skips that candidate rather than join onto the current folder.
  */
 export function windowsEnvDir(name: string, env: Record<string, string | undefined> = process.env): string | null {
-  const wanted = name.toLowerCase()
-  const key = Object.keys(env).find((k) => k.toLowerCase() === wanted)
-  const value = key === undefined ? undefined : env[key]
+  const value = envValue(env, name, 'win32')
   if (typeof value !== 'string' || !ABSOLUTE_WINDOWS.test(value)) return null
   return value.replace(/(?<=.{3})\\+$/, '')
 }

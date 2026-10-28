@@ -5,7 +5,7 @@ import { basename, isAbsolute, join } from 'node:path'
 import si from 'systeminformation'
 import { z } from 'zod'
 import type { Provider } from './types.js'
-import { targetPlatform, windowsUserCandidates, WINDOWS_CHILD_ENV_KEYS, type Platform } from '../platform/index.js'
+import { envValue, targetPlatform, windowsUserCandidates, WINDOWS_CHILD_ENV_KEYS, type Platform } from '../platform/index.js'
 
 export const localEnv = (env: NodeJS.ProcessEnv, platform: Platform = targetPlatform()): NodeJS.ProcessEnv => {
   const safe: NodeJS.ProcessEnv = {}
@@ -13,7 +13,8 @@ export const localEnv = (env: NodeJS.ProcessEnv, platform: Platform = targetPlat
   // A Windows program needs its profile and the system folder to start at all.
   if (platform === 'win32') keys.push(...WINDOWS_CHILD_ENV_KEYS)
   for (const key of keys) {
-    if (env[key] !== undefined) safe[key] = env[key]
+    const value = envValue(env, key, platform)
+    if (value !== undefined) safe[key] = value
   }
   return safe
 }

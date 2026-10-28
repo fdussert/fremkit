@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest'
-import { safePath, systemRoot, targetPlatform, windowsEnvDir, windowsTool } from '../src/platform/index.js'
+import { identityEnv } from '../src/claude/identity.js'
+import { localEnv } from '../src/providers/local-operations.js'
+import { resolveCodexBinary } from '../src/codex/adapter.js'
+import { envValue, safePath, systemRoot, targetPlatform, windowsEnvDir, windowsTool } from '../src/platform/index.js'
 
 describe('targetPlatform', () => {
   it('knows darwin and win32 and treats anything else as darwin', () => {
@@ -61,5 +64,27 @@ describe('windowsEnvDir', () => {
     expect(windowsEnvDir('USERPROFILE', {})).toBeNull()
     expect(windowsEnvDir('USERPROFILE', { USERPROFILE: 'Users\\example' })).toBeNull()
     expect(windowsEnvDir('USERPROFILE', { USERPROFILE: '\\\\host\\share' })).toBeNull()
+  })
+})
+
+describe('envValue (the one environment lookup)', () => {
+  it('ignores case on Windows only', () => {
+    const env = { Path: 'C:\\Windows', HOME: '/Users/example' }
+    expect(envValue(env, 'PATH', 'win32')).toBe('C:\\Windows')
+    expect(envValue(env, 'PATH', 'darwin')).toBeUndefined()
+    expect(envValue(env, 'HOME', 'darwin')).toBe('/Users/example')
+  })
+
+  it('feeds every Windows child environment the same way', () => {
+    const env = { path: 'C:\\Windows', userprofile: 'C:\\Users\\Example' }
+    expect(identityEnv(env, 'win32')).toMatchObject({ PATH: 'C:\\Windows', USERPROFILE: 'C:\\Users\\Example' })
+    expect(localEnv(env, 'win32')).toMatchObject({ PATH: 'C:\\Windows', USERPROFILE: 'C:\\Users\\Example' })
+    expect(identityEnv(env, 'darwin')).toEqual({})
+  })
+
+  it('takes the Codex binary folder from a drive path only, as every other Windows folder', () => {
+    for (const appData of ['\\\\server\\share\\Roaming', '\\Roaming', 'Roaming']) {
+      expect(resolveCodexBinary({ APPDATA: appData }, 'win32', () => true, 'x64')).toBeNull()
+    }
   })
 })

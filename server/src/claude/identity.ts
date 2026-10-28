@@ -4,7 +4,7 @@ import { homedir, userInfo } from 'node:os'
 import { join } from 'node:path'
 import { z } from 'zod'
 import type { Provider } from '../providers/types.js'
-import { targetPlatform, windowsUserCandidates, WINDOWS_CHILD_ENV_KEYS, type Platform } from '../platform/index.js'
+import { envValue, targetPlatform, windowsUserCandidates, WINDOWS_CHILD_ENV_KEYS, type Platform } from '../platform/index.js'
 
 const Status = z.object({
   loggedIn: z.boolean(),
@@ -26,7 +26,8 @@ export function identityEnv(env: NodeJS.ProcessEnv, platform: Platform = targetP
   const keys = ['HOME', 'PATH', 'TMPDIR', 'LANG', 'LC_ALL', 'USER', 'LOGNAME', 'SHELL', 'CLAUDE_CONFIG_DIR']
   if (platform === 'win32') keys.push(...WINDOWS_CHILD_ENV_KEYS)
   for (const key of keys) {
-    if (env[key] !== undefined) safe[key] = env[key]
+    const value = envValue(env, key, platform)
+    if (value !== undefined) safe[key] = value
   }
   return safe
 }
