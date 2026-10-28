@@ -86,6 +86,13 @@
   /** A copy that has not answered after this long says so, whatever the item. */
   var COPYING_AFTER_MS = 300
   var observer = null
+  /**
+   * True while the row loops: its GIFs overflow it, so they are drawn three times over and the
+   * scroll is kept inside the middle copy. Past the last GIF comes the first again, both ways.
+   */
+  var looping = false
+  /** How many GIFs one copy of the row holds. */
+  var perSet = 0
   /** The card being pressed: { card, item, x, y, scroll }. */
   var press = null
 
@@ -182,8 +189,10 @@
     Object.keys(resolved).forEach(function (src) { if (!keep[src]) delete resolved[src] })
   }
 
-  function cardFor(item) {
+  function cardFor(item, copy) {
     var card = Fremkit.el('button', 'card')
+    // The loop's extra copies are invisible to a screen reader and to Tab: the first copy is the row.
+    if (copy) { card.setAttribute('aria-hidden', 'true'); card.tabIndex = -1 }
     card._item = item
     card.setAttribute('aria-label', item.label || 'GIF')
     card.appendChild(Fremkit.el('div', 'ph', 'GIF'))
@@ -218,19 +227,43 @@
         active = t.id
         drawn = ''
         render()
-        document.getElementById('row').scrollLeft = 0
       }
       tabs.appendChild(tab)
     })
   }
 
+  /** One copy's width, its trailing gap included: the distance between a GIF and its next copy. */
+  function setWidth() {
+    var row = document.getElementById('row')
+    if (!looping || row.children.length < perSet * 2) return 0
+    return row.children[perSet].offsetLeft - row.children[0].offsetLeft
+  }
+
+  /**
+   * Keeps the scroll inside the middle copy: one copy's width further or back shows the same GIFs
+   * at the same place, so the jump is not seen. A press under way moves with it, or the jump
+   * would read as a scroll and swallow the touch.
+   */
+  function wrap() {
+    var span = setWidth()
+    if (span <= 0) return
+    var row = document.getElementById('row'), x = row.scrollLeft, d = 0
+    if (x < span) d = span
+    else if (x >= 2 * span) d = -span
+    if (!d) return
+    row.scrollLeft = x + d
+    if (press) press.scroll += d
+  }
+
   function renderDots() {
     var row = document.getElementById('row'), dots = document.getElementById('dots')
-    var pages = row.clientWidth > 0 ? Math.ceil((row.scrollWidth - 2) / row.clientWidth) : 1
+    var span = looping ? setWidth() : row.scrollWidth
+    var pages = row.clientWidth > 0 && span > 0 ? Math.ceil((span - 2) / row.clientWidth) : 1
     dots.hidden = pages < 2
     if (pages < 2) { dots.innerHTML = ''; return }
-    var at = Math.min(pages - 1, Math.round(row.scrollLeft / row.clientWidth))
-    if (row.scrollLeft + row.clientWidth >= row.scrollWidth - 2) at = pages - 1
+    var x = looping ? row.scrollLeft - span : row.scrollLeft
+    var at = Math.max(0, Math.min(pages - 1, Math.round(x / row.clientWidth)))
+    if (x + row.clientWidth >= span - 2) at = pages - 1
     if (dots.childElementCount !== pages) {
       dots.innerHTML = ''
       for (var i = 0; i < pages; i++) dots.appendChild(Fremkit.el('div', 'dot'))
@@ -264,12 +297,24 @@
     empty.textContent = Fremkit.t(nothing ? L.empty : L.emptyGroup)
     if (observer) observer.disconnect()
     row.innerHTML = ''
-    items.forEach(function (item) {
-      var card = cardFor(item)
-      row.appendChild(card)
-      if (observer) observer.observe(card)
-      else load(card)
-    })
+    looping = false
+    perSet = items.length
+    function add(copy) {
+      items.forEach(function (item) {
+        var card = cardFor(item, copy)
+        row.appendChild(card)
+        if (observer) observer.observe(card)
+        else load(card)
+      })
+    }
+    add(false)
+    // A row that fits shows its GIFs once; one that overflows loops, starting on the middle copy.
+    if (items.length && row.clientWidth > 0 && row.scrollWidth > row.clientWidth + 2) {
+      add(true)
+      add(true)
+      looping = true
+    }
+    row.scrollLeft = looping ? setWidth() : 0
     renderDots()
   }
 
@@ -279,7 +324,9 @@
     root.classList.toggle('tight', next.h < 6)
     root.style.setProperty('--tab', (next.h < 6 ? 44 : 56) + 'px')
     root.style.setProperty('--body', (next.h < 6 ? 13 : next.h < 10 ? 15 : 17) + 'px')
-    renderDots()
+    // The cards' width follows the tile's height: whether the row overflows, and so loops, may change.
+    drawn = ''
+    render()
   }
 
   Fremkit.whenReady(function () {
@@ -295,7 +342,7 @@
         })
       }, { root: row, rootMargin: '0px 50% 0px 50%' })
     }
-    row.addEventListener('scroll', renderDots, { passive: true })
+    row.addEventListener('scroll', function () { wrap(); renderDots() }, { passive: true })
     // A finger's slide arrives as wheel events: past either end they would turn the dashboard's page.
     function hold() { if (Fremkit.holdSwipe) Fremkit.holdSwipe() }
     row.addEventListener('wheel', hold, { passive: true })

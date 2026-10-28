@@ -229,11 +229,13 @@ the connection details along.
 
 *GIFs* — your favourite GIFs, sorted into groups shown as tabs. Touching one copies it to the
 pasteboard as an animated GIF, so the next ⌘V sends it animated in Teams, Slack or Messages.
+When the GIFs do not fit the tile, the row loops: past the last one comes the first again, in
+either direction.
 
 The collection is one per Mac: every GIF board tile shows the same groups. Fill it from the tile's
 inspector, **Manage the GIFs…**: create and rename groups, search Giphy and add a result to the
-chosen group, or paste a GIF's address. Drag a GIF to reorder it or move it to another group;
-right-click it to label or remove it, right-click a group to rename or delete it. Every change is
+chosen group, or paste a GIF's address. Drag a GIF to reorder it or move it to another group,
+and a group by its name to reorder the groups (the order of the widget's tabs); right-click it to label or remove it, right-click a group to rename or delete it. Every change is
 undoable like any other edit.
 
 Searching needs a [Giphy connection](connections.md#giphy); pasting an address works without one.
