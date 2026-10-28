@@ -352,7 +352,8 @@ const runSchema: SchemaRunner = (file, args, options) =>
       file,
       args,
       { ...options, cwd: homedir(), timeout: 15000, maxBuffer: 1024 * 1024, shell: false },
-      (error) => (error ? reject(new CodexError('unsupported')) : resolve()),
+      // No codex at all is "not set up", on every platform; a codex that fails is unsupported.
+      (error) => (error ? reject(new CodexError((error as NodeJS.ErrnoException).code === 'ENOENT' ? 'unconfigured' : 'unsupported')) : resolve()),
     )
   })
 export async function discoverMethods(
@@ -378,8 +379,9 @@ export async function discoverMethods(
     const methods = methodsFromSchema(JSON.parse(await readFile(join(dir, 'ClientRequest.json'), 'utf8')))
     if (!methods.has('initialize')) throw new CodexError('unsupported')
     return methods
-  } catch {
-    throw new CodexError('unsupported')
+  } catch (error) {
+    const missing = (error instanceof CodexError && error.reason === 'unconfigured') || (error as { code?: unknown } | null)?.code === 'ENOENT'
+    throw new CodexError(missing ? 'unconfigured' : 'unsupported')
   } finally {
     await rm(dir, { recursive: true, force: true })
   }
@@ -392,8 +394,10 @@ export async function createLocalCodexClient(
   // never cache injected schema runners used by tests or host integrations.
   const env = safeChildEnv(options.env ?? process.env, options.platform)
   const binary = options.binary ?? resolveCodexBinary(options.env ?? process.env, options.platform)
+  // Not installed is "not set up", as a missing `codex` on the Mac is.
+  if (!binary) throw new CodexError('unconfigured')
   // Never through a shell: on Windows a script wrapper cannot be spawned without one, whoever named it.
-  if (!binary || (targetPlatform(options.platform) === 'win32' && /\.(cmd|bat|ps1)$/i.test(binary))) throw new CodexError('unsupported')
+  if (targetPlatform(options.platform) === 'win32' && /\.(cmd|bat|ps1)$/i.test(binary)) throw new CodexError('unsupported')
   options = { ...options, binary }
   const key = JSON.stringify([binary, env.PATH ?? '', env.CODEX_HOME ?? ''])
   let cached = !options.run && !options.spawn ? methodsCache.get(key) : undefined
@@ -404,9 +408,9 @@ export async function createLocalCodexClient(
   let methods: Set<string>
   try {
     methods = await cached.methods
-  } catch {
+  } catch (error) {
     methodsCache.delete(key)
-    throw new CodexError('unsupported')
+    throw new CodexError(error instanceof CodexError && error.reason === 'unconfigured' ? 'unconfigured' : 'unsupported')
   }
   return new CodexReadClient({ methods, connect: async () => createStdioTransport(options) })
 }

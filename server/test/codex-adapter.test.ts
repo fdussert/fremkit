@@ -155,6 +155,13 @@ describe('Codex read transport', () => {
     const exe = 'C:\\Users\\Example\\AppData\\Roaming\\npm\\node_modules\\@openai\\codex\\vendor\\x86_64-pc-windows-msvc\\codex\\codex.exe'
     expect(resolveCodexBinary(env, 'win32', () => true, 'x64')).toBe(exe)
   })
+  it('reports a Codex CLI that is not installed as unconfigured, on Windows and on the Mac', async () => {
+    await expect(createLocalCodexClient({ platform: 'win32', env: { APPDATA: 'C:\\Users\\Example\\AppData\\Roaming' } })).rejects.toMatchObject({ reason: 'unconfigured' })
+    const missing = Object.assign(new Error('spawn codex ENOENT'), { code: 'ENOENT' })
+    const run = async () => { throw missing }
+    await expect(discoverMethods({ run })).rejects.toMatchObject({ reason: 'unconfigured' })
+    await expect(discoverMethods({ run: async () => { throw new Error('exit 1') } })).rejects.toMatchObject({ reason: 'unsupported' })
+  })
   it.each(['C:\\x\\codex.cmd', 'C:\\x\\CODEX.BAT', 'C:\\x\\codex.Ps1'])('refuses a script wrapper as the configured binary (%s)', async binary => {
     await expect(createLocalCodexClient({ binary, platform: 'win32' })).rejects.toMatchObject({ reason: 'unsupported' })
   })

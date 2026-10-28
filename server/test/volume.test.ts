@@ -41,11 +41,15 @@ describe('volume provider on Windows', () => {
     expect(host.call).toHaveBeenCalledWith('volume.mute', { muted: true }, expect.any(Number))
   })
 
-  it('publishes the last reading with the host code when it fails', async () => {
+  it('publishes the last reading with no-device, or offline for any other failure', async () => {
     const { provider, host } = setup()
     await provider.poll!()
     host.call.mockRejectedValue(new HostError('no-device'))
     expect(await provider.poll!()).toEqual({ level: 35, muted: false, error: 'no-device' })
+    for (const code of ['host-exited', 'timeout', 'host-start-timeout', 'busy']) {
+      host.call.mockRejectedValue(new HostError(code))
+      expect(await provider.poll!()).toEqual({ level: 35, muted: false, error: 'offline' })
+    }
     host.call.mockRejectedValue(new Error('x'))
     expect(await provider.poll!()).toEqual({ level: 35, muted: false, error: 'offline' })
   })

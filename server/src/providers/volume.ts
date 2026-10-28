@@ -59,8 +59,9 @@ function createWindowsVolumeProvider(deps: VolumeDeps): Provider {
       try {
         return (last = await host().call<HostVolume>('volume.get', undefined, 5000))
       } catch (e) {
-        // `no-device` (no output device) and a host that is gone both keep the last level on screen.
-        return { ...last, error: e instanceof HostError ? e.code : 'offline' }
+        // Both keep the last level on screen. `no-device` (no output device) is its own kind; any
+        // other host failure (`timeout`, `host-exited`, `busy`…) is `offline`, as for battery and network.
+        return { ...last, error: e instanceof HostError && e.code === 'no-device' ? 'no-device' : 'offline' }
       }
     },
     commands: {
