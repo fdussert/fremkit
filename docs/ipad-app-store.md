@@ -22,8 +22,11 @@ is in [releasing.md](releasing.md#the-ipad-app).
 
 **Subtitle** (30)
 
-- EN: Your Mac's dashboard on iPad
-- FR: Votre tableau de bord sur iPad
+- EN: A second screen for your Mac
+- FR: Un second écran pour votre Mac
+
+Never "iPad" (or any other Apple product name) in the name or subtitle: App Review rejects it under
+guideline 5.2.5. "For your Mac" is an accepted use of the mark.
 
 **Promotional text** (170)
 
@@ -101,6 +104,11 @@ for the smaller iPads. Three, portrait, one per page of a device screen on the d
 No pairing screen: it names the Mac it pairs with. Nothing else shows a real name, address or
 account.
 
+No price either, in any language (guideline 2.3.7): App Review counts any visible "free" (free
+disk space or memory included), "gratuit", "libre", currency sign, cost or price as a price
+reference, wherever it appears in a screenshot. Leave out or configure the widgets that show one.
+The word "free" is allowed in the description, not in the screenshots.
+
 To take them again:
 
 1. Start a demo server with a kept folder on a free port (`FREMKIT_DEMO=1 FREMKIT_PORT=… FREMKIT_DATA_DIR=…`)
@@ -130,3 +138,16 @@ The reviewer has no Mac running Fremkit, and the app does nothing without one. G
   visible by default;
 - why it asks for the camera (scanning the pairing code) and the local network (finding the Mac
   and loading its dashboard).
+
+### The demo video
+
+App Review asks for a video of the app "with the designated hardware", the Mac here, and rejects
+a screen recording. Film it with a separate camera, the physical iPad and the Mac in the same
+shot:
+
+1. Fremkit open on the Mac, **Settings → Devices**, the QR code on screen.
+2. The iPad scanning it, pairing, and showing its screen: the same pages as the screenshots, from
+   the same demo server, or the review says it cannot find the screens they show.
+3. Widgets touched on the iPad, and a change made in the Mac's editor arriving on the iPad.
+
+Put the link (unlisted is fine) in **App Review Information**, then answer the review message.
