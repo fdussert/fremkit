@@ -103,6 +103,16 @@ export function scriptlessCsp(csp: string): string {
   return csp.replace(/script-src [^;]*/, "script-src 'none'")
 }
 
+
+/**
+ * A path segment Windows does not open as the file it names: a reserved device name (`CON`, `NUL`,
+ * `COM1`, `LPT¹`… with any extension), which may open the device instead, or one ending in a dot
+ * or a space, which Windows strips (`index.html.` is `index.html`, and would skip the bridge).
+ */
+export function windowsUnsafeSegment(segment: string): boolean {
+  return /^(con|prn|aux|nul|com[0-9\u00b9\u00b2\u00b3]|lpt[0-9\u00b9\u00b2\u00b3]|conin\$|conout\$)(\..*)?$/i.test(segment)
+    || /[. ]$/.test(segment)
+}
 export async function widgetRoutes(
   app: FastifyInstance,
   opts: {
@@ -205,6 +215,7 @@ export async function widgetRoutes(
     // a colon (drive letter, NTFS alternate data stream).
     const safeRel = posix.normalize(rel)
     if (rel.includes('\\') || rel.includes(':') || safeRel.startsWith('..') || safeRel.includes('/../')) return reply.code(400).send({ error: tr(undefined, 'widgets.badPath') })
+    if (opts.platform === 'win32' && safeRel.split('/').some(windowsUnsafeSegment)) return reply.code(400).send({ error: tr(undefined, 'widgets.badPath') })
     if (safeRel.toLowerCase() === 'index.html') {
       let html: string
       try {
