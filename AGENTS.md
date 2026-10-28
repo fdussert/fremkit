@@ -29,6 +29,10 @@ Fremkit turns a Corsair Xeneon Edge (a 2560 × 720 touch strip) into a widget da
   a widget is HTML in a sandbox, a provider holds credentials, and that line is the security
   line rather than a packaging one. Which is why `bambu`, `homey`, `github`, `azure-devops`,
   `synology`, `mutedeck` and `cleanshot` are in `server/src/` while their widgets are not.
+- `server/src/platform/`, `server/src/win/` — what runs the server on Windows 11 (no helper there yet):
+  the platform table (`darwin` | `win32`; which channels run where, system tools and folders) and the
+  PowerShell host behind the clipboard, volume, battery, DPAPI and WSL calls. See
+  [docs/windows.md](docs/windows.md).
 - `native/` — the Swift helper (kiosk window, HID touch driver, admin window, Dock badges). It
   supervises the server: it spawns `tsx src/index.ts`, restarts it when it dies, and takes over
   an external server it finds on 4242. Built with `scripts/build-helper.sh` (plain `swiftc`, no
@@ -265,6 +269,8 @@ Each line here was a real hole once. Break one only with the owner's explicit sa
   Declared connections reach the LAN on purpose and are the one exception.
 - **The data folder is 0700 and its files 0600.** The server runs with umask 077 and
   `tightenDataDir` fixes older files at start; write new runtime files with `mode: 0o600` anyway.
+  On Windows the folder's ACL is the user and SYSTEM only (`icacls`, inheritance removed), applied
+  at every start and reset recursively, so an explicit entry added inside it does not survive.
 - **A restore and `PUT /api/config` never import security settings.** A restore keeps this
   Mac's `secrets`, `privacy` and `marketplace.installed`; PUT replays `connections`, `secrets`
   and `marketplace.installed` (privacy stays editable there: it is the admin's switch). Consent
@@ -278,7 +284,16 @@ Each line here was a real hole once. Break one only with the owner's explicit sa
   (`SecretStore.keysOf`), and a new connection purges its id first: never adopt a stale secret.
 - **System tools by absolute path** (`/usr/bin/open`, `/usr/bin/osascript`, `/usr/sbin/scutil`…),
   and `PATH` with `/usr/bin:/bin:/usr/sbin:/sbin` first (`system-path.ts`, `ServerLaunch`).
-  A bare name resolves through Homebrew's folder, which is not ours to trust.
+  A bare name resolves through Homebrew's folder, which is not ours to trust. On Windows the same
+  rule is `windowsTool()` (`platform/windows-tools.ts`): `%SystemRoot%\System32\…`, taken from the
+  environment only when it is an absolute drive path, with the system folders first in `PATH`
+  (`safePath`).
+- **The PowerShell host runs a constant script, from a closed op list, with no data on argv.**
+  `server/src/win/host.ps1` is shipped with the server and sent on stdin; argv is the fixed
+  `HOST_ARGS`; each call is one ASCII JSON line naming an op of `HostOp`, and anything else answers
+  `unknown-op`. Clipboard text, DPAPI values and device names travel on stdin and stdout only and are
+  never logged or put in an error: a failure is a short code. A new Windows capability is a new op
+  with its argument validated in the script, never a string interpolated into one.
 - **The admin window and the kiosk pin their main frame to their own origin**
   (`AdminOrigin`, `KioskOrigin`), and an origin is trusted for writes only on this server's own
   port (`allowedOrigins`). The iPad's web view does the same (`Dashboard.allowsMainFrame`) and
@@ -380,6 +395,7 @@ Each line here was a real hole once. Break one only with the owner's explicit sa
 | add a theme | `docs/themes.md`, then copy `themes/edge/theme.json`. A new one goes to the registry too: `fremkit` and `edge` are here so a fresh install has a choice with no network, and that is the whole reason either of them is |
 | change the marketplace | `server/src/marketplace/` (registry client, installer, consent), `ui/src/admin/marketplace.ts` and `MarketplacePanel.vue`, `docs/marketplace.md` |
 | add a connection type | **A coded type is the exception, and has to earn it.** One auth header on HTTP(S) is a `connection` the widget *declares* in its own manifest — no release of Fremkit per service; see `docs/writing-widgets.md`. Write code only for what a declaration cannot express: a session handshake, a protocol that is not HTTP, OAuth, a local binary. Nothing else counts — "it already has a provider" does not, and neither does "a picker would be nice" (a declared connection feeds no `pick`; the widget lists ids instead). Homey was coded and should not have been: two widgets on one Homey meant two connections, and a Homey invalidates the previous API key when a new one is issued, so the second key broke the first. If it does earn it: `server/src/connections/types/ics.ts` (simplest) or `github.ts` (fullest), register in `types/index.ts`, document in `docs/connections.md` |
+| make something work on Windows | `docs/windows.md`; the table in `server/src/platform/channels.ts` (a provider that has no Windows form is listed there and greyed out), `platform/windows-tools.ts` for tools and folders, `win/powershell-host.ts` + `host.ps1` for a system call Node lacks (a new op), `secrets/dpapi.ts`, `data-permissions.ts`. Branch on `targetPlatform()` with the platform injectable, so the Windows path is tested on the Mac and the Mac's is unchanged |
 | add a provider | `server/src/providers/calendar.ts` (polling) or `shortcuts.ts` (commands only), register in `providers/index.ts` |
 | change the companion extension or Fremplay | `companion/`, `server/src/companion/`, `widgets/fremplay`, `docs/companion.md` |
 | change the admin | `ui/src/admin/store.ts` (state), `Canvas.vue`/`EditOverlay.vue` (editing), `SettingsForm.vue` (setting types), `ConnectionsInspector.vue`; right-click menus in `ui/src/shared/ui/contextMenu.ts` + `ContextMenu.vue` and the menu builders beside the component that opens them |

@@ -70,9 +70,17 @@ do: they go to a secret store chosen by `secrets.backend`.
   value is handed to `security` on its standard input, never on its command line, where `ps`
   would show it to every account on the Mac. Items an earlier version filed under plain `fremkit`
   are moved to the live instance's own service (the server on 4242) the first time it reads them.
-- `file` (the default elsewhere) — `data/secrets.json`, mode 600, git-ignored.
+- `dpapi` (the default on Windows) — a random key wrapped by Windows DPAPI for the current user
+  (`secrets.key`) encrypts every value (AES-256-GCM) into `secrets.dpapi.json`, filed by
+  `<connectionId>/<fieldKey>`. DPAPI is reached through the PowerShell host, on its standard
+  input, never on a command line. On Windows a config that says `keychain` means this backend. See
+  [windows.md](windows.md#secrets-dpapi), which also says what to do when the store cannot be read.
+- `file` (the default elsewhere) — `data/secrets.json`, mode 600, git-ignored. On Windows a `file`
+  backend carried over from an earlier config is moved to `dpapi` at start, secrets included, and
+  `secrets.json` deleted once every secret reads back from DPAPI: see
+  [windows.md](windows.md#secrets-dpapi).
 
-Changing the backend migrates nothing: the secrets have to be typed again.
+Apart from that move, changing the backend migrates nothing: the secrets have to be typed again.
 
 A secret is never returned by the API, logged, written to the config or sent on the WebSocket.
 `GET /api/connections` replaces each one with a boolean saying whether it is set. Error messages

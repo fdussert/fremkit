@@ -64,6 +64,8 @@ the widget author's folder (`data/widgets-dev`, or `FREMKIT_WIDGET_DEV_DIR`) and
 server started without the flag gives a dashboard whose WebSocket is refused — export
 `FREMKIT_DEV=1` for the server too.
 
+On Windows the scripts differ in a few places (`pnpm dev`, the setup): see [windows.md](windows.md).
+
 ### Signing in: the access secret
 
 The server answers only callers holding its access secret ([SECURITY.md](../SECURITY.md#the-local-access-secret)),
@@ -282,7 +284,7 @@ away a build some other tool on the Mac points at by path.
 ## Pull requests
 
 Fork, branch, and open the pull request against `main`. Every pull request runs
-`.github/workflows/ci.yml` on Ubuntu with Node 22: `pnpm install --frozen-lockfile`, then
+`.github/workflows/ci.yml` on Ubuntu with Node 22.13 or later: `pnpm install --frozen-lockfile`, then
 `pnpm typecheck`, `pnpm test` and `pnpm build`, and in a second job the end-to-end tests in
 Chromium. The widget catalogue test reads the real `widgets/` folder, so a broken manifest fails
 the run.

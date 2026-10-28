@@ -72,6 +72,9 @@ Touchscreen Gestures must not be running (the panel takes one owner).
 - `ffmpeg`, only for the chamber camera of an X1 or H2 printer
 - to build from source only: Xcode Command Line Tools, Node 22.13 or later, and pnpm
 
+Fremkit's server also runs on Windows 11, from a checkout and without the helper; see
+[docs/windows.md](docs/windows.md) for what works there.
+
 ## Install
 
 | Install the app | Build from source |
