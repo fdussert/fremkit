@@ -103,6 +103,9 @@ jobs:
 
       - run: pnpm test
 
+      # What docs/windows.md's setup runs: the build scripts must work under cmd.exe too.
+      - run: pnpm build
+
   android:
     name: Android (kit tests, lint, debug build)
     runs-on: ubuntu-latest
