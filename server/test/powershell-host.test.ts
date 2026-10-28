@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { EventEmitter } from 'node:events'
 import { PassThrough } from 'node:stream'
 import { readFileSync } from 'node:fs'
-import { HOST_ARGS, HostError, MAX_LINE, PowerShellHost, START_TIMEOUT_MS, encodeLine, type HostDefaultRoute, type SpawnHost } from '../src/win/powershell-host.js'
+import { HOST_ARGS, HostError, MAX_LINE, PowerShellHost, START_TIMEOUT_MS, encodeLine, type HostDefaultRoute, type HostDrive, type HostMemory, type HostProcess, type SpawnHost } from '../src/win/powershell-host.js'
 import { shippedPaths } from '../src/paths.js'
 
 /** A stand-in for the PowerShell child: what the host writes on stdin, and a way to answer. */
@@ -402,7 +402,8 @@ describe('host.ps1', () => {
 
   it('handles every op the TypeScript side can send', () => {
     for (const op of ['clipboard.read', 'clipboard.write', 'clipboard.private', 'volume.get', 'volume.set', 'volume.mute',
-      'battery', 'network.wifi', 'network.default', 'sound', 'dpapi.protect', 'dpapi.unprotect', 'wsl.list']) {
+      'battery', 'network.wifi', 'network.default', 'sound', 'dpapi.protect', 'dpapi.unprotect', 'wsl.list',
+      'memory', 'drives', 'processes']) {
       expect(script).toContain(`'${op}'`)
     }
   })
@@ -472,6 +473,23 @@ describe('host.ps1', () => {
       expect(code).toMatch(new RegExp(`'${op.replace('.', '\\.')}' \\{ \\$value = \\[Fremkit\\.\\w+\\]::`))
     }
   })
+})
+
+describe('memory, drives and processes through the real host', () => {
+  it.runIf(process.platform === 'win32')('reads them in C#, with numbers where systeminformation had them', async () => {
+    const { totalmem } = await import('node:os')
+    const host = new PowerShellHost()
+    try {
+      const memory = await host.call<HostMemory>('memory', undefined, 30_000)
+      expect(Math.abs(memory.total - totalmem())).toBeLessThan(64 * 1024 * 1024)
+      expect(memory.available).toBeGreaterThan(0)
+      expect(memory.swapUsed).toBeLessThanOrEqual(memory.swapTotal)
+      const drives = await host.call<HostDrive[]>('drives', undefined, 30_000)
+      expect(drives.some((d) => /^[A-Z]:$/i.test(d.mount) && !d.network && d.size > 0)).toBe(true)
+      const processes = await host.call<HostProcess[]>('processes', undefined, 30_000)
+      expect(processes.some((p) => p.pid === process.pid && p.cpuMs !== null && p.ws > 0)).toBe(true)
+    } finally { host.close() }
+  }, 90_000)
 })
 
 describe('network.default through the real host', () => {

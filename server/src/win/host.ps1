@@ -40,6 +40,12 @@
 #   dpapi.unprotect    base64 (<= 90000 chars)  base64                                      dpapi-foreign (never opens here:
 #                                                   another user or machine, altered), dpapi-failed (may pass)
 #   wsl.list           -                        [names matching ^[A-Za-z0-9._-]{1,64}$]     no-wsl, tool-timeout
+#   memory             -                        { total, available, swapTotal, swapUsed }   -
+#                                                   (bytes, GlobalMemoryStatusEx; swap is the commit charge past RAM)
+#   drives             -                        [{ mount: 'C:', network: bool, size, available }]  -
+#                                                   (fixed and mapped network drives that answer within the call; bytes)
+#   processes          -                        [{ pid, name, cpuMs: number|null, ws }]     -
+#                                                   (total CPU time in ms, null when the process cannot be opened; working set in bytes)
 #
 # Common codes: invalid-arg, unknown-op, bad-request, failed (anything unexpected).
 
@@ -585,6 +591,113 @@ namespace Fremkit {
       }
     }
   }
+
+  // Memory, drives and processes: what `systeminformation` would read through a powershell.exe of
+  // its own on every poll. Nothing here takes an argument or runs a program.
+  public static class Sys {
+    [StructLayout(LayoutKind.Sequential)]
+    class MemoryStatusEx {
+      public uint dwLength = (uint)Marshal.SizeOf(typeof(MemoryStatusEx));
+      public uint dwMemoryLoad;
+      public ulong ullTotalPhys;
+      public ulong ullAvailPhys;
+      public ulong ullTotalPageFile;
+      public ulong ullAvailPageFile;
+      public ulong ullTotalVirtual;
+      public ulong ullAvailVirtual;
+      public ulong ullAvailExtendedVirtual;
+    }
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    static extern bool GlobalMemoryStatusEx([In, Out] MemoryStatusEx buffer);
+
+    // RAM and swap in bytes. Windows has no swap total as such: the commit limit is RAM plus the
+    // page files, so what lies past RAM is the page files' size, and the commit charge past what
+    // RAM holds is what they hold.
+    public static System.Collections.Specialized.OrderedDictionary Memory() {
+      MemoryStatusEx status = new MemoryStatusEx();
+      if (!GlobalMemoryStatusEx(status)) throw new CodeException("failed");
+      ulong swapTotal = status.ullTotalPageFile > status.ullTotalPhys ? status.ullTotalPageFile - status.ullTotalPhys : 0;
+      ulong committed = status.ullTotalPageFile - status.ullAvailPageFile;
+      ulong inRam = status.ullTotalPhys - status.ullAvailPhys;
+      ulong swapUsed = committed > inRam ? Math.Min(committed - inRam, swapTotal) : 0;
+      System.Collections.Specialized.OrderedDictionary result = new System.Collections.Specialized.OrderedDictionary();
+      result["total"] = status.ullTotalPhys;
+      result["available"] = status.ullAvailPhys;
+      result["swapTotal"] = swapTotal;
+      result["swapUsed"] = swapUsed;
+      return result;
+    }
+
+    // A disconnected mapped drive can hold a size query for many seconds. Each drive is read on
+    // its own task and waited for briefly; one that does not answer is left out, and is not asked
+    // again while its earlier query is still stuck.
+    const int DRIVE_WAIT_MS = 1500;
+    static readonly Dictionary<string, System.Threading.Tasks.Task<long[]>> Stuck = new Dictionary<string, System.Threading.Tasks.Task<long[]>>();
+
+    public static ArrayList Drives() {
+      ArrayList result = new ArrayList();
+      DateTime deadline = DateTime.UtcNow.AddMilliseconds(DRIVE_WAIT_MS);
+      foreach (DriveInfo drive in DriveInfo.GetDrives()) {
+        DriveType type = drive.DriveType;
+        if (type != DriveType.Fixed && type != DriveType.Network) continue;
+        string mount = drive.Name.TrimEnd('\\');
+        if (!Regex.IsMatch(mount, "^[A-Za-z]:$")) continue;
+        System.Threading.Tasks.Task<long[]> query;
+        if (Stuck.TryGetValue(mount, out query)) {
+          if (!query.IsCompleted) continue;
+          Stuck.Remove(mount);
+        }
+        DriveInfo captured = drive;
+        query = System.Threading.Tasks.Task.Run(() => {
+          if (!captured.IsReady) return null;
+          return new long[] { captured.TotalSize, captured.TotalFreeSpace };
+        });
+        int wait = Math.Max(0, (int)(deadline - DateTime.UtcNow).TotalMilliseconds);
+        bool done;
+        try { done = query.Wait(wait); } catch { continue; }
+        if (!done) { Stuck[mount] = query; continue; }
+        long[] sizes = query.Result;
+        if (sizes == null) continue;
+        System.Collections.Specialized.OrderedDictionary entry = new System.Collections.Specialized.OrderedDictionary();
+        entry["mount"] = mount;
+        entry["network"] = type == DriveType.Network;
+        entry["size"] = sizes[0];
+        entry["available"] = sizes[1];
+        result.Add(entry);
+      }
+      return result;
+    }
+
+    const int MAX_PROCESSES = 4096;
+
+    // Every process as { pid, name, cpuMs, ws }. A process this account cannot open (the System
+    // process, a protected service) still has a name and a working set; its CPU time is null.
+    public static ArrayList Processes() {
+      ArrayList result = new ArrayList();
+      foreach (System.Diagnostics.Process process in System.Diagnostics.Process.GetProcesses()) {
+        try {
+          if (result.Count >= MAX_PROCESSES) continue;
+          object cpu = null;
+          try { cpu = (long)process.TotalProcessorTime.TotalMilliseconds; } catch { }
+          long ws = 0;
+          try { ws = process.WorkingSet64; } catch { }
+          string name = null;
+          try { name = process.ProcessName; } catch { }
+          if (name == null) continue;
+          System.Collections.Specialized.OrderedDictionary entry = new System.Collections.Specialized.OrderedDictionary();
+          entry["pid"] = process.Id;
+          entry["name"] = name;
+          entry["cpuMs"] = cpu;
+          entry["ws"] = ws;
+          result.Add(entry);
+        } finally {
+          process.Dispose();
+        }
+      }
+      return result;
+    }
+  }
 }
 '@
 
@@ -714,6 +827,9 @@ while ($true) {
       'dpapi.protect' { $value = [Fremkit.Dpapi]::Run($arg, $true); break }
       'dpapi.unprotect' { $value = [Fremkit.Dpapi]::Run($arg, $false); break }
       'wsl.list' { $value = @(FkWslList); break }
+      'memory' { $value = [Fremkit.Sys]::Memory(); break }
+      'drives' { $value = [Fremkit.Sys]::Drives(); break }
+      'processes' { $value = [Fremkit.Sys]::Processes(); break }
       default { FkFail 'unknown-op' }
     }
     [Fremkit.Wire]::Send([ordered]@{ id = $id; ok = $true; value = $value })

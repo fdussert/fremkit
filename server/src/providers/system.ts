@@ -4,7 +4,7 @@ import type { Provider } from './types.js'
 import { createMacTemperatureReader } from './mac-thermals.js'
 import { cachedDisks, readMemory, type MemoryReading } from './mac-readings.js'
 import { targetPlatform } from '../platform/index.js'
-import { sharedHost, type HostDefaultRoute } from '../win/powershell-host.js'
+import { sharedHost, type HostDefaultRoute, type HostDrive, type HostMemory } from '../win/powershell-host.js'
 
 /** One interface's throughput in the system snapshot, in bytes per second. */
 export interface SystemNetwork { iface: string; rx: number; tx: number }
@@ -131,6 +131,47 @@ export function timedDisks(
   }
 }
 
+type MemoryFields = Pick<MemoryReading, 'total' | 'active' | 'available' | 'swapused' | 'swaptotal'>
+
+/**
+ * Windows memory and swap from the host's `memory` op (`GlobalMemoryStatusEx`), not `si.mem()`,
+ * which starts a powershell.exe of its own on every poll for the page file. A failed read answers
+ * the last good one; with none yet it fails the poll, as `si.mem()` would.
+ */
+export function windowsMemory(
+  read: () => Promise<HostMemory> = () => sharedHost().call<HostMemory>('memory', undefined, 4000),
+): () => Promise<MemoryFields> {
+  let last: MemoryFields | null = null
+  return async () => {
+    try {
+      const m = await read()
+      if (![m.total, m.available, m.swapTotal, m.swapUsed].every((n) => Number.isFinite(n) && n >= 0)) throw new Error('invalid')
+      last = { total: m.total, active: Math.max(0, m.total - m.available), available: m.available, swapused: m.swapUsed, swaptotal: m.swapTotal }
+    } catch (error) {
+      if (!last) throw error
+    }
+    return last
+  }
+}
+
+/**
+ * Windows drives from the host's `drives` op (`DriveInfo`: fixed drives and mapped network ones,
+ * as the Mac lists the network mounts under /Volumes), not `si.fsSize()`, which starts a
+ * powershell.exe per poll. The host leaves out a drive whose size query hangs; `timedDisks` still
+ * guards the poll.
+ */
+export function windowsDrives(
+  read: () => Promise<HostDrive[]> = () => sharedHost().call<HostDrive[]>('drives', undefined, 4000),
+): () => Promise<DiskReading[]> {
+  return async () => (await read())
+    .filter((d) => typeof d.mount === 'string' && /^[A-Za-z]:$/.test(d.mount)
+      && Number.isFinite(d.size) && Number.isFinite(d.available) && d.available >= 0 && d.available <= d.size)
+    .map((d) => {
+      const used = d.size - d.available
+      return { mount: d.mount, type: d.network ? 'network' : 'local', size: d.size, used, available: d.available, use: d.size > 0 ? round(used / d.size * 100) : 0 }
+    })
+}
+
 /** A denied uptime reading must not suppress CPU, memory or disk metrics. */
 function uptimeSeconds(): number | null {
   try {
@@ -146,16 +187,22 @@ export function createSystemProvider(options: {
   readMacTemperature?: ReturnType<typeof createMacTemperatureReader>
   /** Disks and memory; on macOS read without `systeminformation`'s blocking calls (`mac-readings.ts`). */
   readDisks?: () => Promise<DiskReading[]>
-  readMemory?: () => Promise<Pick<MemoryReading, 'total' | 'active' | 'available' | 'swapused' | 'swaptotal'>>
+  readMemory?: () => Promise<MemoryFields>
   /** The per-interface throughput; on Windows `windowsNetworkRates()`, elsewhere `si.networkStats()`. */
   readNetwork?: () => Promise<SystemNetwork[]>
   platform?: NodeJS.Platform
 } = {}): Provider {
   const readMacTemperature = options.readMacTemperature ?? createMacTemperatureReader()
-  const mac = process.platform === 'darwin'
-  const disks = options.readDisks ?? (mac ? cachedDisks() : timedDisks(() => si.fsSize()))
-  const memory = options.readMemory ?? (mac ? () => readMemory() : () => si.mem())
-  const network = options.readNetwork ?? (targetPlatform(options.platform) === 'win32'
+  // On Windows nothing here goes through `systeminformation` except `currentLoad()`, which only
+  // reads `os.cpus()` and `os.loadavg()`: everything else it would read there through a
+  // powershell.exe of its own, started per call, outside `windowsTool()`.
+  const windows = targetPlatform(options.platform) === 'win32'
+  const mac = !windows && process.platform === 'darwin'
+  const disks = options.readDisks ?? (windows ? timedDisks(windowsDrives()) : mac ? cachedDisks() : timedDisks(() => si.fsSize()))
+  const memory = options.readMemory ?? (windows ? windowsMemory() : mac ? () => readMemory() : () => si.mem())
+  // The CPU temperature needs admin rights on Windows (MSAcpi_ThermalZoneTemperature): unsupported.
+  const temperature = windows ? async () => ({ main: -1 }) : () => si.cpuTemperature()
+  const network = options.readNetwork ?? (windows
     ? windowsNetworkRates()
     : async () => (await si.networkStats()).map((n) => ({
       iface: n.iface,
@@ -167,7 +214,7 @@ export function createSystemProvider(options: {
     intervalMs: 2000,
     async poll() {
       const [load, mem, fs, net, temp] = await Promise.all([
-        si.currentLoad(), memory(), disks(), network(), si.cpuTemperature(),
+        si.currentLoad(), memory(), disks(), network(), temperature(),
       ])
       const measured = options.macmonTemperatureEnabled?.() ? readMacTemperature() : null
       const macmonTemp = measured?.cpuCelsius ?? null

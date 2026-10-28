@@ -143,9 +143,13 @@ function safeModelLabel(value: string | undefined): string | null {
 }
 
 /** Publish bounded Ollama and local MLX process observations, never prompts or paths. */
-export function createLocalModelsProvider(opts: { fetchFn?: typeof fetch; processes?: () => Promise<ModelProcess[]> } = {}): Provider<LocalModelsSnapshot> {
+export function createLocalModelsProvider(opts: { fetchFn?: typeof fetch; processes?: () => Promise<ModelProcess[]>; platform?: Platform } = {}): Provider<LocalModelsSnapshot> {
   const fetchFn = opts.fetchFn ?? fetch
-  const processes = opts.processes ?? (async () => (await si.processes()).list)
+  // MLX runs only on Apple silicon, so Windows has no MLX process to find, and `si.processes()`
+  // there would start a powershell.exe of its own on every poll: the list is empty instead.
+  const processes = opts.processes ?? ((opts.platform ?? targetPlatform()) === 'win32'
+    ? async (): Promise<ModelProcess[]> => []
+    : async () => (await si.processes()).list)
   let installed = empty<z.infer<typeof Model>[]>()
   let loaded = empty<z.infer<typeof Model>[]>()
   let mlx = empty<MlxProcess[]>()

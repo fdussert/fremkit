@@ -223,8 +223,11 @@ The rules are the security rules, so they are worth knowing before changing it:
   script path or data, because any account on the machine reads every process's command line.
 - The operations are a closed list (`HostOp`: `clipboard.read`, `clipboard.write`,
   `clipboard.private`, `volume.get`, `volume.set`, `volume.mute`, `battery`, `network.wifi`,
-  `network.default`, `sound`, `dpapi.protect`, `dpapi.unprotect`, `wsl.list`); anything else
-  answers `unknown-op`. Each op validates its argument.
+  `network.default`, `sound`, `dpapi.protect`, `dpapi.unprotect`, `wsl.list`, `memory`, `drives`,
+  `processes`); anything else answers `unknown-op`. Each op validates its argument.
+- One request is in flight at a time. A call's timer starts when its line is written, and only an
+  op that overruns it restarts the host; a call that waits too long for its turn fails with `busy`
+  and leaves the host alone.
 - Requests and answers are one JSON line each, ASCII only, so no console code page can mangle
   text. Clipboard text, DPAPI values and device names travel on stdin and stdout and are never
   logged; stderr is drained and dropped; an answer's failure code is a short fixed token.
@@ -233,7 +236,9 @@ The rules are the security rules, so they are worth knowing before changing it:
   (`server/src/platform/windows-tools.ts`), with an argument list and no shell. `SystemRoot`,
   `LOCALAPPDATA` and the other environment folders are used only when they are absolute drive
   paths. `PATH` for children starts with the system folders (`safePath`), and children get an
-  allow-listed environment.
+  allow-listed environment. Memory, drives and processes come from the host rather than from
+  `systeminformation`, which would start a `powershell.exe` of its own per call; on Windows the
+  server calls it only for `currentLoad()`, which reads `os.cpus()` and runs nothing.
 
 To add an op: the list and its types in `powershell-host.ts`, the handler and its argument checks
 in `host.ps1` (the comment at its top is the protocol table), a fake in the tests, and a line here

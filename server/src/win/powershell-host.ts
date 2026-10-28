@@ -42,6 +42,7 @@ export type HostOp =
   | 'battery' | 'network.wifi' | 'network.default' | 'sound'
   | 'dpapi.protect' | 'dpapi.unprotect'
   | 'wsl.list'
+  | 'memory' | 'drives' | 'processes'
 
 /** The names `sound` plays, from `%SystemRoot%\Media\<name>.wav`. */
 export const HOST_SOUNDS = ['chimes', 'chord', 'ding', 'notify', 'tada'] as const
@@ -53,6 +54,12 @@ export interface HostBluetoothBattery { name: string; percent: number }
 export interface HostBattery { internal: HostInternalBattery | null; devices: HostBluetoothBattery[] }
 export interface HostWifi { ssid: string | null; signal: number | null }
 /** The adapter the IPv4 default route goes out of: its `os.networkInterfaces()` name and byte counters. */
+/** RAM and swap in bytes; swap is the commit charge past RAM, as Windows has no swap total as such. */
+export interface HostMemory { total: number; available: number; swapTotal: number; swapUsed: number }
+/** A fixed or mapped network drive that answered within the call, `C:`-style, sizes in bytes. */
+export interface HostDrive { mount: string; network: boolean; size: number; available: number }
+/** A process: total CPU time in ms (null when it cannot be opened) and working set in bytes. */
+export interface HostProcess { pid: number; name: string; cpuMs: number | null; ws: number }
 export interface HostDefaultRoute { name: string; kind: 'wifi' | 'ethernet' | 'other'; ip4: string | null; rx: number; tx: number }
 
 /**
@@ -74,6 +81,9 @@ export interface HostOpTypes {
   'dpapi.protect': { arg: string; value: string } // base64 in (≤ 90000 chars), base64 out; codes: dpapi-failed
   'dpapi.unprotect': { arg: string; value: string } // base64 in (≤ 90000 chars), base64 out; codes: dpapi-foreign (never opens here), dpapi-failed (may pass)
   'wsl.list': { arg: undefined; value: string[] } // codes: no-wsl, tool-timeout
+  'memory': { arg: undefined; value: HostMemory }
+  'drives': { arg: undefined; value: HostDrive[] } // a drive whose size query hangs is left out
+  'processes': { arg: undefined; value: HostProcess[] }
 }
 
 export const HOST_ARGS: readonly string[] = ['-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', '-']
