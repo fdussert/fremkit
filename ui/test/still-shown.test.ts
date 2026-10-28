@@ -21,7 +21,7 @@ const screen = (id: string, name: string, extra: Partial<Screen> = {}): Screen =
 function config(): Config {
   return {
     version: 4, locale: 'en', connections: [], secrets: { backend: 'file' },
-    privacy: { claudeAccountUsage: false, showAccountEmail: false, codexAccount: false, codexHistorySources: [], macmonTemperature: false },
+    privacy: { claudeAccountUsage: false, showAccountEmail: false, codexAccount: false, codexHistorySources: [], macmonTemperature: false, wslDistros: [] },
     widgets: {
       shared: { widgetId: 'clock', showTitle: true, settings: {}, title: 'Docker' },
       barred: { widgetId: 'clock', showTitle: true, settings: {} },

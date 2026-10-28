@@ -115,7 +115,7 @@ describe('the bar of one screen', () => {
   const config = {
     version: 4,
     connections: [], secrets: { backend: 'file' }, locale: 'en',
-    privacy: { claudeAccountUsage: false, showAccountEmail: false, codexAccount: false, codexHistorySources: [], macmonTemperature: false },
+    privacy: { claudeAccountUsage: false, showAccountEmail: false, codexAccount: false, codexHistorySources: [], macmonTemperature: false, wslDistros: [] },
     widgets: {
       'clock-1': { widgetId: 'clock', showTitle: false, settings: {} },
       'weather-1': { widgetId: 'weather', showTitle: false, settings: {} },

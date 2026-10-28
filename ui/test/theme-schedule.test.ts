@@ -22,7 +22,7 @@ function config(extra: Partial<Config> = {}): Config {
     version: 4,
     theme: 'fremkit',
     connections: [], secrets: { backend: 'file' }, locale: 'en',
-    privacy: { claudeAccountUsage: false, showAccountEmail: false, codexAccount: false, codexHistorySources: [], macmonTemperature: false },
+    privacy: { claudeAccountUsage: false, showAccountEmail: false, codexAccount: false, codexHistorySources: [], macmonTemperature: false, wslDistros: [] },
     widgets: {},
     screens: [{
       id: 'edge', name: 'Edge', kind: 'edge',

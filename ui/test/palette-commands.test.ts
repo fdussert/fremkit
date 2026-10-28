@@ -23,7 +23,7 @@ const meteo: WidgetManifest = { ...clock, id: 'meteo', name: 'Météo', settings
 function config(): Config {
   return {
     version: 4, locale: 'en', connections: [], secrets: { backend: 'file' },
-    privacy: { claudeAccountUsage: false, showAccountEmail: false, codexAccount: false, codexHistorySources: [], macmonTemperature: false },
+    privacy: { claudeAccountUsage: false, showAccountEmail: false, codexAccount: false, codexHistorySources: [], macmonTemperature: false, wslDistros: [] },
     widgets: {
       'clock-1': { widgetId: 'clock', showTitle: true, settings: {}, title: 'Paris' },
       'meteo-1': { widgetId: 'meteo', showTitle: true, settings: {} },

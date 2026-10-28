@@ -3,11 +3,12 @@
  * What the server may read on this Mac, and what it may show. Moved out of the former
  * ScreenInspector.vue.
  */
-import { computed } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import BaseCheckbox from '../../shared/ui/BaseCheckbox.vue'
 import BaseSection from '../../shared/ui/BaseSection.vue'
 import { useI18n } from '../../shared/i18n'
 import { useAdminStore } from '../store'
+import { api } from '../../shared/api'
 
 const s = useAdminStore()
 const { t } = useI18n()
@@ -41,6 +42,34 @@ function setMacmonTemperature(on: boolean): void {
  */
 function setShowAccountEmail(on: boolean): void {
   s.apply((c) => { c.privacy.showAccountEmail = on })
+}
+
+/**
+ * Windows only: the WSL distributions the server may read Claude Code and Codex in. The server
+ * says which platform it runs on and what is installed; anywhere but Windows, or when it cannot
+ * answer, the section is not drawn at all. A ticked name that is no longer installed stays in the
+ * list, so it can be unticked.
+ */
+const wslInstalled = ref<string[] | null>(null)
+onMounted(async () => {
+  try {
+    const answer = await api.getWslDistros()
+    wslInstalled.value = answer.platform === 'win32' ? answer.distros : null
+  } catch {
+    wslInstalled.value = null
+  }
+})
+/** The schema's limit: past it the server would refuse the whole save, other edits included. */
+const WSL_MAX = 16
+const wslFull = computed(() => privacy.value.wslDistros.length >= WSL_MAX)
+const wslChoices = computed(() => wslInstalled.value === null
+  ? []
+  : [...new Set([...wslInstalled.value, ...privacy.value.wslDistros])])
+function setWslDistro(name: string, on: boolean): void {
+  if (on && !privacy.value.wslDistros.includes(name) && wslFull.value) return
+  s.apply((c) => { c.privacy.wslDistros = on
+    ? [...new Set([...c.privacy.wslDistros, name])]
+    : c.privacy.wslDistros.filter(value => value !== name) })
 }
 </script>
 
@@ -79,6 +108,19 @@ function setShowAccountEmail(on: boolean): void {
     :label="t('admin.inspector.screen.macmonTemperature')"
     @update:model-value="setMacmonTemperature($event)" />
   <p class="ro">{{ t('admin.inspector.screen.macmonTemperature.hint') }}</p>
+  <template v-if="wslInstalled !== null">
+    <p class="ro">{{ t('admin.inspector.screen.wslDistros') }}</p>
+    <p class="ro">{{ t('admin.inspector.screen.wslDistros.hint') }}</p>
+    <div class="wsl-distros">
+      <BaseCheckbox v-for="name in wslChoices" :key="name"
+        :model-value="privacy.wslDistros.includes(name)"
+        :label="name"
+        :disabled="wslFull && !privacy.wslDistros.includes(name)"
+        @update:model-value="setWslDistro(name, $event)" />
+      <p v-if="wslFull" class="ro">{{ t('admin.inspector.screen.wslDistros.full') }}</p>
+      <p v-if="wslChoices.length === 0" class="ro">{{ t('admin.inspector.screen.wslDistros.none') }}</p>
+    </div>
+  </template>
   </BaseSection>
 </template>
 
@@ -87,4 +129,5 @@ function setShowAccountEmail(on: boolean): void {
 .codex-sources { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: var(--space-1); margin-bottom: var(--space-3); }
 .codex-subagent-sources { margin-bottom: var(--space-3); }
 .codex-subagent-sources summary { cursor: pointer; margin-bottom: var(--space-2); }
+.wsl-distros { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: var(--space-1); margin-bottom: var(--space-3); }
 </style>

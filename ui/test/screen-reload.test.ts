@@ -13,7 +13,7 @@ const screen = (id: string, name: string): Config['screens'][number] => ({
 })
 const config = (): Config => ({
   version: 4, locale: 'en', connections: [], secrets: { backend: 'file' },
-  privacy: { claudeAccountUsage: false, showAccountEmail: false, codexAccount: false, codexHistorySources: [], macmonTemperature: false },
+  privacy: { claudeAccountUsage: false, showAccountEmail: false, codexAccount: false, codexHistorySources: [], macmonTemperature: false, wslDistros: [] },
   widgets: {},
   screens: [screen('edge', 'Edge'), screen('pad', 'iPad')],
 })

@@ -382,6 +382,13 @@ export const PrivacySchema = z.object({
   codexHistorySources: z.array(HistorySourceSchema).max(10).default([]),
   /** Read CPU temperature from the optional local macmon executable. */
   macmonTemperature: z.boolean().default(false),
+  /**
+   * The WSL distributions (Windows) whose Claude Code and Codex the server reads, through
+   * `\\wsl.localhost`. None until the user ticks one: an unticked distribution is never booted
+   * or read. A plain distribution name, the same rule as the hook's `client.wslDistro`, so a
+   * value can never be a path or an option once it reaches `wsl.exe`'s argument list.
+   */
+  wslDistros: z.array(z.string().regex(/^[A-Za-z0-9._-]{1,64}$/)).max(16).default([]),
 }).prefault({})
 
 /**
@@ -508,7 +515,7 @@ export const DEFAULT_CONFIG: Config = {
   connections: [],
   secrets: { backend: defaultSecretsBackend() },
   locale: defaultLocale(),
-  privacy: { claudeAccountUsage: false, showAccountEmail: false, codexAccount: false, codexHistorySources: [], macmonTemperature: false },
+  privacy: { claudeAccountUsage: false, showAccountEmail: false, codexAccount: false, codexHistorySources: [], macmonTemperature: false, wslDistros: [] },
   labs: { devices: false, companion: false },
   marketplace: { installed: {} },
   widgets: {

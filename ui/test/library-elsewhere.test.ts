@@ -26,7 +26,7 @@ function config(): Config {
   return {
     version: 4,
     connections: [], secrets: { backend: 'file' }, locale: 'en',
-    privacy: { claudeAccountUsage: false, showAccountEmail: false, codexAccount: false, codexHistorySources: [], macmonTemperature: false },
+    privacy: { claudeAccountUsage: false, showAccountEmail: false, codexAccount: false, codexHistorySources: [], macmonTemperature: false, wslDistros: [] },
     widgets: {
       'clock-1': { widgetId: 'clock', showTitle: true, settings: {} },
       'cpu-1': { widgetId: 'cpu', showTitle: true, settings: {} },

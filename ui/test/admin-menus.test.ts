@@ -19,7 +19,7 @@ const plain: WidgetManifest = { ...clock, id: 'plain', name: 'Plain', compact: u
 function config(): Config {
   return {
     version: 4, locale: 'en', connections: [], secrets: { backend: 'file' },
-    privacy: { claudeAccountUsage: false, showAccountEmail: false, codexAccount: false, codexHistorySources: [], macmonTemperature: false },
+    privacy: { claudeAccountUsage: false, showAccountEmail: false, codexAccount: false, codexHistorySources: [], macmonTemperature: false, wslDistros: [] },
     widgets: {
       'clock-1': { widgetId: 'clock', showTitle: true, settings: { tz: 'UTC' } },
       'huge-1': { widgetId: 'huge', showTitle: true, settings: {} },

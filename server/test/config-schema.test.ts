@@ -790,3 +790,19 @@ describe('nav.ts mirrors the UI', () => {
     expect(ui).toContain(`export const WIDE_COMPACT_SETTINGS = [${list}] as const`)
   })
 })
+
+describe('privacy.wslDistros', () => {
+  it('is empty by default, so no distribution is read until one is ticked', () => {
+    expect(DEFAULT_CONFIG.privacy.wslDistros).toEqual([])
+    expect(ConfigSchema.parse(v4()).privacy.wslDistros).toEqual([])
+    expect(migrateConfig({ ...DEFAULT_CONFIG, privacy: { claudeAccountUsage: false } }).privacy.wslDistros).toEqual([])
+    expect(migrateConfig({ version: 2, pages: [{ id: 'home', name: 'Home', widgets: [] }] }).privacy.wslDistros).toEqual([])
+  })
+  it('accepts a distribution name and refuses anything that could be a path or an option', () => {
+    expect(ConfigSchema.parse(v4({ privacy: { wslDistros: ['Ubuntu-24.04', 'Debian'] } })).privacy.wslDistros).toEqual(['Ubuntu-24.04', 'Debian'])
+    for (const bad of ['../x', 'a/b', 'a\\b', '', '-d x', 'x'.repeat(65), 'Ubuntu ']) {
+      expect(ConfigSchema.safeParse(v4({ privacy: { wslDistros: [bad] } })).success, bad).toBe(false)
+    }
+    expect(ConfigSchema.safeParse(v4({ privacy: { wslDistros: Array.from({ length: 17 }, (_, i) => `d${i}`) } })).success).toBe(false)
+  })
+})

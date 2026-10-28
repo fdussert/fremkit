@@ -438,7 +438,8 @@ describe('what an archive or a PUT cannot change', () => {
     const crafted = {
       ...CONFIG,
       secrets: { backend: before.secrets.backend === 'file' ? 'keychain' : 'file' },
-      privacy: { ...before.privacy, claudeAccountUsage: true, showAccountEmail: true },
+      // A restored backup from another machine cannot tick a WSL distribution here either.
+      privacy: { ...before.privacy, claudeAccountUsage: true, showAccountEmail: true, wslDistros: ['Ubuntu'] },
       marketplace: { installed: { 'evil-widget': FORGED_CONSENT } },
     }
     const archive = writeZip([{ name: CONFIG_ENTRY, data: Buffer.from(JSON.stringify(crafted)) }])
@@ -447,6 +448,7 @@ describe('what an archive or a PUT cannot change', () => {
     const after = (await app.inject({ url: '/api/config' })).json()
     expect(after.secrets).toEqual(before.secrets)
     expect(after.privacy).toEqual(before.privacy)
+    expect(after.privacy.wslDistros).toEqual([])
     expect(after.marketplace.installed).toEqual(before.marketplace.installed)
     expect(after.marketplace.installed['evil-widget']).toBeUndefined()
   })

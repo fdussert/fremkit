@@ -18,7 +18,7 @@ function config(theme: string): Config {
     version: 4,
     theme,
     connections: [], secrets: { backend: 'file' }, locale: 'en',
-    privacy: { claudeAccountUsage: false, showAccountEmail: false, codexAccount: false, codexHistorySources: [], macmonTemperature: false }, marketplace: { installed: {} },
+    privacy: { claudeAccountUsage: false, showAccountEmail: false, codexAccount: false, codexHistorySources: [], macmonTemperature: false, wslDistros: [] }, marketplace: { installed: {} },
     widgets: {},
     screens: [{
       id: 'edge', name: 'Edge', kind: 'edge',

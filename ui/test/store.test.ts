@@ -26,7 +26,7 @@ function config(): Config {
     version: 4,
     connections: [],
     secrets: { backend: 'file' },
-    privacy: { claudeAccountUsage: false, showAccountEmail: false, codexAccount: false, codexHistorySources: [], macmonTemperature: false },
+    privacy: { claudeAccountUsage: false, showAccountEmail: false, codexAccount: false, codexHistorySources: [], macmonTemperature: false, wslDistros: [] },
     widgets: { 'clock-1': { widgetId: 'clock', showTitle: true, settings: {} } },
     screens: [{
       id: 'edge', name: 'Xeneon Edge', kind: 'edge',

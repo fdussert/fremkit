@@ -148,6 +148,8 @@ export interface Privacy {
   codexHistorySources: ('cli' | 'vscode' | 'exec' | 'appServer' | 'subAgent' | 'subAgentReview' | 'subAgentCompact' | 'subAgentThreadSpawn' | 'subAgentOther' | 'unknown')[]
   /** Use the optional local macmon executable for Apple Silicon CPU temperature. */
   macmonTemperature: boolean
+  /** Windows: the WSL distributions whose Claude Code and Codex the server reads. None by default. */
+  wslDistros: string[]
 }
 
 /**

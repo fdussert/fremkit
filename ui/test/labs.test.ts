@@ -41,7 +41,7 @@ function config(devices: boolean | undefined, count: number): Config {
   return {
     version: 4,
     connections: [], secrets: { backend: 'file' }, locale: 'en',
-    privacy: { claudeAccountUsage: false, showAccountEmail: false, codexAccount: false, codexHistorySources: [], macmonTemperature: false },
+    privacy: { claudeAccountUsage: false, showAccountEmail: false, codexAccount: false, codexHistorySources: [], macmonTemperature: false, wslDistros: [] },
     ...(devices === undefined ? {} : { labs: { devices } }),
     widgets: {},
     screens: [screen('edge'), ...(count > 1 ? [screen('kitchen', 'device')] : [])],

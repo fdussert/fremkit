@@ -146,6 +146,8 @@ export const api = {
     return res.text()
   },
   getStatus: () => fetch('/api/config/status').then((r) => json<{ degraded: boolean }>(r)),
+  /** The WSL distributions installed on the server's PC; `platform` says whether to offer them at all. */
+  getWslDistros: () => fetch('/api/wsl/distros', { cache: 'no-store' }).then((r) => json<{ platform: 'darwin' | 'win32'; distros: string[] }>(r)),
   putConfig: (cfg: Config) => fetch('/api/config', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(cfg) }).then((r) => json<Config>(r)),
   getWidgets: () => fetch('/api/widgets').then((r) => json<WidgetsResponse>(r)),
   rescan: () => fetch('/api/widgets/rescan', { method: 'POST' }).then((r) => json<WidgetsResponse>(r)),

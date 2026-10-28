@@ -94,7 +94,7 @@ describe('the menus', () => {
   }
   const cfg = (): Config => ({
     version: 4, locale: 'en', connections: [], secrets: { backend: 'file' },
-    privacy: { claudeAccountUsage: false, showAccountEmail: false, codexAccount: false, codexHistorySources: [], macmonTemperature: false },
+    privacy: { claudeAccountUsage: false, showAccountEmail: false, codexAccount: false, codexHistorySources: [], macmonTemperature: false, wslDistros: [] },
     widgets: {
       'clock-1': { widgetId: 'clock', showTitle: true, settings: {} },
       'bar-1': { widgetId: 'clock', showTitle: false, settings: {} },

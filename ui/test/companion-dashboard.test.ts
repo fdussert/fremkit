@@ -179,7 +179,7 @@ describe('the reveal tracker', () => {
 describe('the dashboard and the companion channel', () => {
   const config = (): Config => ({
     version: 4, theme: 'fremkit', connections: [], secrets: { backend: 'file' }, locale: 'en',
-    privacy: { claudeAccountUsage: false, showAccountEmail: false, codexAccount: false, codexHistorySources: [], macmonTemperature: false },
+    privacy: { claudeAccountUsage: false, showAccountEmail: false, codexAccount: false, codexHistorySources: [], macmonTemperature: false, wslDistros: [] },
     labs: { devices: false, companion: true },
     widgets: {},
     screens: [{

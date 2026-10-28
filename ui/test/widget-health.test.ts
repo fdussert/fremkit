@@ -43,7 +43,7 @@ const cal1: ConnectionSummary = { id: 'cal-1', type: 'ics', name: 'Holidays', fi
 function config(widgets: Config['widgets']): Config {
   return {
     version: 4, locale: 'en', connections: [], secrets: { backend: 'file' },
-    privacy: { claudeAccountUsage: false, showAccountEmail: false, codexAccount: false, codexHistorySources: [], macmonTemperature: false },
+    privacy: { claudeAccountUsage: false, showAccountEmail: false, codexAccount: false, codexHistorySources: [], macmonTemperature: false, wslDistros: [] },
     widgets,
     screens: [
       {

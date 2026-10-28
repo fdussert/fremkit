@@ -12,7 +12,7 @@ const clock: WidgetManifest = {
 function config(): Config {
   return {
     version: 4, locale: 'en', connections: [], secrets: { backend: 'file' },
-    privacy: { claudeAccountUsage: false, showAccountEmail: false, codexAccount: false, codexHistorySources: [], macmonTemperature: false },
+    privacy: { claudeAccountUsage: false, showAccountEmail: false, codexAccount: false, codexHistorySources: [], macmonTemperature: false, wslDistros: [] },
     widgets: {
       a: { widgetId: 'clock', showTitle: true, settings: {} },
       b: { widgetId: 'clock', showTitle: true, settings: {} },

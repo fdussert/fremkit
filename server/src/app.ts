@@ -105,6 +105,9 @@ import { demoConnectionFetch } from './demo/declared.js'
 import { demoIcon } from './demo/icons.js'
 import { DEMO_APPS } from './demo/world.js'
 import { FileSecretStore } from './secrets/file.js'
+import { listDistros } from './wsl/distros.js'
+import { wslRoutes } from './wsl/routes.js'
+import { sharedHost } from './win/powershell-host.js'
 
 export interface AppOptions {
   dataDir: string
@@ -193,6 +196,8 @@ export interface AppOptions {
     /** How a taken remote port is tried again (`DeviceServiceOptions.bindRetry`). */
     bindRetry?: { attempts: number; delayMs: number }
   }
+  /** Tests: where the installed WSL distributions come from instead of the PowerShell host. */
+  wsl?: { list?: () => Promise<string[]> }
 }
 
 export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
@@ -529,6 +534,11 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   })
   await app.register(faviconRoutes, { dir: join(opts.dataDir, 'icons', 'favicons'), config: () => store.get(), screenOfDevice })
   await app.register(claudeRoutes, { tracker, usage })
+  // A demo reads nothing of the machine, so it has no WSL distribution to offer either.
+  await app.register(wslRoutes, {
+    platform,
+    list: demo ? async () => [] : (opts.wsl?.list ?? (() => listDistros(sharedHost, platform))),
+  })
   await app.register(dockRoutes, {
     state: dock,
     ...(appIcons ? { appIcons } : {}),

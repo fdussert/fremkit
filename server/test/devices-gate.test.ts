@@ -146,6 +146,8 @@ describe.skipIf(!canIssueCertificates)('the remote gate, through a real TLS list
       'GET /companion/ws',
       // The admin's "Reload the dashboard": a device reloads its own page, it never asks the Mac to.
       'POST /api/screens/:id/reload',
+      // Which WSL distributions this PC has: the Privacy pane's question, never a device's.
+      'GET /api/wsl/distros',
     ]))
     for (const method of ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE']) {
       expect(walked.some((r) => r.method === method), method).toBe(true)
