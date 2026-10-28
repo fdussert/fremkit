@@ -1,8 +1,10 @@
 import { spawn, execFile } from 'node:child_process'
+import { existsSync } from 'node:fs'
 import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir, homedir } from 'node:os'
-import { join } from 'node:path'
+import { join, win32 } from 'node:path'
 import { z } from 'zod'
+import { targetPlatform, WINDOWS_CHILD_ENV_KEYS } from '../platform/index.js'
 import { HistorySourceSchema } from './sources.js'
 
 export type CodexFailure = 'offline' | 'unauthorized' | 'unsupported' | 'invalid' | 'refused' | 'unconfigured'
@@ -184,10 +186,19 @@ export class CodexReadClient implements CodexClient {
   }
 }
 
+/** An environment variable by name; Windows names ignore case, and an injected plain object does not. */
+function envValue(env: NodeJS.ProcessEnv, key: string, platform: NodeJS.Platform): string | undefined {
+  if (env[key] !== undefined || targetPlatform(platform) !== 'win32') return env[key]
+  const found = Object.keys(env).find(name => name.toLowerCase() === key.toLowerCase())
+  return found === undefined ? undefined : env[found]
+}
+
 /** Allowlist prevents unknown provider credentials and loader variables from leaking. */
-export function safeChildEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+export function safeChildEnv(env: NodeJS.ProcessEnv, platform: NodeJS.Platform = process.platform): NodeJS.ProcessEnv {
   const out: NodeJS.ProcessEnv = {}
+  // Codex finds its home through USERPROFILE and APPDATA on Windows.
   for (const key of [
+    ...(targetPlatform(platform) === 'win32' ? WINDOWS_CHILD_ENV_KEYS : []),
     'PATH',
     'HOME',
     'CODEX_HOME',
@@ -199,9 +210,32 @@ export function safeChildEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
     'SYSTEMROOT',
     'WINDIR',
   ]) {
-    if (env[key] !== undefined) out[key] = env[key]
+    const value = envValue(env, key, platform)
+    if (value !== undefined) out[key] = value
   }
   return out
+}
+const WINDOWS_TRIPLES: Record<string, string> = { x64: 'x86_64-pc-windows-msvc', arm64: 'aarch64-pc-windows-msvc' }
+
+/**
+ * The executable the Codex CLI is run as. On macOS that is `codex` found on `PATH`, as it always
+ * was. On Windows `PATH` holds only npm's `codex.cmd` / `codex.ps1` shims, which cannot be spawned
+ * without a shell, so the vendored native binary that npm installs under `%APPDATA%` is named
+ * directly. Null when it is not there (a shim alone does not count). `CODEX_HOME` moves Codex's
+ * data folder, not its binary, so it plays no part here.
+ */
+export function resolveCodexBinary(
+  env: NodeJS.ProcessEnv,
+  platform: NodeJS.Platform = process.platform,
+  exists: (path: string) => boolean = existsSync,
+  arch: string = process.arch,
+): string | null {
+  if (targetPlatform(platform) !== 'win32') return 'codex'
+  const triple = WINDOWS_TRIPLES[arch]
+  const appData = envValue(env, 'APPDATA', platform)
+  if (!triple || !appData || !win32.isAbsolute(appData)) return null
+  const binary = win32.join(appData, 'npm', 'node_modules', '@openai', 'codex', 'vendor', triple, 'codex', 'codex.exe')
+  return exists(binary) ? binary : null
 }
 const childArgs = [
   'app-server',
@@ -350,12 +384,16 @@ export async function discoverMethods(
 }
 const methodsCache = new Map<string, { until: number; methods: Promise<Set<string>> }>()
 export async function createLocalCodexClient(
-  options: StdioOptions & { run?: SchemaRunner } = {},
+  options: StdioOptions & { run?: SchemaRunner; platform?: NodeJS.Platform } = {},
 ): Promise<CodexClient> {
   // Installed CLI capabilities rarely change while Fremkit runs. Recheck periodically, and
   // never cache injected schema runners used by tests or host integrations.
-  const env = safeChildEnv(options.env ?? process.env)
-  const key = JSON.stringify([options.binary ?? 'codex', env.PATH ?? '', env.CODEX_HOME ?? ''])
+  const env = safeChildEnv(options.env ?? process.env, options.platform)
+  const binary = options.binary ?? resolveCodexBinary(options.env ?? process.env, options.platform)
+  // Never through a shell: on Windows a script wrapper cannot be spawned without one, whoever named it.
+  if (!binary || (targetPlatform(options.platform) === 'win32' && /\.(cmd|bat|ps1)$/i.test(binary))) throw new CodexError('unsupported')
+  options = { ...options, binary }
+  const key = JSON.stringify([binary, env.PATH ?? '', env.CODEX_HOME ?? ''])
   let cached = !options.run && !options.spawn ? methodsCache.get(key) : undefined
   if (!cached || cached.until < Date.now()) {
     cached = { until: Date.now() + 10 * 60_000, methods: discoverMethods(options) }

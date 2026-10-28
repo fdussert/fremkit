@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { EventEmitter } from 'node:events'
 import { PassThrough } from 'node:stream'
-import { CodexReadClient, methodsFromSchema, safeChildEnv, createStdioTransport, discoverMethods } from '../src/codex/adapter.js'
+import { CodexReadClient, methodsFromSchema, safeChildEnv, createStdioTransport, discoverMethods, resolveCodexBinary, createLocalCodexClient } from '../src/codex/adapter.js'
 import type { ReadTransport } from '../src/codex/adapter.js'
 const methods = ['initialize', 'account/read', 'account/rateLimits/read', 'account/usage/read', 'thread/list']
 class Wire implements ReadTransport {
@@ -121,5 +121,41 @@ describe('Codex read transport', () => {
     expect(wire.messages.find(m => m.method === 'account/read')?.params).toEqual({ refreshToken: false })
     expect(wire.messages.find(m => m.method === 'thread/list')?.params).toEqual({ sourceKinds: ['appServer'], useStateDbOnly: true, limit: 50, sortKey: 'updated_at', archived: false })
     api.close()
+  })
+  describe('resolveCodexBinary', () => {
+    const env = { APPDATA: 'C:\\Users\\Example\\AppData\\Roaming', CODEX_HOME: 'D:\\codex-data' }
+    const vendor = (triple: string) => `C:\\Users\\Example\\AppData\\Roaming\\npm\\node_modules\\@openai\\codex\\vendor\\${triple}\\codex\\codex.exe`
+    it('names the vendored native binary on Windows for each architecture', () => {
+      expect(resolveCodexBinary(env, 'win32', p => p === vendor('x86_64-pc-windows-msvc'), 'x64')).toBe(vendor('x86_64-pc-windows-msvc'))
+      expect(resolveCodexBinary(env, 'win32', p => p === vendor('aarch64-pc-windows-msvc'), 'arm64')).toBe(vendor('aarch64-pc-windows-msvc'))
+    })
+    it('returns null when only the codex.cmd shim exists, or nothing', () => {
+      const shim = 'C:\\Users\\Example\\AppData\\Roaming\\npm\\codex.cmd'
+      expect(resolveCodexBinary(env, 'win32', p => p === shim, 'x64')).toBeNull()
+      expect(resolveCodexBinary(env, 'win32', () => false, 'x64')).toBeNull()
+    })
+    it('refuses a missing or relative APPDATA and an unknown architecture', () => {
+      expect(resolveCodexBinary({}, 'win32', () => true, 'x64')).toBeNull()
+      expect(resolveCodexBinary({ APPDATA: 'relative' }, 'win32', () => true, 'x64')).toBeNull()
+      expect(resolveCodexBinary(env, 'win32', () => true, 'ia32')).toBeNull()
+    })
+    it('keeps the PATH lookup on macOS, whatever CODEX_HOME says', () => {
+      expect(resolveCodexBinary({ CODEX_HOME: '/elsewhere' }, 'darwin', () => false)).toBe('codex')
+    })
+  })
+  it('passes the Windows profile folders to the child only on Windows', () => {
+    const env = { PATH: 'C:\\Windows', USERPROFILE: 'C:\\Users\\Example', APPDATA: 'C:\\Users\\Example\\AppData\\Roaming', OPENAI_API_KEY: 'placeholder' }
+    expect(safeChildEnv(env, 'win32')).toEqual({ PATH: 'C:\\Windows', USERPROFILE: 'C:\\Users\\Example', APPDATA: 'C:\\Users\\Example\\AppData\\Roaming' })
+    expect(safeChildEnv(env, 'darwin')).toEqual({ PATH: 'C:\\Windows' })
+  })
+  it('reads Windows variables case-insensitively from an injected environment', () => {
+    const env = { path: 'C:\\Windows', userprofile: 'C:\\Users\\Example', appdata: 'C:\\Users\\Example\\AppData\\Roaming' }
+    expect(safeChildEnv(env, 'win32')).toEqual({ PATH: 'C:\\Windows', USERPROFILE: 'C:\\Users\\Example', APPDATA: 'C:\\Users\\Example\\AppData\\Roaming' })
+    expect(safeChildEnv(env, 'darwin')).toEqual({})
+    const exe = 'C:\\Users\\Example\\AppData\\Roaming\\npm\\node_modules\\@openai\\codex\\vendor\\x86_64-pc-windows-msvc\\codex\\codex.exe'
+    expect(resolveCodexBinary(env, 'win32', () => true, 'x64')).toBe(exe)
+  })
+  it.each(['C:\\x\\codex.cmd', 'C:\\x\\CODEX.BAT', 'C:\\x\\codex.Ps1'])('refuses a script wrapper as the configured binary (%s)', async binary => {
+    await expect(createLocalCodexClient({ binary, platform: 'win32' })).rejects.toMatchObject({ reason: 'unsupported' })
   })
 })
