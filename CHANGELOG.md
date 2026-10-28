@@ -55,6 +55,9 @@ tagged `vX.Y.Z`.
   version) has **Enter the Mac's address** under its list of Macs: for networks where the tablet
   never sees the Mac on its own, such as a Mac on both Wi-Fi and Ethernet. You still check the
   four words before typing the code.
+- **Claude widgets can hide the cost.** **Claude limits** and **Claude sessions** have a **Show
+  cost** setting: turned off, the tiles no longer show what today's tokens or a session would cost
+  in dollars. It is on by default, so a tile already on the dashboard looks the same.
 
 ### Changed
 

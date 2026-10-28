@@ -112,7 +112,7 @@
   }
   function metaFor(s, now) {
     var meta = '<span>' + ago(now - s.since) + '</span>'
-    if (typeof s.costUsd === 'number') meta += '<span>$' + s.costUsd.toFixed(2) + '</span>'
+    if (showCost && typeof s.costUsd === 'number') meta += '<span>$' + s.costUsd.toFixed(2) + '</span>'
     if (s.subagents > 0) meta += '<span class="sub">' + Fremkit.esc(plural(s.subagents, L.agentOne, L.agentMany)) + '</span>'
     return meta
   }
@@ -247,7 +247,7 @@
       refused()
     }, refused)
   }
-  var maxShown = 0, onlyWaiting = false, hideDone = true, groupByClient = false
+  var maxShown = 0, onlyWaiting = false, hideDone = true, groupByClient = false, showCost = true
   function applySettings(s) {
     s = s || {}
     var n = Number(s.max); maxShown = isFinite(n) && n > 0 ? Math.floor(n) : 0
@@ -255,6 +255,7 @@
     // On by default, so an absent setting is not "off" — an older instance keeps the new default.
     hideDone = s.hideDone !== false
     groupByClient = s.groupByClient === true
+    showCost = s.showCost !== false
   }
   Fremkit.whenReady(function () {
     document.documentElement.lang = Fremkit.locale
