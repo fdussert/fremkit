@@ -10,6 +10,8 @@ import { fileURLToPath } from 'node:url'
 import { clientFrom } from '../../scripts/claude-hook.mjs'
 // @ts-expect-error plain JavaScript beside the shell scripts, no declaration file
 import { isLoopbackUrl } from '../../scripts/lib/access.mjs'
+// @ts-expect-error plain JavaScript beside the shell scripts, no declaration file
+import { windowsGit } from '../../scripts/claude-statusline.mjs'
 
 const scripts = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'scripts')
 const fixture = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'claude-statusline-input.json'), 'utf8')
@@ -230,4 +232,24 @@ describe('the Node Claude Code scripts', () => {
       expect(node.stdout).toBe(bash.stdout)
     })
   }
+})
+
+describe('the status line\'s git on Windows', () => {
+  it('takes git.exe from absolute X:\\ PATH entries only, never the current folder', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'fremkit-git-'))
+    try {
+      // A repository with a git.exe at its root: the folder the status line runs in.
+      writeFileSync(join(dir, 'git.exe'), '')
+      const asked: string[] = []
+      const exists = (path: string) => { asked.push(path); return true }
+      const relative = ['.', '', ' ', dir, '\\\\server\\share', '\\rooted', 'relative\\bin', '"."'].join(';')
+      expect(windowsGit({ PATH: relative }, exists)).toBeNull()
+      expect(asked).toEqual([])
+      expect(windowsGit({ Path: `.;"C:\\Program Files\\Git\\cmd";D:\\tools` }, exists)).toBe('C:\\Program Files\\Git\\cmd\\git.exe')
+      expect(windowsGit({ PATH: 'C:\\nothing;D:\\tools' }, (path: string) => path === 'D:\\tools\\git.exe')).toBe('D:\\tools\\git.exe')
+      expect(windowsGit({}, exists)).toBeNull()
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
 })

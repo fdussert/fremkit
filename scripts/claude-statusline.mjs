@@ -5,7 +5,8 @@
 //
 // Always exits 0. The server's access secret is read from its token file and sent in a header only.
 import { execFile } from 'node:child_process'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
+import { win32 } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { authHeader, isLoopbackUrl, portOf } from './lib/access.mjs'
 
@@ -28,11 +29,32 @@ const num = (x) => {
   return x
 }
 
-// Bare `git`, as the bash version: on Windows git is user-installed (Git for Windows) and found
-// on PATH; execFile runs the .exe directly, with no shell.
-function gitBranch(cwd) {
+const ABSOLUTE_WINDOWS = /^[A-Za-z]:\\/
+
+/**
+ * git on Windows, by full path: the first absolute `X:\` PATH entry holding `git.exe`, or null.
+ * A bare `git` would be looked up in the current folder before PATH there, and Claude Code runs
+ * this line in the session's folder: a repository with a `git.exe` at its root would run it. `.`,
+ * relative and empty entries are skipped for the same reason.
+ */
+export function windowsGit(env = process.env, exists = existsSync) {
+  const key = Object.keys(env).find((k) => k.toLowerCase() === 'path')
+  for (const entry of String((key && env[key]) || '').split(';')) {
+    const dir = entry.trim().replace(/^"(.*)"$/, '$1')
+    if (!ABSOLUTE_WINDOWS.test(dir)) continue
+    const candidate = win32.join(dir, 'git.exe')
+    if (exists(candidate)) return candidate
+  }
+  return null
+}
+
+// On the Mac a bare `git`, as the bash version: PATH lookup there never includes the current
+// folder. On Windows git by full path (above), and no branch when there is none. No shell either way.
+function gitBranch(cwd, platform = process.platform) {
+  const git = platform === 'win32' ? windowsGit() : 'git'
+  if (!git) return Promise.resolve('')
   return new Promise((resolve) => {
-    execFile('git', ['-C', cwd || '.', 'rev-parse', '--abbrev-ref', 'HEAD'], { timeout: 3000, windowsHide: true }, (err, stdout) => {
+    execFile(git, ['-C', cwd || '.', 'rev-parse', '--abbrev-ref', 'HEAD'], { timeout: 3000, windowsHide: true }, (err, stdout) => {
       // Like `$(…)`: whatever git printed counts, even when it then failed.
       resolve(String(stdout ?? err?.stdout ?? '').replace(/\n+$/, ''))
     })
