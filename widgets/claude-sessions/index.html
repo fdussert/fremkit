@@ -83,7 +83,9 @@
     commitMany: { fr: '{n} commits', en: '{n} commits' },
     go: { fr: 'Aller à la session', en: 'Go to the session' },
     noWindow: { fr: 'fenêtre introuvable', en: 'cannot find its window' },
-    ungrouped: { fr: 'Application inconnue', en: 'Unknown application' }
+    ungrouped: { fr: 'Application inconnue', en: 'Unknown application' },
+    countOne: { fr: '1 session', en: '1 session' },
+    countMany: { fr: '{n} sessions', en: '{n} sessions' }
   }
   var LABELS = { working: L.working, permission: L.permission, done: L.done, error: L.error, idle: L.idle }
   var sessions = [], today = null, nodes = {}
@@ -206,7 +208,8 @@
   }
   function render() {
     var el = document.getElementById('cards'), now = Date.now(), seen = {}
-    document.getElementById('count').textContent = sessions.length ? '· ' + sessions.length : ''
+    // Its own label: with the tile's title hidden, a bare "· 4" said nothing.
+    document.getElementById('count').textContent = sessions.length ? plural(sessions.length, L.countOne, L.countMany) : ''
     document.getElementById('stats').textContent = today ? statsFor(today) : ''
     // The count above keeps the real total; the list itself honours the filters and "max".
     var list = visible(now)
