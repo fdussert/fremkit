@@ -1,9 +1,9 @@
-import { execFile } from 'node:child_process'
 import { constants } from 'node:fs'
 import { open, realpath } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { basename, join, sep } from 'node:path'
 import { z } from 'zod'
+import { querySqlite } from './sqlite.js'
 import { ThreadIdSchema, type History } from './snapshot.js'
 import type { Provider } from '../providers/types.js'
 
@@ -109,18 +109,11 @@ export function freshTurn(turn: TurnObservation, now: number): TurnObservation {
   return { ...turn }
 }
 interface Cache { id: string; ino: number; size: number; mtime: number; turn: TurnObservation }
-export function createSessionReader(options: { codexHome?: string; query?: (sql: string) => Promise<unknown> } = {}) {
+export function createSessionReader(options: { codexHome?: string; query?: (sql: string) => Promise<unknown>; platform?: NodeJS.Platform } = {}) {
   const home = options.codexHome ?? process.env.CODEX_HOME ?? join(homedir(), '.codex')
   const cache = new Map<string, Cache>()
-  const query = options.query ?? ((sql: string) => new Promise<unknown>((resolve, reject) => {
-    execFile('/usr/bin/sqlite3', [
-      '-readonly', '-json', '-batch', '-cmd', 'PRAGMA query_only=ON;',
-      '-cmd', '.timeout 1000', join(home, 'state_5.sqlite'), sql,
-    ], { timeout: 2500, maxBuffer: 512 * 1024, shell: false }, (error, stdout) => {
-      if (error) return reject(Error('offline'))
-      try { resolve(JSON.parse(stdout || '[]')) } catch { reject(Error('invalid')) }
-    })
-  }))
+  const query = options.query ?? ((sql: string) =>
+    querySqlite(sql, { path: join(home, 'state_5.sqlite'), platform: options.platform, timeoutMs: 2500, maxBuffer: 512 * 1024 }))
   async function tail(row: Row): Promise<TurnObservation> {
     if (!row.rollout) return emptyTurn()
     let file: Awaited<ReturnType<typeof open>> | undefined

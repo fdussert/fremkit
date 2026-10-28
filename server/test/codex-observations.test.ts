@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { appendFile, mkdir, mkdtemp, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { execFileSync } from 'node:child_process'
+import { DatabaseSync } from 'node:sqlite'
 import {
   createCodexSessionsProvider,
   createSessionReader,
@@ -52,8 +52,14 @@ afterEach(async () => {
   while (dirs.length) await rm(dirs.pop()!, { recursive: true, force: true })
 })
 
-// The Codex readers shell out to /usr/bin/sqlite3, which has no Windows counterpart yet (Codex providers task).
-const itMac = it.skipIf(process.platform === 'win32')
+// Fixtures are written with node:sqlite, which runs everywhere. The reader is run through each
+// backend the platform can have: the sqlite3 CLI on a Mac, node:sqlite on Windows (and, to test
+// that path here, on a Mac through the injected platform).
+const platforms: NodeJS.Platform[] = process.platform === 'win32' ? ['win32'] : ['darwin', 'win32']
+function sqlite(path: string, sql: string) {
+  const db = new DatabaseSync(path)
+  try { db.exec(sql) } finally { db.close() }
+}
 
 describe('Codex turn observations', () => {
   it('tracks explicit start and per-turn model without exposing prompt/tool content', () => {
@@ -148,7 +154,7 @@ async function fixture() {
       }),
   )
   const database = join(home, 'state_5.sqlite')
-  execFileSync('/usr/bin/sqlite3', [
+  sqlite(
     database,
     `
     CREATE TABLE threads (id TEXT, rollout_path TEXT, model TEXT, reasoning_effort TEXT,
@@ -161,14 +167,14 @@ async function fixture() {
       ('${C}',NULL,'unrelated','low','/private/other',NULL,NULL,NULL,NULL,0,1);
     INSERT INTO thread_spawn_edges VALUES ('${A}','${B}');
   `,
-  ])
+  )
   return { home, parent, child, database }
 }
 
-describe('Selected Codex local session reader', () => {
-  itMac('joins selected parent and direct child, sanitizes project paths and keeps unrelated threads private', async () => {
+describe.each(platforms)('Selected Codex local session reader (%s)', platform => {
+  it('joins selected parent and direct child, sanitizes project paths and keeps unrelated threads private', async () => {
     const f = await fixture()
-    const snapshot = await createSessionReader({ codexHome: f.home })([A], now)
+    const snapshot = await createSessionReader({ codexHome: f.home, platform })([A], now)
     expect(snapshot.sessions).toHaveLength(1)
     expect(snapshot.sessions[0]).toMatchObject({
       id: A,
@@ -191,9 +197,9 @@ describe('Selected Codex local session reader', () => {
     expect(snapshot.truncated).toBe(false)
   })
 
-  itMac('preserves a start through incremental updates and split UTF-8 JSON records', async () => {
+  it('preserves a start through incremental updates and split UTF-8 JSON records', async () => {
     const f = await fixture()
-    const read = createSessionReader({ codexHome: f.home })
+    const read = createSessionReader({ codexHome: f.home, platform })
     await read([A], now)
     const next = line('response_item', { type: 'reasoning', text: 'privé' }, now + 1000)
     const bytes = Buffer.from(next)
@@ -209,9 +215,9 @@ describe('Selected Codex local session reader', () => {
     })
   })
 
-  itMac('recovers after an oversized record arrives in chunks before a completion event', async () => {
+  it('recovers after an oversized record arrives in chunks before a completion event', async () => {
     const f = await fixture()
-    const read = createSessionReader({ codexHome: f.home })
+    const read = createSessionReader({ codexHome: f.home, platform })
     await read([A], now)
     const large = line('response_item', { type: 'message', content: 'x'.repeat(600000) })
     await appendFile(f.parent, large.slice(0, 400000))
@@ -223,7 +229,7 @@ describe('Selected Codex local session reader', () => {
     expect(finished.sessions[0]).toMatchObject({ state: 'done', finishedAt: now })
   })
 
-  itMac('retains a turn start beyond a large recent output on initial observation', async () => {
+  it('retains a turn start beyond a large recent output on initial observation', async () => {
     const f = await fixture()
     await appendFile(
       f.parent,
@@ -232,33 +238,30 @@ describe('Selected Codex local session reader', () => {
         content: 'x'.repeat(3000000),
       }) + progress,
     )
-    const snapshot = await createSessionReader({ codexHome: f.home })([A], now)
+    const snapshot = await createSessionReader({ codexHome: f.home, platform })([A], now)
     expect(snapshot.sessions[0]).toMatchObject({ state: 'working', startedAt: now - 120000 })
   })
 
-  itMac('refuses a rollout belonging to another ID and a path outside sessions', async () => {
+  it('refuses a rollout belonging to another ID and a path outside sessions', async () => {
     const f = await fixture()
     await writeFile(f.parent, line('session_meta', { id: C }) + started + progress)
-    let snapshot = await createSessionReader({ codexHome: f.home })([A], now)
+    let snapshot = await createSessionReader({ codexHome: f.home, platform })([A], now)
     expect(snapshot.sessions[0].state).toBe('unknown')
     const outside = join(f.home, 'outside.jsonl')
     await writeFile(outside, line('session_meta', { id: A }) + started + progress)
-    execFileSync('/usr/bin/sqlite3', [
-      f.database,
-      `UPDATE threads SET rollout_path='${outside}' WHERE id='${A}';`,
-    ])
-    snapshot = await createSessionReader({ codexHome: f.home })([A], now)
+    sqlite(f.database, `UPDATE threads SET rollout_path='${outside}' WHERE id='${A}';`)
+    snapshot = await createSessionReader({ codexHome: f.home, platform })([A], now)
     expect(snapshot.sessions[0].state).toBe('unknown')
   })
 
-  itMac('prioritizes each selected parent and reports exact counts when detail rows are bounded', async () => {
+  it('prioritizes each selected parent and reports exact counts when detail rows are bounded', async () => {
     const f = await fixture()
     const inserts = Array.from({ length: 320 }, (_, i) => {
       const id = '10000000-0000-4000-8000-' + String(i).padStart(12, '0')
       return `INSERT INTO threads VALUES ('${id}',NULL,'child-model','low','/private/example',NULL,NULL,NULL,NULL,0,100);INSERT INTO thread_spawn_edges VALUES ('${C}','${id}');`
     }).join('')
-    execFileSync('/usr/bin/sqlite3', [f.database, inserts])
-    const snapshot = await createSessionReader({ codexHome: f.home })([A, C], now)
+    sqlite(f.database, inserts)
+    const snapshot = await createSessionReader({ codexHome: f.home, platform })([A, C], now)
     expect(snapshot.truncated).toBe(true)
     expect(snapshot.sessions[0]).toMatchObject({
       id: A,
@@ -274,10 +277,10 @@ describe('Selected Codex local session reader', () => {
     expect(snapshot.sessions[1].subagents).toHaveLength(297)
   })
 
-  itMac('does not create a missing database or query invalid IDs', async () => {
+  it('does not create a missing database or query invalid IDs', async () => {
     const f = await fixture()
     const missing = join(f.home, 'missing')
-    await expect(createSessionReader({ codexHome: missing })([A], now)).rejects.toThrow()
+    await expect(createSessionReader({ codexHome: missing, platform })([A], now)).rejects.toThrow()
     await expect(stat(join(missing, 'state_5.sqlite'))).rejects.toMatchObject({ code: 'ENOENT' })
     let queried = false
     const read = createSessionReader({

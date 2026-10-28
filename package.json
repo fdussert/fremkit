@@ -6,7 +6,7 @@
   "type": "module",
   "packageManager": "pnpm@9.4.0",
   "engines": {
-    "node": ">=22"
+    "node": ">=22.13"
   },
   "scripts": {
     "setup": "bash scripts/setup.sh",

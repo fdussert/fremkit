@@ -70,7 +70,7 @@ Touchscreen Gestures must not be running (the panel takes one owner).
 - a Corsair Xeneon Edge — everything except the touch driver works on any display
 - `jq`, only for the Claude Code status line
 - `ffmpeg`, only for the chamber camera of an X1 or H2 printer
-- to build from source only: Xcode Command Line Tools, Node 22 or later, and pnpm
+- to build from source only: Xcode Command Line Tools, Node 22.13 or later, and pnpm
 
 ## Install
 

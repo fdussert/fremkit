@@ -1,6 +1,6 @@
-import { execFile } from 'node:child_process'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
+import { querySqlite } from './sqlite.js'
 import { ThreadIdSchema } from './snapshot.js'
 
 export interface LocalChatValidator {
@@ -9,7 +9,7 @@ export interface LocalChatValidator {
 }
 
 /** Desktop-owned catalog membership, independent of source, title and thread status. */
-export function createLocalChatValidator(options: { databasePath?: string } = {}): LocalChatValidator {
+export function createLocalChatValidator(options: { databasePath?: string; platform?: NodeJS.Platform } = {}): LocalChatValidator {
   const databasePath = options.databasePath ?? join(process.env.CODEX_HOME || join(homedir(), '.codex'), 'sqlite', 'codex-dev.db')
   const validateMany = async (threadIds: string[]): Promise<Set<string>> => {
     const ids = [...new Set(threadIds.filter(id => ThreadIdSchema.safeParse(id).success))].slice(0, 50)
@@ -20,17 +20,11 @@ export function createLocalChatValidator(options: { databasePath?: string } = {}
       JOIN local_thread_catalog_hosts AS h ON h.host_id=t.host_id
       WHERE t.host_id='local' AND h.host_kind='local' AND t.missing_candidate=0
       AND t.thread_id IN (${quoted});`
-    return new Promise(resolve => {
-      execFile('/usr/bin/sqlite3', ['-readonly', '-json', '-batch', '-cmd', 'PRAGMA query_only=ON;', '-cmd', '.timeout 1000', databasePath, query],
-        { timeout: 2000, maxBuffer: 8192, shell: false }, (error, stdout) => {
-          if (error) return resolve(new Set())
-          try {
-            const rows: unknown = JSON.parse(stdout || '[]')
-            if (!Array.isArray(rows)) return resolve(new Set())
-            resolve(new Set(rows.flatMap(row => row && typeof row === 'object' && 'id' in row && typeof row.id === 'string' && ids.includes(row.id) ? [row.id] : [])))
-          } catch { resolve(new Set()) }
-        })
-    })
+    try {
+      const rows = await querySqlite(query, { path: databasePath, platform: options.platform, timeoutMs: 2000, maxBuffer: 8192 })
+      if (!Array.isArray(rows)) return new Set()
+      return new Set(rows.flatMap(row => row && typeof row === 'object' && 'id' in row && typeof row.id === 'string' && ids.includes(row.id) ? [row.id] : []))
+    } catch { return new Set() }
   }
   const validate: LocalChatValidator = async id => (await validateMany([id])).has(id)
   validate.validateMany = validateMany

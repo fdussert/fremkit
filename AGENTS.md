@@ -9,7 +9,7 @@ rules that are easy to break without noticing. The human documentation is the
 
 Fremkit turns a Corsair Xeneon Edge (a 2560 × 720 touch strip) into a widget dashboard on macOS.
 
-- `server/` — Node ≥ 22, Fastify 5, zod 4, TypeScript run with `tsx`. Listens on
+- `server/` — Node ≥ 22.13, Fastify 5, zod 4, TypeScript run with `tsx`. Listens on
   `127.0.0.1:4242` only. Serves the built UI, the widgets from disk, a WebSocket hub, the
   config store, the connections/secrets API and the *providers* (pollers that publish on a
   channel).
