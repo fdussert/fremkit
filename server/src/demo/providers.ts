@@ -5,6 +5,7 @@ import { findInstance, type InstanceLookup } from '../config/instances.js'
 import { resolveServices, type ServiceResult } from '../providers/service-status.js'
 import { buildView, findNode, type DiskNode } from '../providers/disk-map-tree.js'
 import { codexProviders } from './codex.js'
+import { tr } from '../i18n.js'
 import {
   DEMO_APPS, DEMO_CLIPBOARD, DEMO_PROCESSES, DEMO_SESSIONS, DEMO_TRACKS,
   clamp, coverArt, round1, wander,
@@ -457,8 +458,9 @@ function claudeProviders(now: () => number, config: () => Config): Provider[] {
           fiveHour: { pct: five, resetsAt: resetIn(t, 2.3) },
           sevenDay: { pct: 61, resetsAt: resetIn(t, 76) },
           limits: [
-            { kind: 'five_hour', name: '5 h', percent: five, resetsAt: resetIn(t, 2.3), active: true },
-            { kind: 'seven_day', name: 'Week', percent: 61, resetsAt: resetIn(t, 76), active: true },
+            // Named as the real provider names them, in the user's language.
+            { kind: 'session', name: tr(undefined, 'claude.limit.session'), percent: five, resetsAt: resetIn(t, 2.3), active: true },
+            { kind: 'weekly_all', name: tr(undefined, 'claude.limit.weeklyAll'), percent: 61, resetsAt: resetIn(t, 76), active: true },
             { kind: 'seven_day_opus', name: 'Opus', percent: 44, resetsAt: resetIn(t, 76), active: true },
           ],
           breakdown: [{ name: 'Opus', percent: 72 }, { name: 'Sonnet', percent: 28 }],
