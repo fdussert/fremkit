@@ -270,7 +270,8 @@ Each line here was a real hole once. Break one only with the owner's explicit sa
 - **The data folder is 0700 and its files 0600.** The server runs with umask 077 and
   `tightenDataDir` fixes older files at start; write new runtime files with `mode: 0o600` anyway.
   On Windows the folder's ACL is the user and SYSTEM only (`icacls`, inheritance removed), applied
-  at every start and reset recursively, so an explicit entry added inside it does not survive.
+  at every start; what it holds is reset recursively (links not followed) while the folder still
+  inherits from its parent, which clears an explicit entry added inside it.
 - **A restore and `PUT /api/config` never import security settings.** A restore keeps this
   Mac's `secrets`, `privacy` and `marketplace.installed`; PUT replays `connections`, `secrets`
   and `marketplace.installed` (privacy stays editable there: it is the admin's switch). Consent

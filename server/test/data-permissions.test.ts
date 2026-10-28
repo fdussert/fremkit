@@ -86,15 +86,39 @@ describe('tightenDataDir on Windows', () => {
     expect(calls).toHaveLength(2)
   })
 
-  it('then resets what the folder already holds to inherit from it', async () => {
+  it('then resets what the folder already holds to inherit from it, links themselves only', async () => {
     root = await mkdtemp(join(tmpdir(), 'fremkit-perm-'))
     await writeFile(join(root, 'fremkit.json'), '{}')
     const { calls, exec } = fake(`"a","${SID}"`)
     expect(await tightenDataDir(root, { platform: 'win32', exec })).toBe(1)
-    expect(calls).toHaveLength(3)
-    expect(calls[2]).toEqual({ file: windowsTool('icacls'), args: [`${root}\\*`, '/reset', '/T', '/C', '/Q'] })
+    expect(calls).toHaveLength(4)
+    // A read of the folder's ACL first, to know whether it still inherits.
+    expect(calls[1]).toEqual({ file: windowsTool('icacls'), args: [root] })
+    expect(calls[3]).toEqual({ file: windowsTool('icacls'), args: [`${root}\\*`, '/reset', '/T', '/C', '/L', '/Q'] })
     // The folder is protected without /T: a file would be left with an empty ACL.
-    expect(calls[1].args).not.toContain('/T')
+    expect(calls[2].args).not.toContain('/T')
+  })
+
+  it('skips the walk once the folder no longer inherits from its parent', async () => {
+    root = await mkdtemp(join(tmpdir(), 'fremkit-perm-'))
+    await writeFile(join(root, 'fremkit.json'), '{}')
+    const read = (aces: string[]) => `${root} ${aces[0]}\r\n${aces.slice(1).map((a) => `${' '.repeat(root.length)} ${a}`).join('\r\n')}\r\n\r\nSuccessfully processed 1 files; Failed processing 0 files\r\n`
+    const run = async (acl: string) => {
+      const calls: string[][] = []
+      const exec: AclExec = async (file, args) => {
+        calls.push(args)
+        if (file.endsWith('whoami.exe')) return { stdout: `"a","${SID}"` }
+        return { stdout: args.length === 1 ? acl : '' }
+      }
+      expect(await tightenDataDir(root, { platform: 'win32', exec })).toBe(1)
+      return calls.some((args) => args.includes('/reset'))
+    }
+    // Restricted at an earlier start: user and SYSTEM, nothing inherited.
+    expect(await run(read(['NT AUTHORITY\\SYSTEM:(OI)(CI)(F)', 'DESKTOP-X\\a:(OI)(CI)(F)']))).toBe(false)
+    // Still inheriting (a fresh folder, or inheritance turned back on), in any language.
+    expect(await run(read(['AUTORITE NT\\Système:(I)(OI)(CI)(F)', 'BUILTIN\\Utilisateurs:(I)(OI)(CI)(RX)']))).toBe(true)
+    // An answer it cannot read: walk.
+    expect(await run('')).toBe(true)
   })
 
   it('a partial reset is reported too', async () => {
@@ -114,7 +138,7 @@ describe('tightenDataDir on Windows', () => {
     root = await mkdtemp(join(tmpdir(), 'fremkit-perm-'))
     const { calls, exec } = fake(`"poste\\é, utilisateur","${SID}"\r\n`)
     expect(await tightenDataDir(root, { platform: 'win32', exec })).toBe(1)
-    expect(calls[1].args[3]).toBe(`*${SID}:(OI)(CI)F`)
+    expect(calls.find((c) => c.args.includes('/inheritance:r'))!.args[3]).toBe(`*${SID}:(OI)(CI)F`)
   })
 
   it('applies nothing when whoami answers something that is not a user SID', async () => {

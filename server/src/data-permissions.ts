@@ -89,6 +89,22 @@ async function icacls(exec: AclExec, args: string[]): Promise<void> {
 }
 
 /**
+ * Whether the folder still inherits from its parent, i.e. has not been restricted yet (or someone
+ * turned inheritance back on). One read-only icacls call: an inherited entry is marked `(I)`, in
+ * every language. An answer with no entry at all, or a failure, counts as "yes": the walk runs.
+ */
+async function inheritsFromParent(exec: AclExec, dir: string): Promise<boolean> {
+  let stdout: string
+  try {
+    stdout = (await exec(windowsTool('icacls'), [dir])).stdout
+  } catch {
+    return true
+  }
+  const entries = stdout.split(dir).join('').split(/\r?\n/).filter((line) => line.includes(':('))
+  return entries.length === 0 || entries.some((line) => line.includes('(I)'))
+}
+
+/**
  * Restricts a Windows folder to this user and SYSTEM, inherited by what it holds. True when
  * applied; false when not (off Windows, or a failure, reported once through `deps.log`).
  */
@@ -97,14 +113,19 @@ export async function restrictToUser(dir: string, deps: AclDeps = {}): Promise<b
   const exec = deps.exec ?? defaultExec
   try {
     const sid = await currentUserSid(exec, deps.exec === undefined)
+    // The walk below can take long on a big data folder, so it runs only while the folder is not
+    // restricted yet: once it is, what is created in it inherits the grant by itself.
+    const walk = deps.recurse !== false && (await readdir(dir).catch(() => [])).length > 0
+      && await inheritsFromParent(exec, dir)
     // The folder itself first: protected, user and SYSTEM only. No /T here: `/inheritance:r` on a
     // file strips what it inherited and the (OI)(CI) grant does not apply to a file, leaving an empty ACL.
     await icacls(exec, [dir, '/inheritance:r', '/grant:r', `*${sid}:(OI)(CI)F`, `*${SYSTEM_SID}:(OI)(CI)F`, '/C', '/Q'])
     // Then everything already in it goes back to inheriting from it (`/reset` also clears any
     // explicit entry). icacls expands the `*` itself; it fails on an empty folder, so only run it
-    // when there is something to reset.
-    if (deps.recurse !== false && (await readdir(dir).catch(() => [])).length > 0) {
-      await icacls(exec, [`${dir.replace(/[\\/]+$/, '')}\\*`, '/reset', '/T', '/C', '/Q'])
+    // when there is something to reset. `/L` acts on a symbolic link or junction itself, never on
+    // its target: a `widgets-dev` linked to a source tree keeps its own ACL.
+    if (walk) {
+      await icacls(exec, [`${dir.replace(/[\\/]+$/, '')}\\*`, '/reset', '/T', '/C', '/L', '/Q'])
     }
     return true
   } catch (error) {
