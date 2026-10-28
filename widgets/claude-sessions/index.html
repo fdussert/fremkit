@@ -20,7 +20,7 @@
 </style>
 <style>
   .wrap{justify-content:flex-start;gap:8px}
-  .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:8px;flex:1;align-content:start;overflow-y:auto;touch-action:pan-y;-webkit-overflow-scrolling:touch;padding-right:4px}
+  .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));grid-auto-rows:max-content;gap:8px;flex:1;align-content:start;overflow-y:auto;touch-action:pan-y;-webkit-overflow-scrolling:touch;padding-right:4px}
   .card{position:relative;border-radius:12px;padding:10px 12px;background:var(--surface-2, #1a1e24);border-left:6px solid var(--border-strong, #3a404a);display:flex;flex-direction:column;gap:4px;min-height:64px}
   .card.working{border-color:var(--accent, #d9b36a)}
   .card.permission{border-color:#f0a020;animation:pulse 1s infinite alternate}
@@ -28,15 +28,17 @@
   .card.error{border-color:var(--danger, #d9463f)}
   .card.idle{border-color:var(--border-strong, #3a404a);opacity:.7}
   @keyframes pulse{from{background:var(--surface-2, #1a1e24)}to{background:#3a2f14}}
-  .head{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
-  .badge{font-size:calc(12px * var(--text-scale, 1));text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted, #8b93a0);white-space:nowrap}
+  /* The title keeps room to be read: when the status and the app do not fit beside it at that
+     width ("attend ta permission" is long), they wrap under it rather than squeeze it. */
+  .head{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:baseline;gap:2px 8px}
+  .badge{font-size:calc(12px * var(--text-scale, 1));text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted, #8b93a0);white-space:nowrap;min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis}
   .line{font-size:calc(14px * var(--text-scale, 1));color:#c3c8d0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .meta{display:flex;gap:10px;font-size:calc(12px * var(--text-scale, 1));color:var(--text-muted, #8b93a0);align-items:center}
   .sub{background:var(--accent, #d9b36a);color:var(--on-accent,#0b0d10);border-radius:8px;padding:0 6px;font-size:calc(11px * var(--text-scale, 1))}
   [hidden]{display:none!important}
   .hdr{display:flex;justify-content:space-between;align-items:baseline;flex:0 0 auto}
   .stats{font-size:calc(12px * var(--text-scale, 1));color:var(--text-muted, #8b93a0);letter-spacing:.04em}
-  .title{font-size:calc(18px * var(--text-scale, 1));font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .title{flex:1 1 7em;min-width:7em;max-width:100%;font-size:calc(18px * var(--text-scale, 1));font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .where{font-size:calc(12px * var(--text-scale, 1));color:var(--text-muted, #8b93a0);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .foot{display:flex;align-items:center;gap:8px;margin-top:auto;font-family:var(--font-mono, ui-monospace,SFMono-Regular,Menlo,monospace);font-size:calc(13px * var(--text-scale, 1));color:#c3c8d0;background:#0f1216;border-radius:8px;padding:5px 8px}
   .foot .model{color:var(--text, #e6e8eb);font-weight:600}
@@ -48,6 +50,7 @@
   .card.permission .go{color:#f0a020}
   /* The button sits over the top-right corner, so the badge stops short of it. */
   .card .head{padding-right:44px}
+  .tags{display:flex;align-items:baseline;gap:8px;min-width:0;max-width:100%}
   .client{font-size:calc(11px * var(--text-scale, 1));color:var(--text-muted, #8b93a0);border:1px solid var(--border-strong, #3a404a);border-radius:6px;padding:0 5px;white-space:nowrap}
   .group{grid-column:1/-1;font-size:calc(12px * var(--text-scale, 1));text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted, #8b93a0);padding:6px 2px 0}
   .q{font-size:calc(14px * var(--text-scale, 1));color:var(--text, #e6e8eb);white-space:normal}.q b{display:block;font-size:calc(12px * var(--text-scale, 1));color:#f0a020;text-transform:uppercase;letter-spacing:.06em}.q ul{margin:2px 0 0 16px;padding:0;color:#c3c8d0;font-size:calc(13px * var(--text-scale, 1))}
@@ -126,7 +129,7 @@
   function build(s) {
     var card = document.createElement('div')
     card.setAttribute('data-id', s.sessionId)
-    card.innerHTML = '<div class="head"><span class="title"></span><span class="badge"></span><span class="client"></span></div><button class="go" type="button"></button><div class="where"></div><div class="q"></div><div class="line"></div><div class="meta"></div><div class="foot"></div>'
+    card.innerHTML = '<div class="head"><span class="title"></span><span class="tags"><span class="badge"></span><span class="client"></span></span></div><button class="go" type="button"></button><div class="where"></div><div class="q"></div><div class="line"></div><div class="meta"></div><div class="foot"></div>'
     return card
   }
   function update(card, s, now) {

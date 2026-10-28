@@ -77,6 +77,9 @@ tagged `vX.Y.Z`.
 
 ### Fixed
 
+- **Claude sessions keeps a session's name readable.** A long status such as "attend ta
+  permission" squeezed the name to a single letter on a narrow card; the status and the
+  application now move under the name instead.
 - **Backgrounds with dots at the end of their name.** A background uploaded from a file called,
   say, "a..png" was saved under a name the dashboard then refused: it never showed in the
   library and could not be deleted. It is now saved under a clean name.
