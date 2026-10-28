@@ -61,6 +61,8 @@ tagged `vX.Y.Z`.
 
 ### Changed
 
+- **The Disks widget says "available", as macOS does.** The space left on a disk reads "120 GB
+  available" ("120 Go disponibles") instead of "free".
 - **Paired devices are filed as tablets.** Fremkit now records a paired iPad as a tablet and
   notes which platform it runs, ready for tablets other than the iPad. Nothing changes for an
   iPad already paired. Going back to an older version of Fremkit afterwards sets the list of
