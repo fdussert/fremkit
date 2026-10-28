@@ -1,7 +1,7 @@
 import type { Provider } from './types.js'
 import { execCommand, type Exec } from './exec.js'
 import { targetPlatform } from '../platform/index.js'
-import { sharedHost, type HostDefaultRoute, type HostWifi } from '../win/powershell-host.js'
+import { HostError, sharedHost, type HostDefaultRoute, type HostWifi } from '../win/powershell-host.js'
 
 /** How many samples the snapshot carries, so a freshly opened widget draws a graph at once. */
 export const NETWORK_HISTORY = 60
@@ -30,6 +30,8 @@ export interface NetworkDeps {
 
 /** How long a Windows adapter's SSID stands before it is read again. */
 export const WINDOWS_DETAILS_TTL_MS = 30_000
+/** `network.wifi` answers that hold until something changes on the machine: kept like a name. */
+const LASTING_WIFI_CODES = new Set(['location-denied', 'no-wifi'])
 /** `network.default` reads the route table and the adapter's counters in process. */
 const ROUTE_TIMEOUT_MS = 4000
 /** `network.wifi` runs netsh, which may take its whole 4 s budget. */
@@ -189,13 +191,16 @@ export function createNetworkProvider(exec: Exec = execCommand, deps: NetworkDep
         if (known && Date.now() - known.at < WINDOWS_DETAILS_TTL_MS) {
           ssid = known.ssid
         } else {
-          // No SSID (no Wi-Fi service, Location denied, netsh slow) costs the name, not the snapshot;
-          // a failed read is not kept, and the adapter's last name stands meanwhile.
+          // No SSID (no Wi-Fi service, Location denied, netsh slow) costs the name, not the snapshot.
+          // An answer that will not change soon (`location-denied`, `no-wifi`) is kept as long as a
+          // name is, so netsh does not hold the serial host on every poll; a timeout or a lost host
+          // is retried on the next poll, with the adapter's last name standing meanwhile.
           try {
             ssid = (await host.call<HostWifi>('network.wifi', undefined, WIFI_TIMEOUT_MS)).ssid ?? undefined
             wifi = { iface, ...(ssid ? { ssid } : {}), at: Date.now() }
-          } catch {
+          } catch (e) {
             ssid = known?.ssid
+            if (e instanceof HostError && LASTING_WIFI_CODES.has(e.code)) wifi = { iface, ...(ssid ? { ssid } : {}), at: Date.now() }
           }
         }
       }

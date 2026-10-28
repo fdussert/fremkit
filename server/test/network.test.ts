@@ -1,3 +1,4 @@
+import { HostError } from '../src/win/powershell-host.js'
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
@@ -257,6 +258,19 @@ describe('network provider on Windows', () => {
     expect(((await provider.poll!()) as NetworkSnapshot).ssid).toBe('Example Net')
     await provider.poll!()
     expect(wifiCalls(f)).toBe(4)
+  })
+
+  it.each(['location-denied', 'no-wifi'])('keeps a %s answer for the TTL instead of running netsh every poll', async (code) => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-01-01T00:00:00Z'))
+    const f = fakes()
+    f.state.wifi.mockRejectedValueOnce(new HostError(code))
+    const provider = createNetworkProvider(undefined, { platform: 'win32', host: f.host })
+    for (let i = 0; i < 5; i++) expect(((await provider.poll!()) as NetworkSnapshot).ssid).toBeUndefined()
+    expect(wifiCalls(f)).toBe(1)
+    vi.setSystemTime(new Date('2026-01-01T00:00:31Z'))
+    expect(((await provider.poll!()) as NetworkSnapshot).ssid).toBe('Example Net')
+    expect(wifiCalls(f)).toBe(2)
   })
 
   it('never touches the host on macOS', async () => {
