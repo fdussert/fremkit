@@ -579,8 +579,11 @@ A widget cannot resize its own iframe, so a setting that needs more room is decl
 `compactCities`, which widen it to eight cells.
 
 A bar widget may also be marked **Full widget on touch** in the admin. Touching it then opens the
-same widget, at its manifest's `defaultSize`, in a popover above the bar — so a widget with a
-compact rendering should still be worth looking at as a tile.
+same widget, sized from its manifest's `defaultSize`, in a popover above the bar — so a widget with a
+compact rendering should still be worth looking at as a tile. The user picks the popover's shape
+(`popupCells` in `ui/src/shared/popover.ts`): *Standard* is as wide as the tile and half again as
+tall, *Low and wide* twice as wide and as tall as the tile, *Large* half again as wide and twice
+as tall, each clamped to the screen. A widget that reads `Fremkit.size` lays out for all three.
 
 ## Examples
 

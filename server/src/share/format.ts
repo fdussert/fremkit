@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import {
   AccentModeSchema, AdminGestureSchema, BackgroundFitSchema, HEX_COLOR_RE, MAX_NAV_WIDGETS, MAX_WIDGET_DIM,
-  NavHeightSchema, NavSlotSchema, NavStyleSchema, OpacitySchema, ThemeIdSchema, WIDGET_ID_RE,
+  NavHeightSchema, NavSlotSchema, PopupSizeSchema, NavStyleSchema, OpacitySchema, ThemeIdSchema, WIDGET_ID_RE,
 } from '../config/schema.js'
 
 /**
@@ -120,6 +120,7 @@ export const SharedNavItemSchema = z.object({
   widget: WidgetKey,
   slot: NavSlotSchema.default('left'),
   popup: z.boolean().optional(),
+  popupSize: PopupSizeSchema.optional(),
 })
 
 /**

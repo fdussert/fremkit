@@ -63,7 +63,12 @@ export interface NavItem {
   instanceId: string; slot: NavSlot
   /** Touching it opens a popover with the same widget in full; absent means the touch reaches the widget. */
   popup?: boolean
+  /** The popover's shape while `popup` is on; absent is the standard one (`popupCells`). */
+  popupSize?: PopupSize
 }
+/** Mirrors the server schema: the popover shapes besides the standard one. */
+export type PopupSize = 'wide' | 'large'
+export const POPUP_SIZES: PopupSize[] = ['wide', 'large']
 /** Mirrors the server schema; absent means the plain theme background. */
 export interface Background { color?: string; image?: string; fit?: BackgroundFit }
 /** Mirrors the server schema: the two heights the navigation bar may take. */
@@ -724,7 +729,7 @@ export interface SharedWidget {
 }
 export interface SharedPlacement { widget: string; x: number; y: number; w: number; h: number; locked?: boolean }
 export interface SharedPage { name: string; items: SharedPlacement[]; background?: SharedBackground }
-export interface SharedNavItem { widget: string; slot: NavSlot; popup?: boolean }
+export interface SharedNavItem { widget: string; slot: NavSlot; popup?: boolean; popupSize?: PopupSize }
 export type SharedDisplay = Omit<ScreenDisplay, 'background'> & { background?: SharedBackground }
 export interface SharedScreen { name: string; kind: 'edge' | 'device'; display: SharedDisplay; nav: SharedNavItem[]; pages: SharedPage[] }
 export interface LayoutFile {

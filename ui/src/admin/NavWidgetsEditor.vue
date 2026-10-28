@@ -13,7 +13,7 @@ import BaseSegmented from '../shared/ui/BaseSegmented.vue'
 import CopySettingsFrom from './CopySettingsFrom.vue'
 import SettingsForm from './SettingsForm.vue'
 import { pick, useI18n } from '../shared/i18n'
-import { NAV_SLOTS, navItemsOf, type NavSlot } from '../shared/types'
+import { NAV_SLOTS, POPUP_SIZES, navItemsOf, type NavSlot, type PopupSize } from '../shared/types'
 import { useAdminStore } from './store'
 import { offeredManifests } from './labs'
 import { widgetDelete, widgetDeleteKey } from './widgetDelete'
@@ -33,6 +33,11 @@ const navWidgets = computed(() => navItemsOf(s.screen.value!).map((item) => {
 const SLOT_OPTIONS = computed(() => NAV_SLOTS.map((value) => ({
   value, label: t(`admin.inspector.screen.navWidgets.slot.${value}`),
 })))
+/** The standard shape is the absence of the key, like `popup` off. */
+const POPUP_SIZE_OPTIONS = computed(() => [
+  { value: '', label: t('admin.inspector.screen.navWidgets.popupSize.standard') },
+  ...POPUP_SIZES.map((value) => ({ value, label: t(`admin.inspector.screen.navWidgets.popupSize.${value}`) })),
+])
 /** Reordering happens within a side, so the arrows disable at the ends of that side only. */
 const sameSide = (slot: NavSlot) => navWidgets.value.filter((w) => w.slot === slot)
 const sidePosition = (id: string, slot: NavSlot): number => sameSide(slot).findIndex((w) => w.instanceId === id)
@@ -70,7 +75,10 @@ function remove(instanceId: string): void {
  * config file it already had.
  */
 function onPopup(instanceId: string, value: boolean): void {
-  s.updateNavWidget(instanceId, { popup: value || undefined })
+  s.updateNavWidget(instanceId, value ? { popup: true } : { popup: undefined, popupSize: undefined })
+}
+function onPopupSize(instanceId: string, value: string): void {
+  s.updateNavWidget(instanceId, { popupSize: (value || undefined) as PopupSize | undefined })
 }
 
 /** One emit per edited key, exactly as the widget inspector does, so each is one undo step. */
@@ -124,6 +132,10 @@ function onSetting(instanceId: string, key: string, value: unknown): void {
       <BaseCheckbox class="popup" :model-value="w.popup === true"
         :label="t('admin.inspector.screen.navWidgets.popup')"
         @update:model-value="onPopup(w.instanceId, $event)" />
+      <!-- The popover's shape: the tile's, lower and wider, or larger. -->
+      <BaseSegmented v-if="w.popup" class="popup-size" :model-value="w.popupSize ?? ''" :options="POPUP_SIZE_OPTIONS"
+        :aria-label="t('admin.inspector.screen.navWidgets.popupSize.label')"
+        @update:model-value="onPopupSize(w.instanceId, $event as string)" />
       <!-- The GIF board's collection is edited in its own panel; a board kept only in the bar
            still needs the way in a tile's inspector gives. -->
       <BaseButton v-if="w.widgetId === 'gif-board'" class="gifs-open" @click="s.openModal('gifs')">{{ t('admin.gifs.open') }}</BaseButton>
@@ -158,6 +170,7 @@ h3 { font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: .08em; 
 /* The checkbox brings its own bottom margin, which is too much inside a compact row. */
 .popup { margin: var(--space-1) 0 0; }
 .gifs-open { margin: var(--space-2) 0 0; }
+.popup-size { margin: var(--space-1) 0 0; }
 .slot :deep(button) { padding: 3px 6px; }
 .name { flex: 1; min-width: 0; display: flex; align-items: center; justify-content: space-between; gap: var(--space-1);
   font: inherit; font-size: var(--fs-sm); color: var(--text); text-align: left; cursor: pointer;

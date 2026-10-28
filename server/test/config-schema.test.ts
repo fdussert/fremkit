@@ -425,6 +425,12 @@ describe('the navigation bar', () => {
     expect(NavItemSchema.parse({ instanceId: 'a', popup: false }).popup).toBe(false)
     expect(() => NavItemSchema.parse({ instanceId: 'a', popup: 'yes' })).toThrow()
   })
+  it('keeps a popover shape from the closed list, and refuses any other', () => {
+    expect(NavItemSchema.parse({ instanceId: 'a', popup: true }).popupSize).toBeUndefined()
+    expect(NavItemSchema.parse({ instanceId: 'a', popup: true, popupSize: 'wide' }).popupSize).toBe('wide')
+    expect(NavItemSchema.parse({ instanceId: 'a', popup: true, popupSize: 'large' }).popupSize).toBe('large')
+    expect(() => NavItemSchema.parse({ instanceId: 'a', popupSize: 'huge' })).toThrow()
+  })
   it('carries no widget settings: those live in `widgets`', () => {
     expect(NavItemSchema.parse({ instanceId: 'a', widgetId: 'clock', settings: { x: 1 } })).toEqual({ instanceId: 'a', slot: 'left' })
   })

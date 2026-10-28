@@ -308,7 +308,8 @@ title and no tile of its own. Ten of the built-ins have one: `clock`, `weather`,
 widgets bring their own — `github-inbox`, `homey-devices` and the two Synology ones have one too.
 
 **Full widget on touch.** A bar widget can be marked for a popover: touching it opens the same
-widget at its full default size above the bar. It closes on a second touch, on a touch outside it,
+widget at its full default size above the bar, in one of three shapes: *Standard*, *Low and wide*
+or *Large*. It closes on a second touch, on a touch outside it,
 on a page change, or after fifteen seconds.
 
 ![A compact Claude limits widget in the bar, opened as a full popover above it](docs/images/popover.png)

@@ -8,7 +8,7 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useWidgetBridge } from '../shared/useWidgetBridge'
 import { pick, useI18n } from '../shared/i18n'
-import { popoverRect, type Anchor } from '../shared/popover'
+import { popoverRect, popupCells, type Anchor } from '../shared/popover'
 import { compactOf } from '../shared/screens'
 import type { Config, NavItem, WidgetInstance, WidgetManifest } from '../shared/types'
 
@@ -35,17 +35,10 @@ const TITLE_H = 26
 const root = ref<HTMLElement>()
 const iframe = ref<HTMLIFrameElement>()
 
-/**
- * A popover is looked at up close and for a moment, so it gets half again the height the widget
- * asks for as a tile: the default tile size is drawn for a wall of tiles, and a four-cell-high
- * strip plus a caption came out cramped.
- */
-const POPUP_HEIGHT_SCALE = 1.5
-
-/** The size the widget asks for as a tile, in cells, stretched for the popover, plus the caption. */
+/** The shape the bar item asks for, from the widget's tile size (`popupCells`), plus the caption. */
 const size = computed(() => {
-  const [w, h] = props.manifest?.defaultSize ?? [8, 4]
-  return { width: w * props.cell, height: Math.round(h * props.cell * POPUP_HEIGHT_SCALE) + TITLE_H }
+  const { w, h } = popupCells(props.manifest?.defaultSize ?? [8, 4], props.item.popupSize)
+  return { width: w * props.cell, height: Math.round(h * props.cell) + TITLE_H }
 })
 const box = computed(() => popoverRect(props.anchor, size.value, props.screen))
 const style = computed<Record<string, string>>(() => ({

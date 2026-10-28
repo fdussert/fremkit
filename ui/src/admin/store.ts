@@ -144,7 +144,7 @@ export interface NewScreen {
 }
 
 /** What `updateNavWidget` takes: the bar entry's own keys, and the shared widget's settings. */
-export type NavWidgetPatch = Partial<Pick<NavItem, 'slot' | 'popup'>> & { settings?: Record<string, unknown> }
+export type NavWidgetPatch = Partial<Pick<NavItem, 'slot' | 'popup' | 'popupSize'>> & { settings?: Record<string, unknown> }
 
 export interface StoreDeps {
   api: AdminApi

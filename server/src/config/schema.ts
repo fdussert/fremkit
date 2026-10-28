@@ -176,6 +176,13 @@ export const MAX_NAV_WIDGETS = 12
 
 /** Which side of the centred dots a bar widget sits on. */
 export const NavSlotSchema = z.enum(['left', 'right'])
+
+/**
+ * The shape of a bar widget's popover, against the widget's default tile size: `wide` is twice as
+ * wide and no taller than the tile, `large` half again as wide and twice as tall. Absent is the
+ * standard shape, as wide as the tile and half again as tall.
+ */
+export const PopupSizeSchema = z.enum(['wide', 'large'])
 export type NavSlot = z.infer<typeof NavSlotSchema>
 
 /**
@@ -192,6 +199,8 @@ export const NavItemSchema = z.object({
    * no popover, so the touch reaches the compact widget itself, which is the default everywhere.
    */
   popup: z.boolean().optional(),
+  /** Read only while `popup` is on. */
+  popupSize: PopupSizeSchema.optional(),
 })
 
 /**

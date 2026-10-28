@@ -200,6 +200,16 @@ it('carries an empty free-text field as is, without asking', async () => {
     await expect(buildLayout(deps(sampleConfig()), { scope: 'screen', screenId: 'nope' })).rejects.toThrow()
   })
 
+  it('exports a bar widget\'s popover and its shape, and no shape without the popover', async () => {
+    const config = sampleConfig()
+    config.screens[0].nav = [{ instanceId: 'sc-1', slot: 'right', popup: true, popupSize: 'wide' }]
+    expect((await buildLayout(deps(config), { scope: 'screen', screenId: 'edge' })).file.screens[0].nav)
+      .toEqual([{ widget: 'w3', slot: 'right', popup: true, popupSize: 'wide' }])
+    config.screens[0].nav = [{ instanceId: 'sc-1', slot: 'right', popupSize: 'wide' }]
+    expect((await buildLayout(deps(config), { scope: 'screen', screenId: 'edge' })).file.screens[0].nav)
+      .toEqual([{ widget: 'w3', slot: 'right' }])
+  })
+
   it('leaves out images over the size cap', async () => {
     const big = Buffer.concat([PNG, Buffer.alloc(MAX_SHARED_IMAGE_BYTES)])
     const { file, report } = await buildLayout(deps(sampleConfig(), { 'upload-photo.png': big }), { scope: 'page', pageId: 'home' })

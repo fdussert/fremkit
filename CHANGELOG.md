@@ -14,6 +14,10 @@ tagged `vX.Y.Z`.
 
 ### Added
 
+- **Shape of a bar widget's popover.** A bar widget opened in full on touch can now open *Low and
+  wide* or *Large* as well as in the standard shape: pick it under the widget in the navigation
+  bar's list.
+
 - **Tile icons.** A tile's title can show an icon: a pictogram from the built-in set, or your own
   SVG, PNG or WebP, tinted to the theme or in its own colours. Under **/admin**, select a tile,
   then **Icon**. Fremkit ships no brand logos; the marks you import stay in your installation.

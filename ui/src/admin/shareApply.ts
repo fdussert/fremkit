@@ -116,7 +116,10 @@ export function mergeLayout(
         ...(b ? { background: b } : {}),
       })
     }
-    const nav = screen.nav.filter((n) => ids[n.widget]).map((n) => ({ instanceId: ids[n.widget], slot: n.slot, ...(n.popup ? { popup: true } : {}) }))
+    const nav = screen.nav.filter((n) => ids[n.widget]).map((n) => ({
+      instanceId: ids[n.widget], slot: n.slot,
+      ...(n.popup ? { popup: true, ...(n.popupSize ? { popupSize: n.popupSize } : {}) } : {}),
+    }))
     return { pages, nav }
   }
 
