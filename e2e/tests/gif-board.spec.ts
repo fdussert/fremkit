@@ -53,3 +53,32 @@ test('the GIF panel collects a pasted Giphy address into a new group, removes it
     { id: expect.any(String), kind: 'giphy', giphyId: 'abc123' },
   ])
 })
+
+test.describe('with three groups', () => {
+  const ordered = (): ConfigSeed => {
+    const c = seed()
+    c.gifs = { groups: ['One', 'Two', 'Three'].map((name, i) => ({ id: `group${i}aaaa`, name, items: [] })) }
+    return c
+  }
+  test.use({ seed: ordered() })
+
+  test('a group dragged by its header lands where the line shows, and undo puts it back', async ({ page, openAdmin, savedConfig }) => {
+    await openAdmin()
+    await tile(page, 'gifs-1').click()
+    await page.getByRole('button', { name: 'Manage the GIFs…' }).click()
+    const header = (name: string) => panel(page).locator('header', { hasText: name })
+    const from = await header('Three').boundingBox()
+    const to = await header('One').boundingBox()
+    if (!from || !to) throw new Error('no header')
+    await page.mouse.move(from.x + 20, from.y + from.height / 2)
+    await page.mouse.down()
+    await page.mouse.move(from.x + 20, from.y - 10, { steps: 4 })
+    await page.mouse.move(to.x + 20, to.y + 2, { steps: 8 })
+    await page.mouse.up()
+    const names = async () => (await groups(savedConfig)).map((g) => g.name)
+    await expect.poll(names).toEqual(['Three', 'One', 'Two'])
+
+    await page.keyboard.press('ControlOrMeta+z')
+    await expect.poll(names).toEqual(['One', 'Two', 'Three'])
+  })
+})

@@ -3,19 +3,20 @@
  * The GIF board panel's left column: the groups, each with its thumbnails.
  *
  * Thumbnails drag (pointer events, as the pages list's rows do) to reorder within a group or move
- * to another; a group's `+` asks the panel to point its paste field at that group. A
+ * to another, and a group drags by its header to reorder the groups; a group's `+` asks the panel to point its paste field at that group. A
  * group's name and a GIF's label are edited inline, from the right-click menus (`gifMenus.ts`) or
  * a double click. Every edit is one `apply()`.
  */
-import { nextTick, onUnmounted, ref } from 'vue'
+import { computed, nextTick, onUnmounted, ref } from 'vue'
 import BaseButton from '../shared/ui/BaseButton.vue'
 import BaseIcon from '../shared/ui/BaseIcon.vue'
 import { useI18n } from '../shared/i18n'
 import { openContextMenu } from '../shared/ui/contextMenu'
 import type { GifGroup } from '../shared/types'
-import { MAX_GROUPS, MAX_LABEL, MAX_NAME, moveItem, renameGroup, setLabel, thumbOf } from './gifBoard'
+import { MAX_GROUPS, MAX_LABEL, MAX_NAME, moveGroup, moveItem, renameGroup, setLabel, thumbOf } from './gifBoard'
 import { dropMarker, gridDropIndex } from './gifDrag'
 import { gifGroupMenu, gifItemMenu, type GifMenuUi } from './gifMenus'
+import { dropIndex } from './pageDrag'
 import { useAdminStore } from './store'
 
 const props = defineProps<{ groups: GifGroup[]; target: string }>()
@@ -114,6 +115,9 @@ function endDrag(): void {
   pressed = null
   drag.value = null
   over.value = null
+  groupPressed = null
+  groupDrag.value = null
+  groupOver.value = null
   window.removeEventListener('keydown', onDragKey, true)
 }
 function onDragKey(e: KeyboardEvent): void {
@@ -124,6 +128,55 @@ function onDragKey(e: KeyboardEvent): void {
   endDrag()
 }
 onUnmounted(endDrag)
+
+/**
+ * A group drags by its header, the same way, along the column: the release puts it at the index
+ * the line shows. The click a drag's release produces does not also make it the target group.
+ */
+const groupDrag = ref<{ id: string; from: number } | null>(null)
+const groupOver = ref<number | null>(null)
+let groupPressed: { id: string; from: number; x: number; y: number; pointer: number; el: HTMLElement } | null = null
+let swallowClick = false
+
+function onGroupDown(e: PointerEvent, from: number, id: string): void {
+  if (e.button !== 0 || editing.value) return
+  if ((e.target as HTMLElement).closest('input, button')) return
+  groupPressed = { id, from, x: e.clientX, y: e.clientY, pointer: e.pointerId, el: e.currentTarget as HTMLElement }
+}
+function onGroupMove(e: PointerEvent): void {
+  if (!groupPressed || e.pointerId !== groupPressed.pointer) return
+  if (!groupDrag.value) {
+    if (Math.hypot(e.clientX - groupPressed.x, e.clientY - groupPressed.y) < DRAG_THRESHOLD) return
+    groupDrag.value = { id: groupPressed.id, from: groupPressed.from }
+    try { groupPressed.el.setPointerCapture(e.pointerId) } catch { /* the pointer is already gone */ }
+    groupPressed.el.focus({ preventScroll: true })
+    window.addEventListener('keydown', onDragKey, true)
+  }
+  const boxes = [...(root.value?.querySelectorAll<HTMLElement>('section.group') ?? [])].map((el) => el.getBoundingClientRect())
+  groupOver.value = dropIndex(boxes, e.clientY, groupDrag.value.from)
+}
+function onGroupUp(e: PointerEvent): void {
+  if (!groupPressed || e.pointerId !== groupPressed.pointer) return
+  const d = groupDrag.value
+  const to = groupOver.value
+  endDrag()
+  if (!d) return
+  // The click that follows this release comes before any timer.
+  swallowClick = true
+  setTimeout(() => { swallowClick = false })
+  if (to === null || to === d.from) return
+  s.apply((c) => { if (c.gifs) moveGroup(c.gifs, d.id, to) })
+}
+function onHeaderClick(groupId: string): void {
+  if (swallowClick) return
+  emit('target', groupId)
+}
+/** Where the group drop line goes: before one group's id, `null` after the last. */
+const groupMarker = computed(() => {
+  const d = groupDrag.value
+  if (!d || groupOver.value === null) return undefined
+  return dropMarker(props.groups.map((g) => g.id), d.id, groupOver.value)
+})
 
 /** Where the drop line goes in group `g`: before one thumbnail's id, `null` after the last. */
 function markerOf(g: GifGroup): string | null | undefined {
@@ -139,8 +192,14 @@ defineExpose({ rename: (groupId: string) => void startEdit('name', groupId) })
 <template>
   <div ref="root" class="groups">
     <p v-if="!groups.length" class="empty">{{ t('admin.gifs.empty') }}</p>
-    <section v-for="g in groups" :key="g.id" class="group" :data-gif-group="g.id" :class="{ on: g.id === target }">
-      <header @click="emit('target', g.id)" @contextmenu="openContextMenu($event, gifGroupMenu(s, g.id, ui))">
+    <section v-for="(g, gi) in groups" :key="g.id" class="group" :data-gif-group="g.id"
+      :class="{ on: g.id === target, lifted: groupDrag?.id === g.id, 'drop-before': groupMarker === g.id,
+        'drop-after': groupMarker === null && gi === groups.length - 1 }">
+      <!-- data-overlay while lifted: the Escape that drops the drag must not also close the dialog. -->
+      <header :title="t('admin.gifs.dragGroup')" tabindex="-1" :data-overlay="groupDrag?.id === g.id ? '' : undefined"
+        :class="{ dragging: !!groupDrag }"
+        @click="onHeaderClick(g.id)" @contextmenu="openContextMenu($event, gifGroupMenu(s, g.id, ui))"
+        @pointerdown="onGroupDown($event, gi, g.id)" @pointermove="onGroupMove" @pointerup="onGroupUp" @pointercancel="endDrag">
         <!-- data-overlay: Escape here cancels the edit and must not also close the dialog. -->
         <input v-if="editing?.kind === 'name' && editing.id === g.id" class="inline" :value="g.name" :maxlength="MAX_NAME"
           :aria-label="t('admin.gifs.groupName')" data-overlay
@@ -177,7 +236,14 @@ defineExpose({ rename: (groupId: string) => void startEdit('name', groupId) })
 .empty { margin: 0; color: var(--text-muted); font-size: var(--fs-sm); }
 .group { border: 1px solid var(--border); border-radius: var(--radius-md, 8px); padding: var(--space-2); }
 .group.on { border-color: var(--accent); }
-header { display: flex; align-items: center; gap: var(--space-2); min-height: 28px; cursor: pointer; margin-bottom: var(--space-2); }
+header { display: flex; align-items: center; gap: var(--space-2); min-height: 28px; cursor: grab; margin-bottom: var(--space-2);
+  touch-action: none; user-select: none; -webkit-user-select: none; }
+header:focus { outline: none; }
+header.dragging { cursor: grabbing; }
+.group.lifted { opacity: .4; }
+/* The line the lifted group lands on: above a group, or under the last one. */
+.group.drop-before { box-shadow: 0 -3px 0 var(--accent); }
+.group.drop-after { box-shadow: 0 3px 0 var(--accent); }
 .name { flex: 1; min-width: 0; font-weight: 600; font-size: var(--fs-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .count { color: var(--text-muted); font-size: var(--fs-xs); }
 input.inline { flex: 1; min-width: 0; box-sizing: border-box; font: inherit; font-size: var(--fs-sm); color: var(--text);

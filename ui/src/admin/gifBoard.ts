@@ -58,6 +58,14 @@ export function renameGroup(b: GifBoard, groupId: string, name: string): void {
   if (group && clean) group.name = clean
 }
 
+/** Moves a group to `toIndex` — its index once moved, clamped to the end. */
+export function moveGroup(b: GifBoard, groupId: string, toIndex: number): void {
+  const from = b.groups.findIndex((g) => g.id === groupId)
+  if (from < 0) return
+  const [group] = b.groups.splice(from, 1)
+  b.groups.splice(Math.max(0, Math.min(toIndex, b.groups.length)), 0, group)
+}
+
 export function removeGroup(b: GifBoard, groupId: string): void {
   b.groups = b.groups.filter((g) => g.id !== groupId)
 }

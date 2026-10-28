@@ -192,6 +192,7 @@ export const en: Record<string, string> = {
   'admin.gifs.giphyLink': 'This Giphy link holds no GIF id: find the GIF with the Giphy search instead.',
   'admin.gifs.empty': 'No group yet. Create one to start your collection.',
   'admin.gifs.drag': 'Drag to reorder or move to another group; right-click for more',
+  'admin.gifs.dragGroup': 'Click to add to this group, drag to reorder the groups; right-click for more',
 
   'admin.topbar.openMarketplace': 'Browse the widget registry',
   'admin.market.view.available': 'Available',

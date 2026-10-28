@@ -4,7 +4,7 @@ import { createAdminStore } from '../src/admin/store'
 import { setLocale } from '../src/shared/i18n'
 import { isSeparator, type MenuEntry, type MenuItem } from '../src/shared/ui/contextMenu'
 import {
-  MAX_GROUPS, MAX_ITEMS, addGroup, addItem, findGiphy, giphyThumbUrl, linkThumbUrl, moveItem, newId,
+  MAX_GROUPS, MAX_ITEMS, addGroup, addItem, findGiphy, giphyThumbUrl, linkThumbUrl, moveGroup, moveItem, newId,
   removeGroup, removeItem, renameGroup, setLabel,
 } from '../src/admin/gifBoard'
 import type { Config, GifBoard } from '../src/shared/types'
@@ -62,6 +62,21 @@ describe('gif board edits', () => {
     const b: GifBoard = { groups: [{ id: 'groupaaaa1', name: 'G', items: [] }] }
     for (let i = 0; i < MAX_ITEMS; i++) addItem(b, 'groupaaaa1', { kind: 'giphy', giphyId: `G${i}` })
     expect(addItem(b, 'groupaaaa1', { kind: 'giphy', giphyId: 'Z' })).toBe('')
+  })
+
+  it('moves a group to an index, past the end landing last', () => {
+    const b = board()
+    b.groups.push({ id: 'groupcccc1', name: 'C', items: [] })
+    const order = () => b.groups.map((g) => g.id)
+    moveGroup(b, 'groupaaaa1', 2)
+    expect(order()).toEqual(['groupbbbb1', 'groupcccc1', 'groupaaaa1'])
+    moveGroup(b, 'groupaaaa1', 0)
+    expect(order()).toEqual(['groupaaaa1', 'groupbbbb1', 'groupcccc1'])
+    moveGroup(b, 'groupbbbb1', 99)
+    expect(order()).toEqual(['groupaaaa1', 'groupcccc1', 'groupbbbb1'])
+    moveGroup(b, 'gone', 0)
+    expect(order()).toEqual(['groupaaaa1', 'groupcccc1', 'groupbbbb1'])
+    expect(b.groups[2].items.length).toBeGreaterThan(0)
   })
 
   it('moves an item within its group and to another, at an index', () => {
