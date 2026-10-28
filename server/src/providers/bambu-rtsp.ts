@@ -1,9 +1,10 @@
 import { execFileSync, spawn } from 'node:child_process'
 import { accessSync, constants, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, win32 } from 'node:path'
 import type { BambuCamera, BambuCameraState, BambuFrame } from './bambu-camera.js'
 import { tr } from '../i18n.js'
+import { ABSOLUTE_WINDOWS, targetPlatform } from '../platform/index.js'
 
 /**
  * The chamber camera of an X1 or H2 printer, in LAN mode.
@@ -45,10 +46,29 @@ const executable = (path: string): boolean => {
  *
  * PATH first so a user who installed their own build gets it, then the usual package-manager
  * locations, because a server started by launchd inherits a PATH that has none of them.
+ *
+ * On Windows only absolute `X:\\…` PATH entries count, and only `ffmpeg.exe` in them: a POSIX path
+ * such as `/opt/homebrew/bin/ffmpeg` is drive-relative there (`C:\\opt\\…`, a folder any local
+ * account may create), and a relative entry is the current folder. No fallback list either.
  */
-export function resolveFfmpeg(env: NodeJS.ProcessEnv = process.env): string | null {
+export function resolveFfmpeg(env: NodeJS.ProcessEnv = process.env, platform: NodeJS.Platform = process.platform): string | null {
+  if (targetPlatform(platform) === 'win32') return resolveWindowsFfmpeg(env)
   const fromPath = (env.PATH ?? '').split(':').filter(Boolean).map((dir) => join(dir, 'ffmpeg'))
   for (const candidate of [...fromPath, ...FFMPEG_FALLBACK_PATHS]) {
+    if (executable(candidate)) return candidate
+  }
+  return null
+}
+
+function resolveWindowsFfmpeg(env: NodeJS.ProcessEnv): string | null {
+  // Windows names it `Path`; a plain object from a test may use any case.
+  const key = Object.keys(env).find((k) => k.toLowerCase() === 'path')
+  const value = key === undefined ? '' : (env[key] ?? '')
+  // `path.win32.delimiter` (`;`): `path.delimiter` on Windows, and the same on a Mac running the test.
+  for (const entry of value.split(win32.delimiter)) {
+    const dir = entry.trim().replace(/^"(.*)"$/, '$1')
+    if (!ABSOLUTE_WINDOWS.test(dir)) continue
+    const candidate = win32.join(dir, 'ffmpeg.exe')
     if (executable(candidate)) return candidate
   }
   return null

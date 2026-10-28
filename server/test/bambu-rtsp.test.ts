@@ -1,3 +1,5 @@
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
@@ -88,6 +90,35 @@ describe('ffmpegArgs', () => {
 })
 
 describe('resolveFfmpeg', () => {
+  it('on Windows looks only for ffmpeg.exe in absolute X:\\ PATH entries, with no POSIX fallback', () => {
+    // A POSIX fallback like /usr/bin/ffmpeg is drive-relative on Windows (C:\\usr\\bin\\ffmpeg.exe).
+    // On the Mac running this test, no `X:\\…` path exists, so every candidate is refused.
+    expect(resolveFfmpeg({ Path: '/usr/bin;/opt/homebrew/bin;.;relative\\bin;C:\\nowhere-fremkit' } as NodeJS.ProcessEnv, 'win32')).toBeNull()
+  })
+
+  it.runIf(process.platform === 'win32')('on Windows finds ffmpeg.exe in an absolute PATH entry', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'fremkit-ffmpeg-'))
+    try {
+      writeFileSync(join(dir, 'ffmpeg.exe'), '')
+      expect(resolveFfmpeg({ Path: `.;${dir}` } as NodeJS.ProcessEnv, 'win32')).toBe(join(dir, 'ffmpeg.exe'))
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('on Windows splits PATH on ";" and keeps only absolute drive entries', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'fremkit-ffmpeg-'))
+    try {
+      // A real ffmpeg (or any file) in a relative or POSIX entry is never picked on win32.
+      writeFileSync(join(dir, 'ffmpeg.exe'), '')
+      writeFileSync(join(dir, 'ffmpeg'), '', { mode: 0o755 })
+      expect(resolveFfmpeg({ PATH: dir } as NodeJS.ProcessEnv, 'win32')).toBeNull()
+      expect(resolveFfmpeg({ PATH: dir } as NodeJS.ProcessEnv, 'darwin')).toBe(join(dir, 'ffmpeg'))
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
   it('finds nothing when PATH is empty and no package manager installed one', () => {
     // The fallback list is real, so this only asserts the shape of the answer.
     const found = resolveFfmpeg({ PATH: '' } as NodeJS.ProcessEnv)

@@ -604,7 +604,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   /** Whether this is a demo server: `pnpm widget:preview` refuses to capture anything else. */
   app.get('/api/demo', async () => ({ demo }))
   await app.register(appsRoutes, { apps: installedApps, deviceMayListApps: (id) => deviceService.maySubscribe(id, 'dock') })
-  await app.register(helperRoutes)
+  await app.register(helperRoutes, { platform })
   await app.register(brightnessRoutes, { service: brightness, changed: brightnessChanged })
   await app.register(bambuRoutes, { cameras: bambuCameras })
   await app.register(wsRoutes, { hub })

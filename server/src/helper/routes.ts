@@ -3,6 +3,7 @@ import type { FastifyInstance } from 'fastify'
 import { isLocalRequest } from '../net/remote.js'
 import { isOriginAllowed } from '../ws/routes.js'
 import { tr } from '../i18n.js'
+import { targetPlatform } from '../platform/index.js'
 
 /** The helper's bundle identifier, as declared in `native/Resources/Info.plist`. */
 export const HELPER_BUNDLE_ID = 'dev.fremkit.helper'
@@ -90,8 +91,12 @@ export async function openHelperUrl(url: HelperUrl, run: Runner = runProgram): P
  * from a page the server itself serves — the same rule the mutating admin routes and the
  * WebSocket use — because the answer activates an application on the user's Mac.
  */
-export async function helperRoutes(app: FastifyInstance, opts: { run?: Runner } = {}): Promise<void> {
+export async function helperRoutes(app: FastifyInstance, opts: { run?: Runner; platform?: NodeJS.Platform } = {}): Promise<void> {
   const run = opts.run ?? runProgram
+  // There is no helper on Windows yet, and `/usr/bin/open` there is drive-relative
+  // (`C:\usr\bin\open.exe`, a folder any local account may create). The routes stay registered
+  // so the page gets a clear answer, but nothing is ever run.
+  const noHelper = targetPlatform(opts.platform) === 'win32'
 
   /**
    * Both routes run `open` with a fixed URL; nothing of the request reaches the argument list.
@@ -103,6 +108,7 @@ export async function helperRoutes(app: FastifyInstance, opts: { run?: Runner } 
     if (!isOriginAllowed(req.headers.origin)) {
       return reply.code(403).send({ ok: false, error: tr(undefined, 'connections.originNotAllowed') })
     }
+    if (noHelper) return reply.code(503).send({ ok: false, error: tr(undefined, 'helper.unavailable') })
 
     try {
       await openHelperUrl(url, run)

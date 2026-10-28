@@ -11,9 +11,9 @@ const INFO_OUT = `"LSBundlePath"="${HELPER_PATH}"\n`
 let app: FastifyInstance | undefined
 
 /** Registers the route on a bare server with a fake runner, and records what it was asked to run. */
-async function build(run: Runner): Promise<FastifyInstance> {
+async function build(run: Runner, platform?: NodeJS.Platform): Promise<FastifyInstance> {
   const server = Fastify({ logger: false })
-  await server.register(helperRoutes, { run })
+  await server.register(helperRoutes, { run, ...(platform ? { platform } : {}) })
   await server.ready()
   app = server
   return server
@@ -140,6 +140,19 @@ describe('POST /api/helper/reveal', () => {
     const server = await build(fakeRunner(calls))
     expect((await server.inject({ method: 'POST', url: '/api/helper/reveal', headers: { origin: 'http://evil.example' } })).statusCode).toBe(403)
     expect((await server.inject({ method: 'POST', url: '/api/helper/reveal', remoteAddress: '198.51.100.7' })).statusCode).toBe(403)
+    expect(calls).toEqual([])
+  })
+})
+
+describe('the helper routes on Windows', () => {
+  it('answer 503 helper.unavailable and run nothing: /usr/bin is drive-relative there', async () => {
+    const calls: [string, string[]][] = []
+    const server = await build(fakeRunner(calls), 'win32')
+    for (const url of ['/api/helper/admin', '/api/helper/reveal']) {
+      const res = await server.inject({ method: 'POST', url, headers: { origin: 'http://127.0.0.1:4242' } })
+      expect(res.statusCode).toBe(503)
+      expect(res.json()).toMatchObject({ ok: false })
+    }
     expect(calls).toEqual([])
   })
 })
