@@ -592,6 +592,68 @@ namespace Fremkit {
     }
   }
 
+  // The host and everything it starts (netsh, wsl) in one job that dies with it. Windows does not
+  // end a process's children when it is killed; a host killed for an overrun op would otherwise
+  // leave its netsh or wsl.exe running. Kill-on-close: when this process ends, by any means, its
+  // handle to the job closes and every process still in the job is ended. Children started after
+  // the assignment join the job by themselves.
+  public static class Job {
+    [StructLayout(LayoutKind.Sequential)]
+    struct BasicLimits {
+      public long PerProcessUserTimeLimit;
+      public long PerJobUserTimeLimit;
+      public uint LimitFlags;
+      public UIntPtr MinimumWorkingSetSize;
+      public UIntPtr MaximumWorkingSetSize;
+      public uint ActiveProcessLimit;
+      public UIntPtr Affinity;
+      public uint PriorityClass;
+      public uint SchedulingClass;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    struct IoCounters {
+      public ulong ReadOperationCount, WriteOperationCount, OtherOperationCount;
+      public ulong ReadTransferCount, WriteTransferCount, OtherTransferCount;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    struct ExtendedLimits {
+      public BasicLimits Basic;
+      public IoCounters Io;
+      public UIntPtr ProcessMemoryLimit;
+      public UIntPtr JobMemoryLimit;
+      public UIntPtr PeakProcessMemoryUsed;
+      public UIntPtr PeakJobMemoryUsed;
+    }
+
+    const int JobObjectExtendedLimitInformation = 9;
+    const uint JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x2000;
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] static extern IntPtr CreateJobObject(IntPtr attributes, string name);
+    [DllImport("kernel32.dll")] static extern bool SetInformationJobObject(IntPtr job, int infoClass, ref ExtendedLimits info, uint length);
+    [DllImport("kernel32.dll")] static extern bool AssignProcessToJobObject(IntPtr job, IntPtr process);
+    [DllImport("kernel32.dll")] static extern IntPtr GetCurrentProcess();
+
+    // Held, never closed: closing it is what ends the job's processes, and that is for the
+    // process's own end to do.
+    static IntPtr Handle = IntPtr.Zero;
+
+    // True once this process is in a kill-on-close job of its own. Best effort: without it the
+    // host still works, as before.
+    public static bool Contain() {
+      if (Handle != IntPtr.Zero) return true;
+      IntPtr job = CreateJobObject(IntPtr.Zero, null);
+      if (job == IntPtr.Zero) return false;
+      ExtendedLimits limits = new ExtendedLimits();
+      limits.Basic.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+      if (!SetInformationJobObject(job, JobObjectExtendedLimitInformation, ref limits, (uint)Marshal.SizeOf(typeof(ExtendedLimits)))) return false;
+      if (!AssignProcessToJobObject(job, GetCurrentProcess())) return false;
+      Handle = job;
+      return true;
+    }
+  }
+
   // Memory, drives and processes: what `systeminformation` would read through a powershell.exe of
   // its own on every poll. Nothing here takes an argument or runs a program.
   public static class Sys {
@@ -700,6 +762,9 @@ namespace Fremkit {
   }
 }
 '@
+
+# Before anything is started: the tools FkRunTool starts from here on die with the host.
+$null = [Fremkit.Job]::Contain()
 
 function FkFail([string]$code) { throw (New-Object Fremkit.CodeException $code) }
 

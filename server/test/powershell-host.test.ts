@@ -464,6 +464,15 @@ describe('host.ps1', () => {
     expect(code).not.toMatch(/(^|[\s;(=])&\s*[$'"\w(]/m)
   })
 
+  it('puts itself in a kill-on-close job before it can start a tool', () => {
+    // A host killed for an overrun op must not leave its netsh or wsl.exe running.
+    expect(code).toContain('JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x2000')
+    expect(code).toContain('AssignProcessToJobObject(job, GetCurrentProcess())')
+    const contain = code.indexOf('$null = [Fremkit.Job]::Contain()')
+    expect(contain).toBeGreaterThan(code.indexOf("'@"))
+    expect(contain).toBeLessThan(code.indexOf('function FkRunTool'))
+  })
+
   it('hands no request value or secret to a cmdlet', () => {
     // Module Logging records cmdlet parameter bindings: JSON, clipboard and paths go through .NET.
     for (const cmdlet of ['ConvertFrom-Json', 'ConvertTo-Json', 'Set-Clipboard', 'Get-Clipboard', 'Test-Path', 'Write-Output', 'Out-String',
