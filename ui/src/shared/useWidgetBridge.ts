@@ -43,6 +43,11 @@ export interface BridgeOptions {
    * align its own content — it needs to know which side it is on to do that.
    */
   slot?: () => NavSlot
+  /**
+   * Someone touched, dragged or scrolled inside the widget (reported at most once a second). The
+   * bar's popover restarts its idle countdown on it.
+   */
+  onActivity?: () => void
 }
 
 /**
@@ -186,6 +191,9 @@ export function useWidgetBridge(
       case 'fremkit:hold-swipe':
         // useSwipe listens on the host window; the admin has no swipe and ignores it.
         window.dispatchEvent(new Event(HOLD_SWIPE_EVENT))
+        break
+      case 'fremkit:activity':
+        options.onActivity?.()
         break
       case 'fremkit:unsubscribe': {
         // A widget whose settings now point at another connection drops the old channel.

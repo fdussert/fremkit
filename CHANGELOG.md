@@ -18,6 +18,9 @@ tagged `vX.Y.Z`.
   wide* or *Large* as well as in the standard shape: pick it under the widget in the navigation
   bar's list.
 
+- **A bar widget's popover stays open while you use it.** Its 15-second countdown now starts again
+  on every touch, drag or scroll inside the widget, so browsing a long list no longer closes it.
+
 - **Tile icons.** A tile's title can show an icon: a pictogram from the built-in set, or your own
   SVG, PNG or WebP, tinted to the theme or in its own colours. Under **/admin**, select a tile,
   then **Icon**. Fremkit ships no brand logos; the marks you import stay in your installation.

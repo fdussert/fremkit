@@ -610,6 +610,28 @@
 
   applyKioskBehaviour()
 
+  /**
+   * Tells the host someone is using the widget: a touch, a drag, a wheel or a scroll inside it.
+   * Those never reach the host document (the frame's origin is opaque), and the bar's popover
+   * closes itself after a while with nothing touching it, which used to cut a long browse short.
+   * Only real input counts, at most once a second, and nothing is queued before the handshake:
+   * an old touch says nothing about now.
+   */
+  var ACTIVITY_EVERY_MS = 1000
+  var lastActivity = -Infinity
+  function onActivity(e) {
+    if (!e.isTrusted || !port) return
+    if (e.type === 'pointermove' && !e.buttons) return
+    var now = Date.now()
+    if (now - lastActivity < ACTIVITY_EVERY_MS) return
+    lastActivity = now
+    port.postMessage({ type: 'fremkit:activity' })
+  }
+  ;['pointerdown', 'pointermove', 'wheel', 'scroll'].forEach(function (type) {
+    // Capture, and passive: scroll does not bubble, and this must never slow a gesture down.
+    document.addEventListener(type, onActivity, { capture: true, passive: true })
+  })
+
   Object.defineProperty(window, 'Fremkit', { value: F, writable: false, configurable: false, enumerable: true })
   window.parent.postMessage({ type: 'fremkit:hello', nonce: nonce }, '*')
 })()

@@ -27,7 +27,7 @@ const props = defineProps<{
    */
   fixed?: boolean
 }>()
-const emit = defineEmits<{ root: [el: Element | null] }>()
+const emit = defineEmits<{ root: [el: Element | null]; activity: [] }>()
 
 /** The caption's height, so the widget is told the size of the body and not of the whole box. */
 const TITLE_H = 26
@@ -67,6 +67,8 @@ const instance = computed<WidgetInstance>(() => ({
 const { state } = useWidgetBridge(iframe, () => instance.value, () => props.manifest, () => props.cell, {
   // The box is clamped to the screen, so the widget is told the pixels it really has.
   pixelSize: () => ({ width: box.value.width, height: box.value.height - TITLE_H }),
+  // Touches and scrolls inside the frame never reach this document; the bridge reports them.
+  onActivity: () => emit('activity'),
 })
 const { t } = useI18n()
 const title = computed(() => pick(props.manifest?.name) || instance.value.widgetId)

@@ -291,7 +291,7 @@ watch(() => config.value?.locale, (l) => setLocale(l))
       :cell="display.cell"
       :anchor="popover.open.value.anchor"
       :screen="popover.open.value.screen"
-      @root="popover.setPopoverEl" />
+      @root="popover.setPopoverEl" @activity="popover.keepAlive" />
     <AppSettingsMenu v-if="onAndroid && appMenuOpen" :bar-height="navHeightOf(display)"
       @settings="openAppSettings" @close="appMenuOpen = false" />
     <!-- Experimental: only while `labs.companion` is on. The server answers the extension the same

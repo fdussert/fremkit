@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { afterEach, describe, it, expect, vi } from 'vitest'
 import { readFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import { SDK_GENERATIONS, SDK_VERSION } from '../src/bridge/sdk.js'
@@ -31,6 +31,8 @@ interface LoadResult {
   properties: Map<string, string>
   /** Hands the bridge a message from the host, the way the dashboard posts one. */
   send(message: Record<string, unknown>): void
+  /** Raises an event on the widget's document, as the browser would. */
+  fire(type: string, event?: Record<string, unknown>): void
   /** The port the bridge answered on, as the host holds the other end of it. */
   port: { onmessage: ((event: { data: unknown }) => void) | null }
 }
@@ -48,6 +50,7 @@ async function loadBridge(): Promise<LoadResult> {
   }
   const properties = new Map<string, string>()
   const listeners: string[] = []
+  const handlers = new Map<string, ((event: Record<string, unknown>) => void)[]>()
   const styles: LoadResult['styles'] = []
   const element = (tag: string) => {
     const node: Record<string, unknown> = {
@@ -77,7 +80,10 @@ async function loadBridge(): Promise<LoadResult> {
     // The kiosk guard asks whether its stylesheet is already there. Nothing is, in a fresh
     // document, which is what makes the one call below do its work.
     querySelector: () => null,
-    addEventListener: (type: string) => { listeners.push(type) },
+    addEventListener: (type: string, cb: (event: Record<string, unknown>) => void) => {
+      listeners.push(type)
+      handlers.set(type, [...(handlers.get(type) ?? []), cb])
+    },
     dispatchEvent: () => {},
   }
   new Function('window', 'document', 'console', src)(window, document, console)
@@ -98,6 +104,9 @@ async function loadBridge(): Promise<LoadResult> {
     properties,
     // The bridge answers its own parent and nothing else, so the event says it came from there.
     send: (message: Record<string, unknown>) => port.onmessage?.({ data: message }),
+    fire: (type: string, event: Record<string, unknown> = {}) => {
+      for (const cb of handlers.get(type) ?? []) cb({ type, isTrusted: true, preventDefault: () => {}, ...event })
+    },
   }
 }
 
@@ -208,6 +217,36 @@ describe('Fremkit.color', () => {
   })
   it('answers null when no fallback is given', () => {
     expect(F.color('nope')).toBeNull()
+  })
+})
+
+describe('telling the host someone is using the widget', () => {
+  const activity = (r: LoadResult) => r.posted.filter((m) => m.type === 'fremkit:activity')
+  afterEach(() => { vi.useRealTimers() })
+
+  it('reports a touch, a drag, a wheel and a scroll, which never reach the host document', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    const fresh = await loadBridge()
+    for (const [type, event] of [['pointerdown', {}], ['pointermove', { buttons: 1 }], ['wheel', {}], ['scroll', {}]] as const) {
+      vi.advanceTimersByTime(1000)
+      fresh.fire(type, event)
+    }
+    expect(activity(fresh)).toHaveLength(4)
+  })
+  it('says it at most once a second, however fast the finger moves', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    const fresh = await loadBridge()
+    for (let i = 0; i < 10; i++) { fresh.fire('wheel'); vi.advanceTimersByTime(50) }
+    expect(activity(fresh)).toHaveLength(1)
+    vi.advanceTimersByTime(1000)
+    fresh.fire('wheel')
+    expect(activity(fresh)).toHaveLength(2)
+  })
+  it('ignores a pointer merely passing over, and an event the widget made up', async () => {
+    const fresh = await loadBridge()
+    fresh.fire('pointermove', { buttons: 0 })
+    fresh.fire('pointerdown', { isTrusted: false })
+    expect(activity(fresh)).toHaveLength(0)
   })
 })
 
