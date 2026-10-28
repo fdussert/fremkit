@@ -321,7 +321,7 @@ function demoTree(): DiskNode {
     folder('Movies', 74, [['Holiday 2025', 38], ['Screen recordings', 21], ['Edits', 12]]),
     folder('Pictures', 58, [['Photos Library.photoslibrary', 51], ['Wallpapers', 4]]),
     folder('Projects', 46, [['website', 14], ['api', 11], ['mobile-app', 9], ['experiments', 6]]),
-    folder('Documents', 31, [['Archive', 12], ['Invoices', 3], ['Books', 6]]),
+    folder('Documents', 31, [['Archive', 12], ['Letters', 3], ['Books', 6]]),
     folder('Music', 22, [['Library', 19]]),
     folder('Downloads', 17, [['installers', 9], ['dataset.csv', 2.4]]),
     folder('Desktop', 4),
@@ -378,7 +378,7 @@ function claudeProviders(now: () => number, config: () => Config): Provider[] {
     const t = now()
     // The working session moves on to another file every twenty seconds.
     const step = Math.floor(t / 20_000)
-    const files = ['src/pages/pricing.vue', 'src/components/PlanCard.vue', 'src/styles/pricing.css', 'test/pricing.spec.ts']
+    const files = ['src/pages/settings.vue', 'src/components/ThemeCard.vue', 'src/styles/settings.css', 'test/settings.spec.ts']
     return DEMO_SESSIONS.map((s, i) => {
       const sessionId = `demo-session-${i + 1}`
       const since = t - s.minutesAgo * 60_000
