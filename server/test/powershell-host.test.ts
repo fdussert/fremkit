@@ -464,6 +464,18 @@ describe('host.ps1', () => {
     expect(code).not.toMatch(/(^|[\s;(=])&\s*[$'"\w(]/m)
   })
 
+  it('starts every drive\'s size query before waiting on any, so one slow drive hides no other', () => {
+    const drives = /public static ArrayList Drives\(\) \{([\s\S]*?)\n    \}\n/.exec(code)?.[1] ?? ''
+    const start = drives.indexOf('Task.Run(')
+    const deadline = drives.indexOf('DateTime deadline')
+    const wait = drives.indexOf('.Wait(')
+    expect(start).toBeGreaterThan(-1)
+    // The deadline is taken once every query is running, and the waits come after both.
+    expect(deadline).toBeGreaterThan(start)
+    expect(wait).toBeGreaterThan(deadline)
+    expect(drives.indexOf('foreach', deadline)).toBeLessThan(wait)
+  })
+
   it('puts itself in a kill-on-close job before it can start a tool', () => {
     // A host killed for an overrun op must not leave its netsh or wsl.exe running.
     expect(code).toContain('JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x2000')

@@ -691,15 +691,16 @@ namespace Fremkit {
       return result;
     }
 
-    // A disconnected mapped drive can hold a size query for many seconds. Each drive is read on
-    // its own task and waited for briefly; one that does not answer is left out, and is not asked
-    // again while its earlier query is still stuck.
+    // A disconnected mapped drive can hold a size query for many seconds. Every drive's query is
+    // started first, on its own task, and only then waited for, each against the same deadline:
+    // all of them get the whole wait, so one slow drive does not use up the time of the drives
+    // after it. One that does not answer is left out, and is not asked again while its earlier
+    // query is still stuck.
     const int DRIVE_WAIT_MS = 1500;
     static readonly Dictionary<string, System.Threading.Tasks.Task<long[]>> Stuck = new Dictionary<string, System.Threading.Tasks.Task<long[]>>();
 
     public static ArrayList Drives() {
-      ArrayList result = new ArrayList();
-      DateTime deadline = DateTime.UtcNow.AddMilliseconds(DRIVE_WAIT_MS);
+      List<object[]> started = new List<object[]>();
       foreach (DriveInfo drive in DriveInfo.GetDrives()) {
         DriveType type = drive.DriveType;
         if (type != DriveType.Fixed && type != DriveType.Network) continue;
@@ -715,6 +716,13 @@ namespace Fremkit {
           if (!captured.IsReady) return null;
           return new long[] { captured.TotalSize, captured.TotalFreeSpace };
         });
+        started.Add(new object[] { mount, type == DriveType.Network, query });
+      }
+      DateTime deadline = DateTime.UtcNow.AddMilliseconds(DRIVE_WAIT_MS);
+      ArrayList result = new ArrayList();
+      foreach (object[] item in started) {
+        string mount = (string)item[0];
+        System.Threading.Tasks.Task<long[]> query = (System.Threading.Tasks.Task<long[]>)item[2];
         int wait = Math.Max(0, (int)(deadline - DateTime.UtcNow).TotalMilliseconds);
         bool done;
         try { done = query.Wait(wait); } catch { continue; }
@@ -723,7 +731,7 @@ namespace Fremkit {
         if (sizes == null) continue;
         System.Collections.Specialized.OrderedDictionary entry = new System.Collections.Specialized.OrderedDictionary();
         entry["mount"] = mount;
-        entry["network"] = type == DriveType.Network;
+        entry["network"] = (bool)item[1];
         entry["size"] = sizes[0];
         entry["available"] = sizes[1];
         result.Add(entry);
