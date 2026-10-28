@@ -124,6 +124,9 @@ function onSetting(instanceId: string, key: string, value: unknown): void {
       <BaseCheckbox class="popup" :model-value="w.popup === true"
         :label="t('admin.inspector.screen.navWidgets.popup')"
         @update:model-value="onPopup(w.instanceId, $event)" />
+      <!-- The GIF board's collection is edited in its own panel; a board kept only in the bar
+           still needs the way in a tile's inspector gives. -->
+      <BaseButton v-if="w.widgetId === 'gif-board'" class="gifs-open" @click="s.openModal('gifs')">{{ t('admin.gifs.open') }}</BaseButton>
       <div v-if="isOpen(w.instanceId) && manifestOf(w.widgetId)" class="settings">
         <!-- Usually a full tile of the same widget, already configured: copying it is quicker
              than repeating the same choices in the bar. -->
@@ -154,6 +157,7 @@ h3 { font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: .08em; 
 .slot { margin-top: var(--space-1); }
 /* The checkbox brings its own bottom margin, which is too much inside a compact row. */
 .popup { margin: var(--space-1) 0 0; }
+.gifs-open { margin: var(--space-2) 0 0; }
 .slot :deep(button) { padding: 3px 6px; }
 .name { flex: 1; min-width: 0; display: flex; align-items: center; justify-content: space-between; gap: var(--space-1);
   font: inherit; font-size: var(--fs-sm); color: var(--text); text-align: left; cursor: pointer;

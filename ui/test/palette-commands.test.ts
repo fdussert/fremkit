@@ -128,6 +128,20 @@ describe('buildCommands', () => {
     expect(ui.openShortcuts).toHaveBeenCalled()
   })
 
+  it('opens the GIF panel while a GIF board exists anywhere, a bar included, and not otherwise', async () => {
+    const { sources, store } = await make()
+    const has = () => buildCommands(sources).some((c) => c.id === 'app:gifs')
+    expect(has()).toBe(false)
+    store.apply((c) => {
+      c.widgets['gif-board-1'] = { widgetId: 'gif-board', showTitle: true, settings: {} }
+      c.screens[1].nav.push({ instanceId: 'gif-board-1', slot: 'left' })
+    })
+    const open = buildCommands(sources).find((c) => c.id === 'app:gifs')
+    expect(open?.label).toBe('Manage the GIFs…')
+    open!.run!()
+    expect(store.state.modal).toBe('gifs')
+  })
+
   it('switches the theme from a submenu that checks the current one', async () => {
     const { store, sources } = await make()
     const theme = find(buildCommands(sources), 'actions', 'Theme')
