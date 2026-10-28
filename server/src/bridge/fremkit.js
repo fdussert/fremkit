@@ -572,7 +572,7 @@
    * The Edge is a touch panel with no keyboard and no window chrome. A long press inside a
    * widget used to raise WebKit's own context menu — "Open Frame in New Window" — and a drag
    * used to select text or pick an image up. The helper turns those off natively too; this is
-   * the same thing for the Chrome kiosk path (scripts/kiosk.sh), and defence in depth either way.
+   * the same thing for the Chrome kiosk path (scripts/kiosk.mjs), and defence in depth either way.
    *
    * A widget with a real text field opts back in with `user-select: text` on it; see
    * docs/writing-widgets.md.

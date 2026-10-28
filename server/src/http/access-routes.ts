@@ -63,7 +63,7 @@ export function installAccessGate(app: FastifyInstance, { gate, appliesTo = () =
   /**
    * A one-time code for `/auth`, for a holder of the secret who wants to hand a browser a
    * session without putting the secret itself in a URL — the helper's "open in the browser",
-   * `pnpm open`, `scripts/kiosk.sh`. Behind the gate like everything else.
+   * `pnpm open`, `scripts/kiosk.mjs`. Behind the gate like everything else.
    */
   app.post('/api/auth/code', async (req, reply) => {
     reply.header('cache-control', 'no-store')

@@ -175,7 +175,7 @@ to its bundle, including the `fremkit://` URL scheme the dashboard's long press 
 admin window: an older copy ignores it.
 
 The dashboard then opens by itself on the Edge. If you would rather not run the helper at all,
-`pnpm start` serves everything and `pnpm kiosk` opens a full-screen Chrome window on the Edge,
+`pnpm start` serves everything and `pnpm kiosk` opens a full-screen browser window on the Edge (Chrome on the Mac, Microsoft Edge on Windows),
 signed in through a one-time link — you lose the touch driver, the mouse fence and the Dock
 badges.
 

@@ -41,6 +41,7 @@ pnpm open --dev   # signs the browser in on the Vite server (add /admin for the 
 pnpm build        # ui + server
 pnpm start        # production: http://127.0.0.1:4242 and /admin
 pnpm open         # signs the browser in on 4242 (pnpm open /admin, pnpm open --print)
+pnpm kiosk        # the dashboard full screen on the 2560x720 display: Chrome on the Mac, Edge on Windows
 pnpm test         # vitest, server + ui
 pnpm typecheck
 pnpm e2e          # Playwright, against the built UI: see "End-to-end tests" below
