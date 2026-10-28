@@ -201,8 +201,11 @@ export class ConfigStore {
     if (this.degradedFlag) throw new DegradedStoreError()
     const parsed = normalizeInstances(ConfigSchema.parse(input))
     const before = this.config
+    // Written first, published after: a write that fails (a locked file, a full disk) leaves memory,
+    // the history and the listeners on the config the disk still holds, and the next save starts
+    // from that rather than persisting the change that never landed.
+    await this.write(parsed)
     this.config = parsed
-    await this.write()
     await this.remember('a save', (h) => h.recordChange(before, parsed, opts.reason ?? 'save',
       opts.revertedTo !== undefined ? { revertedTo: opts.revertedTo } : {}))
     // Listeners run inside the queue's turn: one that calls back into `save`/`update` would
@@ -211,12 +214,12 @@ export class ConfigStore {
     return parsed
   }
 
-  private async write(): Promise<void> {
+  private async write(config: Config = this.config): Promise<void> {
     await mkdir(dirname(this.filePath), { recursive: true })
     const exists = await access(this.filePath).then(() => true, () => false)
     if (exists) await copyFile(this.filePath, this.filePath + '.bak')
     const tmp = this.filePath + '.tmp'
-    await writeFile(tmp, JSON.stringify(this.config, null, 2) + '\n', { encoding: 'utf8', mode: 0o600 })
+    await writeFile(tmp, JSON.stringify(config, null, 2) + '\n', { encoding: 'utf8', mode: 0o600 })
     await rename(tmp, this.filePath)
   }
 }

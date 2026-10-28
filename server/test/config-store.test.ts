@@ -1,8 +1,9 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { mkdtemp, readdir, readFile, writeFile, stat } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, readFile, rmdir, writeFile, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { ConfigStore } from '../src/config/store.js'
+import { ConfigHistory } from '../src/config/history.js'
 import { DEFAULT_CONFIG } from '../src/config/schema.js'
 
 /** A minimal v4 config: one Edge screen with one empty page. */
@@ -173,5 +174,35 @@ describe('ConfigStore', () => {
     await new ConfigStore(file).load()
     err.mockRestore()
     expect((await readdir(dir)).filter((f) => f.endsWith('.v3.json'))).toEqual([])
+  })
+  it('keeps memory, the history and the listeners on the old config when a save cannot be written', async () => {
+    const file = join(dir, 'fremkit.json')
+    await writeFile(file, JSON.stringify(v4('home', 'A')))
+    const history = new ConfigHistory(join(dir, 'history'))
+    const store = new ConfigStore(file, { history })
+    await store.load()
+    await store.save({ ...store.get(), locale: 'fr' })
+    const entriesBefore = await history.list()
+    const heard: unknown[] = []
+    store.onChange((cfg) => heard.push(cfg))
+    // The store writes `fremkit.json.tmp` and renames it: a folder there makes the write fail.
+    await mkdir(`${file}.tmp`)
+
+    const renamed = structuredClone(store.get())
+    renamed.screens[0].pages[0].name = 'B'
+    await expect(store.save(renamed)).rejects.toThrow()
+
+    expect(store.get().screens[0].pages[0].name).toBe('A')
+    expect(heard).toEqual([])
+    expect(await history.list()).toEqual(entriesBefore)
+    expect(JSON.parse(await readFile(file, 'utf8')).screens[0].pages[0].name).toBe('A')
+
+    // The next save, once the disk takes it, is the old config plus its own change only.
+    await rmdir(`${file}.tmp`)
+    await store.save({ ...store.get(), locale: 'en' })
+    const written = JSON.parse(await readFile(file, 'utf8'))
+    expect(written.screens[0].pages[0].name).toBe('A')
+    expect(written.locale).toBe('en')
+    expect(heard).toHaveLength(1)
   })
 })
