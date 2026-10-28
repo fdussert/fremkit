@@ -21,6 +21,9 @@ tagged `vX.Y.Z`.
 - **A bar widget's popover stays open while you use it.** Its 15-second countdown now starts again
   on every touch, drag or scroll inside the widget, so browsing a long list no longer closes it.
 
+- **GIFs on two rows.** The GIF board can show two rows of smaller GIFs in the same space
+  (*Rows of GIFs* in its settings), on a page and in the bar's popover alike.
+
 - **Tile icons.** A tile's title can show an icon: a pictogram from the built-in set, or your own
   SVG, PNG or WebP, tinted to the theme or in its own colours. Under **/admin**, select a tile,
   then **Icon**. Fremkit ships no brand logos; the marks you import stay in your installation.

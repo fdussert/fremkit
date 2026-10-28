@@ -22,6 +22,8 @@
   .row{flex:1 1 auto;min-height:0;display:flex;gap:12px;overflow-x:auto;overflow-y:hidden;
     scroll-snap-type:x mandatory;overscroll-behavior:contain;scrollbar-width:none;touch-action:pan-x;-webkit-overflow-scrolling:touch}
   .row::-webkit-scrollbar{display:none}
+  /* Two rows: the same strip, filled column by column, each GIF half as tall. */
+  .row.two{display:grid;grid-auto-flow:column;grid-template-rows:repeat(2,minmax(0,1fr));grid-auto-columns:max-content}
   .card{position:relative;flex:0 0 auto;height:100%;aspect-ratio:4/3;min-width:56px;box-sizing:border-box;
     scroll-snap-align:start;border:0;border-radius:14px;padding:0;overflow:hidden;cursor:pointer;
     background:rgba(128,128,128,.18);color:inherit;font:inherit}
@@ -106,6 +108,11 @@
   var looping = false
   /** How many GIFs one copy of the row holds. */
   var perSet = 0
+  /**
+   * How many times the GIFs appear in one copy: twice when two rows hold an odd number of them,
+   * so that every copy starts at the top of a column and the jump between copies is not seen.
+   */
+  var repeats = 1
   /** The card being pressed: { card, item, x, y, scroll }. */
   var press = null
 
@@ -270,11 +277,14 @@
 
   function renderDots() {
     var row = document.getElementById('row'), dots = document.getElementById('dots')
-    var span = looping ? setWidth() : row.scrollWidth
+    var full = looping ? setWidth() : row.scrollWidth
+    // One pass over the GIFs, even when a copy holds them twice.
+    var span = looping ? full / repeats : full
     var pages = row.clientWidth > 0 && span > 0 ? Math.ceil((span - 2) / row.clientWidth) : 1
-    dots.hidden = pages < 2
+    // Hidden, not removed: the cards keep the same height whether there are pages or not.
+    dots.style.visibility = pages < 2 ? 'hidden' : ''
     if (pages < 2) { dots.innerHTML = ''; return }
-    var x = looping ? row.scrollLeft - span : row.scrollLeft
+    var x = looping ? (row.scrollLeft - full) % span : row.scrollLeft
     var at = Math.max(0, Math.min(pages - 1, Math.round(x / row.clientWidth)))
     if (x + row.clientWidth >= span - 2) at = pages - 1
     if (dots.childElementCount !== pages) {
@@ -302,7 +312,8 @@
     var nothing = itemsOf(ALL).length === 0
     var items = itemsOf(active)
     // The same board polled again redraws nothing: the row keeps its scroll and the GIFs their frame.
-    var key = JSON.stringify([snapshot, active, settings.showLabels !== false, Fremkit.locale])
+    var two = settings.rows === '2'
+    var key = JSON.stringify([snapshot, active, settings.showLabels !== false, two, Fremkit.locale])
     if (key === drawn) return
     drawn = key
     tabs.hidden = nothing
@@ -312,23 +323,35 @@
     empty.textContent = Fremkit.t(nothing ? L.empty : L.emptyGroup)
     if (observer) observer.disconnect()
     row.innerHTML = ''
+    row.classList.toggle('two', two)
     looping = false
-    perSet = items.length
-    function add(copy) {
-      items.forEach(function (item) {
+    repeats = 1
+    function add(list, copy) {
+      list.forEach(function (item) {
         var card = cardFor(item, copy)
         row.appendChild(card)
         if (observer) observer.observe(card)
         else load(card)
       })
     }
-    add(false)
+    // The dots always take their room under a row: were the cards to grow when the dots go, a row
+    // measured as fitting could overflow, and one measured as overflowing loop with copies
+    // narrower than itself, which never wrap.
+    document.getElementById('dots').hidden = items.length === 0
+    add(items, false)
+    var unit = items
     // A row that fits shows its GIFs once; one that overflows loops, starting on the middle copy.
     if (items.length && row.clientWidth > 0 && row.scrollWidth > row.clientWidth + 2) {
-      add(true)
-      add(true)
+      if (two && items.length % 2) {
+        add(items, true)
+        unit = items.concat(items)
+        repeats = 2
+      }
+      add(unit, true)
+      add(unit, true)
       looping = true
     }
+    perSet = unit.length
     row.scrollLeft = looping ? setWidth() : 0
     renderDots()
   }

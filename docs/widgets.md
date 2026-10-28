@@ -254,6 +254,7 @@ Minimum size 8 × 4, default 16 × 8.
 | Setting | Type | Default | Scope | What it is |
 |---|---|---|---|---|
 | `showLabels` | boolean | `true` | both | Show each GIF's label on it |
+| `rows` | enum `1`, `2` | `1` | both | One row of large GIFs, or two of smaller ones in the same space |
 
 ## memory
 
