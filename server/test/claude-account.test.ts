@@ -109,7 +109,9 @@ describe('createClaudeAccountProvider', () => {
   it('keeps the last good value with stale on 401 / 429 / network error', async () => {
     let status = 200
     const fetchFn = vi.fn(async () => { if (status === 0) throw new Error('ECONNRESET'); return new Response(status === 200 ? JSON.stringify(sample) : '{}', { status }) })
-    const p = createClaudeAccountProvider({ fetchFn: fetchFn as any, readToken: async () => 'tok' })
+    // Each poll comes after the last one's penalty, so every one reaches the endpoint.
+    let t = 0
+    const p = createClaudeAccountProvider({ fetchFn: fetchFn as any, readToken: async () => 'tok', now: () => (t += 3_600_000) })
     await p.poll!()
     status = 401
     expect(await p.poll!()).toMatchObject({ available: true, stale: true, error: 'unauthorized', limits: expect.any(Array) })
@@ -118,21 +120,39 @@ describe('createClaudeAccountProvider', () => {
     status = 0
     expect(await p.poll!()).toMatchObject({ available: true, stale: true, error: 'ECONNRESET' })
   })
-  it('polls again after Retry-After on 429, bounded to 30–120 s, and slows back down on success', async () => {
+  it('polls again after Retry-After on 429, bounded to 30 s – 1 h, and slows back down on success', async () => {
     let status = 200
     let retryAfter = '30'
     const fetchFn = vi.fn(async () => new Response(status === 200 ? JSON.stringify(sample) : '{}', { status, headers: status === 429 ? { 'retry-after': retryAfter } : {} }))
-    const p = createClaudeAccountProvider({ fetchFn: fetchFn as any, readToken: async () => 'tok' })
+    let t = 0
+    const p = createClaudeAccountProvider({ fetchFn: fetchFn as any, readToken: async () => 'tok', now: () => (t += 3_600_000) })
     status = 429
     await p.poll!(); expect(p.intervalMs).toBe(30_000)
     retryAfter = '5'
     await p.poll!(); expect(p.intervalMs).toBe(30_000)
-    retryAfter = '600'
-    await p.poll!(); expect(p.intervalMs).toBe(120_000)
+    // A long penalty is honoured: polling inside it is what kept the widget stale for days.
+    retryAfter = '3029'
+    await p.poll!(); expect(p.intervalMs).toBe(3_029_000)
+    retryAfter = '86400'
+    await p.poll!(); expect(p.intervalMs).toBe(3_600_000)
     retryAfter = ''
-    await p.poll!(); expect(p.intervalMs).toBe(30_000)
+    await p.poll!(); expect(p.intervalMs).toBe(300_000)
+    retryAfter = 'Wed, 21 Oct 2026 07:28:00 GMT'
+    await p.poll!(); expect(p.intervalMs).toBe(300_000)
     status = 200
     await p.poll!(); expect(p.intervalMs).toBe(300_000)
+  })
+  it('does not call the endpoint again before the Retry-After is over, whoever polls', async () => {
+    let t = 0
+    const fetchFn = vi.fn(async () => new Response('{}', { status: 429, headers: { 'retry-after': '600' } }))
+    const p = createClaudeAccountProvider({ fetchFn: fetchFn as any, readToken: async () => 'tok', now: () => t })
+    await p.poll!()
+    t = 599_999
+    expect(await p.poll!()).toMatchObject({ stale: true, error: 'rate-limited' })
+    expect(fetchFn).toHaveBeenCalledTimes(1)
+    t = 600_000
+    await p.poll!()
+    expect(fetchFn).toHaveBeenCalledTimes(2)
   })
   it('persists the last good snapshot and reloads it, stale, on the next start', async () => {
     const { mkdtemp, readFile } = await import('node:fs/promises')
