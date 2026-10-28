@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { FrameTrust, helloNonce, appIconTarget, faviconTarget, fetchTarget, imageTarget, mayListApps, nonEmptyString, stampInstance } from '../src/shared/widgetMessages'
+import { FrameTrust, helloNonce, appIconTarget, faviconTarget, fetchTarget, gifTarget, imageTarget, mayListApps, nonEmptyString, stampInstance } from '../src/shared/widgetMessages'
 
 describe('nonEmptyString', () => {
   it('accepts a non-empty string and nothing else', () => {
@@ -74,6 +74,19 @@ describe('faviconTarget', () => {
     for (const url of ['mailto:a@example.com', 'file:///etc/hosts', 'javascript:1', 'not a url', '', 42, null, undefined]) {
       expect(faviconTarget({ url }), JSON.stringify(url)).toBeNull()
     }
+  })
+})
+
+describe('gifTarget', () => {
+  it('keeps an https address whole', () => {
+    expect(gifTarget({ url: 'https://example.com/a.gif' })).toBe('https://example.com/a.gif')
+  })
+  it('refuses anything that is not an https link of a sane length', () => {
+    const long = 'https://example.com/' + 'a'.repeat(2048)
+    for (const url of ['http://example.com/a.gif', 'javascript:alert(1)', 'data:image/gif;base64,R0lG', 'not a url', '', long, 42, null, undefined]) {
+      expect(gifTarget({ url }), JSON.stringify(url)).toBeNull()
+    }
+    expect(gifTarget({})).toBeNull()
   })
 })
 

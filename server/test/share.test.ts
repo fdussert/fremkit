@@ -158,7 +158,22 @@ describe('buildLayout', () => {
     expect(report.removed).toContainEqual(expect.objectContaining({ instanceId: 'sc-1', key: 'items', reason: 'personal' }))
   })
 
-  it('carries an empty free-text field as is, without asking', async () => {
+  it('leaves the GIF collection home: it travels in backups and history only', async () => {
+  const config = ConfigSchema.parse({
+    ...sampleConfig(),
+    gifs: { groups: [{ id: 'reactions1', name: 'Reactions', items: [
+      { id: 'gifone1', kind: 'giphy', giphyId: 'abc123', label: 'Nope' },
+      { id: 'giftwo2', kind: 'link', url: 'https://example.com/party.gif' },
+    ] }] },
+  })
+  expect(config.gifs?.groups).toHaveLength(1)
+  const { file } = await buildLayout(deps(config), { scope: 'setup' })
+  expect(file).not.toHaveProperty('gifs')
+  const text = JSON.stringify(file)
+  for (const banned of ['Reactions', 'abc123', 'party.gif', 'Nope']) expect(text).not.toContain(banned)
+})
+
+it('carries an empty free-text field as is, without asking', async () => {
     const config = sampleConfig()
     config.widgets['my-clock'].settings.label = ''
     const { file, report } = await buildLayout(deps(config), { scope: 'setup' })

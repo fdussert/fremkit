@@ -68,7 +68,8 @@ say) leaves the dashboard where it is until it comes back.
 ## What the iPad can do
 
 It shows the screen you gave it and does what the Edge does on that screen: every widget, its
-connections (the secrets stay on the Mac), Claude session focus, the clipboard. Only that screen:
+connections (the secrets stay on the Mac), Claude session focus, the clipboard and the GIF board
+(both copy to the Mac's clipboard, for a ⌘V on the Mac). Only that screen:
 a widget's connection, a shortcut button or a service probe placed on another screen is out of its
 reach, and an iPad with no screen yet can use none. It cannot open
 the admin or change anything in the configuration; those stay on the Mac. The status bar is

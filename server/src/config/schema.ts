@@ -465,6 +465,32 @@ export const LabsSchema = z.object({
 export type Labs = z.infer<typeof LabsSchema>
 
 /**
+ * The GIF board: one collection of GIFs per Mac, sorted into named groups, each item a Giphy GIF
+ * (by its id, never its URL) or an `https:` link to a GIF elsewhere. Absent in every file written
+ * before it existed, which means an empty board; additive, so no version bump.
+ */
+const GifIdSchema = z.string().regex(/^[a-z0-9]{6,24}$/)
+const GifLabelSchema = z.string().max(40).optional()
+const isHttpsUrl = (s: string) => {
+  try { return new URL(s).protocol === 'https:' } catch { return false }
+}
+export const GifItemSchema = z.discriminatedUnion('kind', [
+  z.object({ id: GifIdSchema, kind: z.literal('giphy'), giphyId: z.string().regex(/^[A-Za-z0-9]{1,64}$/), label: GifLabelSchema }),
+  z.object({ id: GifIdSchema, kind: z.literal('link'), url: z.string().max(2048).refine(isHttpsUrl), label: GifLabelSchema }),
+])
+export const GifGroupSchema = z.object({
+  id: GifIdSchema,
+  name: z.string().trim().min(1).max(40),
+  items: z.array(GifItemSchema).max(200),
+})
+export const GifBoardSchema = z.object({
+  groups: z.array(GifGroupSchema).max(30),
+})
+export type GifItem = z.infer<typeof GifItemSchema>
+export type GifGroup = z.infer<typeof GifGroupSchema>
+export type GifBoard = z.infer<typeof GifBoardSchema>
+
+/**
  * The version a config file written today carries.
  *
  * v1 → v2 halved the cell and doubled every coordinate. v2 → v3 moved the Homey connection from
@@ -480,6 +506,8 @@ export const ConfigSchema = z.object({
   theme: ThemeIdSchema.default(BUILTIN_THEME),
   /** A night theme and when it takes over. Absent in every file written before it existed: one theme. */
   themeSchedule: ThemeScheduleSchema.optional(),
+  /** The GIF board's collection; see `GifBoardSchema`. Absent: no GIF saved yet. */
+  gifs: GifBoardSchema.optional(),
   connections: z.array(ConnectionSchema).default([]),
   secrets: SecretsSchema.prefault({}),
   /** Language of the admin and of the screen. Absent in every file written before it existed. */

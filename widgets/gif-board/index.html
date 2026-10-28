@@ -1,0 +1,312 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>GIFs</title>
+<style>
+  html,body{margin:0;height:100%;background:transparent;color:var(--text, #e6e8eb);font-family:var(--font, -apple-system,system-ui,sans-serif);overflow:hidden}
+  .wrap{box-sizing:border-box;height:100%;padding:12px 16px;display:flex;flex-direction:column;gap:10px}
+  .note{font-size:calc(13px * var(--text-scale, 1));color:var(--text-muted, #8b93a0);letter-spacing:.06em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  [hidden]{display:none!important}
+  html.on-light body{color:var(--on-surface,#0b0d10)}
+  html.on-light .note{color:var(--on-surface,#0b0d10);opacity:.75}
+</style>
+<style>
+  /* The groups, as finger-sized tabs; a long list scrolls sideways on its own. */
+  .tabs{flex:0 0 auto;display:flex;gap:8px;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;overscroll-behavior:contain}
+  .tabs::-webkit-scrollbar{display:none}
+  .tab{flex:0 0 auto;box-sizing:border-box;font:inherit;font-size:calc(var(--body,15px) * var(--text-scale, 1));font-weight:600;
+    border:0;border-radius:12px;min-height:var(--tab,56px);min-width:56px;padding:0 18px;white-space:nowrap;
+    background:rgba(128,128,128,.18);color:inherit;cursor:pointer}
+  .tab.on{background:var(--accent,#d9b36a);color:var(--on-accent,#0b0d10)}
+  html.accent-fill .tab.on{background:var(--on-surface,#0b0d10);color:var(--accent,#d9b36a)}
+
+  /* One row of large GIFs, scrolled with the finger and snapped card by card. */
+  .row{flex:1 1 auto;min-height:0;display:flex;gap:12px;overflow-x:auto;overflow-y:hidden;
+    scroll-snap-type:x mandatory;overscroll-behavior:contain;scrollbar-width:none;touch-action:pan-x;-webkit-overflow-scrolling:touch}
+  .row::-webkit-scrollbar{display:none}
+  .card{position:relative;flex:0 0 auto;height:100%;aspect-ratio:4/3;min-width:56px;box-sizing:border-box;
+    scroll-snap-align:start;border:0;border-radius:14px;padding:0;overflow:hidden;cursor:pointer;
+    background:rgba(128,128,128,.18);color:inherit;font:inherit}
+  .card img{display:block;width:100%;height:100%;object-fit:cover;pointer-events:none}
+  .card .ph{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    font-size:calc(var(--body,15px) * var(--text-scale, 1));font-weight:700;letter-spacing:.12em;color:var(--text-muted, #8b93a0)}
+  html.on-light .card .ph{color:var(--on-surface,#0b0d10);opacity:.5}
+  .card .label{position:absolute;left:8px;bottom:8px;max-width:calc(100% - 16px);box-sizing:border-box;padding:3px 8px;border-radius:8px;
+    background:rgba(11,13,16,.62);color:#fff;font-size:calc(calc(var(--body,15px) * .85) * var(--text-scale, 1));font-weight:600;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none}
+  /* What a touch did, over the GIF it touched. */
+  .card .over{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;box-sizing:border-box;padding:10px;
+    background:rgba(11,13,16,.68);color:#fff;text-align:center;font-weight:700;
+    font-size:calc(calc(var(--body,15px) * 1.15) * var(--text-scale, 1));pointer-events:none}
+  .card .over.ok{color:var(--accent,#d9b36a)}
+  .card .over.error{color:#ff9b8f;font-size:calc(var(--body,15px) * var(--text-scale, 1))}
+
+  .dots{flex:0 0 auto;display:flex;justify-content:center;gap:6px;height:6px}
+  .dot{width:6px;height:6px;border-radius:50%;background:rgba(128,128,128,.45)}
+  .dot.on{background:var(--accent,#d9b36a)}
+  html.accent-fill .dot.on{background:var(--on-surface,#0b0d10)}
+
+  html.tight .wrap{padding:8px 12px;gap:8px}
+  html.tight .row{gap:8px}
+  html.tight .card{border-radius:10px}
+</style></head>
+<body><div class="wrap">
+  <div class="tabs" id="tabs"></div>
+  <div class="row" id="row"></div>
+  <div class="dots" id="dots" hidden></div>
+  <div class="note" id="empty" hidden></div>
+</div>
+<script>
+  var L = {
+    loading: { fr: 'Chargement…', en: 'Loading…' },
+    all: { fr: '★ Tous', en: '★ All' },
+    empty: { fr: 'Ajoutez des GIF depuis les réglages du widget, dans /admin', en: 'Add GIFs from this widget’s settings in /admin' },
+    emptyGroup: { fr: 'Ce groupe est vide', en: 'This group is empty' },
+    copying: { fr: 'Copie…', en: 'Copying…' },
+    copied: { fr: '✓ Copié', en: '✓ Copied' },
+    failed: { fr: 'Copie impossible', en: 'Could not copy' }
+  }
+  var ALL = '*'
+  var COPIED_MS = 1000
+  var ERROR_MS = 2000
+  /** A link the server has not downloaded yet is asked for again after this long. */
+  var RETRY_MS = 30000
+  /** A finger that travels further than this between press and release was scrolling, not touching. */
+  var TAP_SLOP = 12
+
+  var settings = {}, snapshot = null, drawn = ''
+  /** The tab shown: ALL or a group id. Kept in memory only; a reload opens on ALL. */
+  var active = ALL
+  /** item id -> { state: 'copying' | 'ok' | 'error', text } while a touch's answer is shown. */
+  var feedback = {}
+  /** item id -> the timer that clears its feedback. */
+  var feedbackTimers = {}
+  /** link src -> data URL, once the host had it. Pruned to the srcs of the latest snapshot. */
+  var resolved = {}
+  /** item id -> true while its copy command has not answered. */
+  var pending = {}
+  /** A copy that has not answered after this long says so, whatever the item. */
+  var COPYING_AFTER_MS = 300
+  var observer = null
+  /** The card being pressed: { card, item, x, y, scroll }. */
+  var press = null
+
+  function groups() { return snapshot && Array.isArray(snapshot.groups) ? snapshot.groups : [] }
+
+  function itemsOf(tab) {
+    var list = []
+    groups().forEach(function (g) {
+      if (tab === ALL || g.id === tab) (Array.isArray(g.items) ? g.items : []).forEach(function (i) { list.push(i) })
+    })
+    return list
+  }
+
+  /** Giphy's CDN and the demo's data URLs load as they are; a link goes through the host's cache. */
+  function direct(src) { return /^https:\/\/i\.giphy\.com\//.test(src) || /^data:image\//.test(src) }
+
+  /** The placeholder stays over the card until the GIF has loaded, and comes back if it fails to. */
+  function showImage(card, src) {
+    if (!card.isConnected || card.querySelector('img')) return
+    var img = document.createElement('img')
+    img.alt = ''
+    img.onload = function () {
+      var ph = card.querySelector('.ph')
+      if (ph) ph.remove()
+    }
+    img.onerror = function () {
+      // Dropped so that the card asks again the next time it comes on screen.
+      img.remove()
+      if (resolved[card._item.src] === src) delete resolved[card._item.src]
+      if (!card.querySelector('.ph')) card.insertBefore(Fremkit.el('div', 'ph', 'GIF'), card.firstChild)
+    }
+    img.src = src
+    card.insertBefore(img, card.firstChild)
+  }
+
+  /** Asks the host for a link's GIF; until it has one the placeholder stays and the ask comes back later. */
+  function load(card) {
+    var src = card._item.src
+    if (direct(src)) return showImage(card, src)
+    if (resolved[src]) return showImage(card, resolved[src])
+    if (card._asking) return
+    card._asking = true
+    Fremkit.gif(src).then(function (url) {
+      resolved[src] = url
+      showImage(card, url)
+    }).catch(function () {
+      setTimeout(function () { card._asking = false; if (card.isConnected && card._visible) load(card) }, RETRY_MS)
+    })
+  }
+
+  function paintFeedback(card) {
+    var old = card.querySelector('.over')
+    if (old) old.remove()
+    var f = feedback[card._item.id]
+    if (!f) return
+    card.appendChild(Fremkit.el('div', 'over ' + f.state, f.text))
+  }
+
+  function setFeedback(id, state, text, ms) {
+    feedback[id] = { state: state, text: text }
+    clearTimeout(feedbackTimers[id])
+    if (ms) feedbackTimers[id] = setTimeout(function () { delete feedback[id]; repaint(id) }, ms)
+    repaint(id)
+  }
+
+  function repaint(id) {
+    Array.prototype.forEach.call(document.querySelectorAll('.card'), function (card) {
+      if (card._item.id === id) paintFeedback(card)
+    })
+  }
+
+  function copy(item) {
+    if (pending[item.id]) return
+    pending[item.id] = true
+    // A Giphy copy always downloads, so it says so at once; a link copy is usually instant from the
+    // cache, and says so only if it is not (a cache miss downloads too).
+    var slow = null
+    if (item.kind === 'giphy') setFeedback(item.id, 'copying', Fremkit.t(L.copying))
+    else slow = setTimeout(function () { if (pending[item.id]) setFeedback(item.id, 'copying', Fremkit.t(L.copying)) }, COPYING_AFTER_MS)
+    function done() { delete pending[item.id]; clearTimeout(slow) }
+    Fremkit.sendCommand('gif-board', 'copy', { id: item.id })
+      .then(function (result) {
+        done()
+        if (result && result.ok) setFeedback(item.id, 'ok', Fremkit.t(L.copied), COPIED_MS)
+        else setFeedback(item.id, 'error', (result && typeof result.error === 'string' && result.error) || Fremkit.t(L.failed), ERROR_MS)
+      })
+      .catch(function () { done(); setFeedback(item.id, 'error', Fremkit.t(L.failed), ERROR_MS) })
+  }
+
+  /** Forgets the data URLs of links the board no longer holds: each can weigh megabytes. */
+  function pruneResolved() {
+    var keep = {}
+    itemsOf(ALL).forEach(function (i) { if (i && typeof i.src === 'string') keep[i.src] = true })
+    Object.keys(resolved).forEach(function (src) { if (!keep[src]) delete resolved[src] })
+  }
+
+  function cardFor(item) {
+    var card = Fremkit.el('button', 'card')
+    card._item = item
+    card.setAttribute('aria-label', item.label || 'GIF')
+    card.appendChild(Fremkit.el('div', 'ph', 'GIF'))
+    if (settings.showLabels !== false && item.label) card.appendChild(Fremkit.el('div', 'label', item.label))
+    paintFeedback(card)
+    // The release is heard on the window: the dashboard may capture the pointer on the way.
+    card.addEventListener('pointerdown', function (e) {
+      press = { card: card, item: item, x: e.clientX, y: e.clientY, scroll: document.getElementById('row').scrollLeft }
+    })
+    // A keyboard press has no pointer before it; a pointer's click is handled on release.
+    card.addEventListener('click', function (e) { if (e.detail === 0) copy(item) })
+    return card
+  }
+
+  function onRelease(e) {
+    var p = press
+    press = null
+    if (!p || !p.card.isConnected) return
+    var moved = Math.abs(e.clientX - p.x) > TAP_SLOP || Math.abs(e.clientY - p.y) > TAP_SLOP
+    var scrolled = Math.abs(document.getElementById('row').scrollLeft - p.scroll) > TAP_SLOP
+    if (!moved && !scrolled && e.type === 'pointerup') copy(p.item)
+  }
+
+  function renderTabs() {
+    var tabs = document.getElementById('tabs')
+    tabs.innerHTML = ''
+    var list = [{ id: ALL, name: Fremkit.t(L.all) }].concat(groups().map(function (g) { return { id: g.id, name: g.name } }))
+    list.forEach(function (t) {
+      var tab = Fremkit.el('button', 'tab' + (t.id === active ? ' on' : ''), t.name)
+      tab.onclick = function () {
+        if (active === t.id) return
+        active = t.id
+        drawn = ''
+        render()
+        document.getElementById('row').scrollLeft = 0
+      }
+      tabs.appendChild(tab)
+    })
+  }
+
+  function renderDots() {
+    var row = document.getElementById('row'), dots = document.getElementById('dots')
+    var pages = row.clientWidth > 0 ? Math.ceil((row.scrollWidth - 2) / row.clientWidth) : 1
+    dots.hidden = pages < 2
+    if (pages < 2) { dots.innerHTML = ''; return }
+    var at = Math.min(pages - 1, Math.round(row.scrollLeft / row.clientWidth))
+    if (row.scrollLeft + row.clientWidth >= row.scrollWidth - 2) at = pages - 1
+    if (dots.childElementCount !== pages) {
+      dots.innerHTML = ''
+      for (var i = 0; i < pages; i++) dots.appendChild(Fremkit.el('div', 'dot'))
+    }
+    Array.prototype.forEach.call(dots.children, function (d, i) { d.classList.toggle('on', i === at) })
+  }
+
+  function render() {
+    document.documentElement.lang = Fremkit.locale
+    var tabs = document.getElementById('tabs'), row = document.getElementById('row')
+    var empty = document.getElementById('empty')
+    if (!snapshot) {
+      tabs.hidden = true
+      row.hidden = true
+      document.getElementById('dots').hidden = true
+      empty.hidden = false
+      empty.textContent = Fremkit.t(L.loading)
+      return
+    }
+    if (active !== ALL && !groups().some(function (g) { return g.id === active })) active = ALL
+    var nothing = itemsOf(ALL).length === 0
+    var items = itemsOf(active)
+    // The same board polled again redraws nothing: the row keeps its scroll and the GIFs their frame.
+    var key = JSON.stringify([snapshot, active, settings.showLabels !== false, Fremkit.locale])
+    if (key === drawn) return
+    drawn = key
+    tabs.hidden = nothing
+    if (!nothing) renderTabs()
+    row.hidden = items.length === 0
+    empty.hidden = items.length > 0
+    empty.textContent = Fremkit.t(nothing ? L.empty : L.emptyGroup)
+    if (observer) observer.disconnect()
+    row.innerHTML = ''
+    items.forEach(function (item) {
+      var card = cardFor(item)
+      row.appendChild(card)
+      if (observer) observer.observe(card)
+      else load(card)
+    })
+    renderDots()
+  }
+
+  function applySize(next) {
+    if (!next) return
+    var root = document.documentElement
+    root.classList.toggle('tight', next.h < 6)
+    root.style.setProperty('--tab', (next.h < 6 ? 44 : 56) + 'px')
+    root.style.setProperty('--body', (next.h < 6 ? 13 : next.h < 10 ? 15 : 17) + 'px')
+    renderDots()
+  }
+
+  Fremkit.whenReady(function () {
+    document.documentElement.lang = Fremkit.locale
+    settings = Fremkit.settings || {}
+    var row = document.getElementById('row')
+    // Only the cards on screen, and just past it, ask the host for their GIF.
+    if (typeof IntersectionObserver === 'function') {
+      observer = new IntersectionObserver(function (entries) {
+        entries.forEach(function (e) {
+          e.target._visible = e.isIntersecting
+          if (e.isIntersecting) load(e.target)
+        })
+      }, { root: row, rootMargin: '0px 50% 0px 50%' })
+    }
+    row.addEventListener('scroll', renderDots, { passive: true })
+    // A finger's slide arrives as wheel events: past either end they would turn the dashboard's page.
+    function hold() { if (Fremkit.holdSwipe) Fremkit.holdSwipe() }
+    row.addEventListener('wheel', hold, { passive: true })
+    document.getElementById('tabs').addEventListener('wheel', hold, { passive: true })
+    window.addEventListener('pointerup', onRelease)
+    window.addEventListener('pointercancel', onRelease)
+    applySize(Fremkit.size)
+    Fremkit.onResize(applySize)
+    Fremkit.onLocale(render)
+    Fremkit.onSettings(function (next) { settings = next || {}; render() })
+    Fremkit.subscribe('gif-board', function (data) { snapshot = data; pruneResolved(); render() })
+    render()
+  })
+</script></body></html>

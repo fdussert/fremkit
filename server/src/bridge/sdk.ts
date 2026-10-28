@@ -10,7 +10,7 @@
  * The bridge repeats the number as a literal (`Fremkit.sdk`), because it is a plain browser
  * script with no imports; `bridge.test.ts` holds the two together.
  */
-export const SDK_VERSION = 3
+export const SDK_VERSION = 4
 
 /**
  * What each generation put on the `Fremkit` global, by name.
@@ -33,4 +33,6 @@ export const SDK_GENERATIONS: Readonly<Record<number, readonly string[]>> = {
   // The screen a frame is drawn on, for a widget whose data is per screen (brightness),
   // and a control that must not swipe the page under the finger (holdSwipe).
   3: ['screen', 'holdSwipe'],
+  // A cached GIF handed over as a data URL; answered for the GIF board built-in only.
+  4: ['gif'],
 }

@@ -65,6 +65,9 @@ import { createShortcutsProvider } from './providers/shortcuts.js'
 import { createServiceStatusProvider } from './providers/service-status.js'
 import { createSystemProvider } from './providers/system.js'
 import { createDiskMapProvider } from './providers/disk-map.js'
+import { GifStore } from './gifs/store.js'
+import { gifRoutes } from './gifs/routes.js'
+import { createGifBoardProvider } from './gifs/provider.js'
 import { BrightnessService } from './brightness/service.js'
 import { createBrightnessProvider, BRIGHTNESS_INTERVAL_MS } from './brightness/provider.js'
 import { brightnessRoutes } from './brightness/routes.js'
@@ -258,6 +261,11 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   await tracker.load()
   const usage = new ClaudeUsage({ filePath: join(opts.dataDir, 'claude-usage.json'), transcriptsDir: demo ? join(opts.dataDir, 'demo-transcripts') : opts.claudeTranscriptsDir ?? join(homedir(), '.claude', 'projects') })
   await usage.load()
+  // The GIF board's files, shared by its provider and its routes. A demo reaches no network: its
+  // fetch answers the hosts the demo knows and refuses the rest, and no host is looked up in DNS.
+  const gifs = new GifStore({ dataDir: opts.dataDir, ...(demo ? { fetchImpl: demoPublicFetch(), isPrivate: async () => false } : {}) })
+  // A temp copy left by an earlier run goes now, not whenever a board is next on screen.
+  void gifs.sweepTemp().catch(() => {})
 
   /**
    * The device screen a paired device is attached to, asked of the device service at call time:
@@ -307,6 +315,9 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     registry.register(createDockProvider(dock))
     // Registered here, not in providers/index.ts, because its last scan is saved under the data dir.
     registry.register(createDiskMapProvider({ dataDir: opts.dataDir }))
+    // Here because it reads the config store and shares the GIF store with the routes. It writes
+    // to this Mac's pasteboard, so a demo never constructs it.
+    registry.register(createGifBoardProvider({ config: () => store.get(), gifs }))
     // Registered here, not in providers/index.ts, because that is where the config store lives.
     registry.register(createShortcutsProvider(undefined, instances))
     registry.register(createServiceStatusProvider({}, instances))
@@ -504,6 +515,8 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     onRestored: async (config) => { await connections.sync(config.connections); retainCameras(config) },
   })
   await app.register(faviconRoutes, { dir: join(opts.dataDir, 'icons', 'favicons'), config: () => store.get(), screenOfDevice })
+  // The editor's GIF search and link check, on the one GIF store the provider shares.
+  await app.register(gifRoutes, { store, gifs, screenOfDevice, secretsFor: (c) => connections.secretsFor(c), demo })
   await app.register(claudeRoutes, { tracker, usage })
   await app.register(dockRoutes, {
     state: dock,

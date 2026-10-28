@@ -137,8 +137,22 @@ async function empty(res: Response): Promise<void> {
   throw Object.assign(new Error(msg), { status: res.status }) satisfies HttpFailure
 }
 
+/** One Giphy search result, as `GET /api/gifs/search` answers it (`server/src/gifs/giphy.ts`). */
+export interface GifSearchResult { giphyId: string; title: string; thumb: string; width: number; height: number }
+export type GifSearchError = 'unconfigured' | 'unauthorized' | 'rateLimited' | 'unreachable'
+export type GifSearchResponse =
+  | { ok: true; results: GifSearchResult[]; total: number }
+  | { ok: false; error: GifSearchError }
+
 export const api = {
   getConfig: () => fetch('/api/config').then((r) => json<Config>(r)),
+  /** A Giphy search made by the server with the Giphy connection's key; `q` has 2 characters or more. */
+  searchGifs: (q: string, offset = 0) =>
+    fetch(`/api/gifs/search?${new URLSearchParams({ q, offset: String(offset) }).toString()}`).then((r) => json<GifSearchResponse>(r)),
+  /** Downloads a pasted GIF link into the cache; `error` is the server's translated reason. */
+  checkGif: (url: string) =>
+    fetch('/api/gifs/check', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ url }) })
+      .then((r) => json<{ ok: true } | { ok: false; error: string }>(r)),
   /** The redacted report for a bug issue, as Markdown text (see `server/src/diagnostics`). */
   getDiagnostics: async (): Promise<string> => {
     const res = await fetch('/api/diagnostics', { cache: 'no-store' })

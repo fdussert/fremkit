@@ -3,7 +3,7 @@ import '@fastify/static'
 import { readFile } from 'node:fs/promises'
 import { join, normalize } from 'node:path'
 import { WIDGET_ID_RE } from '../config/schema.js'
-import type { WidgetCatalog } from './catalog.js'
+import type { WidgetCatalog, WidgetSource } from './catalog.js'
 import type { ConfigStore } from '../config/store.js'
 import { grantedCatalog, permissionsOf, type Permissions } from '../marketplace/consent.js'
 import { SDK_VERSION } from '../bridge/sdk.js'
@@ -37,8 +37,12 @@ import { hostAddresses, webrtcLevel, type WebRtcLevel } from './webrtc.js'
  * device origin the page came from, so a paired iPad still frames its widgets. Any other web page
  * gets no widget document to frame, and so none to read the bridge's attributes (Fremplay's
  * `data-webrtc-hosts`, this Mac's addresses) or to hand a `fremkit:connect` from its own window.
+ *
+ * `id` and `source` widen `img-src` for one widget only: the GIF board, as the built-in, shows
+ * search results straight from Giphy's CDN. An installed or dev folder can never own a built-in
+ * id, and the source is checked anyway; every other widget gets the policy above, byte for byte.
  */
-export function widgetCsp(port = 4242, dev = false, remoteOrigin?: string): string {
+export function widgetCsp(port = 4242, dev = false, remoteOrigin?: string, id?: string, source?: WidgetSource): string {
   // On the remote listener the page was loaded from `https://<host>:4243` and nothing else: the
   // loopback origins would name the iPad itself.
   const ownOrigins = remoteOrigin !== undefined
@@ -46,12 +50,13 @@ export function widgetCsp(port = 4242, dev = false, remoteOrigin?: string): stri
     : [`http://127.0.0.1:${port}`, `http://localhost:${port}`]
   if (dev && remoteOrigin === undefined) ownOrigins.push('http://127.0.0.1:5173', 'http://localhost:5173')
   const own = ownOrigins.join(' ')
+  const extraImg = id === 'gif-board' && source === 'builtin' ? ' https://i.giphy.com https://media.giphy.com' : ''
   return [
     'sandbox allow-scripts',
     "default-src 'none'",
     `script-src 'self' ${own} 'unsafe-inline'`,
     `style-src 'self' ${own} 'unsafe-inline'`,
-    `img-src 'self' ${own} data: blob: https://i.scdn.co`,
+    `img-src 'self' ${own} data: blob: https://i.scdn.co${extraImg}`,
     `media-src 'self' ${own} data:`,
     `font-src 'self' ${own}`,
     "connect-src 'none'",
@@ -112,7 +117,6 @@ export async function widgetRoutes(
   },
 ): Promise<void> {
   const bridge = await readFile(opts.bridgePath, 'utf8')
-  const csp = widgetCsp(opts.port, opts.dev)
 
   app.get('/fremkit.js', async (_req, reply) => reply.type('application/javascript; charset=utf-8').send(bridge))
 
@@ -180,9 +184,9 @@ export async function widgetRoutes(
     // untrusted code, and on a case-insensitive filesystem so is `Index.html`.
     // Remote: built per request from the Host the devices gate has already checked against the
     // names the listener answers to, so it cannot be steered to an origin of the sender's choice.
-    const policy = isRemoteRequest(req)
-      ? widgetCsp(opts.port, opts.dev, `https://${String(req.headers.host).toLowerCase()}`)
-      : csp
+    // Per widget too: the catalogue's source for the id decides whether it gets extra image hosts.
+    const remoteOrigin = isRemoteRequest(req) ? `https://${String(req.headers.host).toLowerCase()}` : undefined
+    const policy = widgetCsp(opts.port, opts.dev, remoteOrigin, id, opts.catalog.entry(id)?.source)
     reply.header('content-security-policy', policy)
     // The folder rather than the root: a widget may be a built-in or one the user installed, and
     // which of the two owns an id is the catalogue's answer, decided once at scan time.

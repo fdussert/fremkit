@@ -94,7 +94,7 @@ const PAGES: { id: string; name: string; items: (Placement & { widgetId: string 
       { instanceId: 'processes-1', widgetId: 'processes', x: 24, y: 0, w: 16, h: 8 },
       { instanceId: 'clipboard-1', widgetId: 'clipboard', x: 24, y: 8, w: 16, h: 8 },
       { instanceId: 'shortcuts-1', widgetId: 'shortcuts', x: 40, y: 0, w: 24, h: 8 },
-      { instanceId: 'clock-2', widgetId: 'clock', x: 40, y: 8, w: 24, h: 8 },
+      { instanceId: 'gif-board-1', widgetId: 'gif-board', x: 40, y: 8, w: 24, h: 8 },
     ],
   },
 ]

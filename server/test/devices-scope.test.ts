@@ -179,9 +179,10 @@ describe('deviceConfigView', () => {
     // A key main adds to the config is dropped from the device view without a word; this makes
     // the next one a decision. Withheld: hosts and accounts, the secrets backend, the privacy
     // switches, the marketplace records and the admin's experimental features are the Mac's own business.
+    // So is the GIF board's collection: copying a GIF only works on the Mac.
     // `labs` is projected in part: `companion` only (see the next test).
     const projected = ['version', 'theme', 'themeSchedule', 'locale', 'widgets', 'screens', 'labs']
-    const withheld = ['connections', 'secrets', 'privacy', 'marketplace']
+    const withheld = ['connections', 'secrets', 'privacy', 'marketplace', 'gifs']
     expect(Object.keys(ConfigSchema.shape).sort()).toEqual([...projected, ...withheld].sort())
   })
   it('has no screen and no instance for a device with none, or a screen that is gone', () => {
@@ -194,7 +195,7 @@ describe('deviceConfigView', () => {
 })
 
 /** What a device must never read in the config, whatever its screen. */
-const MAC_ONLY = ['connections', 'secrets', 'marketplace', 'privacy']
+const MAC_ONLY = ['connections', 'secrets', 'marketplace', 'privacy', 'gifs']
 
 describe.skipIf(!hasOpenssl)('a paired device acts on its own screen only', () => {
   let dir: string

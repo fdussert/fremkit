@@ -266,6 +266,7 @@ installing it and leaving the call to fail.
 | `1` | 0.2.0 | Everything not listed below |
 | `2` | 0.3.0 | `favicon(url)`, `image(url)`, `installedApps()`, `appIcon(bundleId)` |
 | `3` | next release | `screen`, `holdSwipe` |
+| `4` | next release | `gif(url)` (answered for the built-in GIF board only) |
 
 A widget calling `installedApps()` with `"sdk": 1` would install on 0.2.0 and find the method
 missing. Data channels are not generations: a channel the running Fremkit has no provider for
@@ -300,6 +301,7 @@ than wait.
 | `fetch(url, init)` | GET through the server's proxy. Only the host in `permissions.network` is reachable; `body` and `credentials` are ignored |
 | `favicon(url)` | The icon of the site `url` is on, as a `data:` URL for an `<img>`; rejects when there is none. Ask this rather than loading `/api/favicon` in an `<img>`: a widget's frame has an opaque origin, so the server sees that request as cross-site and refuses it |
 | `image(url)` | The image at exactly `url`, as a `data:` URL, under the rules of `favicon` (no SVG, no private address). Fetched only when `url` is a value the user typed into this widget's settings — a manifest `default` does not count; rejects otherwise — the whole address leaves the machine, so a widget cannot pick it |
+| `gif(url)` | A GIF the server keeps, as a `data:` URL; rejects when it has none for `url`. Answered for the built-in GIF board only: any other widget is refused. Generation 4 |
 | `installedApps()` | The applications installed on this Mac, as `{ name, bundleId, file }` — enough to match a name the user typed and ask for its icon with `appIcon(bundleId)`, and no filesystem path. Ask this rather than `fetch('/api/apps/installed')`: a widget's frame is served with `connect-src 'none'`, so its own request never leaves the page. Answered only to a widget that subscribes to `dock`, which the consent dialog shows; anything else is refused |
 | `appIcon(bundleId)` | A local application icon as a `data:` URL for an `<img>`. Requires a `dock` subscription, like `installedApps()`. The host fetches it because the opaque widget frame cannot load `/api/apps/icon/<bundleId>` directly |
 | `t(dict, params)` | Resolves a `{ fr, en }` table entry and interpolates `{name}` placeholders |
@@ -355,13 +357,14 @@ document.documentElement.style.setProperty('--h', Fremkit.size.px.height + 'px')
 `system`, `processes`, `volume`, `spotify`, `mutedeck`, `clipboard`, `shortcuts`, `cleanshot`,
 `network`, `battery`, `service-status`, `config`, `claude-sessions`, `claude-usage`,
 `claude-account`, `claude-identity`, `codex`, `codex-live`, `dock`, `docker-local`,
-`local-models`, `rtk`, `disk-map`, plus one per connection: `azure-devops:<connectionId>`,
+`local-models`, `rtk`, `disk-map`, `gif-board`, plus one per connection: `azure-devops:<connectionId>`,
 `bambu:<connectionId>`, `github:<connectionId>`, `synology:<connectionId>`,
 and `calendar:<connectionId>` for an ICS connection.
 
 `disk-map` and `clipboard` are reserved for their built-in widgets and refused in a third-party
 manifest — at install and when the catalogue reads `data/widgets` — because the first carries the
-names of your folders and files and the second a preview of everything you copy. `brightness`
+names of your folders and files and the second a preview of everything you copy. `gif-board`
+is reserved the same way: its `copy` command writes your clipboard. `brightness`
 may be subscribed to, but listing it in `commands` is refused the same way: setting the screen's
 level is for the built-in widget, the admin and the helper. `config` is refused in every manifest.
 

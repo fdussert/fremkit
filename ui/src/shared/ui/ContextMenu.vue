@@ -54,7 +54,11 @@ async function measure(depth: number): Promise<void> {
   level.pos = depth === 0
     ? placeMenu(menu.value!.at, size, viewport())
     : placeSubmenu(boxOf(level.anchor!.panel), boxOf(level.anchor!.item), size, viewport())
-  if (depth === 0) el.focus({ preventScroll: true })
+  if (depth !== 0) return
+  // Focused once drawn: until `pos` reaches the DOM the panel is `visibility: hidden`, which no
+  // element can take the focus under. A menu left without it lets Escape reach the dialog under it.
+  await nextTick()
+  if (panels.value[0] === el && document.contains(el)) el.focus({ preventScroll: true })
 }
 const boxOf = (r: DOMRect) => ({ left: r.left, top: r.top, width: r.width, height: r.height })
 
