@@ -106,6 +106,8 @@ import { demoConnectionFetch } from './demo/declared.js'
 import { demoIcon } from './demo/icons.js'
 import { DEMO_APPS } from './demo/world.js'
 import { FileSecretStore } from './secrets/file.js'
+import { DpapiSecretStore } from './secrets/dpapi.js'
+import { MOVE_DONE, moveFileSecretsToDpapi } from './secrets/move-to-dpapi.js'
 import { listDistros, wslRoots } from './wsl/distros.js'
 import { codexWslDistro, createCodexSessionsReader, sweepWslCopies } from './wsl/codex.js'
 import { createLocalCodexClient, createWslCodexClient } from './codex/adapter.js'
@@ -385,12 +387,31 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   // The theme in force, day or night: see themes/schedule.ts. Read from the config alone, so a
   // demo runs the real one.
   registry.register(createThemeProvider(() => store.get()))
+  const unreadableSecrets = (code: string): void => app.log.warn({ code }, 'stored secrets unreadable here, starting empty')
+  // On Windows a config still on the plaintext `secrets.json` moves to DPAPI here, before the
+  // store is built. The backend that was configured stays in force unless the move completed:
+  // a save that failed after setting the config in memory must not point this run at DPAPI.
+  // `process.platform`, like `createSecretStore`: `opts.platform` only picks a channel table.
+  const configuredBackend = store.get().secrets.backend
+  const moved = await moveFileSecretsToDpapi({
+    platform: process.platform,
+    demo,
+    dataDir: opts.dataDir,
+    configFile: join(opts.dataDir, 'fremkit.json'),
+    store,
+    dpapi: () => new DpapiSecretStore(opts.dataDir, { log: unreadableSecrets }),
+    log: (code, count) => {
+      if (MOVE_DONE.has(code)) app.log.info({ code }, 'plaintext secrets.json moved to DPAPI')
+      else if (code === 'entries-skipped') app.log.warn({ code, count }, 'secrets.json entries no store can read, not moved')
+      else app.log.warn({ code }, 'plaintext secrets.json kept; trying again at next start')
+    },
+  })
   // A demo never asks the keychain, whatever its config says: a file in its own data folder.
   const secrets = demo
     ? new FileSecretStore(join(opts.dataDir, 'secrets.json'))
-    : createSecretStore(store.get().secrets.backend, opts.dataDir, {
+    : createSecretStore(moved === 'moved' ? 'dpapi' : configuredBackend, opts.dataDir, {
       adoptLegacyKeychain: opts.adoptLegacyKeychain === true,
-      log: (code) => app.log.warn({ code }, 'stored secrets unreadable here, starting empty'),
+      log: unreadableSecrets,
     })
   // v2 → v3 moved the Homey connection to the type its widget declares, and the declaration
   // calls the key `token` where the coded type called it `apiKey`. The config half of that is in

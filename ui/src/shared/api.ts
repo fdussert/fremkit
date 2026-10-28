@@ -45,7 +45,7 @@ export interface HistorySummary {
   screensEdited: string[]
   other: boolean
 }
-export type HistoryKind = 'save' | 'earlier' | 'before-migration' | 'restore' | 'import' | 'revert'
+export type HistoryKind = 'save' | 'earlier' | 'before-migration' | 'restore' | 'import' | 'revert' | 'secrets-moved'
 /** One saved version of the dashboard, as `GET /api/history` lists it, newest first. */
 export interface HistoryEntry {
   id: string

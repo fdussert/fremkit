@@ -383,6 +383,7 @@ export const fr: Record<string, string> = {
   'admin.history.kind.import': 'Configuration importée',
   'admin.history.kind.revert': 'Version restaurée',
   'admin.history.kind.revertOf': 'Version du {when} restaurée',
+  'admin.history.kind.secrets-moved': 'Secrets placés sous la protection de Windows',
   'admin.history.first': 'Plus ancienne version gardée',
   'admin.history.noChange': 'Aucun changement visible',
   'admin.history.screenAdded': 'Écran « {name} » ajouté',

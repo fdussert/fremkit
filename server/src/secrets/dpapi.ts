@@ -1,8 +1,9 @@
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto'
-import { access, chmod, mkdir, readFile, rename, writeFile } from 'node:fs/promises'
+import { access, readFile, rename } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tr } from '../i18n.js'
 import { HostError, sharedHost, type HostOp } from '../win/powershell-host.js'
+import { nodeIo, writeFileDurably, type DurableIo } from './durable.js'
 import { assertSecretKey, type SecretStore } from './types.js'
 
 /** Owner read/write only, as for every runtime file (the folder's ACL already says so on Windows). */
@@ -38,6 +39,8 @@ export interface DpapiSecretStoreOptions {
   host?: DpapiHost
   /** Told once why existing secrets could not be read. */
   log?: (code: DpapiUnreadable) => void
+  /** The file calls of a write; the node ones when not given. */
+  io?: DurableIo
 }
 
 type Index = { kind: 'missing' } | { kind: 'corrupt' } | { kind: 'ok'; entries: Record<string, string> }
@@ -62,15 +65,17 @@ export class DpapiSecretStore implements SecretStore {
   private readonly indexPath: string
   private readonly hostOverride: DpapiHost | undefined
   private readonly log: (code: DpapiUnreadable) => void
+  private readonly io: DurableIo
   private key: Buffer | null = null
   private unwrapping: Promise<Buffer | null> | null = null
   private unreadable = false
 
-  constructor(private readonly dataDir: string, opts: DpapiSecretStoreOptions = {}) {
+  constructor(dataDir: string, opts: DpapiSecretStoreOptions = {}) {
     this.keyPath = join(dataDir, 'secrets.key')
     this.indexPath = join(dataDir, 'secrets.dpapi.json')
     this.hostOverride = opts.host
     this.log = opts.log ?? (() => {})
+    this.io = opts.io ?? nodeIo
   }
 
   // Serializes mutations, as in `FileSecretStore`: two overlapping writes would each read the same
@@ -207,13 +212,13 @@ export class DpapiSecretStore implements SecretStore {
     return key
   }
 
-  private async writeAtomic(path: string, text: string): Promise<void> {
-    await mkdir(this.dataDir, { recursive: true })
-    const tmp = `${path}.tmp`
-    // The mode at creation and again after: `writeFile` applies it only to a file it creates.
-    await writeFile(tmp, text, { encoding: 'utf8', mode: MODE })
-    await chmod(tmp, MODE)
-    await rename(tmp, path)
+  /**
+   * Flushed to disk before the rename and the folder after it: the move from `secrets.json`
+   * deletes the plaintext copy on the strength of these files, so a power cut must not find them
+   * renamed into place but empty.
+   */
+  private writeAtomic(path: string, text: string): Promise<void> {
+    return writeFileDurably(this.io, path, text, MODE)
   }
 
   async get(key: string): Promise<string | null> {
@@ -253,6 +258,12 @@ export class DpapiSecretStore implements SecretStore {
     const prefix = `${connectionId}/`
     const opened = await this.open()
     return opened ? Object.keys(opened.entries).filter((k) => k.startsWith(prefix)) : []
+  }
+
+  /** Every key the store can open: what the move from `secrets.json` checks it against. */
+  async keys(): Promise<string[]> {
+    const opened = await this.open()
+    return opened ? Object.keys(opened.entries) : []
   }
 }
 

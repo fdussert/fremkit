@@ -13,7 +13,7 @@ type Listener = (config: Config) => void
  * around it; the others each leave their own entry, with the version before them kept.
  */
 export interface SaveOptions {
-  reason?: Extract<HistoryKind, 'save' | 'restore' | 'import' | 'revert'>
+  reason?: Extract<HistoryKind, 'save' | 'restore' | 'import' | 'revert' | 'secrets-moved'>
   /** For a `revert`: when the version put back was saved. */
   revertedTo?: number
 }

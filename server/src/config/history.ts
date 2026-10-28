@@ -40,8 +40,10 @@ import { summarizeChange, type ChangeSummary } from './history-diff.js'
  * - `before-migration`: the file as an older release wrote it, before this one upgraded it.
  * - `restore` / `import` / `revert`: what a backup restore, a setup import or a restore from this
  *   history put in place.
+ * - `secrets-moved`: the secrets backend switched from the plaintext file to DPAPI on Windows
+ *   (`secrets/move-to-dpapi.ts`); the version before it says `file`.
  */
-export type HistoryKind = 'save' | 'earlier' | 'before-migration' | 'restore' | 'import' | 'revert'
+export type HistoryKind = 'save' | 'earlier' | 'before-migration' | 'restore' | 'import' | 'revert' | 'secrets-moved'
 
 export interface HistoryEntry {
   id: string
