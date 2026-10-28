@@ -12,9 +12,10 @@ const KEY_BYTES = 32
 const IV_BYTES = 12
 const TAG_BYTES = 16
 /**
- * A DPAPI call's own budget. The host's start-up (spawn plus its Add-Type, up to 20 s) is timed
- * separately and before this starts, but a cold DPAPI on a loaded machine is still not instant.
- * Worst case a first read (a connection's Test) waits about 50 s, then fails with a code: never forever.
+ * A DPAPI call's own budget. The host's start-up (spawn plus its Add-Type, up to 20 s) and the
+ * wait for its turn behind other calls (up to `QUEUE_WAIT_MS`, then `busy`) are timed separately
+ * and before this starts, but a cold DPAPI on a loaded machine is still not instant. Worst case a
+ * first read (a connection's Test) waits about a minute, then fails with a code: never forever.
  */
 const DPAPI_TIMEOUT_MS = 30_000
 

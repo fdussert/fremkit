@@ -23,8 +23,13 @@ import { windowsTool } from '../platform/windows-tools.js'
  *   clipboard text or a distro name.
  * - stderr is drained and dropped, never logged: it may quote a value. A code that is not a
  *   short lowercase token becomes `error` for the same reason.
- * - A call's timer starts when its line is written; start-up (spawn plus the script's Add-Type)
- *   has its own budget, so a slow start never turns into a kill-and-respawn loop.
+ * - One request is in flight per child: the script answers one op at a time, so the next line is
+ *   written, and its timer started, only once the previous one has answered. The timer then
+ *   measures the op itself; only an op that overruns it kills the child.
+ * - A call waiting its turn has a separate budget (`QUEUE_WAIT_MS` by default). Past it the call
+ *   fails with `busy` and the child is left alone: a slow op ahead of it is not a stuck host.
+ * - Start-up (spawn plus the script's Add-Type) has its own budget, and the queue clock starts
+ *   only once the child is ready, so a slow start never turns into a kill-and-respawn loop.
  * - An answer line longer than `MAX_LINE` kills the child: nothing it could say is that long.
  *
  * DPAPI values travel only on stdin and stdout, and never reach an error or a log line.
@@ -77,6 +82,8 @@ export const HOST_ARGS: readonly string[] = ['-NoLogo', '-NoProfile', '-NonInter
 export const MAX_LINE = 8 * 1024 * 1024
 /** Time the child gets to start and compile its interop before queued calls give up. */
 export const START_TIMEOUT_MS = 20_000
+/** How long a call may wait behind others for its turn before it fails with `busy`. */
+export const QUEUE_WAIT_MS = 10_000
 
 const CODE = /^[a-z][a-z0-9-]{0,39}$/
 
@@ -107,18 +114,22 @@ export interface PowerShellHostOptions {
 interface Pending {
   resolve: (value: unknown) => void
   reject: (error: HostError) => void
-  /** Set once the line is written; a call waiting for start-up has none. */
+  /** Set once the line is written; a call waiting its turn has none. */
   timer?: ReturnType<typeof setTimeout>
+  /** Set while the call waits its turn on a ready child. */
+  queueTimer?: ReturnType<typeof setTimeout>
   /** The child the request went to: only its exit fails the request. */
   owner: Running
 }
 
-interface Queued { id: number; line: string; timeoutMs: number }
+interface Queued { id: number; line: string; timeoutMs: number; queueWaitMs: number }
 
 interface Running {
   child: ChildProcess
   ready: boolean
   queue: Queued[]
+  /** The id of the one request written and not yet answered. */
+  inFlight: number | null
   startTimer?: ReturnType<typeof setTimeout>
 }
 
@@ -136,7 +147,12 @@ export class PowerShellHost {
     this.script = opts.script
   }
 
-  call<T>(op: HostOp, arg?: unknown, timeoutMs = 5000): Promise<T> {
+  /**
+   * Runs one op. `timeoutMs` bounds the op once its line is written (an overrun kills the child);
+   * `queueWaitMs` bounds the wait for its turn (an overrun fails this call with `busy`, nothing
+   * else).
+   */
+  call<T>(op: HostOp, arg?: unknown, timeoutMs = 5000, queueWaitMs = QUEUE_WAIT_MS): Promise<T> {
     const id = ++this.nextId
     let line: string
     try {
@@ -154,9 +170,12 @@ export class PowerShellHost {
         return
       }
       this.pending.set(id, { resolve: resolve as (value: unknown) => void, reject, owner: running })
-      const queued = { id, line, timeoutMs }
-      if (running.ready) this.send(running, queued)
-      else running.queue.push(queued)
+      const queued = { id, line, timeoutMs, queueWaitMs }
+      running.queue.push(queued)
+      if (running.ready) {
+        this.armQueueTimer(running, queued)
+        this.pump(running)
+      }
     })
   }
 
@@ -167,7 +186,7 @@ export class PowerShellHost {
   private start(): Running {
     this.script ??= readFileSync(shippedPaths().winHostScript, 'utf8')
     const child = this.spawnHost(windowsTool('powershell', this.env), HOST_ARGS)
-    const running: Running = { child, ready: false, queue: [] }
+    const running: Running = { child, ready: false, queue: [], inFlight: null }
     this.running = running
 
     child.on('error', () => this.exited(running))
@@ -213,9 +232,33 @@ export class PowerShellHost {
     })
   }
 
+  /** Starts the clock on a call waiting its turn; past it the call fails with `busy`, alone. */
+  private armQueueTimer(running: Running, queued: Queued): void {
+    const pending = this.pending.get(queued.id)
+    if (!pending) return
+    pending.queueTimer = setTimeout(() => {
+      const at = running.queue.indexOf(queued)
+      if (at < 0) return
+      running.queue.splice(at, 1)
+      this.settle(queued.id, new HostError('busy'))
+    }, queued.queueWaitMs)
+  }
+
+  /** Writes the next queued request when the child is ready and has nothing in flight. */
+  private pump(running: Running): void {
+    if (!running.ready || running.inFlight !== null || running !== this.running) return
+    let queued: Queued | undefined
+    while ((queued = running.queue.shift())) {
+      if (this.pending.has(queued.id)) { this.send(running, queued); return }
+    }
+  }
+
   private send(running: Running, queued: Queued): void {
     const pending = this.pending.get(queued.id)
     if (!pending) return
+    clearTimeout(pending.queueTimer)
+    pending.queueTimer = undefined
+    running.inFlight = queued.id
     pending.timer = setTimeout(() => {
       if (!this.pending.has(queued.id)) return
       this.settle(queued.id, new HostError('timeout'))
@@ -237,14 +280,20 @@ export class PowerShellHost {
     if (answer.ready === true && !running.ready) {
       running.ready = true
       clearTimeout(running.startTimer)
-      for (const queued of running.queue.splice(0)) this.send(running, queued)
+      for (const queued of running.queue) this.armQueueTimer(running, queued)
+      this.pump(running)
       return
     }
     if (typeof answer.id !== 'number') return
+    // Only the request in flight can be answered: a queued id was never written.
+    if (answer.id !== running.inFlight) return
     const pending = this.pending.get(answer.id)
-    if (!pending || pending.owner !== running) return
-    if (answer.ok === true) this.settle(answer.id, undefined, answer.value)
-    else this.settle(answer.id, new HostError(typeof answer.code === 'string' && CODE.test(answer.code) ? answer.code : 'error'))
+    running.inFlight = null
+    if (pending && pending.owner === running) {
+      if (answer.ok === true) this.settle(answer.id, undefined, answer.value)
+      else this.settle(answer.id, new HostError(typeof answer.code === 'string' && CODE.test(answer.code) ? answer.code : 'error'))
+    }
+    this.pump(running)
   }
 
   private settle(id: number, error: HostError | undefined, value?: unknown): void {
@@ -252,6 +301,7 @@ export class PowerShellHost {
     if (!pending) return
     this.pending.delete(id)
     clearTimeout(pending.timer)
+    clearTimeout(pending.queueTimer)
     if (error) pending.reject(error)
     else pending.resolve(value)
   }

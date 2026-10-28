@@ -75,17 +75,74 @@ describe('PowerShellHost', () => {
     host.close()
   })
 
-  it('matches answers to requests by id when they arrive out of order', async () => {
+  it('writes one request at a time, and ignores an answer for one not yet written', async () => {
     const { host, children } = setup()
     const first = host.call('battery')
     const second = host.call('clipboard.read')
     children[0].ready()
     await flush()
-    children[0].answer({ id: 2, ok: true, value: 'second' })
+    expect(children[0].requests()).toEqual([{ id: 1, op: 'battery' }])
+    children[0].answer({ id: 2, ok: true, value: 'never written' })
     children[0].answer({ id: 1, ok: true, value: 'first' })
     await expect(first).resolves.toBe('first')
+    await flush()
+    expect(children[0].requests()).toEqual([{ id: 1, op: 'battery' }, { id: 2, op: 'clipboard.read' }])
+    children[0].answer({ id: 2, ok: true, value: 'second' })
     await expect(second).resolves.toBe('second')
     expect(children).toHaveLength(1)
+    host.close()
+  })
+
+  it('starts a queued call\'s timer only when its turn comes: a slow op ahead of it kills nothing', async () => {
+    vi.useFakeTimers()
+    const { host, children } = setup()
+    const slow = host.call('network.wifi', undefined, 5000)
+    const quick = host.call('volume.get', undefined, 1000)
+    children[0].ready()
+    await vi.advanceTimersByTimeAsync(4000) // the wifi op takes 4 s of its 5 s
+    expect(children[0].requests()).toHaveLength(1)
+    children[0].answer({ id: 1, ok: true, value: { ssid: null, signal: null } })
+    await vi.advanceTimersByTimeAsync(0)
+    expect(children[0].requests()).toEqual([{ id: 1, op: 'network.wifi' }, { id: 2, op: 'volume.get' }])
+    await vi.advanceTimersByTimeAsync(500)
+    children[0].answer({ id: 2, ok: true, value: { level: 7, muted: false } })
+    await expect(slow).resolves.toEqual({ ssid: null, signal: null })
+    await expect(quick).resolves.toEqual({ level: 7, muted: false })
+    expect(children[0].killed).toBe(false)
+    expect(children).toHaveLength(1)
+    host.close()
+  })
+
+  it('fails a call that waits past its queue budget with busy, and keeps the child', async () => {
+    vi.useFakeTimers()
+    const { host, children } = setup()
+    const slow = host.call('battery', undefined, 10_000)
+    const waiting = host.call('volume.get', undefined, 1000, 2000).catch((error: HostError) => error.code)
+    children[0].ready()
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(await waiting).toBe('busy')
+    expect(children[0].killed).toBe(false)
+    children[0].answer({ id: 1, ok: true, value: 'done' })
+    await expect(slow).resolves.toBe('done')
+    // The busy call was never written, and the child takes the next one.
+    const next = host.call('volume.get')
+    await vi.advanceTimersByTimeAsync(0)
+    expect(children[0].requests()).toEqual([{ id: 1, op: 'battery' }, { id: 3, op: 'volume.get' }])
+    children[0].answer({ id: 3, ok: true, value: 1 })
+    await expect(next).resolves.toBe(1)
+    expect(children).toHaveLength(1)
+    host.close()
+  })
+
+  it('does not count start-up against the queue budget', async () => {
+    vi.useFakeTimers()
+    const { host, children } = setup()
+    const pending = host.call('volume.get', undefined, 1000, 1000)
+    await vi.advanceTimersByTimeAsync(8000)
+    children[0].ready()
+    await vi.advanceTimersByTimeAsync(0)
+    children[0].answer({ id: 1, ok: true, value: 2 })
+    await expect(pending).resolves.toBe(2)
     host.close()
   })
 
@@ -111,7 +168,7 @@ describe('PowerShellHost', () => {
     host.close()
   })
 
-  it('fails the other in-flight calls with host-exited when one times out', async () => {
+  it('restarts the child when an op overruns its own timer, failing the calls queued behind it', async () => {
     vi.useFakeTimers()
     const { host, children } = setup()
     const slow = host.call('battery', undefined, 1000).catch((error: HostError) => error.code)
