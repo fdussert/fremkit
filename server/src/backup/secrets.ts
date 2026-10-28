@@ -92,6 +92,28 @@ export function restoreSecretPlan(
  * caller logs it and the connection stays in `reenterSecrets`, because `missingSecrets` asks the
  * store rather than this function.
  */
+/**
+ * The stored values `applyRestoreSecretPlan` is about to drop, so a restore whose save then fails
+ * can put them back: the config in force still names those connections.
+ */
+export async function plannedSecretValues(
+  plan: RestoreSecretPlan,
+  types: ConnectionTypeRegistry,
+  secrets: SecretStore,
+): Promise<Array<[key: string, value: string]>> {
+  const values: Array<[string, string]> = []
+  for (const connection of [...plan.rebound, ...plan.removed]) {
+    const type = types.get(connection.type)
+    if (!type) continue
+    for (const field of types.secretKeys(type)) {
+      const key = `${connection.id}/${field}`
+      const value = await secrets.get(key)
+      if (value !== null) values.push([key, value])
+    }
+  }
+  return values
+}
+
 export async function applyRestoreSecretPlan(
   plan: RestoreSecretPlan,
   types: ConnectionTypeRegistry,

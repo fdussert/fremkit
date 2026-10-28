@@ -12,7 +12,7 @@ import { DegradedStoreError, type ConfigStore, type SaveOptions } from '../confi
 import { migrateHomeySecret } from '../config/migrate.js'
 import type { ConnectionTypeRegistry } from '../connections/registry.js'
 import type { SecretStore } from '../secrets/index.js'
-import { applyRestoreSecretPlan, restoreSecretPlan } from './secrets.js'
+import { applyRestoreSecretPlan, plannedSecretValues, restoreSecretPlan } from './secrets.js'
 import { missingSecrets, type MissingSecret } from './routes.js'
 
 export interface ApplyConfigDeps {
@@ -50,8 +50,12 @@ export async function applyConfig(deps: ApplyConfigDeps, incoming: Config, save:
   // Before the save, and before anything can poll with the restored fields: a stored secret is
   // tied to the host it was issued for, and the incoming config chooses the hosts. See secrets.ts.
   const plan = restoreSecretPlan(here.connections, incoming.connections, deps.types)
+  // What the drop removes, kept in memory for this call only: if the save below fails, the config
+  // in force (unchanged) still names these connections, and they get their secrets back.
+  let dropped: Array<[string, string]> = []
   if (plan.rebound.length || plan.removed.length) {
     try {
+      dropped = await plannedSecretValues(plan, deps.types, deps.secrets)
       await applyRestoreSecretPlan(plan, deps.types, deps.secrets)
     } catch (err) {
       log.warn({ err }, 'restore could not drop the secrets the incoming config rebinds')
@@ -64,10 +68,17 @@ export async function applyConfig(deps: ApplyConfigDeps, incoming: Config, save:
   try {
     saved = await store.save(incoming, save)
   } catch (err) {
+    for (const [key, value] of dropped) {
+      await deps.secrets.set(key, value).catch((putBack: unknown) => {
+        log.warn({ err: putBack }, 'restore could not put back a secret after a failed save')
+      })
+    }
+    dropped = []
     if (err instanceof DegradedStoreError) return { ok: false, failure: 'degraded' }
     log.warn({ err }, 'restore could not save the config')
     return { ok: false, failure: 'invalid' }
   }
+  dropped = []
   // A restored Homey connection's key may still sit in the keychain under the field name the coded
   // type used. Move it before anything asks whether it is there — otherwise the answer names a
   // connection whose key never went anywhere.
