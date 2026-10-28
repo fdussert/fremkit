@@ -78,6 +78,39 @@ JSON.
   `D:\claude`. As on the Mac it happens only when **Read the Claude account usage** (the screen's settings) is
   ticked, and the token is never stored or logged.
 
+### WSL
+
+Claude Code running inside a WSL distribution is read too, once you tick that distribution under
+**Privacy → WSL distributions to read** in the settings (the section appears on Windows only).
+Nothing is read in a distribution that is not ticked, and none is ticked by default. For each
+ticked one, Fremkit asks `wsl.exe` for its home folder (once when it is found, again a minute after
+a failure), which starts it if it was stopped, then reads through `\\wsl.localhost\<distro>\…`:
+
+- usage: the transcripts under `~/.claude/projects`, added to the Windows ones;
+- account usage, when **Read the Claude account usage** is ticked: `~/.claude/.credentials.json`
+  of the first ticked distribution that has one, and only when Windows itself has none.
+
+A distribution that does not answer within 5 seconds, or whose home folder is still being looked
+up, counts as offline for that read; the others still report.
+
+Live sessions need the hooks inside the distribution to reach the server on Windows, which takes
+WSL's *mirrored* networking mode (`networkingMode=mirrored` under `[wsl2]` in
+`%USERPROFILE%\.wslconfig`), so that `127.0.0.1` inside WSL is the PC's own loopback. In
+`~/.claude/settings.json` inside the distribution, run the Node hook with Linux's `node`, pointing
+it at the Windows support folder where the access secret lives (`<you>` is your Windows user name,
+`<repo>` the checkout as seen from WSL, for instance under `/mnt/c/…`):
+
+```json
+"statusLine": { "type": "command", "command": "FREMKIT_SUPPORT_DIR=/mnt/c/Users/<you>/AppData/Local/Fremkit node <repo>/scripts/claude-statusline.mjs" },
+"hooks": {
+  "SessionStart": [{ "hooks": [{ "type": "command", "command": "FREMKIT_SUPPORT_DIR=/mnt/c/Users/<you>/AppData/Local/Fremkit node <repo>/scripts/claude-hook.mjs", "async": true }] }]
+}
+```
+
+Repeat the hook entry for each event in the list above. The hook adds the distribution's name
+(`WSL_DISTRO_NAME`) to the session's `client`. In the default *NAT* mode the hooks cannot reach
+the server: usage and history still show, but no live sessions.
+
 ## What is sent
 
 Only the tool name and a short summary reach Fremkit. Tool inputs and outputs are never sent and

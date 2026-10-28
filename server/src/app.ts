@@ -3,7 +3,7 @@ import fastifyStatic from '@fastify/static'
 import fastifyWebsocket from '@fastify/websocket'
 import { homedir } from 'node:os'
 import { shippedPaths } from './paths.js'
-import { join } from 'node:path'
+import { join, win32 } from 'node:path'
 import { access, mkdir, readFile } from 'node:fs/promises'
 import { ConfigStore } from './config/store.js'
 import { ConfigHistory } from './config/history.js'
@@ -46,6 +46,7 @@ import { ClaudeTracker } from './claude/tracker.js'
 import { ClaudeUsage } from './claude/usage.js'
 import { claudeRoutes } from './claude/routes.js'
 import { createClaudeSessionsProvider, createClaudeUsageProvider, createClaudeAccountProvider } from './claude/providers.js'
+import { readClaudeOAuthToken } from './claude/account.js'
 import { createCodexProvider } from './providers/codex.js'
 import { createLocalChatValidator } from './codex/local-chats.js'
 import { createClaudeIdentityProvider } from './claude/identity.js'
@@ -105,7 +106,7 @@ import { demoConnectionFetch } from './demo/declared.js'
 import { demoIcon } from './demo/icons.js'
 import { DEMO_APPS } from './demo/world.js'
 import { FileSecretStore } from './secrets/file.js'
-import { listDistros } from './wsl/distros.js'
+import { listDistros, wslRoots } from './wsl/distros.js'
 import { wslRoutes } from './wsl/routes.js'
 import { sharedHost } from './win/powershell-host.js'
 
@@ -274,7 +275,17 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   const attention = createAttention({ instances: () => findInstances(store.get(), 'claude-sessions') })
   const tracker = new ClaudeTracker({ filePath: join(opts.dataDir, 'claude-sessions.json'), onAttention: attention })
   await tracker.load()
-  const usage = new ClaudeUsage({ filePath: join(opts.dataDir, 'claude-usage.json'), transcriptsDir: demo ? join(opts.dataDir, 'demo-transcripts') : opts.claudeTranscriptsDir ?? join(homedir(), '.claude', 'projects') })
+  /**
+   * The home folders of the WSL distributions the user ticked (`privacy.wslDistros`), read on each
+   * call so a change in the admin applies at the next poll. Empty off Windows; never asked in a demo.
+   */
+  const tickedWslRoots = async (): Promise<string[]> =>
+    (await wslRoots({ ticked: store.get().privacy.wslDistros, platform })).map((r) => r.root)
+  const usage = new ClaudeUsage({
+    filePath: join(opts.dataDir, 'claude-usage.json'),
+    transcriptsDir: demo ? join(opts.dataDir, 'demo-transcripts') : opts.claudeTranscriptsDir ?? join(homedir(), '.claude', 'projects'),
+    ...(demo ? {} : { transcriptsDirs: async () => (await tickedWslRoots()).map((root) => win32.join(root, '.claude', 'projects')) }),
+  })
   await usage.load()
 
   /**
@@ -319,6 +330,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     registerHere(createClaudeIdentityProvider())
     registerHere(createClaudeAccountProvider({
       filePath: join(opts.dataDir, 'claude-account.json'),
+      readToken: () => readClaudeOAuthToken({ wslRoots: tickedWslRoots }),
       enabled: () => store.get().privacy.claudeAccountUsage,
     }))
     const codex = createCodexProvider({

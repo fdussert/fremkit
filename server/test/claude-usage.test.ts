@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { ClaudeUsage } from '../src/claude/usage.js'
@@ -59,5 +59,44 @@ describe('ClaudeUsage', () => {
     const u = new ClaudeUsage({ filePath: file, transcriptsDir: join(dir, 'none') })
     await u.load()
     expect(u.snapshot()).toMatchObject({ fiveHour: null, sevenDay: null, updatedAt: null, stale: true })
+  })
+})
+
+describe('ClaudeUsage over several transcript folders', () => {
+  const at = new Date(2026, 9, 28, 10, 30).getTime()
+  const assistant = (id: string, input: number) => JSON.stringify({
+    type: 'assistant', timestamp: new Date(at - 60_000).toISOString(),
+    message: { id, usage: { input_tokens: input, output_tokens: 1 } },
+  }) + '\n'
+  async function transcripts(root: string, session: string, lines: string): Promise<void> {
+    await mkdir(join(root, 'project'), { recursive: true })
+    await writeFile(join(root, 'project', `${session}.jsonl`), lines, 'utf8')
+  }
+
+  it('merges the sessions of the Windows folder and of each WSL folder', async () => {
+    const windows = join(dir, 'windows')
+    const wsl = join(dir, 'wsl')
+    await transcripts(windows, 's-win', assistant('m1', 100))
+    await transcripts(wsl, 's-wsl', assistant('m2', 20) + assistant('m3', 3))
+    const u = new ClaudeUsage({ filePath: join(dir, 'u.json'), transcriptsDir: windows, transcriptsDirs: () => [wsl], now: () => at })
+    await u.refreshToday()
+    expect(u.snapshot().today).toMatchObject({ sessions: 2, messages: 3, input: 123, output: 3 })
+  })
+
+  it('reads a folder dropped from the list no more, and one that fails leaves the others standing', async () => {
+    const windows = join(dir, 'windows')
+    const wsl = join(dir, 'wsl')
+    await transcripts(windows, 's-win', assistant('m1', 100))
+    await transcripts(wsl, 's-wsl', assistant('m2', 20))
+    let extra: string[] = [wsl]
+    const u = new ClaudeUsage({ filePath: join(dir, 'u.json'), transcriptsDir: windows, transcriptsDirs: async () => extra, now: () => at })
+    await u.refreshToday()
+    expect(u.snapshot().today.input).toBe(120)
+    extra = []
+    await u.refreshToday()
+    expect(u.snapshot().today.input).toBe(100)
+    const failing = new ClaudeUsage({ filePath: join(dir, 'u2.json'), transcriptsDir: windows, transcriptsDirs: async () => { throw new Error('offline') }, now: () => at })
+    await failing.refreshToday()
+    expect(failing.snapshot().today.input).toBe(100)
   })
 })

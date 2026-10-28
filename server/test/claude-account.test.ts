@@ -185,6 +185,52 @@ describe('readClaudeOAuthToken on Windows', () => {
     expect(await readClaudeOAuthToken({ ...win, env: {}, readFile: async () => 'not json' })).toBeNull()
   })
 
+  it('falls back to the first ticked WSL distribution that has credentials, after Windows', async () => {
+    const seen: string[] = []
+    const files: Record<string, string> = {
+      '\\\\wsl.localhost\\Ubuntu\\home\\sam\\.claude\\.credentials.json': JSON.stringify({ claudeAiOauth: { accessToken: 'sk-ant-oat-ubuntu' } }),
+      '\\\\wsl.localhost\\Debian\\home\\sam\\.claude\\.credentials.json': JSON.stringify({ claudeAiOauth: { accessToken: 'sk-ant-oat-debian' } }),
+    }
+    const readFile = async (p: string) => { seen.push(p); if (p in files) return files[p]; throw new Error('ENOENT') }
+    const wslRoots = async () => ['\\\\wsl.localhost\\Arch\\home\\sam', '\\\\wsl.localhost\\Ubuntu\\home\\sam', '\\\\wsl.localhost\\Debian\\home\\sam']
+    expect(await readClaudeOAuthToken({ ...win, env: { USERPROFILE: 'C:\\Users\\Sam' }, readFile, wslRoots })).toBe('sk-ant-oat-ubuntu')
+    expect(seen).toEqual([
+      'C:\\Users\\Sam\\.claude\\.credentials.json',
+      '\\\\wsl.localhost\\Arch\\home\\sam\\.claude\\.credentials.json',
+      '\\\\wsl.localhost\\Ubuntu\\home\\sam\\.claude\\.credentials.json',
+    ])
+    // Windows first: a token there means no distribution is read.
+    seen.length = 0
+    expect(await readClaudeOAuthToken({ ...win, env: {}, readFile: async (p) => { seen.push(p); return creds }, wslRoots })).toBe('sk-ant-oat-fixture')
+    expect(seen).toHaveLength(1)
+  })
+
+  it('reports a distribution that does not answer as having no token, and moves on', async () => {
+    vi.useFakeTimers()
+    try {
+      const readFile = async (p: string) => p.includes('Stuck') ? new Promise<string>(() => {}) : p.includes('Ubuntu') ? creds : Promise.reject(new Error('ENOENT'))
+      const wslRoots = async () => ['\\\\wsl.localhost\\Stuck\\home\\sam', '\\\\wsl.localhost\\Ubuntu\\home\\sam']
+      const token = readClaudeOAuthToken({ ...win, env: {}, readFile, wslRoots })
+      await vi.advanceTimersByTimeAsync(5000)
+      expect(await token).toBe('sk-ant-oat-fixture')
+    } finally { vi.useRealTimers() }
+  })
+
+  it('never asks a distribution again while its credential read is still pending', async () => {
+    vi.useFakeTimers()
+    try {
+      const stuckPath = '\\\\wsl.localhost\\Wedged\\home\\sam\\.claude\\.credentials.json'
+      const readFile = vi.fn(async (p: string) => p === stuckPath ? new Promise<string>(() => {}) : Promise.reject(new Error('ENOENT')))
+      const wslRoots = async () => ['\\\\wsl.localhost\\Wedged\\home\\sam']
+      for (let i = 0; i < 3; i++) {
+        const token = readClaudeOAuthToken({ ...win, env: {}, readFile, wslRoots })
+        await vi.advanceTimersByTimeAsync(5000)
+        expect(await token).toBeNull()
+      }
+      expect(readFile.mock.calls.filter(([p]) => p === stuckPath)).toHaveLength(1)
+    } finally { vi.useRealTimers() }
+  })
+
   it('never writes the token to the console', async () => {
     const spies = (['log', 'warn', 'error', 'info', 'debug'] as const).map((m) => vi.spyOn(console, m).mockImplementation(() => {}))
     await readClaudeOAuthToken({ ...win, env: {}, readFile: async () => creds })

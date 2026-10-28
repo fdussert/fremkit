@@ -7,6 +7,7 @@ import type { UsageWindow } from './usage.js'
 import { tr, type MessageKey } from '../i18n.js'
 import { USER_AGENT } from '../version.js'
 import { ABSOLUTE_WINDOWS } from '../platform/windows-tools.js'
+import { readWithTimeout } from '../wsl/distros.js'
 
 export interface AccountLimit { kind: string; name: string; percent: number; resetsAt: number | null; active: boolean }
 export interface AccountUsage { fiveHour: UsageWindow | null; sevenDay: UsageWindow | null; limits: AccountLimit[]; breakdown: { name: string; percent: number }[] }
@@ -64,6 +65,21 @@ async function persistUsage(filePath: string, data: Persisted): Promise<void> {
   await rename(tmp, filePath)
 }
 
+/**
+ * Credential reads through `\\wsl.localhost` still pending, by path. A wedged share can leave a
+ * read pending for good; while it is, that path is skipped rather than asked again, so stuck reads
+ * never pile up on the I/O threads.
+ */
+const pendingCredentialReads = new Map<string, Promise<string>>()
+
+function readOnce(path: string, read: (path: string) => Promise<string>): Promise<string> {
+  if (pendingCredentialReads.has(path)) return Promise.reject(Error('offline'))
+  const pending = read(path)
+  pendingCredentialReads.set(path, pending)
+  void pending.then(() => {}, () => {}).finally(() => { pendingCredentialReads.delete(path) })
+  return readWithTimeout(() => pending)
+}
+
 function run(cmd: string, args: string[]): Promise<string> {
   return new Promise((resolve, reject) => execFile(cmd, args, { timeout: 5000 }, (err, stdout) => (err ? reject(err) : resolve(stdout.trim()))))
 }
@@ -82,6 +98,11 @@ export interface ReadTokenDeps {
   readFile?: (path: string) => Promise<string>
   env?: NodeJS.ProcessEnv
   home?: string
+  /**
+   * Windows: the home folders of the ticked WSL distributions (`\\wsl.localhost\<distro>\…`),
+   * in the order they were ticked. Read only when Windows itself has no token.
+   */
+  wslRoots?: () => Promise<string[]>
 }
 
 /**
@@ -97,16 +118,29 @@ export function claudeCredentialsPath(env: NodeJS.ProcessEnv = process.env, home
 }
 
 /**
- * Reads the token from the macOS keychain, or from Claude Code's credentials file on Windows.
- * Never logs or stores it, and never quotes the file's content in an error.
+ * Reads the token from the macOS keychain, or from Claude Code's credentials file on Windows, then
+ * in the ticked WSL distributions. Never logs or stores it, and never quotes the file's content in
+ * an error.
  */
 export async function readClaudeOAuthToken(deps: ReadTokenDeps = {}): Promise<string | null> {
   const platform = deps.platform ?? process.platform
   if (platform === 'win32') {
+    const read = deps.readFile ?? ((path: string) => readFile(path, 'utf8'))
     try {
-      const read = deps.readFile ?? ((path: string) => readFile(path, 'utf8'))
-      return parseKeychainJson(await read(claudeCredentialsPath(deps.env ?? process.env, deps.home)))
-    } catch { return null }
+      const token = parseKeychainJson(await read(claudeCredentialsPath(deps.env ?? process.env, deps.home)))
+      if (token) return token
+    } catch { /* none on Windows: try the distributions */ }
+    let roots: string[] = []
+    try { roots = (await deps.wslRoots?.()) ?? [] } catch { return null }
+    // The first ticked distribution that has credentials. One that does not answer within the
+    // bound counts as having none; its read is never quoted.
+    for (const root of roots) {
+      try {
+        const token = parseKeychainJson(await readOnce(win32.join(root, '.claude', '.credentials.json'), read))
+        if (token) return token
+      } catch { /* missing, unreadable or offline */ }
+    }
+    return null
   }
   try { return parseKeychainJson(await run('/usr/bin/security', ['find-generic-password', '-s', KEYCHAIN_SERVICE, '-w'])) } catch { return null }
 }

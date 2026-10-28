@@ -2,6 +2,7 @@ import { readFile, writeFile, rename, mkdir } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import { z } from 'zod'
 import { createTranscriptScanner, type TodayTokens, type TranscriptScanner } from './transcripts.js'
+import { readWithTimeout } from '../wsl/distros.js'
 
 export interface UsageWindow { pct: number; resetsAt: number }
 export interface UsageSnapshot {
@@ -31,6 +32,12 @@ const persistedSchema = z.object({
 export interface ClaudeUsageOptions {
   filePath: string
   transcriptsDir: string
+  /**
+   * More transcript folders, asked on every refresh: the `.claude\projects` folder of each ticked
+   * WSL distribution, seen through `\\wsl.localhost`. Each is read under `readWithTimeout`, so a
+   * stopped distribution reports nothing new rather than holding up the others.
+   */
+  transcriptsDirs?: () => string[] | Promise<string[]>
   now?: () => number
   staleMs?: number
   /** Debounce window between two persists; 0 writes on every event. */
@@ -44,8 +51,8 @@ export class ClaudeUsage {
   private today: TodayTokens = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, messages: 0, sessions: 0, hourly: new Array(24).fill(0) }
   private readonly now: () => number
   private readonly staleMs: number
-  /** One long-lived scanner: its per-file cache is what makes the 60 s refresh cheap. */
-  private readonly scanner: TranscriptScanner
+  /** One long-lived scanner per folder: its per-file cache is what makes the 60 s refresh cheap. */
+  private readonly scanners = new Map<string, Folder>()
   private readonly persistMs: number
   private readonly writeFn: (path: string, data: string) => Promise<void>
   private dirty = false
@@ -58,7 +65,6 @@ export class ClaudeUsage {
     this.staleMs = opts.staleMs ?? STALE_MS
     this.persistMs = opts.persistMs ?? PERSIST_MS
     this.writeFn = opts.writeFn ?? ((path, data) => writeFile(path, data, { encoding: 'utf8', mode: 0o600 }))
-    this.scanner = createTranscriptScanner(opts.transcriptsDir)
   }
 
   async load(): Promise<void> {
@@ -91,7 +97,37 @@ export class ClaudeUsage {
   }
 
   async refreshToday(): Promise<void> {
-    this.today = await this.scanner.scanToday(new Date(this.now()))
+    const now = new Date(this.now())
+    let extra: string[] = []
+    try { extra = (await this.opts.transcriptsDirs?.()) ?? [] } catch { /* the main folder still counts */ }
+    const dirs = [this.opts.transcriptsDir, ...extra.filter((dir) => dir !== this.opts.transcriptsDir)]
+    for (const dir of [...this.scanners.keys()]) if (!dirs.includes(dir)) this.scanners.delete(dir)
+    const results = await Promise.all(dirs.map((dir) => this.scanFolder(dir, now, dir !== this.opts.transcriptsDir)))
+    this.today = results.reduce(addTokens, emptyTokens())
+  }
+
+  /**
+   * One folder's totals. A scan still running from an earlier refresh (a slow `\\wsl.localhost`)
+   * is never started twice on the same cache: its folder answers its last totals until it is done.
+   */
+  private async scanFolder(dir: string, now: Date, guarded: boolean): Promise<TodayTokens> {
+    let folder = this.scanners.get(dir)
+    if (!folder) {
+      folder = { scanner: createTranscriptScanner(dir), last: emptyTokens(), running: null }
+      this.scanners.set(dir, folder)
+    }
+    const f = folder
+    if (!f.running) {
+      f.running = f.scanner.scanToday(now)
+        .then((totals) => { f.last = totals })
+        .catch(() => { /* keep the last totals */ })
+        .finally(() => { f.running = null })
+    }
+    const running = f.running
+    try {
+      await (guarded ? readWithTimeout(() => running) : running)
+    } catch { /* offline: this folder keeps its last totals, the others still count */ }
+    return f.last
   }
 
   snapshot(): UsageSnapshot {
@@ -135,5 +171,16 @@ export class ClaudeUsage {
 function window(w: { used_percentage?: number; resets_at?: number } | undefined): UsageWindow | null {
   if (!w || typeof w.used_percentage !== 'number' || typeof w.resets_at !== 'number') return null
   return { pct: w.used_percentage, resetsAt: w.resets_at }
+}
+interface Folder { scanner: TranscriptScanner; last: TodayTokens; running: Promise<void> | null }
+function emptyTokens(): TodayTokens {
+  return { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, messages: 0, sessions: 0, hourly: new Array(24).fill(0) }
+}
+function addTokens(a: TodayTokens, b: TodayTokens): TodayTokens {
+  return {
+    input: a.input + b.input, output: a.output + b.output, cacheRead: a.cacheRead + b.cacheRead,
+    cacheWrite: a.cacheWrite + b.cacheWrite, messages: a.messages + b.messages, sessions: a.sessions + b.sessions,
+    hourly: a.hourly.map((v, i) => v + (b.hourly[i] ?? 0)),
+  }
 }
 function dayKey(t: number): number { const d = new Date(t); d.setHours(0, 0, 0, 0); return d.getTime() }
