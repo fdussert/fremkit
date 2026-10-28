@@ -9,10 +9,11 @@ import { windowsUnsafeSegment } from '../src/widgets/routes.js'
 describe('windowsUnsafeSegment', () => {
   it('names the reserved devices, with any extension and in any case, and a trailing dot or space', () => {
     for (const segment of ['CON', 'con', 'Nul.txt', 'aux.js', 'PRN', 'com1', 'COM9.png', 'lpt3.css', 'LPT¹', 'com².js',
-      'conin$', 'CONOUT$', 'index.html.', 'index.html ', 'app.js...', '.']) {
+      'conin$', 'CONOUT$', 'index.html.', 'index.html ', 'app.js...', '.', 'CON .txt', 'nul  .js', 'Aux. .css', 'com1 ']) {
       expect(windowsUnsafeSegment(segment), segment).toBe(true)
     }
-    for (const segment of ['index.html', 'console.js', 'nullable.js', 'com.js', 'com10.js', 'lpt.css', 'auxiliary.png', 'icon.svg', '.well']) {
+    for (const segment of ['index.html', 'console.js', 'nullable.js', 'com.js', 'com10.js', 'lpt.css', 'auxiliary.png', 'icon.svg', '.well',
+      'my con.txt', 'con-x.js', 'a.con.js']) {
       expect(windowsUnsafeSegment(segment), segment).toBe(false)
     }
   })
@@ -40,7 +41,7 @@ describe('the widget file route on Windows', () => {
 
   it('refuses a device name or a stripped trailing dot before touching the disk', async () => {
     for (const url of ['/widgets/clock/CON', '/widgets/clock/nul.js', '/widgets/clock/sub/aux', '/widgets/clock/COM1.png',
-      '/widgets/clock/index.html.', '/widgets/clock/app.js%20', '/widgets/clock/lpt1/app.js']) {
+      '/widgets/clock/index.html.', '/widgets/clock/app.js%20', '/widgets/clock/lpt1/app.js', '/widgets/clock/CON%20.txt', '/widgets/clock/nul%20%20.js']) {
       expect((await app.inject({ url })).statusCode, url).toBe(400)
     }
     expect((await app.inject({ url: '/widgets/clock/app.js' })).statusCode).toBe(200)

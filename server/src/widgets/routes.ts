@@ -106,11 +106,14 @@ export function scriptlessCsp(csp: string): string {
 
 /**
  * A path segment Windows does not open as the file it names: a reserved device name (`CON`, `NUL`,
- * `COM1`, `LPT¹`… with any extension), which may open the device instead, or one ending in a dot
+ * `COM1`, `LPT¹`… with any extension, and with spaces before it: `CON .txt`), which may open the
+ * device instead, or one ending in a dot
  * or a space, which Windows strips (`index.html.` is `index.html`, and would skip the bridge).
  */
 export function windowsUnsafeSegment(segment: string): boolean {
-  return /^(con|prn|aux|nul|com[0-9\u00b9\u00b2\u00b3]|lpt[0-9\u00b9\u00b2\u00b3]|conin\$|conout\$)(\..*)?$/i.test(segment)
+  // Windows judges the name before the first dot with its trailing spaces gone: `CON .txt` is CON.
+  const base = segment.split('.')[0]!.replace(/[ .]+$/, '')
+  return /^(con|prn|aux|nul|com[0-9\u00b9\u00b2\u00b3]|lpt[0-9\u00b9\u00b2\u00b3]|conin\$|conout\$)$/i.test(base)
     || /[. ]$/.test(segment)
 }
 export async function widgetRoutes(
