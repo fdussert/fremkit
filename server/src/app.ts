@@ -107,6 +107,9 @@ import { demoIcon } from './demo/icons.js'
 import { DEMO_APPS } from './demo/world.js'
 import { FileSecretStore } from './secrets/file.js'
 import { listDistros, wslRoots } from './wsl/distros.js'
+import { codexWslDistro, createCodexSessionsReader, sweepWslCopies } from './wsl/codex.js'
+import { createLocalCodexClient, createWslCodexClient } from './codex/adapter.js'
+import { createSessionReader } from './codex/observations.js'
 import { wslRoutes } from './wsl/routes.js'
 import { sharedHost } from './win/powershell-host.js'
 
@@ -249,6 +252,9 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   // A camera stream writes a one-line concat list into its own temp directory and removes it on
   // stop; a server that was killed never got there. Cleared once, at boot.
   sweepStaleCameraDirs()
+  // The same for a Codex copy out of a WSL distribution (`wsl/codex.ts`): a server stopped
+  // mid-read left its folder under `<dataDir>/tmp`.
+  await sweepWslCopies(opts.dataDir)
 
   // The shipped wallpaper, copied into the user's background library as an ordinary file so it
   // can be picked and deleted like any upload. Before the store loads, so a fresh install's
@@ -320,6 +326,24 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     if (channelAvailable(p.channel, platform)) registry.register(p)
     else skipped.push(p.channel)
   }
+  /**
+   * Codex on Windows: the Windows CLI when it is installed, otherwise the Codex inside the first
+   * ticked WSL distribution, for the account and the history alike. Decided at each poll, so
+   * ticking a distribution or installing the CLI applies without a restart.
+   */
+  function codexOnWindows() {
+    const ticked = (): string[] => store.get().privacy.wslDistros
+    const wslDistro = (): string | null => codexWslDistro({ ticked: ticked(), platform })
+    return {
+      clientFactory: async () => {
+        const distro = wslDistro()
+        return distro ? createWslCodexClient({ distro }) : createLocalCodexClient({ platform })
+      },
+      readSessions: createCodexSessionsReader({
+        windows: createSessionReader({ platform }), distro: wslDistro, ticked, platform, dataDir: opts.dataDir,
+      }),
+    }
+  }
   /** Every real provider: the Mac, the accounts, the helper's reports. Never called in demo mode. */
   function registerRealProviders(): void {
     for (const p of opts.providers ?? []) registerHere(p)
@@ -337,7 +361,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
       enabled: () => store.get().privacy.codexAccount || store.get().privacy.codexHistorySources.length > 0,
       accountEnabled: () => store.get().privacy.codexAccount,
       historySources: () => store.get().privacy.codexHistorySources,
-    }, { isLocalChat: createLocalChatValidator() })
+    }, { isLocalChat: createLocalChatValidator(), ...(platform === 'win32' ? codexOnWindows() : {}) })
     registerHere(codex)
     registerHere(codex.sessions)
     registerHere(createDockProvider(dock))

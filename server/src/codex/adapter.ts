@@ -4,7 +4,7 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir, homedir } from 'node:os'
 import { join, win32 } from 'node:path'
 import { z } from 'zod'
-import { targetPlatform, WINDOWS_CHILD_ENV_KEYS } from '../platform/index.js'
+import { targetPlatform, windowsTool, WINDOWS_CHILD_ENV_KEYS } from '../platform/index.js'
 import { HistorySourceSchema } from './sources.js'
 
 export type CodexFailure = 'offline' | 'unauthorized' | 'unsupported' | 'invalid' | 'refused' | 'unconfigured'
@@ -250,11 +250,13 @@ const childArgs = [
 ]
 export interface StdioOptions {
   binary?: string
+  /** The child's arguments; the app-server's own flags unless a caller (WSL) says otherwise. */
+  args?: readonly string[]
   env?: NodeJS.ProcessEnv
   spawn?: typeof spawn
 }
 export function createStdioTransport(options: StdioOptions = {}): ReadTransport {
-  const child = (options.spawn ?? spawn)(options.binary ?? 'codex', childArgs, {
+  const child = (options.spawn ?? spawn)(options.binary ?? 'codex', [...(options.args ?? childArgs)], {
     env: safeChildEnv(options.env ?? process.env),
     shell: false,
     cwd: homedir(),
@@ -407,4 +409,44 @@ export async function createLocalCodexClient(
     throw new CodexError('unsupported')
   }
   return new CodexReadClient({ methods, connect: async () => createStdioTransport(options) })
+}
+
+/** A distribution name, the same rule as `privacy.wslDistros`. */
+const WSL_DISTRO = /^[A-Za-z0-9._-]{1,64}$/
+/**
+ * What runs inside the distribution: the same app-server arguments as the Windows and Mac child
+ * (`childArgs`), joined once at module load so the two cannot drift, with nothing user-derived in
+ * it. Each argument is checked to be a plain word a shell passes through unchanged. A login shell,
+ * so the `codex` a user installed through their shell profile (nvm, npm's prefix) is found.
+ */
+export const WSL_CODEX_SCRIPT = ((): string => {
+  if (!childArgs.every((arg) => /^[A-Za-z0-9_.:/=-]+$/.test(arg))) throw new Error('unsafe app-server argument')
+  return `exec codex ${childArgs.join(' ')}`
+})()
+/**
+ * The read methods asked of a Codex inside WSL. Its schema cannot be generated on this side of the
+ * boundary (the CLI would write it inside the distribution), so the client starts from the methods
+ * Fremkit reads and learns which are unsupported from the app-server's own -32601 answers.
+ */
+const WSL_METHODS: ReadonlySet<string> = new Set(['initialize', 'account/read', 'account/rateLimits/read', 'account/usage/read', 'thread/list'])
+
+/** `wsl.exe`'s argument list for a distribution; the name is validated before it gets here. */
+export function wslCodexArgs(distro: string): string[] {
+  if (!WSL_DISTRO.test(distro) || /^\.+$/.test(distro) || distro.startsWith('-')) throw new CodexError('refused')
+  return ['-d', distro, '--cd', '~', '--exec', 'bash', '-lc', WSL_CODEX_SCRIPT]
+}
+
+/**
+ * A read client over the Codex app-server inside a WSL distribution: `wsl.exe` by absolute path
+ * from the validated system folder, a fixed argument list, no shell. The caller decides when this
+ * applies (no Codex on Windows, at least one distribution ticked) and which distribution.
+ */
+export async function createWslCodexClient(options: { distro: string; env?: NodeJS.ProcessEnv; spawn?: typeof spawn }): Promise<CodexClient> {
+  const args = wslCodexArgs(options.distro)
+  const env = options.env ?? process.env
+  const binary = windowsTool('wsl', env)
+  return new CodexReadClient({
+    methods: WSL_METHODS,
+    connect: async () => createStdioTransport({ binary, args, env, spawn: options.spawn }),
+  })
 }

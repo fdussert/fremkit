@@ -109,16 +109,29 @@ export function freshTurn(turn: TurnObservation, now: number): TurnObservation {
   return { ...turn }
 }
 interface Cache { id: string; ino: number; size: number; mtime: number; turn: TurnObservation }
-export function createSessionReader(options: { codexHome?: string; query?: (sql: string) => Promise<unknown>; platform?: NodeJS.Platform } = {}) {
+/** The state database the reader's query is written for, in the Codex home folder. */
+export const CODEX_STATE_DB = 'state_5.sqlite'
+export interface SessionReaderOptions {
+  codexHome?: string
+  query?: (sql: string) => Promise<unknown>
+  platform?: NodeJS.Platform
+  /**
+   * Where a stored rollout path is read from, or null to skip it. A Codex inside WSL stores POSIX
+   * paths that Windows reaches under `\\wsl.localhost`; the containment check below still applies.
+   */
+  rolloutPath?: (stored: string) => string | null
+}
+export function createSessionReader(options: SessionReaderOptions = {}) {
   const home = options.codexHome ?? process.env.CODEX_HOME ?? join(homedir(), '.codex')
   const cache = new Map<string, Cache>()
   const query = options.query ?? ((sql: string) =>
-    querySqlite(sql, { path: join(home, 'state_5.sqlite'), platform: options.platform, timeoutMs: 2500, maxBuffer: 512 * 1024 }))
+    querySqlite(sql, { path: join(home, CODEX_STATE_DB), platform: options.platform, timeoutMs: 2500, maxBuffer: 512 * 1024 }))
   async function tail(row: Row): Promise<TurnObservation> {
-    if (!row.rollout) return emptyTurn()
+    const rollout = row.rollout && options.rolloutPath ? options.rolloutPath(row.rollout) : row.rollout
+    if (!rollout) return emptyTurn()
     let file: Awaited<ReturnType<typeof open>> | undefined
     try {
-      const [root, path] = await Promise.all([realpath(home), realpath(row.rollout)])
+      const [root, path] = await Promise.all([realpath(home), realpath(rollout)])
       if (![join(root, 'sessions') + sep, join(root, 'archived_sessions') + sep].some(base => path.startsWith(base))) return emptyTurn()
       file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK)
       const info = await file.stat()
