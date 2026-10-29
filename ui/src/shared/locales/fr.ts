@@ -287,6 +287,8 @@ export const fr: Record<string, string> = {
   'admin.settings.pane.about': 'À propos',
   'admin.tabs.connections': 'Connexions',
 
+  'admin.inspector.resize': 'Largeur du panneau',
+  'admin.inspector.resize.hint': 'Glisser pour élargir, double-clic pour revenir à la largeur habituelle',
   'admin.inspector.widget.empty': "Sélectionnez un widget sur l'aperçu.",
   'admin.inspector.widget.missing': 'Dossier du widget introuvable.',
   'admin.inspector.widget.onSietch': 'Il est sur le sietch : {name}',

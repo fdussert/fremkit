@@ -287,6 +287,8 @@ export const en: Record<string, string> = {
   'admin.settings.pane.about': 'About',
   'admin.tabs.connections': 'Connections',
 
+  'admin.inspector.resize': 'Panel width',
+  'admin.inspector.resize.hint': 'Drag to widen, double-click for the usual width',
   'admin.inspector.widget.empty': 'Select a widget in the preview.',
   'admin.inspector.widget.missing': 'Widget folder not found.',
   'admin.inspector.widget.onSietch': 'It is on the sietch: {name}',

@@ -14,6 +14,10 @@ tagged `vX.Y.Z`.
 
 ### Added
 
+- **A wider settings panel when you need it.** Drag the left edge of the editor's right-hand panel
+  to widen it, up to 720 px; the canvas always keeps its room. The width is remembered in this
+  browser, and a double click on the edge brings back the usual one.
+
 - **Lists in a widget's settings are folded and dragged.** Each item of a list (the shortcuts'
   buttons, the clock's cities, the services watched) now shows on one line and opens on a touch to
   edit its fields, one at a time; drag an item to move it. The shortcuts' buttons are laid out as
