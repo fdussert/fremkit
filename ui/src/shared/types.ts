@@ -266,6 +266,10 @@ export interface SettingField {
   itemSchema?: Record<string, ListItemField>
   /** For `list` fields: how many items may be added. Absent means no ceiling. */
   max?: number
+  /** For `list` fields: the item fields that name an item, first non-empty one wins. */
+  summary?: string[]
+  /** For `list` fields: a grid of this many columns, or the key of the number setting holding it. */
+  grid?: number | string
 }
 
 /**

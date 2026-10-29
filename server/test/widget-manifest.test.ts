@@ -160,6 +160,18 @@ describe('ManifestSchema', () => {
       expect(list({ type: 'number', label: 'Rang', suggest: 'apps' }).success).toBe(false)
       expect(list({ type: 'string', label: 'Cible', suggestWhen: { kind: 'app' } }).success).toBe(false)
     })
+    it('accepts a summary naming item fields, and a grid by count or by a number setting', () => {
+      const parse = (cities: Record<string, unknown>, more: Record<string, unknown> = {}) =>
+        ManifestSchema.safeParse({ ...base, settingsSchema: { cities: { type: 'list', label: 'Boutons', itemSchema: { label: { type: 'string', label: 'L' } }, ...cities }, ...more } })
+      expect(parse({ summary: ['label'] }).success).toBe(true)
+      expect(parse({ grid: 4 }).success).toBe(true)
+      expect(parse({ grid: 'columns' }, { columns: { type: 'number', label: 'Colonnes', default: 4 } }).success).toBe(true)
+      expect(parse({ summary: ['nope'] }).success).toBe(false)
+      expect(parse({ summary: [] }).success).toBe(false)
+      expect(parse({ grid: 0 }).success).toBe(false)
+      expect(parse({ grid: 'columns' }).success).toBe(false)
+      expect(parse({ grid: 'columns' }, { columns: { type: 'string', label: 'Colonnes' } }).success).toBe(false)
+    })
     it('refuses a max that is not a positive whole number', () => {
       for (const max of [0, -1, 1.5, '6']) {
         expect(withSetting({ type: 'list', label: 'Villes', max, itemSchema: { x: { type: 'string', label: 'X' } } }).success).toBe(false)

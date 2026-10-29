@@ -114,6 +114,16 @@ export const SettingFieldSchema = z.object({
   itemSchema: z.record(z.string(), ListItemFieldSchema).optional(),
   /** `list` fields only: how many items the user may add. Absent means no ceiling. */
   max: z.number().int().min(1).optional(),
+  /**
+   * `list` fields only: the item fields that name an item in the editor, first non-empty one
+   * wins. Absent, the first text or choice field with a value names it.
+   */
+  summary: z.array(z.string()).min(1).max(4).optional(),
+  /**
+   * `list` fields only: show the items as a grid of tiles, the way the widget lays them out,
+   * rather than one row each. A number of columns, or the key of the `number` setting that holds it.
+   */
+  grid: z.union([z.number().int().min(1).max(12), z.string().min(1)]).optional(),
 })
   .refine((f) => (f.type !== 'connection' && f.type !== 'connections') || typeof f.connectionType === 'string', {
     error: () => tr(undefined, 'manifest.connectionNeedsType'),
@@ -126,6 +136,9 @@ export const SettingFieldSchema = z.object({
   })
   .refine((f) => f.type !== 'list' || Object.keys(f.itemSchema ?? {}).length > 0, {
     error: () => tr(undefined, 'manifest.listNeedsItemSchema'),
+  })
+  .refine((f) => !f.summary || f.summary.every((key) => key in (f.itemSchema ?? {})), {
+    error: () => tr(undefined, 'manifest.listSummaryUnknown'),
   })
 
 /** v1 manifests described a 32x16 grid with fixed `sizes`; the v2 grid has twice the cells. */
@@ -521,6 +534,11 @@ export const ManifestSchema = RawManifestSchema.transform((m, ctx) => {
   for (const [key, field] of Object.entries(m.settingsSchema)) {
     if (field.preview && !commandCovers(m.commands, field.preview.channel)) {
       ctx.addIssue({ code: 'custom', message: tr(undefined, 'manifest.previewNotACommand'), path: ['settingsSchema', key, 'preview', 'channel'] })
+      return z.NEVER
+    }
+    // A grid whose columns follow a setting needs that setting to be a number.
+    if (typeof field.grid === 'string' && m.settingsSchema[field.grid]?.type !== 'number') {
+      ctx.addIssue({ code: 'custom', message: tr(undefined, 'manifest.listGridNotANumber'), path: ['settingsSchema', key, 'grid'] })
       return z.NEVER
     }
   }
