@@ -405,7 +405,8 @@ itself — only its origin, never the path the button points at — at most once
 image under `data/icons/favicons/` and never logs the address; a site that is down keeps serving
 the icon it last had, and turning `showIcons` off fetches nothing at all.
 
-A button of kind *Group* holds up to twelve buttons of its own and draws up to four of their icons
+A button of kind *Group* holds up to twelve buttons of its own, a *Subgroup* among them if need be
+(which holds twelve more, and no further group), and draws up to four of their icons
 in a small square, as a folder does. A tap opens it in place of the grid, its buttons flying out of
 it, with a back button in the first cell, and stays open until that button is touched. Its buttons
 are the size of the grid's, so more of them than fit scroll, the back button staying put. In the admin, drop a button onto the middle of a group to put it in,

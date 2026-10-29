@@ -24,7 +24,8 @@ tagged `vX.Y.Z`.
   pipeline, a *Dev* one) without taking a cell each: it shows their icons in a little square, and
   a tap opens them in place of the grid, at the grid's size and scrolling when there are more,
   behind a back button that closes it. In the
-  settings, drop a button onto a group to put it in; *Take out of the group* puts it back.
+  settings, drop a button onto a group to put it in; *Take out of the group* puts it back. A group
+  may hold subgroups, one level deep, and the back button climbs one level at a time.
 
 - **A wider settings panel when you need it.** Drag the left edge of the editor's right-hand panel
   to widen it, up to 720 px; the canvas always keeps its room. The width is remembered in this

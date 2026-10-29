@@ -68,3 +68,33 @@ test('a group wears an SVG imported from its own form, and the dashboard draws i
   const group = page.frameLocator('iframe[src*="/widgets/shortcuts/"]').getByRole('button', { name: 'Prod' })
   await expect(group.locator('img')).toHaveAttribute('src', /^data:image\/svg\+xml/)
 })
+
+test.describe('with a subgroup', () => {
+  test.use({ seed: (() => {
+    const c = seed()
+    const buttons = c.widgets['keys-1'].settings.buttons as Record<string, unknown>[]
+    buttons[2].items = [
+      { label: 'Deploy', kind: 'url', target: 'https://example.com/d', icon: '', items: [] },
+      { label: 'Regions', kind: 'group', target: '', icon: '', items: [{ label: 'EU', kind: 'url', target: 'https://example.com/eu', icon: '' }] },
+    ]
+    return c
+  })() })
+
+  test('a button of a group dropped onto its subgroup goes into it', async ({ page, openAdmin, savedConfig }) => {
+    await openAdmin()
+    await tile(page, 'keys-1').click()
+    await top(page, /^Prod/).click()
+    const held = field(page).locator('[data-held="items"]').first()
+    const sub = held.locator(':scope > ul > li > button').filter({ hasText: /^Regions/ })
+    await held.locator(':scope > ul > li > button').filter({ hasText: /^Deploy/ }).hover()
+    await page.mouse.down()
+    const box = (await sub.boundingBox())!
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 6 })
+    await page.mouse.up()
+    const prod = async () => ((await savedConfig()).widgets['keys-1'].settings.buttons as { items: { label: string; items?: { label: string }[] }[] }[])[2].items
+      .map((b) => (b.items?.length ? `${b.label}[${b.items.map((i) => i.label).join(',')}]` : b.label))
+    await expect.poll(prod).toEqual(['Regions[EU,Deploy]'])
+    // The subgroup opened on the drop, its own buttons listed under its fields.
+    await expect(held.locator('[data-held="items"]').getByRole('button', { name: 'Deploy' })).toBeVisible()
+  })
+})

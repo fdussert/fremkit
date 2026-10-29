@@ -102,20 +102,24 @@
   var installed = []
   /** button key -> 'pressed' | 'ok' | 'failed', cleared by a timer. */
   var feedback = {}
-  /** The saved index of the group shown in place of the grid, or null. */
-  var openGroup = null
+  /**
+   * Where the group shown in place of the grid sits: its saved index, then the subgroup's index
+   * inside it. Empty while the grid itself is shown.
+   */
+  var openPath = []
   /** Bumped by every view change, so a transition overtaken by another one stops. */
   var viewToken = 0
-
+  /** How deep groups go: a group, and a subgroup inside it. */
+  var MAX_DEPTH = 2
 
   /** One saved button as the grid draws it, or null for a half-typed one, which is not a button. */
-  function plain(b, index, item) {
+  function plain(b, path) {
     if (!b || typeof b !== 'object') return null
     var spec = {
-      // Where it sits in the saved list, which is all the host is told: the rows skipped here must
-      // not shift the buttons after them.
-      index: index, item: item,
-      key: item === undefined ? String(index) : index + '.' + item,
+      // Where it sits in the saved lists, which is all the host is told: the rows skipped here
+      // must not shift the buttons after them.
+      path: path,
+      key: path.join('.'),
       label: typeof b.label === 'string' ? b.label.trim() : '',
       kind: KINDS[b.kind] ? b.kind : 'app',
       target: typeof b.target === 'string' ? b.target.trim() : '',
@@ -125,36 +129,38 @@
   }
 
   /**
-   * The buttons actually drawn: the plain ones with a target, and the groups, each with the
-   * buttons it holds. A group with neither a name nor a button yet is an unfinished row.
+   * One saved button or group, as drawn; a group holds what it draws in turn, a subgroup too,
+   * no deeper. A group with neither a name nor a button yet is an unfinished row.
    */
+  function entry(b, path) {
+    if (!b || b.kind !== 'group' || path.length > MAX_DEPTH) return plain(b, path)
+    var held = (Array.isArray(b.items) ? b.items : [])
+      .map(function (child, at) { return entry(child, path.concat(at)) })
+      .filter(Boolean)
+    var label = typeof b.label === 'string' ? b.label.trim() : ''
+    if (!label && !held.length) return null
+    return { path: path, key: 'g' + path.join('.'), kind: 'group', label: label, items: held,
+      icon: typeof b.icon === 'string' ? b.icon.trim() : '' }
+  }
+
+  /** The buttons actually drawn: the plain ones with a target, and the groups. */
   function buttons() {
     var list = Array.isArray(settings.buttons) ? settings.buttons : []
-    var out = []
-    list.forEach(function (b, index) {
-      if (b && b.kind === 'group') {
-        var held = (Array.isArray(b.items) ? b.items : [])
-          .map(function (child, item) { return plain(child, index, item) })
-          .filter(Boolean)
-        var label = typeof b.label === 'string' ? b.label.trim() : ''
-        if (label || held.length) {
-          out.push({ index: index, key: 'g' + index, kind: 'group', label: label, items: held,
-            icon: typeof b.icon === 'string' ? b.icon.trim() : '' })
-        }
-        return
-      }
-      var spec = plain(b, index)
-      if (spec) out.push(spec)
-    })
-    return out
+    return list.map(function (b, index) { return entry(b, [index]) }).filter(Boolean)
   }
 
   /** The group open now, as `buttons()` draws it, or null when it is gone from the settings. */
   function currentGroup() {
-    if (openGroup === null) return null
-    var list = buttons()
-    for (var i = 0; i < list.length; i++) if (list[i].kind === 'group' && list[i].index === openGroup) return list[i]
-    return null
+    var list = buttons(), found = null
+    for (var depth = 0; depth < openPath.length; depth++) {
+      found = null
+      for (var i = 0; i < list.length; i++) {
+        if (list[i].kind === 'group' && list[i].path[depth] === openPath[depth]) { found = list[i]; break }
+      }
+      if (!found) return null
+      list = found.items
+    }
+    return found
   }
 
   /** What the grid shows: the buttons, or an open group's behind a back button. */
@@ -167,7 +173,8 @@
   /** Every plain button, the ones inside groups included. */
   function allPlain() {
     var out = []
-    buttons().forEach(function (b) { out.push.apply(out, b.kind === 'group' ? b.items : [b]) })
+    function walk(list) { list.forEach(function (b) { if (b.kind === 'group') walk(b.items); else out.push(b) }) }
+    walk(buttons())
     return out
   }
 
@@ -331,8 +338,9 @@
     mark(spec, 'pressed')
     // Only where the button sits: the host reads what it points at from the saved settings, so a
     // widget cannot ask it to open something the user never configured.
-    var request = { instanceId: Fremkit.instanceId, index: spec.index }
-    if (spec.item !== undefined) request.item = spec.item
+    var request = { instanceId: Fremkit.instanceId, index: spec.path[0] }
+    if (spec.path.length > 1) request.item = spec.path[1]
+    if (spec.path.length > 2) request.sub = spec.path[2]
     Fremkit.sendCommand('shortcuts', 'open', request)
       .then(function (result) { mark(spec, result && result.ok ? 'ok' : 'failed') })
       .catch(function () { mark(spec, 'failed') })
@@ -347,8 +355,15 @@
     if (spec.icon && !site) return emoji(spec.icon)
     if (!spec.items.length) return Fremkit.el('span', 'art glyph', GROUP_GLYPH)
     var box = Fremkit.el('span', 'minis')
-    spec.items.slice(0, 4).forEach(function (child) { box.appendChild(artwork(button, child)) })
+    spec.items.slice(0, 4).forEach(function (child) { box.appendChild(child.kind === 'group' ? subgroupFace(button, child) : artwork(button, child)) })
     return box
+  }
+
+  /** A subgroup in its group's little square: its own icon, or the group glyph. */
+  function subgroupFace(button, spec) {
+    if (spec.icon.indexOf(LIBRARY) === 0) return libraryArt(button, spec)
+    if (spec.icon && !/^https?:\/\//i.test(spec.icon)) return emoji(spec.icon)
+    return Fremkit.el('span', 'art glyph', GROUP_GLYPH)
   }
 
   function buttonFor(spec, position) {
@@ -412,15 +427,16 @@
 
   function openGroupAt(spec, button) {
     var from = centre(button)
-    openGroup = spec.index
+    openPath = spec.path.slice()
     swap('leaving', 'opening', function (grid) { aimAt(grid, from) })
   }
 
+  /** Back one level: from a subgroup to its group, from a group to the grid. */
   function closeGroup() {
-    if (openGroup === null) return
+    if (!openPath.length) return
     var grid = document.getElementById('grid')
-    var group = openGroup
-    openGroup = null
+    var group = openPath.join('.')
+    openPath = openPath.slice(0, -1)
     // The buttons fly back into the first cell, the back button, before the grid returns.
     aimAt(grid, centre(grid.children[0]))
     swap('closing', 'settling', function (g) {
@@ -478,7 +494,7 @@
   function render() {
     document.documentElement.lang = Fremkit.locale
     var grid = document.getElementById('grid'), empty = document.getElementById('empty')
-    if (openGroup !== null && !currentGroup()) openGroup = null
+    if (openPath.length && !currentGroup()) openPath = []
     var list = view()
     // Rebuilding drops any pending icon retry with the node that owned it.
     for (var i = 0; i < grid.children.length; i++) clearTimeout(grid.children[i].retryTimer)
@@ -489,7 +505,7 @@
     empty.hidden = list.length > 0
     empty.textContent = Fremkit.t(L.empty)
     applyBackground()
-    var inGroup = openGroup !== null
+    var inGroup = openPath.length > 0
     grid.classList.toggle('in-group', inGroup)
     applyRowSize(grid, inGroup ? buttons().length : list.length, cols)
     list.forEach(function (spec, position) { grid.appendChild(buttonFor(spec, position)) })

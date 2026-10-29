@@ -144,6 +144,17 @@ describe('resolveButton', () => {
     expect(resolveButton(lookup(groups), { instanceId: INSTANCE, index: 0, item: 0 }).ok).toBe(false)
     expect(resolveButton(lookup(groups), { instanceId: INSTANCE, index: 1, item: 1 }).ok).toBe(false)
   })
+  it('reads a button inside a subgroup, and a subgroup only as a group', () => {
+    const nested = [{ label: 'Prod', kind: 'group', items: [
+      { kind: 'app', target: 'Mail' },
+      { label: 'Deploy', kind: 'group', items: [{ kind: 'url', target: 'https://example.com/eu' }] },
+    ] }]
+    const r = resolveButton(lookup(nested), { instanceId: INSTANCE, index: 0, item: 1, sub: 0 })
+    expect(r.ok && r.payload).toEqual({ kind: 'url', target: 'https://example.com/eu' })
+    expect(resolveButton(lookup(nested), { instanceId: INSTANCE, index: 0, item: 1 }).ok).toBe(false)
+    expect(resolveButton(lookup(nested), { instanceId: INSTANCE, index: 0, item: 0, sub: 0 }).ok).toBe(false)
+    expect(resolveButton(lookup(nested), { instanceId: INSTANCE, index: 0, item: 1, sub: 1 }).ok).toBe(false)
+  })
   it('refuses an index past the saved buttons, and a missing list', () => {
     expect(resolveButton(lookup(SAVED), { instanceId: INSTANCE, index: 3 }).ok).toBe(false)
     expect(resolveButton(lookup([]), { instanceId: INSTANCE, index: 0 }).ok).toBe(false)

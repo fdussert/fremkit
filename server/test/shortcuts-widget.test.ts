@@ -216,3 +216,40 @@ describe('an icon from the user\'s library', () => {
     expect(loaded.buttons()[1].children[0].src).toBe('data:image/svg+xml;base64,PHN2Zy8+')
   })
 })
+
+describe('a subgroup', () => {
+  afterEach(() => { vi.useRealTimers() })
+  const nested = {
+    buttons: [
+      terminal,
+      { label: 'Prod', kind: 'group', items: [
+        { label: 'Logs', kind: 'url', target: 'https://example.com/logs' },
+        { label: 'Deploy', kind: 'group', items: [
+          { label: 'EU', kind: 'url', target: 'https://example.com/eu' },
+          { label: 'US', kind: 'url', target: 'https://example.com/us' },
+        ] },
+      ] },
+    ],
+  }
+  const names = (loaded: Loaded) => loaded.buttons().map((b) => b.children[1]?.textContent)
+  const tap = (loaded: Loaded, i: number) => (loaded.buttons()[i] as unknown as { onclick: () => void }).onclick()
+
+  it('opens inside its group, presses by its path, and goes back one level at a time', async () => {
+    vi.useFakeTimers()
+    const loaded = await loadWidget([], nested)
+    tap(loaded, 1)
+    await vi.advanceTimersByTimeAsync(200)
+    expect(names(loaded)).toEqual(['Prod', 'Logs', 'Deploy'])
+    tap(loaded, 2)
+    await vi.advanceTimersByTimeAsync(200)
+    expect(names(loaded)).toEqual(['Deploy', 'EU', 'US'])
+    tap(loaded, 2)
+    expect(loaded.sent()[0]).toEqual(['shortcuts', 'open', { instanceId: 'shortcuts-1', index: 1, item: 1, sub: 1 }])
+    tap(loaded, 0)
+    await vi.advanceTimersByTimeAsync(200)
+    expect(names(loaded)).toEqual(['Prod', 'Logs', 'Deploy'])
+    tap(loaded, 0)
+    await vi.advanceTimersByTimeAsync(200)
+    expect(names(loaded)).toEqual(['Terminal', 'Prod'])
+  })
+})

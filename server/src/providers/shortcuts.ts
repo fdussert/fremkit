@@ -76,7 +76,9 @@ export const OpenRequestSchema = z.object({
   index: z.number().int().min(0).max(MAX_BUTTONS - 1),
   /** The button inside the group at `index`, for a group; absent for a plain button. */
   item: z.number().int().min(0).max(MAX_GROUP_BUTTONS - 1).optional(),
-})
+  /** The button inside the subgroup at `item`; only with `item`. */
+  sub: z.number().int().min(0).max(MAX_GROUP_BUTTONS - 1).optional(),
+}).refine((r) => r.sub === undefined || r.item !== undefined)
 
 /** The widget whose saved buttons this channel acts on. */
 const SHORTCUTS_WIDGET = 'shortcuts'
@@ -97,13 +99,14 @@ export function resolveButton(
     return { ok: false, error: tr(undefined, 'shortcuts.unknownButton') }
   }
   let button: unknown = buttons[request.index]
-  if (request.item !== undefined) {
-    // Only a group holds buttons, and only the ones the user saved in it.
+  // Only a group holds buttons, and only the ones the user saved in it: a group, then a subgroup.
+  for (const at of [request.item, request.sub]) {
+    if (at === undefined) break
     const group = button as { kind?: unknown; items?: unknown } | null
-    if (!group || group.kind !== 'group' || !Array.isArray(group.items) || request.item >= group.items.length) {
+    if (!group || group.kind !== 'group' || !Array.isArray(group.items) || at >= group.items.length) {
       return { ok: false, error: tr(undefined, 'shortcuts.unknownButton') }
     }
-    button = group.items[request.item]
+    button = group.items[at]
   }
   const parsed = OpenPayloadSchema.safeParse(button)
   if (!parsed.success) {
