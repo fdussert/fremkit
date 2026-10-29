@@ -114,6 +114,8 @@ export interface HookEvent {
   /** SubagentStart / SubagentStop: the subagent's own id (the session id stays the parent's). */
   agent_id?: string
   cwd?: string
+  /** Where Claude Code writes the session's transcript; read by `ClaudeConfigDirs`. */
+  transcript_path?: string
   tool_name?: string
   tool_input?: unknown
   notification_type?: string

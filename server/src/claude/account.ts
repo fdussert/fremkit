@@ -4,6 +4,7 @@ import type { Provider } from '../providers/types.js'
 import type { UsageWindow } from './usage.js'
 import { tr, type MessageKey } from '../i18n.js'
 import { USER_AGENT } from '../version.js'
+import { DEFAULT_KEYCHAIN_SERVICE, keychainServiceFor } from './configDirs.js'
 
 export interface AccountLimit { kind: string; name: string; percent: number; resetsAt: number | null; active: boolean }
 export interface AccountUsage { fiveHour: UsageWindow | null; sevenDay: UsageWindow | null; limits: AccountLimit[]; breakdown: { name: string; percent: number }[] }
@@ -21,7 +22,6 @@ export interface AccountSnapshot extends AccountUsage { available: boolean; stal
  * hand, HTTP 200), and if it ever stops working the answer is to stop asking, not to spoof.
  */
 const USAGE_URL = 'https://api.anthropic.com/api/oauth/usage'
-const KEYCHAIN_SERVICE = 'Claude Code-credentials'
 /**
  * Names for the windows Claude reports without one of its own. Resolved on each poll rather than
  * once, so the language the user picked reaches the widget on the next refresh.
@@ -69,18 +69,52 @@ function run(cmd: string, args: string[]): Promise<string> {
   return new Promise((resolve, reject) => execFile(cmd, args, { timeout: 5000 }, (err, stdout) => (err ? reject(err) : resolve(stdout.trim()))))
 }
 
-/** Extracts the Claude Code OAuth access token from the keychain item's JSON payload. */
-export function parseKeychainJson(raw: string): string | null {
+interface KeychainToken { token: string; expiresAt: number | null }
+
+/** Reads one keychain item's JSON payload: the access token and when it expires (ms), if it says. */
+function parseKeychainItem(raw: string): KeychainToken | null {
   try {
-    const j = JSON.parse(raw) as { claudeAiOauth?: { accessToken?: unknown } }
+    const j = JSON.parse(raw) as { claudeAiOauth?: { accessToken?: unknown; expiresAt?: unknown } }
     const t = j?.claudeAiOauth?.accessToken
-    return typeof t === 'string' && t ? t : null
+    if (typeof t !== 'string' || !t) return null
+    const e = j.claudeAiOauth?.expiresAt
+    return { token: t, expiresAt: typeof e === 'number' && Number.isFinite(e) ? e : null }
   } catch { return null }
 }
 
-/** Reads the token from the macOS keychain. Never logs or stores it. */
-export async function readClaudeOAuthToken(): Promise<string | null> {
-  try { return parseKeychainJson(await run('/usr/bin/security', ['find-generic-password', '-s', KEYCHAIN_SERVICE, '-w'])) } catch { return null }
+/** Extracts the Claude Code OAuth access token from the keychain item's JSON payload. */
+export function parseKeychainJson(raw: string): string | null {
+  return parseKeychainItem(raw)?.token ?? null
+}
+
+/**
+ * Of several items, the one to use: the latest expiry wins, and an item that does not say when it
+ * expires comes after every one that does. The token Claude Code is refreshing is the newest one;
+ * an item nobody refreshes any more keeps the expiry it had the day it was abandoned.
+ */
+export function freshestToken(items: (KeychainToken | null)[]): string | null {
+  let best: KeychainToken | null = null
+  for (const item of items) {
+    if (!item) continue
+    if (!best || (item.expiresAt ?? -Infinity) > (best.expiresAt ?? -Infinity)) best = item
+  }
+  return best?.token ?? null
+}
+
+/**
+ * Reads the token from the macOS keychain. Never logs or stores it.
+ *
+ * Tries the default item and the one for each configuration folder sessions were seen running from
+ * (see `configDirs.ts`); the item names are computed here, so an event can only ever point this at
+ * another `Claude Code-credentials-<8 hex>` item.
+ */
+export async function readClaudeOAuthToken(configDirs: string[] = [], read: (service: string) => Promise<string> = (service) => run('/usr/bin/security', ['find-generic-password', '-s', service, '-w'])): Promise<string | null> {
+  const services = [...new Set([DEFAULT_KEYCHAIN_SERVICE, ...configDirs.map(keychainServiceFor)])]
+  const items: (KeychainToken | null)[] = []
+  for (const service of services) {
+    try { items.push(parseKeychainItem(await read(service))) } catch { /* no such item */ }
+  }
+  return freshestToken(items)
 }
 
 function epoch(iso: unknown): number | null {
@@ -120,9 +154,12 @@ export function createClaudeAccountProvider(opts: {
    * the provider's own tests, which are about what it does once it is allowed to run.
    */
   enabled?: () => boolean
+  /** The Claude Code configuration folders seen so far, whose keychain items are tried too. */
+  configDirs?: () => string[]
 } = {}): Provider {
   const fetchFn = opts.fetchFn ?? fetch
-  const readToken = opts.readToken ?? readClaudeOAuthToken
+  const configDirs = opts.configDirs ?? (() => [])
+  const readToken = opts.readToken ?? (() => readClaudeOAuthToken(configDirs()))
   const now = opts.now ?? Date.now
   const filePath = opts.filePath
   const enabled = opts.enabled ?? (() => true)

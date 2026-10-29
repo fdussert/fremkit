@@ -55,6 +55,8 @@ export const HookEventSchema = z.object({
   session_id: shortText(ID_MAX),
   agent_id: shortText(ID_MAX),
   cwd: shortText(PATH_MAX),
+  /** Read for the configuration folder it sits under (`configDirs.ts`), never for the transcript. */
+  transcript_path: shortText(PATH_MAX),
   tool_name: shortText(NAME_MAX),
   // Read for a one-line summary only, and already bounded by the body limit.
   tool_input: z.unknown().optional().catch(undefined),

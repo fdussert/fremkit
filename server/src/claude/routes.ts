@@ -2,11 +2,12 @@ import type { FastifyInstance } from 'fastify'
 import type { ClaudeTracker } from './tracker.js'
 import { parseHookEvent } from './hook-schema.js'
 import type { ClaudeUsage } from './usage.js'
+import type { ClaudeConfigDirs } from './configDirs.js'
 
 const BODY_LIMIT = 1_000_000
 
 /** Receives Claude Code hook and statusline payloads. Always answers 204 so it never disturbs the session. */
-export async function claudeRoutes(app: FastifyInstance, opts: { tracker: ClaudeTracker; usage: ClaudeUsage }): Promise<void> {
+export async function claudeRoutes(app: FastifyInstance, opts: { tracker: ClaudeTracker; usage: ClaudeUsage; configDirs?: ClaudeConfigDirs }): Promise<void> {
   // Dedicated content-type parser for this plugin only: invalid JSON must not
   // become a 400 (Claude Code hooks ignore the response body but a non-2xx
   // status can make the hook runner treat the call as failed). Parsing to
@@ -25,6 +26,7 @@ export async function claudeRoutes(app: FastifyInstance, opts: { tracker: Claude
     if (event) {
       try {
         opts.tracker.handle(event)
+        opts.configDirs?.note(event.transcript_path)
         if (event.hook_event_name === 'StatusLine') await opts.usage.applyStatusLine(event)
       } catch (err) {
         req.log.warn({ err }, 'claude hook handling failed')

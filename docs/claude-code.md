@@ -100,7 +100,11 @@ response of a session.
 
 The `claude-account` provider goes one step further: it reads the Claude Code OAuth token from the
 macOS keychain (the item "Claude Code-credentials") every 5 minutes and calls the account usage
-endpoint for per-model weekly limits. The token is never stored or logged and is sent only to
+endpoint for per-model weekly limits. A session started with `CLAUDE_CONFIG_DIR` set, as a terminal
+with profiles does, keeps its token in an item of its own, "Claude Code-credentials-" followed by
+eight characters of a hash of that folder: the server learns the folder from the hooks'
+`transcript_path`, remembers it in `data/claude-config-dirs.json`, tries that item too and uses
+whichever token expires last. Today's token count reads that folder's `projects` beside `~/.claude/projects`. The token is never stored or logged and is sent only to
 `api.anthropic.com`. macOS may ask once to allow keychain access. The endpoint is undocumented and
 may change without notice.
 

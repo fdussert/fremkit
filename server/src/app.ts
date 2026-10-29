@@ -42,6 +42,7 @@ import { tileIconRoutes } from './tile-icons/routes.js'
 import { faviconRoutes } from './favicons/routes.js'
 import { ClaudeTracker } from './claude/tracker.js'
 import { ClaudeUsage } from './claude/usage.js'
+import { ClaudeConfigDirs } from './claude/configDirs.js'
 import { claudeRoutes } from './claude/routes.js'
 import { createClaudeSessionsProvider, createClaudeUsageProvider, createClaudeAccountProvider } from './claude/providers.js'
 import { createCodexProvider } from './providers/codex.js'
@@ -259,7 +260,12 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   const attention = createAttention({ instances: () => findInstances(store.get(), 'claude-sessions') })
   const tracker = new ClaudeTracker({ filePath: join(opts.dataDir, 'claude-sessions.json'), onAttention: attention })
   await tracker.load()
-  const usage = new ClaudeUsage({ filePath: join(opts.dataDir, 'claude-usage.json'), transcriptsDir: demo ? join(opts.dataDir, 'demo-transcripts') : opts.claudeTranscriptsDir ?? join(homedir(), '.claude', 'projects') })
+  // Demo mode learns nothing from real hooks and reads no keychain, so it keeps no file either.
+  const claudeConfigDirs = new ClaudeConfigDirs({ filePath: demo ? undefined : join(opts.dataDir, 'claude-config-dirs.json') })
+  await claudeConfigDirs.load()
+  const usage = new ClaudeUsage({ filePath: join(opts.dataDir, 'claude-usage.json'), transcriptsDir: demo ? join(opts.dataDir, 'demo-transcripts') : opts.claudeTranscriptsDir ?? join(homedir(), '.claude', 'projects'),
+    moreTranscriptsDirs: demo ? undefined : () => claudeConfigDirs.list().map((d) => join(d, 'projects')),
+  })
   await usage.load()
   // The GIF board's files, shared by its provider and its routes. A demo reaches no network: its
   // fetch answers the hosts the demo knows and refuses the rest, and no host is looked up in DNS.
@@ -304,6 +310,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     registry.register(createClaudeAccountProvider({
       filePath: join(opts.dataDir, 'claude-account.json'),
       enabled: () => store.get().privacy.claudeAccountUsage,
+      configDirs: () => claudeConfigDirs.list(),
     }))
     const codex = createCodexProvider({
       enabled: () => store.get().privacy.codexAccount || store.get().privacy.codexHistorySources.length > 0,
@@ -517,7 +524,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   await app.register(faviconRoutes, { dir: join(opts.dataDir, 'icons', 'favicons'), config: () => store.get(), screenOfDevice })
   // The editor's GIF search and link check, on the one GIF store the provider shares.
   await app.register(gifRoutes, { store, gifs, screenOfDevice, secretsFor: (c) => connections.secretsFor(c), demo })
-  await app.register(claudeRoutes, { tracker, usage })
+  await app.register(claudeRoutes, { tracker, usage, configDirs: claudeConfigDirs })
   await app.register(dockRoutes, {
     state: dock,
     ...(appIcons ? { appIcons } : {}),

@@ -66,6 +66,12 @@ tagged `vX.Y.Z`.
 
 ### Fixed
 
+- **Claude limits follows Claude Code's sign-in when it runs from its own folder.** A terminal
+  with profiles (Orca, for one) starts Claude Code with a configuration folder of its own, which
+  keeps its sign-in apart; the widget kept reading the old one, which nobody renewed, and said its
+  credentials were refused. It now finds the sign-in each folder's sessions use, and today's token
+  count includes those sessions too.
+
 - **Claude limits recovers from a long rate limit.** When Anthropic asked it to wait the best
   part of an hour, the widget asked again every two minutes, which kept it rate-limited and its
   gauges stale for days. It now waits as long as it is told (up to an hour), even across a
