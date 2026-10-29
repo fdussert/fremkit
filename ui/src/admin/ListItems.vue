@@ -24,11 +24,10 @@ const props = defineProps<{
   columns: number | null
   /** The open item's index, or null. */
   open: number | null
-  /**
-   * Per item: how many items it holds and whether it takes one more, or null for an item that
-   * holds no list. Absent, no item holds one.
-   */
-  holders?: ({ count: number; accepts: boolean } | null)[]
+  /** Per item: how many items it holds, or null for an item that holds no list. Absent, none does. */
+  holders?: ({ count: number } | null)[]
+  /** Whether the item at `from` may be dropped into the one at `into`. Absent, nothing nests. */
+  canNest?: (from: number, into: number) => boolean
 }>()
 const emit = defineEmits<{ toggle: [index: number]; move: [from: number, to: number]; nest: [from: number, into: number] }>()
 const { t } = useI18n()
@@ -68,10 +67,10 @@ function onMove(e: PointerEvent): void {
 /** The holder whose middle is under the pointer, if the dragged item may go into it. */
 function holderUnder(x: number, y: number): number | null {
   const from = dragged.value
-  if (!list.value || from === null || !props.holders || props.holders[from]) return null
-  const els = [...list.value.querySelectorAll<HTMLElement>('[data-list-item]')]
+  if (!list.value || from === null || !props.holders || !props.canNest) return null
+  const els = [...list.value.querySelectorAll<HTMLElement>(':scope > [data-list-item]')]
   for (const [i, el] of els.entries()) {
-    if (i === from || !props.holders[i]?.accepts) continue
+    if (i === from || !props.holders[i] || !props.canNest(from, i)) continue
     const r = el.getBoundingClientRect()
     // Across a tile in a grid, down a row in a list: the edges stay "before" and "after".
     const [pos, start, size] = props.columns ? [x, r.left, r.width] : [y, r.top, r.height]
@@ -83,7 +82,7 @@ function holderUnder(x: number, y: number): number | null {
 /** The index the dragged item would have once dropped, from the items' boxes as they stand. */
 function landing(x: number, y: number): number | null {
   if (!list.value || dragged.value === null) return null
-  const boxes = [...list.value.querySelectorAll<HTMLElement>('[data-list-item]')].map((el) => el.getBoundingClientRect())
+  const boxes = [...list.value.querySelectorAll<HTMLElement>(':scope > [data-list-item]')].map((el) => el.getBoundingClientRect())
   return props.columns ? gridDropIndex(boxes, x, y, dragged.value) : dropIndex(boxes, y, dragged.value)
 }
 function onUp(e: PointerEvent): void {

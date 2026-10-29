@@ -51,9 +51,21 @@ export function moveTo<T>(list: readonly T[], from: number, to: number): T[] {
 
 type Item = Record<string, unknown>
 
-/** The key of the one list an item of this setting may hold, or null. */
-export function nestedListKey(field: SettingField): string | null {
+/** Anything with item fields: a list setting, or a list an item holds. */
+type HasItems = { itemSchema?: Record<string, ListItemField> }
+
+/** The key of the one list an item of this setting (or of this held list) may hold, or null. */
+export function nestedListKey(field: HasItems): string | null {
   return Object.entries(field.itemSchema ?? {}).find(([, f]) => f.type === 'list')?.[0] ?? null
+}
+
+/** A new item starts from its schema's defaults, and from an empty value where it declares none. */
+export function newItem(f: HasItems): Item {
+  const item: Item = {}
+  for (const [key, field] of Object.entries(f.itemSchema ?? {})) {
+    item[key] = field.default ?? (field.type === 'boolean' ? false : field.type === 'number' ? 0 : field.type === 'list' ? [] : '')
+  }
+  return item
 }
 
 /** The items an item holds under `key`; anything else stored there reads as none. */
@@ -62,23 +74,39 @@ export function heldItems(item: Item | undefined, key: string): Item[] {
   return Array.isArray(held) ? (held as Item[]) : []
 }
 
-/** An item as `schema` describes it: the keys it declares, and nothing it does not. */
-function keepFields(item: Item, schema: Record<string, ListItemField>): Item {
-  return Object.fromEntries(Object.entries(item).filter(([key]) => Object.hasOwn(schema, key) && schema[key].type !== 'list'))
+/** An item as `schema` describes it: the keys it declares, the lists it holds conformed in turn. */
+function conform(item: Item, schema: Record<string, ListItemField>): Item {
+  return Object.fromEntries(Object.entries(item)
+    .filter(([key]) => Object.hasOwn(schema, key))
+    .map(([key, value]) => {
+      const field = schema[key]
+      if (field.type !== 'list') return [key, value]
+      return [key, Array.isArray(value) ? (value as Item[]).map((child) => conform(child, field.itemSchema ?? {})) : []]
+    }))
+}
+
+/** True when nothing `item` holds would be lost under `schema`: each list it fills, `schema` has room for. */
+function fits(item: Item, schema: Record<string, ListItemField>): boolean {
+  return Object.entries(item).every(([key, value]) => {
+    if (!Array.isArray(value) || value.length === 0) return true
+    const field = Object.hasOwn(schema, key) ? schema[key] : undefined
+    return field?.type === 'list' && (value as Item[]).every((child) => fits(child, field.itemSchema ?? {}))
+  })
 }
 
 /**
  * `list` with the item at `from` moved into the list the item at `into` holds under `key`, at its
- * end. Null when that cannot be: the same item, an item that holds a list itself (one level
- * only), or a holder already at its `max`. Only the fields the held items declare go along.
+ * end. Null when that cannot be: the same item, an item holding a list the level below has no
+ * room for (a subgroup into a subgroup), or a holder already at its `max`. Only the fields the
+ * held items declare go along.
  */
 export function nestInto(list: readonly Item[], from: number, into: number, key: string, held: ListItemField): Item[] | null {
   const moved = list[from]
   const holder = list[into]
-  if (!moved || !holder || from === into || heldItems(moved, key).length > 0) return null
+  if (!moved || !holder || from === into || !fits(moved, held.itemSchema ?? {})) return null
   const inside = heldItems(holder, key)
   if (held.max !== undefined && inside.length >= held.max) return null
-  const next = list.map((item, i) => (i === into ? { ...item, [key]: [...inside, keepFields(moved, held.itemSchema ?? {})] } : item))
+  const next = list.map((item, i) => (i === into ? { ...item, [key]: [...inside, conform(moved, held.itemSchema ?? {})] } : item))
   next.splice(from, 1)
   return next
 }
@@ -87,12 +115,12 @@ export function nestInto(list: readonly Item[], from: number, into: number, key:
  * `list` with the item at `j` of the list held under `key` by the item at `i` taken out, and put
  * back right after its holder as an item of `field`, its missing fields from `fresh`.
  */
-export function takeOut(list: readonly Item[], i: number, key: string, j: number, field: SettingField, fresh: Item): Item[] {
+export function takeOut(list: readonly Item[], i: number, key: string, j: number, field: HasItems, fresh: Item): Item[] {
   const holder = list[i]
   const inside = heldItems(holder, key)
   if (!holder || j < 0 || j >= inside.length) return [...list]
   const next = [...list]
   next[i] = { ...holder, [key]: inside.filter((_, n) => n !== j) }
-  next.splice(i + 1, 0, { ...fresh, ...keepFields(inside[j], field.itemSchema ?? {}) })
+  next.splice(i + 1, 0, { ...fresh, ...conform(inside[j], field.itemSchema ?? {}) })
   return next
 }

@@ -75,6 +75,13 @@ describe('a list item holding a list', () => {
     expect(nestInto(list, 1, 2, 'items', { ...held, max: 9 })).toBeNull()
     expect(nestInto(list, 1, 1, 'items', held)).toBeNull()
   })
+  it('moves a holder into a holder whose items may hold a list, its own items along', () => {
+    const deeper: ListItemField = { ...held, max: 9, itemSchema: { ...held.itemSchema, items: { type: 'list', label: 'Sub', itemSchema: held.itemSchema } } }
+    const next = nestInto(list, 1, 2, 'items', deeper)!
+    expect(next.map((i) => i.label)).toEqual(['Mail', 'Dev'])
+    expect(next[1].items).toEqual([{ label: 'A', target: 'a' }, { label: 'B', target: 'b' },
+      { label: 'Prod', target: '', items: [{ label: 'Deploy', target: 'https://example.com/d' }] }])
+  })
   it('takes an item out, right after its holder, with the fields a new item starts with', () => {
     const next = takeOut(list, 2, 'items', 0, field, { label: '', kind: 'app', target: '', items: [] })
     expect(next.map((i) => i.label)).toEqual(['Mail', 'Prod', 'Dev', 'A'])
