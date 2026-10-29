@@ -47,7 +47,11 @@ export const DEMO_SETTINGS: Record<string, Record<string, unknown>> = {
       { label: 'Music', kind: 'app', target: 'Music', icon: '🎵' },
       { label: 'Calendar', kind: 'app', target: 'Calendar', icon: '📅' },
       { label: 'Timer', kind: 'shortcut', target: 'Start timer', icon: '⏱️' },
-      { label: 'Status', kind: 'url', target: 'https://status.example.com', icon: '🟢' },
+      { label: 'Pipelines', kind: 'group', target: '', icon: '', items: [
+        { label: 'Prod', kind: 'url', target: 'https://ci.example.com/prod', icon: '🚀' },
+        { label: 'Dev', kind: 'url', target: 'https://ci.example.com/dev', icon: '🧪' },
+        { label: 'Status', kind: 'url', target: 'https://status.example.com', icon: '🟢' },
+      ] },
     ],
   },
   weather: { location: 'Paris' },

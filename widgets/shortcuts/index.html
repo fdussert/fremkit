@@ -43,6 +43,32 @@
   /* Rows too short for an icon over a label put them side by side instead. */
   html.short .btn{flex-direction:row;padding:4px 10px;gap:8px}
   html.short .btn .name{flex:1 1 auto;text-align:left}
+  /* A group shows what it holds: up to four of its buttons' icons in a little square, a folder's
+     look. */
+  .btn .minis{box-sizing:border-box;width:var(--art,34px);height:var(--art,34px);padding:3px;gap:2px;border-radius:24%;
+    display:grid;grid-template-columns:1fr 1fr;grid-auto-rows:1fr;place-items:center;background:rgba(128,128,128,.24)}
+  html.bg-accent .btn .minis,html.bg-custom .btn .minis{background:rgba(0,0,0,.16)}
+  .btn .minis .art{width:calc(var(--art,34px) * .4);height:calc(var(--art,34px) * .4)}
+  .btn .minis img.art{border-radius:3px}
+  .btn .minis .glyph{font-size:calc(var(--art,34px) * .2)}
+  .btn .minis .emoji{font-size:calc(var(--art,34px) * .3)}
+  /* Back out of a group: the first cell, drawn as an outline so it never reads as a shortcut. */
+  html .btn.back{background:transparent;box-shadow:inset 0 0 0 2px rgba(128,128,128,.4)}
+  html .btn.back .glyph{background:transparent;color:inherit;font-size:calc(var(--art,34px) * .8);font-weight:300}
+
+  /* Opening a group: the grid steps back, then the group's buttons fly out of the one touched,
+     one after the other. Closing it runs the other way, into the back button. */
+  .grid.leaving .btn{animation:leave .16s ease-in forwards}
+  .grid.opening .btn{animation:fly-out .42s cubic-bezier(.2,.9,.25,1.15) both;animation-delay:calc(var(--i,0) * 32ms)}
+  .grid.closing .btn{animation:fly-in .16s ease-in forwards}
+  .grid.settling .btn{animation:settle .3s cubic-bezier(.2,.8,.3,1) both;animation-delay:calc(var(--i,0) * 18ms)}
+  .grid.settling .btn.home{animation:home .5s cubic-bezier(.2,.9,.25,1.2) both}
+  @keyframes leave{to{opacity:0;transform:scale(.9)}}
+  @keyframes fly-out{from{opacity:0;transform:translate(var(--dx,0),var(--dy,0)) scale(.3)}60%{opacity:1}to{opacity:1;transform:none}}
+  @keyframes fly-in{to{opacity:0;transform:translate(var(--dx,0),var(--dy,0)) scale(.3)}}
+  @keyframes settle{from{opacity:0;transform:scale(.94)}to{opacity:1;transform:none}}
+  @keyframes home{from{opacity:.4;transform:scale(.7)}to{opacity:1;transform:none}}
+  @media (prefers-reduced-motion: reduce){.grid .btn{animation:none!important}}
 </style></head>
 <body><div class="wrap">
   <div class="grid" id="grid"></div>
@@ -50,7 +76,8 @@
 </div>
 <script>
   var L = {
-    empty: { fr: 'Ajoutez des boutons dans les réglages', en: 'Add buttons in the widget settings' }
+    empty: { fr: 'Ajoutez des boutons dans les réglages', en: 'Add buttons in the widget settings' },
+    back: { fr: 'Retour', en: 'Back' }
   }
   /** How long a button keeps its ✓ or ✗ after a tap. */
   var FEEDBACK_MS = 1400
@@ -59,33 +86,86 @@
   /** Applications are installed rarely, and the server caches the scan: once an hour is plenty. */
   var INSTALLED_REFRESH_MS = 3600000
   var KINDS = { app: '□', url: '↗', shortcut: '⚡' }
+  /** A group with nothing to show inside it yet. */
+  var GROUP_GLYPH = '▦'
+  /** An open group closes by itself after this long without a touch. */
+  var GROUP_IDLE_MS = 8000
+  /** How long the grid takes to step back before the next view flies in. */
+  var LEAVE_MS = 160
 
   var settings = {}, dock = null
   /** Every installed application, from `/api/apps/installed`; empty until the first answer. */
   var installed = []
-  /** button index -> 'pressed' | 'ok' | 'failed', cleared by a timer. */
+  /** button key -> 'pressed' | 'ok' | 'failed', cleared by a timer. */
   var feedback = {}
+  /** The saved index of the group shown in place of the grid, or null. */
+  var openGroup = null
+  var idleTimer = null
+  /** Bumped by every view change, so a transition overtaken by another one stops. */
+  var viewToken = 0
 
+
+  /** One saved button as the grid draws it, or null for a half-typed one, which is not a button. */
+  function plain(b, index, item) {
+    if (!b || typeof b !== 'object') return null
+    var spec = {
+      // Where it sits in the saved list, which is all the host is told: the rows skipped here must
+      // not shift the buttons after them.
+      index: index, item: item,
+      key: item === undefined ? String(index) : index + '.' + item,
+      label: typeof b.label === 'string' ? b.label.trim() : '',
+      kind: KINDS[b.kind] ? b.kind : 'app',
+      target: typeof b.target === 'string' ? b.target.trim() : '',
+      icon: typeof b.icon === 'string' ? b.icon.trim() : ''
+    }
+    return spec.target === '' ? null : spec
+  }
 
   /**
-   * The buttons actually drawn. A row with no target is a half-typed one in the admin, not a
-   * button: it is skipped rather than drawn as something that cannot work.
+   * The buttons actually drawn: the plain ones with a target, and the groups, each with the
+   * buttons it holds. A group with neither a name nor a button yet is an unfinished row.
    */
   function buttons() {
     var list = Array.isArray(settings.buttons) ? settings.buttons : []
-    return list
-      .map(function (b, at) {
-        return {
-          // Its place in the saved list, which is what the host reads: the rows skipped below
-          // must not shift the buttons after them.
-          at: at,
-          label: typeof b.label === 'string' ? b.label.trim() : '',
-          kind: KINDS[b.kind] ? b.kind : 'app',
-          target: typeof b.target === 'string' ? b.target.trim() : '',
-          icon: typeof b.icon === 'string' ? b.icon.trim() : ''
+    var out = []
+    list.forEach(function (b, index) {
+      if (b && b.kind === 'group') {
+        var held = (Array.isArray(b.items) ? b.items : [])
+          .map(function (child, item) { return plain(child, index, item) })
+          .filter(Boolean)
+        var label = typeof b.label === 'string' ? b.label.trim() : ''
+        if (label || held.length) {
+          out.push({ index: index, key: 'g' + index, kind: 'group', label: label, items: held,
+            icon: typeof b.icon === 'string' ? b.icon.trim() : '' })
         }
-      })
-      .filter(function (b) { return b.target !== '' })
+        return
+      }
+      var spec = plain(b, index)
+      if (spec) out.push(spec)
+    })
+    return out
+  }
+
+  /** The group open now, as `buttons()` draws it, or null when it is gone from the settings. */
+  function currentGroup() {
+    if (openGroup === null) return null
+    var list = buttons()
+    for (var i = 0; i < list.length; i++) if (list[i].kind === 'group' && list[i].index === openGroup) return list[i]
+    return null
+  }
+
+  /** What the grid shows: the buttons, or an open group's behind a back button. */
+  function view() {
+    var group = currentGroup()
+    if (!group) return buttons()
+    return [{ key: 'back', kind: 'back', label: group.label }].concat(group.items)
+  }
+
+  /** Every plain button, the ones inside groups included. */
+  function allPlain() {
+    var out = []
+    buttons().forEach(function (b) { out.push.apply(out, b.kind === 'group' ? b.items : [b]) })
+    return out
   }
 
   /** True when a candidate name is the one the button targets. `open -a` ignores `.app` and case. */
@@ -115,7 +195,7 @@
 
   /** The bundle ids the buttons currently resolve to, as one string: the render trigger. */
   function resolution() {
-    return buttons().map(function (b) { return b.kind === 'app' ? bundleIdFor(b.target) : '' }).join('|')
+    return allPlain().map(function (b) { return b.kind === 'app' ? bundleIdFor(b.target) : '' }).join('|')
   }
 
   function glyph(kind) { return Fremkit.el('span', 'art glyph', KINDS[kind] || KINDS.app) }
@@ -198,43 +278,137 @@
    * Only that button is rebuilt: a full render would re-request every application icon, and the
    * grid would blink each time a finger lands on it.
    */
-  function mark(index, state) {
-    feedback[index] = state
-    replace(index)
+  function mark(spec, state) {
+    feedback[spec.key] = state
+    replace(spec.key)
     setTimeout(function () {
-      if (feedback[index] !== state) return
-      delete feedback[index]
-      replace(index)
+      if (feedback[spec.key] !== state) return
+      delete feedback[spec.key]
+      replace(spec.key)
+      // Done with the group once one of its shortcuts has run: back to the whole grid.
+      if (state === 'ok' && spec.item !== undefined && openGroup === spec.index) closeGroup()
     }, FEEDBACK_MS)
   }
 
-  function replace(index) {
+  function replace(key) {
     var grid = document.getElementById('grid')
-    var old = grid.children[index]
-    var spec = buttons()[index]
-    if (!old || !spec) return
-    clearTimeout(old.retryTimer)
-    grid.replaceChild(buttonFor(spec, index), old)
+    var specs = view()
+    for (var i = 0; i < grid.children.length; i++) {
+      var old = grid.children[i]
+      if (old.key !== key) continue
+      var spec = specs.filter(function (s) { return s.key === key })[0]
+      if (!spec) return
+      clearTimeout(old.retryTimer)
+      grid.replaceChild(buttonFor(spec, i), old)
+      return
+    }
   }
 
-  function press(index, spec) {
-    mark(index, 'pressed')
-    // Only the index: the host reads what this button points at from the saved settings, so a
+  function press(spec) {
+    mark(spec, 'pressed')
+    // Only where the button sits: the host reads what it points at from the saved settings, so a
     // widget cannot ask it to open something the user never configured.
-    Fremkit.sendCommand('shortcuts', 'open', { instanceId: Fremkit.instanceId, index: spec.at })
-      .then(function (result) { mark(index, result && result.ok ? 'ok' : 'failed') })
-      .catch(function () { mark(index, 'failed') })
+    var request = { instanceId: Fremkit.instanceId, index: spec.index }
+    if (spec.item !== undefined) request.item = spec.item
+    Fremkit.sendCommand('shortcuts', 'open', request)
+      .then(function (result) { mark(spec, result && result.ok ? 'ok' : 'failed') })
+      .catch(function () { mark(spec, 'failed') })
   }
 
-  function buttonFor(spec, index) {
-    var state = feedback[index]
-    var button = Fremkit.el('button', 'btn' + (state ? ' ' + state : ''))
+  /** A group's face: its own emoji when it has one, else a little square of what it holds. */
+  function groupArt(button, spec) {
+    if (spec.icon && !/^https?:\/\//i.test(spec.icon)) return emoji(spec.icon)
+    if (!spec.items.length) return Fremkit.el('span', 'art glyph', GROUP_GLYPH)
+    var box = Fremkit.el('span', 'minis')
+    spec.items.slice(0, 4).forEach(function (child) { box.appendChild(artwork(button, child)) })
+    return box
+  }
+
+  function buttonFor(spec, position) {
+    var state = feedback[spec.key]
+    var button = Fremkit.el('button', 'btn' + (spec.kind === 'group' ? ' group' : spec.kind === 'back' ? ' back' : '') + (state ? ' ' + state : ''))
+    button.key = spec.key
+    button.style.setProperty('--i', position)
     button.appendChild(state === 'ok' ? Fremkit.el('span', 'art glyph', '✓')
       : state === 'failed' ? Fremkit.el('span', 'art glyph', '✗')
+      : spec.kind === 'back' ? Fremkit.el('span', 'art glyph', '‹')
+      : spec.kind === 'group' ? groupArt(button, spec)
       : artwork(button, spec))
-    button.appendChild(Fremkit.el('div', 'name', spec.label || spec.target))
-    button.onclick = function () { press(index, spec) }
+    button.appendChild(Fremkit.el('div', 'name', spec.kind === 'back' ? (spec.label || Fremkit.t(L.back)) : (spec.label || spec.target)))
+    button.onclick = spec.kind === 'group' ? function () { openGroupAt(spec, button) }
+      : spec.kind === 'back' ? function () { closeGroup() }
+      : function () { press(spec) }
+    if (spec.kind === 'back') button.setAttribute && button.setAttribute('aria-label', Fremkit.t(L.back))
     return button
+  }
+
+  function reducedMotion() {
+    return typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
+  }
+
+  /** The centre of an element, relative to the grid's own box; null where nothing is laid out. */
+  function centre(el) {
+    if (!el || typeof el.getBoundingClientRect !== 'function') return null
+    var r = el.getBoundingClientRect()
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2 }
+  }
+
+  /** Sets each button's offset to `from`, the point the fly-out starts at and the fly-in ends at. */
+  function aimAt(grid, from) {
+    if (!from) return
+    for (var i = 0; i < grid.children.length; i++) {
+      var c = centre(grid.children[i])
+      if (!c) continue
+      grid.children[i].style.setProperty('--dx', (from.x - c.x) + 'px')
+      grid.children[i].style.setProperty('--dy', (from.y - c.y) + 'px')
+    }
+  }
+
+  /**
+   * Swaps the grid for another view with a transition: `before` runs on the buttons going away,
+   * `after` on the ones arriving, each a class on the grid. A newer swap overtakes an older one.
+   */
+  function swap(before, after, prepare) {
+    var grid = document.getElementById('grid')
+    var token = ++viewToken
+    if (reducedMotion()) { render(); return }
+    if (before) grid.classList.add(before)
+    setTimeout(function () {
+      if (token !== viewToken) return
+      grid.classList.remove(before)
+      render()
+      if (prepare) prepare(grid)
+      grid.classList.add(after)
+      setTimeout(function () { if (token === viewToken) grid.classList.remove(after) }, 900)
+    }, before ? LEAVE_MS : 0)
+  }
+
+  function openGroupAt(spec, button) {
+    var from = centre(button)
+    openGroup = spec.index
+    restartIdle()
+    swap('leaving', 'opening', function (grid) { aimAt(grid, from) })
+  }
+
+  function closeGroup() {
+    if (openGroup === null) return
+    var grid = document.getElementById('grid')
+    var group = openGroup
+    openGroup = null
+    clearTimeout(idleTimer)
+    // The buttons fly back into the first cell, the back button, before the grid returns.
+    aimAt(grid, centre(grid.children[0]))
+    swap('closing', 'settling', function (g) {
+      for (var i = 0; i < g.children.length; i++) {
+        if (g.children[i].key === 'g' + group) g.children[i].classList.add('home')
+      }
+    })
+  }
+
+  /** An open group closes by itself once nobody has touched the tile for a while. */
+  function restartIdle() {
+    clearTimeout(idleTimer)
+    if (openGroup !== null) idleTimer = setTimeout(closeGroup, GROUP_IDLE_MS)
   }
 
   var BACKGROUNDS = { tinted: 1, accent: 1, custom: 1, none: 1 }
@@ -283,7 +457,8 @@
   function render() {
     document.documentElement.lang = Fremkit.locale
     var grid = document.getElementById('grid'), empty = document.getElementById('empty')
-    var list = buttons()
+    if (openGroup !== null && !currentGroup()) openGroup = null
+    var list = view()
     // Rebuilding drops any pending icon retry with the node that owned it.
     for (var i = 0; i < grid.children.length; i++) clearTimeout(grid.children[i].retryTimer)
     grid.innerHTML = ''
@@ -294,7 +469,7 @@
     empty.textContent = Fremkit.t(L.empty)
     applyBackground()
     applyRowSize(grid, list.length, cols)
-    list.forEach(function (spec, index) { grid.appendChild(buttonFor(spec, index)) })
+    list.forEach(function (spec, position) { grid.appendChild(buttonFor(spec, position)) })
   }
 
   function applySize(next) {
@@ -309,6 +484,8 @@
     settings = Fremkit.settings || {}
     applySize(Fremkit.size)
     Fremkit.onResize(applySize)
+    // Any touch on the tile keeps an open group open a little longer.
+    document.getElementById('grid').addEventListener('pointerdown', restartIdle)
     Fremkit.onSettings(function (next) { settings = next || {}; feedback = {}; render() })
     // Only used to turn an application name into the bundle id its icon is served under. The
     // Dock republishes whenever a badge moves, so the grid is rebuilt only when the bundle ids

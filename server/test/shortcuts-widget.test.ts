@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { readFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 
@@ -84,6 +84,9 @@ async function loadWidget(installed: unknown, settings: Record<string, unknown>)
     esc: (value: unknown) => String(value ?? ''),
     color: (_value: unknown, fallback: string) => fallback,
     installedApps: () => (installed === REFUSED ? Promise.reject(new Error('unavailable')) : Promise.resolve(installed)),
+    // A link's site icon never arrives here: the button keeps its glyph.
+    favicon: () => new Promise(() => {}),
+    image: () => new Promise(() => {}),
     appIcon: (bundleId: string) => { iconRequests.push(bundleId); return Promise.resolve('data:image/png;base64,aWNvbg==') },
   }
   // The widget refreshes the list on a timer; a test wants the one call it makes on startup.
@@ -147,5 +150,52 @@ describe('pressing a shortcuts button', () => {
     expect(loaded.buttons()).toHaveLength(1)
     ;(loaded.buttons()[0] as unknown as { onclick: () => void }).onclick()
     expect(loaded.sent()[0]).toEqual(['shortcuts', 'open', { instanceId: 'shortcuts-1', index: 1 }])
+  })
+})
+
+describe('a group of shortcuts', () => {
+  afterEach(() => { vi.useRealTimers() })
+  const groups = {
+    buttons: [
+      terminal,
+      { label: 'Prod', kind: 'group', target: '', items: [
+        { label: 'Deploy', kind: 'url', target: 'https://example.com/deploy' },
+        { label: 'Unfinished', kind: 'url', target: '' },
+        { label: 'Logs', kind: 'url', target: 'https://example.com/logs' },
+      ] },
+      { label: '', kind: 'group', target: '', items: [] },
+    ],
+  }
+  const names = (loaded: Loaded) => loaded.buttons().map((b) => b.children[1]?.textContent)
+  const tap = (loaded: Loaded, i: number) => (loaded.buttons()[i] as unknown as { onclick: () => void }).onclick()
+
+  it('opens in place of the grid behind a back button, and presses a button by its place in the group', async () => {
+    vi.useFakeTimers()
+    const loaded = await loadWidget([], groups)
+    // The nameless empty group is an unfinished row, not a button.
+    expect(names(loaded)).toEqual(['Terminal', 'Prod'])
+    tap(loaded, 1)
+    await vi.advanceTimersByTimeAsync(200)
+    expect(names(loaded)).toEqual(['Prod', 'Deploy', 'Logs'])
+    tap(loaded, 2)
+    expect(loaded.sent()[0]).toEqual(['shortcuts', 'open', { instanceId: 'shortcuts-1', index: 1, item: 2 }])
+    // Once the shortcut ran, the group folds back by itself.
+    await vi.advanceTimersByTimeAsync(1400 + 200)
+    expect(names(loaded)).toEqual(['Terminal', 'Prod'])
+  })
+
+  it('closes on the back button, and by itself after a while untouched', async () => {
+    vi.useFakeTimers()
+    const loaded = await loadWidget([], groups)
+    tap(loaded, 1)
+    await vi.advanceTimersByTimeAsync(200)
+    tap(loaded, 0)
+    await vi.advanceTimersByTimeAsync(200)
+    expect(names(loaded)).toEqual(['Terminal', 'Prod'])
+    tap(loaded, 1)
+    await vi.advanceTimersByTimeAsync(200)
+    expect(names(loaded)).toHaveLength(3)
+    await vi.advanceTimersByTimeAsync(8000 + 200)
+    expect(names(loaded)).toEqual(['Terminal', 'Prod'])
   })
 })

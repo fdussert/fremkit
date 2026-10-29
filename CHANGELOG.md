@@ -14,6 +14,11 @@ tagged `vX.Y.Z`.
 
 ### Added
 
+- **Shortcuts: groups.** A button of kind *Group* holds a few buttons of its own (a *Prod*
+  pipeline, a *Dev* one) without taking a cell each: it shows their icons in a little square, and
+  a tap opens them in place of the grid, behind a back button, until one has run. In the
+  settings, drop a button onto a group to put it in; *Take out of the group* puts it back.
+
 - **A wider settings panel when you need it.** Drag the left edge of the editor's right-hand panel
   to widen it, up to 720 px; the canvas always keeps its room. The width is remembered in this
   browser, and a double click on the edge brings back the usual one.

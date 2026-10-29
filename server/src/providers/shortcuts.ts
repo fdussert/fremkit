@@ -60,6 +60,8 @@ export type OpenPayload = z.infer<typeof OpenPayloadSchema>
 
 /** The `buttons` list the widget's manifest caps at 24. */
 const MAX_BUTTONS = 24
+/** The buttons of one group, which the manifest caps at 12. */
+const MAX_GROUP_BUTTONS = 12
 
 /**
  * What a widget may ask for: which of *its own* buttons to press.
@@ -72,6 +74,8 @@ const MAX_BUTTONS = 24
 export const OpenRequestSchema = z.object({
   instanceId: z.string().min(1).max(200),
   index: z.number().int().min(0).max(MAX_BUTTONS - 1),
+  /** The button inside the group at `index`, for a group; absent for a plain button. */
+  item: z.number().int().min(0).max(MAX_GROUP_BUTTONS - 1).optional(),
 })
 
 /** The widget whose saved buttons this channel acts on. */
@@ -92,7 +96,16 @@ export function resolveButton(
   if (!Array.isArray(buttons) || request.index >= buttons.length) {
     return { ok: false, error: tr(undefined, 'shortcuts.unknownButton') }
   }
-  const parsed = OpenPayloadSchema.safeParse(buttons[request.index])
+  let button: unknown = buttons[request.index]
+  if (request.item !== undefined) {
+    // Only a group holds buttons, and only the ones the user saved in it.
+    const group = button as { kind?: unknown; items?: unknown } | null
+    if (!group || group.kind !== 'group' || !Array.isArray(group.items) || request.item >= group.items.length) {
+      return { ok: false, error: tr(undefined, 'shortcuts.unknownButton') }
+    }
+    button = group.items[request.item]
+  }
+  const parsed = OpenPayloadSchema.safeParse(button)
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? tr(undefined, 'shortcuts.unknownButton') }
   }

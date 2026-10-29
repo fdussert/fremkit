@@ -405,6 +405,13 @@ itself — only its origin, never the path the button points at — at most once
 image under `data/icons/favicons/` and never logs the address; a site that is down keeps serving
 the icon it last had, and turning `showIcons` off fetches nothing at all.
 
+A button of kind *Group* holds up to twelve buttons of its own and draws up to four of their icons
+in a small square, as a folder does. A tap opens it in place of the grid, its buttons flying out of
+it, with a back button in the first cell; it folds back once one of its shortcuts has run, or after
+eight seconds without a touch. In the admin, drop a button onto the middle of a group to put it in,
+and use *Take out of the group* in its fields to put it back. The widget only says which button of
+which group was touched; the server reads what it opens from the saved settings, as for any button.
+
 Only three kinds exist, and none of them is a shell: `app` runs `open -a <name>`, `url` runs
 `open <url>` for an `http`, `https` or `mailto` address only, and `shortcut` runs
 `shortcuts run <name>`. The server validates every payload — a name holding a path separator or a
