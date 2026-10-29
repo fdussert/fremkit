@@ -267,6 +267,7 @@ installing it and leaving the call to fail.
 | `2` | 0.3.0 | `favicon(url)`, `image(url)`, `installedApps()`, `appIcon(bundleId)` |
 | `3` | next release | `screen`, `holdSwipe` |
 | `4` | next release | `gif(url)` (answered for the built-in GIF board only) |
+| `5` | next release | `titleNote(text)` |
 
 A widget calling `installedApps()` with `"sdk": 1` would install on 0.2.0 and find the method
 missing. Data channels are not generations: a channel the running Fremkit has no provider for
@@ -281,6 +282,7 @@ than wait.
 | `Fremkit.instanceId` | This instance's id |
 | `Fremkit.screen` | The id of the screen the widget is drawn on (the Edge, a paired device), or `null` when the host does not say. For data that is per screen, like brightness. Generation 3 |
 | `Fremkit.holdSwipe()` | Keeps the page from swiping for half a second. Call it on every move of a slider or a knob: a quick slide arrives as wheel events at the finger, and once the finger leaves the widget they would land on the dashboard and turn the page. Generation 3 |
+| `Fremkit.titleNote(text)` | A few words the host shows after the tile's title, such as a count (`titleNote('18')` reads "Claude sessions · 18"). Plain text on one line, cut to 24 characters; `''` or `null` takes it away. Shown only where the host draws a title: nothing in the bar, nothing when the title is hidden. Generation 5 |
 | `Fremkit.settings` | The settings object, manifest defaults merged in |
 | `Fremkit.locale` | `'fr'` or `'en'` |
 | `Fremkit.showTitle` | Whether the frame drew the title — a widget must never draw its own |

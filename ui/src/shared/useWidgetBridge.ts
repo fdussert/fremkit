@@ -5,7 +5,7 @@ import { isHexColor, tileText } from './color'
 import { useAppliedTheme, useThemeColors } from './theme'
 import { channelAllowed, mergeSettings, type AccentMode, type NavSlot, type WidgetInstance, type WidgetManifest, type WidgetSize } from './types'
 import { onWidgetReload } from './widgetDev'
-import { FrameTrust, HOLD_SWIPE_EVENT, appIconTarget, connRequest, faviconTarget, fetchTarget, gifTarget, helloNonce, imageTarget, mayListApps, nonEmptyString, stampInstance } from './widgetMessages'
+import { FrameTrust, HOLD_SWIPE_EVENT, appIconTarget, cleanTitleNote, connRequest, faviconTarget, fetchTarget, gifTarget, helloNonce, imageTarget, mayListApps, nonEmptyString, stampInstance } from './widgetMessages'
 
 export type BridgeState = 'loading' | 'ready' | 'error'
 
@@ -61,7 +61,7 @@ export function useWidgetBridge(
   manifest: () => WidgetManifest | undefined,
   cell: () => number,
   options: BridgeOptions = {},
-): { state: Ref<BridgeState> } {
+): { state: Ref<BridgeState>; titleNote: Ref<string> } {
   const socket = useSocket()
   const screenId = inject(SCREEN_ID, () => undefined)
   // The tokens the host is painting, handed on so a widget wears the same theme as its frame.
@@ -69,6 +69,8 @@ export function useWidgetBridge(
   const themeColors = useThemeColors()
   const { locale } = useI18n()
   const state = ref<BridgeState>('loading')
+  /** A few words the widget asked to show after its title (`Fremkit.titleNote`); '' for none. */
+  const titleNote = ref('')
   /** channel -> how to stop relaying it. One entry per channel, so a re-subscribe is a no-op. */
   const unsubs = new Map<string, () => void>()
   let timer: number | undefined
@@ -127,6 +129,8 @@ export function useWidgetBridge(
     expectedNonce = null
     unsubs.forEach((f) => f())
     unsubs.clear()
+    // The note belonged to that document; the next one says its own, or nothing.
+    titleNote.value = ''
   }
 
   function disown() {
@@ -191,6 +195,9 @@ export function useWidgetBridge(
       case 'fremkit:hold-swipe':
         // useSwipe listens on the host window; the admin has no swipe and ignores it.
         window.dispatchEvent(new Event(HOLD_SWIPE_EVENT))
+        break
+      case 'fremkit:title-note':
+        titleNote.value = cleanTitleNote(m.text)
         break
       case 'fremkit:activity':
         options.onActivity?.()
@@ -410,5 +417,6 @@ export function useWidgetBridge(
   watch(locale, (value) => { if (state.value === 'ready') post({ type: 'fremkit:locale', locale: value }) })
   watch(manifest, (m) => { if (m && state.value === 'error') { state.value = 'loading'; armTimeout() } })
 
-  return { state }
+  return { state, titleNote }
 }
+

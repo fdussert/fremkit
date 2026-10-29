@@ -14,7 +14,7 @@ import TileIcon from '../shared/TileIcon.vue'
  */
 const props = defineProps<{ instance: WidgetInstance; manifest?: WidgetManifest; cell: number; edit?: boolean; off?: boolean }>()
 const iframe = ref<HTMLIFrameElement>()
-const { state } = useWidgetBridge(iframe, () => props.instance, () => props.manifest, () => props.cell)
+const { state, titleNote } = useWidgetBridge(iframe, () => props.instance, () => props.manifest, () => props.cell)
 
 const mode = computed<AccentMode>(() => props.instance.accentMode ?? 'none')
 /**
@@ -74,6 +74,7 @@ const dimStyle = computed(() => ({ opacity: String(widgetDim(props.instance.back
       <div v-if="instance.showTitle" class="title">
         <TileIcon v-if="instance.icon" :icon="instance.icon" />
         <span class="text">{{ title }}</span>
+        <span v-if="titleNote" class="note" data-test="title-note">· {{ titleNote }}</span>
       </div>
       <div class="body">
         <div v-if="imageStyle" class="image" :style="imageStyle"><div class="dim" :style="dimStyle" /></div>
@@ -104,6 +105,9 @@ const dimStyle = computed(() => ({ opacity: String(widgetDim(props.instance.back
 .title { flex: 0 0 auto; display: flex; align-items: center; gap: .5em; padding: 12px 18px 2px;
   font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: .08em; color: var(--tile-text); }
 .title .text { min-width: 0; opacity: .7; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* What the widget asked to add (`Fremkit.titleNote`): it never wraps and gives way to the title last. */
+.title .note { flex: 0 0 auto; opacity: .5; white-space: nowrap; }
+.box.accent-frame .title .note { opacity: .8; }
 /* With no accent the icon is the tile's spot of colour, like the weather glyph in the bar. */
 .title .tile-icon { color: var(--accent); }
 /* Framed accent: the title bar is the accent, so its text — and its icon — are the on-accent colour. */

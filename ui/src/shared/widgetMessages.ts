@@ -247,3 +247,15 @@ export function mayListApps(subscriptions: string[] | undefined): boolean {
 
 /** Dispatched on the host window when a widget asks, through the bridge, to hold swipes off. */
 export const HOLD_SWIPE_EVENT = 'fremkit:hold-swipe'
+
+/** Longest title note the host shows; the title bar is one line and the note follows the title. */
+export const TITLE_NOTE_MAX = 24
+
+/**
+ * What the host shows of a widget's title note: a string, on one line, cut to `TITLE_NOTE_MAX`.
+ * Anything else clears it. Shown as text by Vue, never as markup.
+ */
+export function cleanTitleNote(text: unknown): string {
+  if (typeof text !== 'string') return ''
+  return text.replace(/[\u0000-\u001f\u007f\s]+/g, ' ').trim().slice(0, TITLE_NOTE_MAX)
+}

@@ -328,7 +328,7 @@
      * lowest generation it needs, and the server refuses to install one asking for more than it
      * has. Kept in step with `SDK_VERSION` in ./sdk.ts by bridge.test.ts.
      */
-    sdk: 4,
+    sdk: 5,
     instanceId: null,
     /**
      * The id of the screen this frame is drawn on (the Edge, a paired device), or null when the
@@ -380,6 +380,12 @@
      * Generation 3.
      */
     holdSwipe: function () { post({ type: 'fremkit:hold-swipe' }) },
+    /**
+     * A few words the host shows after the tile's title, such as a count: `Fremkit.titleNote('18')`.
+     * Plain text on one line, cut by the host; an empty string or null takes it away. Shown only
+     * where the host draws a title, so a widget keeps nothing of its own for it. Generation 5.
+     */
+    titleNote: function (text) { post({ type: 'fremkit:title-note', text: text == null ? '' : String(text) }) },
     /**
      * Fetches through the host.
      *

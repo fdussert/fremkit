@@ -359,3 +359,16 @@ describe('Fremkit.screen', () => {
     expect(unnamed.bridge.screen).toBeNull()
   })
 })
+
+describe('titleNote', () => {
+  it('sends the text as a string, and null as the empty string that takes it away', async () => {
+    const fresh = await loadBridge()
+    const F = fresh.bridge as unknown as { titleNote: (t: unknown) => void }
+    F.titleNote(18)
+    F.titleNote(null)
+    expect(fresh.posted.filter((m) => m.type === 'fremkit:title-note')).toEqual([
+      { type: 'fremkit:title-note', text: '18' },
+      { type: 'fremkit:title-note', text: '' },
+    ])
+  })
+})

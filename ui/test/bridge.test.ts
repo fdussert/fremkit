@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { FrameTrust, helloNonce, appIconTarget, faviconTarget, fetchTarget, gifTarget, imageTarget, mayListApps, nonEmptyString, stampInstance } from '../src/shared/widgetMessages'
+import { FrameTrust, helloNonce, appIconTarget, cleanTitleNote, faviconTarget, fetchTarget, gifTarget, imageTarget, mayListApps, nonEmptyString, stampInstance } from '../src/shared/widgetMessages'
 
 describe('nonEmptyString', () => {
   it('accepts a non-empty string and nothing else', () => {
@@ -208,5 +208,16 @@ describe('appIconTarget', () => {
     for (const bundleId of ['', '../config', 'https://evil.example/', '/com.apple.mail', 'a'.repeat(129), 42, null]) {
       expect(appIconTarget({ bundleId })).toBeNull()
     }
+  })
+})
+
+describe('cleanTitleNote', () => {
+  it('keeps a short string on one line and cuts a long one', () => {
+    expect(cleanTitleNote('18')).toBe('18')
+    expect(cleanTitleNote('  a\nb\tc  ')).toBe('a b c')
+    expect(cleanTitleNote('x'.repeat(40))).toBe('x'.repeat(24))
+  })
+  it('clears on anything that is not a string', () => {
+    for (const v of [undefined, null, 18, {}, ['18']]) expect(cleanTitleNote(v)).toBe('')
   })
 })
