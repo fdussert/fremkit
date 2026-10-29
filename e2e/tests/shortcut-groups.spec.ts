@@ -51,3 +51,20 @@ test('a button dropped onto a group goes into it, and comes back out', async ({ 
   await page.keyboard.press('ControlOrMeta+z')
   await expect.poll(() => saved(savedConfig)).toEqual(['Beta', 'Prod[Deploy,Alpha]'])
 })
+
+const PIPELINE_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path fill="#0078d4" d="M1 1h14v14H1z"/></svg>'
+
+test('a group wears an SVG imported from its own form, and the dashboard draws it', async ({ page, openAdmin, savedConfig }) => {
+  await openAdmin()
+  await tile(page, 'keys-1').click()
+  await top(page, /^Prod/).click()
+  await field(page).getByRole('button', { name: 'My icons' }).first().click()
+  const library = field(page).locator('[data-icon-library]')
+  await library.locator('input[type="file"]').setInputFiles({ name: 'pipeline.svg', mimeType: 'image/svg+xml', buffer: Buffer.from(PIPELINE_SVG) })
+  const icon = async () => ((await savedConfig()).widgets['keys-1'].settings.buttons as { icon: string }[])[2].icon
+  await expect.poll(icon).toMatch(/^file:.*pipeline.*\.svg$/)
+
+  await page.goto('/')
+  const group = page.frameLocator('iframe[src*="/widgets/shortcuts/"]').getByRole('button', { name: 'Prod' })
+  await expect(group.locator('img')).toHaveAttribute('src', /^data:image\/svg\+xml/)
+})

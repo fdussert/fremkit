@@ -14,6 +14,12 @@ tagged `vX.Y.Z`.
 
 ### Added
 
+- **Shortcuts: your own icons, SVG included.** A button's or a group's icon can now come from
+  your icon library, the one the tiles' title icons use: the folder button beside the field picks
+  one or imports a PNG, WebP or SVG, such as a CI service's pipeline mark. A group also takes an
+  image address now. Widgets can do the same with an `icon` item field and
+  `Fremkit.libraryIcon()` (SDK generation 6).
+
 - **Shortcuts: groups.** A button of kind *Group* holds a few buttons of its own (a *Prod*
   pipeline, a *Dev* one) without taking a cell each: it shows their icons in a little square, and
   a tap opens them in place of the grid, behind a back button, until one has run. In the

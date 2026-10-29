@@ -239,11 +239,33 @@
    */
   function emoji(text) { return Fremkit.el('span', 'art emoji', Array.from(text).slice(0, 2).join('')) }
 
+  /** How an icon picked from the user's library is stored: `file:` and its name. */
+  var LIBRARY = 'file:'
+
+  /**
+   * An icon the user imported into their library, asked of the host (`Fremkit.libraryIcon`): it
+   * draws the kind's glyph until the image lands, and keeps it if the file is gone.
+   */
+  function libraryArt(button, spec) {
+    var art = spec.kind === 'group' ? Fremkit.el('span', 'art glyph', GROUP_GLYPH) : glyph(spec.kind)
+    Fremkit.libraryIcon(spec.icon).then(function (src) {
+      if (!button.isConnected || !art.parentNode) return
+      var img = document.createElement('img')
+      img.className = 'art'
+      img.alt = ''
+      img.src = src
+      art.parentNode.replaceChild(img, art)
+      art = img
+    }, function () { /* the glyph stands */ })
+    return art
+  }
+
   /**
    * The artwork of one button: the application's Dock icon when the server has one, and the
    * kind's glyph otherwise — rebuilt as an `<img>` every thirty seconds until an icon lands.
    */
   function artwork(button, spec) {
+    if (spec.icon.indexOf(LIBRARY) === 0) return libraryArt(button, spec)
     var site = /^https?:\/\//i.test(spec.icon)
     if (spec.icon && !site) return emoji(spec.icon)
     // Turning icons off fetches nothing, a chosen site's icon included.
@@ -315,9 +337,13 @@
       .catch(function () { mark(spec, 'failed') })
   }
 
-  /** A group's face: its own emoji when it has one, else a little square of what it holds. */
+  /** A group's face: its own icon when it has one, else a little square of what it holds. */
   function groupArt(button, spec) {
-    if (spec.icon && !/^https?:\/\//i.test(spec.icon)) return emoji(spec.icon)
+    if (spec.icon.indexOf(LIBRARY) === 0) return libraryArt(button, spec)
+    var site = /^https?:\/\//i.test(spec.icon)
+    // Turning icons off fetches nothing, as for a button: the group shows what it holds instead.
+    if (site && settings.showIcons !== false) return favicon(button, { kind: 'url' }, spec.icon, true)
+    if (spec.icon && !site) return emoji(spec.icon)
     if (!spec.items.length) return Fremkit.el('span', 'art glyph', GROUP_GLYPH)
     var box = Fremkit.el('span', 'minis')
     spec.items.slice(0, 4).forEach(function (child) { box.appendChild(artwork(button, child)) })

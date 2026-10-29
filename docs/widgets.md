@@ -423,7 +423,7 @@ tall, with icons to match — down to a finger-sized minimum, past which the gri
 
 | Setting | Type | Default | Scope | What it is |
 |---|---|---|---|---|
-| `buttons` | list of `{ label, kind, target, icon }` | `[]` | both | One row per button, in the order drawn |
+| `buttons` | list of `{ label, kind, target, icon, items }` | `[]` | both | One row per button, in the order drawn |
 | `columns` | number | `4` | both | How many buttons per row |
 | `showIcons` | boolean | `true` | both | Draw the icon of an application button, and the site's favicon for a link |
 | `background` | `tinted` / `accent` / `custom` / `none` | `tinted` | both | What the buttons are drawn on: a translucent tint, the tile's accent, the colour below, or nothing |
@@ -436,6 +436,12 @@ optional and wins over the button's own icon: an emoji, drawn as it is, the addr
 (PNG, ICO, … — no SVG, nothing on the LAN), or the address of a site whose favicon the button
 borrows — for a link whose site only paints its icon once you are signed
 in, or one on the LAN, which gets none of its own.
+
+`icon` may also be one of **your own icons**: the folder button beside the field opens the library
+the tiles' title icons come from, where you pick one or import a PNG, WebP or SVG (256 KB at most).
+That is the way to an SVG mark, such as a CI service's pipeline icon: imported files are checked
+and served so that they cannot run anything, and the widget draws them as plain images. A group
+takes an icon the same way, an address included, instead of the square of what it holds.
 
 ## spotify
 

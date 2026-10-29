@@ -219,8 +219,11 @@ switch with a filter. `homey-devices` does both.
 ```
 
 The widget reads it as an array of objects keyed by `itemSchema`. An item field may be `string`,
-`boolean`, `enum`, `number` or `timezone`, and nothing that needs the admin's own data, because a
-row is rendered inline. `max` caps how many items the user may add.
+`boolean`, `enum`, `number`, `timezone` or `icon`, and nothing that needs the admin's own data,
+because a row is rendered inline. An `icon` field is a string with a button beside it that picks
+from, or imports into, the user's icon library (PNG, WebP, SVG); a picked icon is stored as
+`file:<name>` and drawn with `Fremkit.libraryIcon(value)`, while an emoji or an address can still
+be typed. `max` caps how many items the user may add.
 
 An item may also hold **one list of its own**: a field of type `list` with its own `itemSchema`
 (plain fields only: one level, never deeper), `max` and `summary`. The shortcuts widget's groups are

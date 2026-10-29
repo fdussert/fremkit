@@ -29,6 +29,7 @@ interface Loaded {
   iconRequests(): string[]
   /** Every command the widget sent, as `[channel, command, payload]`. */
   sent(): unknown[][]
+  libraryRequests(): string[]
 }
 
 async function loadWidget(installed: unknown, settings: Record<string, unknown>): Promise<Loaded> {
@@ -59,6 +60,7 @@ async function loadWidget(installed: unknown, settings: Record<string, unknown>)
   const dockSubscribers: ((data: unknown) => void)[] = []
   const iconRequests: string[] = []
   const sent: unknown[][] = []
+  const libraryRequests: string[] = []
   const document = {
     documentElement: node('html'),
     getElementById: byId,
@@ -84,6 +86,7 @@ async function loadWidget(installed: unknown, settings: Record<string, unknown>)
     esc: (value: unknown) => String(value ?? ''),
     color: (_value: unknown, fallback: string) => fallback,
     installedApps: () => (installed === REFUSED ? Promise.reject(new Error('unavailable')) : Promise.resolve(installed)),
+    libraryIcon: (value: string) => { libraryRequests.push(value); return Promise.resolve('data:image/svg+xml;base64,PHN2Zy8+') },
     // A link's site icon never arrives here: the button keeps its glyph.
     favicon: () => new Promise(() => {}),
     image: () => new Promise(() => {}),
@@ -98,6 +101,7 @@ async function loadWidget(installed: unknown, settings: Record<string, unknown>)
     publishDock: (data) => dockSubscribers.forEach((cb) => cb(data)),
     iconRequests: () => iconRequests,
     sent: () => sent,
+    libraryRequests: () => libraryRequests,
   }
 }
 
@@ -197,5 +201,19 @@ describe('a group of shortcuts', () => {
     expect(names(loaded)).toHaveLength(3)
     await vi.advanceTimersByTimeAsync(8000 + 200)
     expect(names(loaded)).toEqual(['Terminal', 'Prod'])
+  })
+})
+
+describe('an icon from the user\'s library', () => {
+  it('is asked of the host by the value the settings hold, and drawn as an image', async () => {
+    const loaded = await loadWidget([], { buttons: [
+      { label: 'Pipelines', kind: 'group', icon: 'file:3-pipeline.svg', items: [terminal] },
+      { ...terminal, icon: 'file:4-term.png' },
+    ] })
+    expect([...new Set(loaded.libraryRequests())]).toEqual(['file:3-pipeline.svg', 'file:4-term.png'])
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(loaded.buttons()[0].children[0].tag).toBe('img')
+    expect(loaded.buttons()[1].children[0].src).toBe('data:image/svg+xml;base64,PHN2Zy8+')
   })
 })
