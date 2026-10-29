@@ -48,8 +48,8 @@ export type SettingOption = z.infer<typeof SettingOptionSchema>
  *
  * The types a `list` item may be made of. Deliberately the plain ones, and nothing that needs the
  * admin's own data (a connection, the Dock apps), because an item's fields are rendered inline.
- * An item may hold one list of its own (`NESTED_LIST_TYPE`), whose items are plain again: one
- * level, never deeper.
+ * An item may hold one list of its own (`NESTED_LIST_TYPE`), and that list's items one more,
+ * whose items are plain: two levels, never deeper.
  */
 export const LIST_ITEM_TYPES = ['string', 'boolean', 'enum', 'number', 'timezone', 'icon'] as const
 export const NESTED_LIST_TYPE = 'list'
@@ -81,8 +81,8 @@ const plainItemField = {
   showWhen: ShowWhenSchema.optional(),
 }
 
-/** The field of an item nested in another item's list: plain types only. */
-export const NestedItemFieldSchema = z.object({ type: z.enum(LIST_ITEM_TYPES), ...plainItemField })
+/** The field of an item at the deepest level: plain types only. */
+export const PlainItemFieldSchema = z.object({ type: z.enum(LIST_ITEM_TYPES), ...plainItemField })
   .refine((f) => f.suggest === undefined || f.type === 'string', {
     message: 'suggest ne vaut que pour un champ de type string',
   })
@@ -90,33 +90,47 @@ export const NestedItemFieldSchema = z.object({ type: z.enum(LIST_ITEM_TYPES), .
     error: () => tr(undefined, 'manifest.suggestWhenWithoutSuggest'),
   })
 
-export const ListItemFieldSchema = z.object({
-  type: z.enum([...LIST_ITEM_TYPES, NESTED_LIST_TYPE]),
-  ...plainItemField,
-  /** A nested `list` only: the fields of its items, as a list setting's `itemSchema`. */
-  itemSchema: z.record(z.string(), NestedItemFieldSchema).optional(),
-  /** A nested `list` only: how many items it may hold. */
-  max: z.number().int().min(1).optional(),
-  /** A nested `list` only: the item fields that name one of its items in the editor. */
-  summary: z.array(z.string()).min(1).max(4).optional(),
-})
-  .refine((f) => f.suggest === undefined || f.type === 'string', {
-    message: 'suggest ne vaut que pour un champ de type string',
+/** A field that may be a `list` whose items take `inner` fields, at most one such list per item. */
+function itemFieldSchema<T extends z.ZodType<{ type: string; showWhen?: Record<string, unknown> }>>(inner: T) {
+  return z.object({
+    type: z.enum([...LIST_ITEM_TYPES, NESTED_LIST_TYPE]),
+    ...plainItemField,
+    /** A nested `list` only: the fields of its items, as a list setting's `itemSchema`. */
+    itemSchema: z.record(z.string(), inner).optional(),
+    /** A nested `list` only: how many items it may hold. */
+    max: z.number().int().min(1).optional(),
+    /** A nested `list` only: the item fields that name one of its items in the editor. */
+    summary: z.array(z.string()).min(1).max(4).optional(),
   })
-  .refine((f) => f.suggestWhen === undefined || f.suggest !== undefined, {
-    error: () => tr(undefined, 'manifest.suggestWhenWithoutSuggest'),
-  })
-  .refine((f) => f.type !== NESTED_LIST_TYPE || Object.keys(f.itemSchema ?? {}).length > 0, {
-    error: () => tr(undefined, 'manifest.listNeedsItemSchema'),
-  })
-  .refine((f) => f.type === NESTED_LIST_TYPE || (f.itemSchema === undefined && f.max === undefined && f.summary === undefined), {
-    error: () => tr(undefined, 'manifest.itemListOnly'),
-  })
-  .refine((f) => !f.summary || f.summary.every((key) => key in (f.itemSchema ?? {})), {
-    error: () => tr(undefined, 'manifest.listSummaryUnknown'),
-  })
+    .refine((f) => f.suggest === undefined || f.type === 'string', {
+      message: 'suggest ne vaut que pour un champ de type string',
+    })
+    .refine((f) => f.suggestWhen === undefined || f.suggest !== undefined, {
+      error: () => tr(undefined, 'manifest.suggestWhenWithoutSuggest'),
+    })
+    .refine((f) => f.type !== NESTED_LIST_TYPE || Object.keys(f.itemSchema ?? {}).length > 0, {
+      error: () => tr(undefined, 'manifest.listNeedsItemSchema'),
+    })
+    .refine((f) => f.type === NESTED_LIST_TYPE || (f.itemSchema === undefined && f.max === undefined && f.summary === undefined), {
+      error: () => tr(undefined, 'manifest.itemListOnly'),
+    })
+    .refine((f) => !f.summary || f.summary.every((key) => key in (f.itemSchema ?? {})), {
+      error: () => tr(undefined, 'manifest.listSummaryUnknown'),
+    })
+    .refine((f) => Object.values(f.itemSchema ?? {}).filter((item) => item.type === NESTED_LIST_TYPE).length <= 1, {
+      error: () => tr(undefined, 'manifest.oneNestedList'),
+    })
+}
+
+/**
+ * Two levels of lists inside a list setting, never more: a setting's items may hold a list
+ * (a shortcuts group), whose items may hold one more (a subgroup), whose items are plain.
+ */
+export const NestedItemFieldSchema = itemFieldSchema(PlainItemFieldSchema)
+export const ListItemFieldSchema = itemFieldSchema(NestedItemFieldSchema)
 export type ListItemField = z.infer<typeof ListItemFieldSchema>
 export type NestedItemField = z.infer<typeof NestedItemFieldSchema>
+export type PlainItemField = z.infer<typeof PlainItemFieldSchema>
 
 /**
  * Which rendering of the widget a setting belongs to: the `tile` drawn on a page, or the
@@ -189,7 +203,8 @@ export const SettingFieldSchema = z.object({
   })
 
 /** Every `showWhen` of a set of item fields names other fields of the same set, at every level. */
-function showWhenNamesSiblings(schema: Record<string, { showWhen?: Record<string, unknown>; itemSchema?: Record<string, { showWhen?: Record<string, unknown> }> }>): boolean {
+type ShowWhenTree = Record<string, { showWhen?: Record<string, unknown>; itemSchema?: ShowWhenTree }>
+function showWhenNamesSiblings(schema: ShowWhenTree): boolean {
   return Object.entries(schema).every(([key, field]) =>
     Object.keys(field.showWhen ?? {}).every((other) => other !== key && other in schema)
     && (!field.itemSchema || showWhenNamesSiblings(field.itemSchema)))

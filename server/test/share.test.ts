@@ -46,7 +46,8 @@ const MANIFESTS: Record<string, WidgetManifest> = {
       flags: { type: 'list', label: 'Flags', itemSchema: { on: { type: 'boolean', label: 'On' } } },
       folders: { type: 'list', label: 'Folders', itemSchema: {
         on: { type: 'boolean', label: 'On' },
-        inner: { type: 'list', label: 'Inner', itemSchema: { on: { type: 'boolean', label: 'On' }, target: { type: 'string', label: 'Target' }, icon: { type: 'icon', label: 'Icon' } } },
+        inner: { type: 'list', label: 'Inner', itemSchema: { on: { type: 'boolean', label: 'On' }, target: { type: 'string', label: 'Target' }, icon: { type: 'icon', label: 'Icon' },
+          deep: { type: 'list', label: 'Deep', itemSchema: { on: { type: 'boolean', label: 'On' } } } } },
       } },
     },
   }),
@@ -127,6 +128,8 @@ describe('classifySetting', () => {
     expect(classifySetting(s.folders, [{ inner: 'x' }])).toBe('invalid')
     expect(classifySetting(s.folders, [{ inner: [{ icon: 'file:1-x.svg' }] }])).toBe('optional')
     expect(classifySetting(s.folders, [{ inner: [{ icon: 3 }] }])).toBe('invalid')
+    expect(classifySetting(s.folders, [{ inner: [{ deep: [{ on: true }] }] }])).toBe('keep')
+    expect(classifySetting(s.folders, [{ inner: [{ deep: [{ target: 'x' }] }] }])).toBe('invalid')
     expect(classifySetting(s.folders, [{ constructor: [] }])).toBe('invalid')
   })
 })

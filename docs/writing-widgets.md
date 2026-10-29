@@ -225,9 +225,9 @@ from, or imports into, the user's icon library (PNG, WebP, SVG); a picked icon i
 `file:<name>` and drawn with `Fremkit.libraryIcon(value)`, while an emoji or an address can still
 be typed. `max` caps how many items the user may add.
 
-An item may also hold **one list of its own**: a field of type `list` with its own `itemSchema`
-(plain fields only: one level, never deeper), `max` and `summary`. The shortcuts widget's groups are
-built this way. In the editor, an item dropped onto the middle of an item that holds such a list
+An item may also hold **one list of its own**: a field of type `list` with its own `itemSchema`,
+`max` and `summary`. That list's items may hold one more, whose items take plain fields only: two
+levels, never deeper. The shortcuts widget's groups and their subgroups are built this way. In the editor, an item dropped onto the middle of an item that holds such a list
 goes into it, and a button takes it back out.
 
 `showWhen` shows an item field only on the items where sibling fields hold given values, one value

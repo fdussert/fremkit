@@ -152,7 +152,7 @@ describe('ManifestSchema', () => {
         expect(withSetting({ type: 'list', label: 'Villes', itemSchema: { x: { type, label: 'X' } } }).success).toBe(false)
       }
     })
-    it('accepts one list inside an item, one level deep, with fields shown on some items only', () => {
+    it('accepts one list inside an item, two levels deep at most, with fields shown on some items only', () => {
       const plain = { label: { type: 'string', label: 'L' } }
       const list = (itemSchema: Record<string, unknown>) => withSetting({ type: 'list', label: 'Boutons', itemSchema })
       expect(list({
@@ -160,8 +160,11 @@ describe('ManifestSchema', () => {
         target: { type: 'string', label: 'T', showWhen: { kind: ['app', 'url'] } },
         items: { type: 'list', label: 'I', max: 12, summary: ['label'], showWhen: { kind: 'group' }, itemSchema: plain },
       }).success).toBe(true)
-      // Never deeper, never two, never without fields.
-      expect(list({ items: { type: 'list', label: 'I', itemSchema: { more: { type: 'list', label: 'M', itemSchema: plain } } } }).success).toBe(false)
+      // One more level inside it, and no further.
+      expect(list({ items: { type: 'list', label: 'I', itemSchema: { more: { type: 'list', label: 'M', itemSchema: plain } } } }).success).toBe(true)
+      expect(list({ items: { type: 'list', label: 'I', itemSchema: { more: { type: 'list', label: 'M', itemSchema: { deep: { type: 'list', label: 'D', itemSchema: plain } } } } } }).success).toBe(false)
+      expect(list({ items: { type: 'list', label: 'I', itemSchema: { a: { type: 'list', label: 'A', itemSchema: plain }, b: { type: 'list', label: 'B', itemSchema: plain } } } }).success).toBe(false)
+      // Never two side by side, never without fields.
       expect(list({ a: { type: 'list', label: 'A', itemSchema: plain }, b: { type: 'list', label: 'B', itemSchema: plain } }).success).toBe(false)
       expect(list({ items: { type: 'list', label: 'I' } }).success).toBe(false)
       expect(list({ items: { type: 'list', label: 'I', itemSchema: plain, summary: ['nope'] } }).success).toBe(false)
