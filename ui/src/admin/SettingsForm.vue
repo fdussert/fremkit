@@ -6,13 +6,14 @@ import BaseCheckbox from '../shared/ui/BaseCheckbox.vue'
 import BaseButton from '../shared/ui/BaseButton.vue'
 import BaseIcon from '../shared/ui/BaseIcon.vue'
 import ListItems from './ListItems.vue'
-import { gridColumns, moveTo } from './listItems'
+import ItemCells from './ItemCells.vue'
+import { gridColumns, heldItems, moveTo, nestInto, nestedListKey, takeOut } from './listItems'
 import { pick, useI18n } from '../shared/i18n'
 import { useSocket } from '../shared/socket'
 import { useAdminStore } from './store'
 import { useConnectionsStore } from './connections'
 import { api } from '../shared/api'
-import { channelAllowed, fieldsInScope, optionLabel, optionValue, suggestApplies, type InstalledAppInfo, type ListItemField, type PickOption, type SettingField, type SettingScope } from '../shared/types'
+import { channelAllowed, fieldShown, fieldsInScope, optionLabel, optionValue, type InstalledAppInfo, type ListItemField, type PickOption, type SettingField, type SettingScope } from '../shared/types'
 
 /**
  * The installed applications, fetched at most once per admin session.
@@ -339,27 +340,18 @@ const TIME_ZONES: string[] = (() => {
 /** One <datalist> serves every `timezone` input of the form, so it is rendered once. */
 const TIMEZONE_LIST_ID = 'fremkit-timezones'
 const isTimezone = (f: { type: string }): boolean => f.type === 'timezone'
-const hasTimezoneField = computed(() => Object.values(fields.value)
-  .some((f) => isTimezone(f) || Object.values(f.itemSchema ?? {}).some(isTimezone)))
+const hasTimezoneField = computed(() => Object.values(fields.value).some(isTimezone) || itemFields.value.some(isTimezone))
 /** One <datalist> serves every `suggest: apps` input of the form, so it is rendered once. */
 const APPS_LIST_ID = 'fremkit-installed-apps'
 const installedApps = ref<InstalledAppInfo[]>([])
-const hasSuggestApps = computed(() => Object.values(fields.value)
-  .some((f) => Object.values(f.itemSchema ?? {}).some((itf) => itf.suggest === 'apps')))
+/** Every item field of the form, a held list's own included. */
+const itemFields = computed(() => Object.values(fields.value).flatMap((f) => Object.values(f.itemSchema ?? {}))
+  .flatMap((itf) => [itf, ...Object.values(itf.itemSchema ?? {})]))
+const hasSuggestApps = computed(() => itemFields.value.some((itf) => itf.suggest === 'apps'))
 
 watch(hasSuggestApps, (has) => {
   if (has && !installedApps.value.length) void installedAppsOnce().then((apps) => { installedApps.value = apps })
 }, { immediate: true })
-
-/**
- * The datalist a list item field gets, or undefined.
- *
- * `suggestWhen` lets a manifest offer the applications only on the rows where they mean something
- * — a shortcut button whose kind is "app" — so a link row keeps a plain text box.
- */
-function suggestListId(item: Record<string, unknown>, itf: ListItemField): string | undefined {
-  return itf.suggest === 'apps' && suggestApplies(itf, item) ? APPS_LIST_ID : undefined
-}
 
 /** An empty zone is merely unfinished; one this browser does not know is wrong and shows red. */
 function badTimezone(value: unknown): boolean {
@@ -375,10 +367,10 @@ function items(k: string): Record<string, unknown>[] {
 const listFull = (f: SettingField, k: string): boolean => f.max !== undefined && items(k).length >= f.max
 
 /** A new item starts from its schema's defaults, and from an empty value where it declares none. */
-function newItem(f: SettingField): Record<string, unknown> {
+function newItem(f: { itemSchema?: Record<string, ListItemField> }): Record<string, unknown> {
   const item: Record<string, unknown> = {}
   for (const [key, field] of Object.entries(f.itemSchema ?? {})) {
-    item[key] = field.default ?? (field.type === 'boolean' ? false : field.type === 'number' ? 0 : '')
+    item[key] = field.default ?? (field.type === 'boolean' ? false : field.type === 'number' ? 0 : field.type === 'list' ? [] : '')
   }
   return item
 }
@@ -387,6 +379,7 @@ function newItem(f: SettingField): Record<string, unknown> {
 const openItem = reactive<Record<string, number | null>>({})
 function toggleItem(k: string, i: number): void {
   openItem[k] = openItem[k] === i ? null : i
+  openHeld[k] = null
 }
 
 // One emit per action, so adding, removing, moving or editing a row is one undo step each.
@@ -413,12 +406,74 @@ function moveItem(k: string, from: number, to: number): void {
 function setItemField(k: string, i: number, key: string, value: unknown): void {
   emit('change', k, items(k).map((item, j) => (j === i ? { ...item, [key]: value } : item)))
 }
-/** An emptied number cell is not a zero: leave the item as it stands, like `onNumber` above. */
-function onItemNumber(k: string, i: number, key: string, value: string | number): void {
-  if (Number.isFinite(Number(value))) setItemField(k, i, key, Number(value))
+
+/*
+ * The list an item may hold (a shortcuts group's buttons), edited under the item's own fields:
+ * the same folded tiles, one held item open at a time, each change one emit of the whole setting.
+ */
+const openHeld = reactive<Record<string, number | null>>({})
+/** The held list's key and field, when this setting's items may hold one and the open one shows it. */
+function heldList(f: SettingField, item: Record<string, unknown> | undefined): { key: string; field: ListItemField } | null {
+  const key = nestedListKey(f)
+  const field = key ? f.itemSchema?.[key] : undefined
+  return key && field && item && fieldShown(field, item) ? { key, field } : null
 }
-const itemText = (item: Record<string, unknown>, key: string, field: ListItemField): string =>
-  String(item[key] ?? field.default ?? '')
+/** The open item's held list as the template needs it, or null when it shows none. */
+function heldOf(f: SettingField, k: string, i: number): { key: string; field: ListItemField; list: Record<string, unknown>[]; full: boolean } | null {
+  const held = heldList(f, items(k)[i])
+  if (!held) return null
+  const list = heldItems(items(k)[i], held.key)
+  return { ...held, list, full: held.field.max !== undefined && list.length >= held.field.max }
+}
+/** What `ListItems` needs to offer a drop into an item: the holders, and whether each has room. */
+function holders(f: SettingField, k: string): ({ count: number; accepts: boolean } | null)[] | undefined {
+  if (!nestedListKey(f)) return undefined
+  return items(k).map((item) => {
+    const held = heldList(f, item)
+    if (!held) return null
+    const count = heldItems(item, held.key).length
+    return { count, accepts: held.field.max === undefined || count < held.field.max }
+  })
+}
+function setHeld(k: string, i: number, key: string, list: Record<string, unknown>[]): void {
+  setItemField(k, i, key, list)
+}
+function addHeld(k: string, i: number, key: string, field: ListItemField): void {
+  const list = heldItems(items(k)[i], key)
+  if (field.max !== undefined && list.length >= field.max) return
+  openHeld[k] = list.length
+  setHeld(k, i, key, [...list, newItem(field)])
+}
+function removeHeld(k: string, i: number, key: string, j: number): void {
+  openHeld[k] = null
+  setHeld(k, i, key, heldItems(items(k)[i], key).filter((_, n) => n !== j))
+}
+function moveHeld(k: string, i: number, key: string, from: number, to: number): void {
+  const list = heldItems(items(k)[i], key)
+  if (to < 0 || to >= list.length || to === from) return
+  if (openHeld[k] === from) openHeld[k] = to
+  setHeld(k, i, key, moveTo(list, from, to))
+}
+function setHeldField(k: string, i: number, key: string, j: number, field: string, value: unknown): void {
+  setHeld(k, i, key, heldItems(items(k)[i], key).map((item, n) => (n === j ? { ...item, [field]: value } : item)))
+}
+/** A held item put back among the setting's own, right after its holder, which stays open. */
+function takeOutHeld(k: string, f: SettingField, i: number, key: string, j: number): void {
+  openHeld[k] = null
+  emit('change', k, takeOut(items(k), i, key, j, f, newItem(f)))
+}
+/** An item dropped onto a holder goes in at its end; the holder opens on it. */
+function nestItem(k: string, f: SettingField, from: number, into: number): void {
+  const key = nestedListKey(f)
+  const field = key ? f.itemSchema?.[key] : undefined
+  if (!key || !field) return
+  const next = nestInto(items(k), from, into, key, field)
+  if (!next) return
+  const holder = into > from ? into - 1 : into
+  openItem[k] = holder
+  openHeld[k] = null
+  emit('change', k, next)
+}
 </script>
 
 <template>
@@ -510,26 +565,47 @@ const itemText = (item: Record<string, unknown>, key: string, field: ListItemFie
       <span class="lbl">{{ pick(f.label) }}</span>
       <p v-if="!items(k).length" class="hint">{{ t('admin.settings.list.empty') }}</p>
       <ListItems v-else :field="f" :items="items(k)" :columns="gridColumns(f, props.schema, props.values)"
-        :open="openItem[k] ?? null" @toggle="toggleItem(k, $event)" @move="(from, to) => moveItem(k, from, to)">
+        :open="openItem[k] ?? null" :holders="holders(f, k)" @toggle="toggleItem(k, $event)"
+        @move="(from, to) => moveItem(k, from, to)" @nest="(from, into) => nestItem(k, f, from, into)">
         <template #editor="{ index: i }">
-          <div class="cells">
-            <label v-for="(itf, ik) in f.itemSchema" :key="ik" class="cell" :class="{ flag: itf.type === 'boolean' }">
-              <span class="cap">{{ pick(itf.label) }}</span>
-              <input v-if="itf.type === 'boolean'" type="checkbox" :checked="Boolean(items(k)[i][ik])"
-                @change="setItemField(k, i, ik, ($event.target as HTMLInputElement).checked)" />
-              <select v-else-if="itf.type === 'enum'" :value="itemText(items(k)[i], ik, itf)"
-                @change="setItemField(k, i, ik, ($event.target as HTMLSelectElement).value)">
-                <option v-for="o in itf.options" :key="optionValue(o)" :value="optionValue(o)">{{ pick(optionLabel(o)) }}</option>
-              </select>
-              <BaseInput v-else-if="itf.type === 'number'" type="number" lazy :model-value="Number(items(k)[i][ik] ?? 0)"
-                @update:model-value="onItemNumber(k, i, ik, $event)" />
-              <BaseInput v-else-if="itf.type === 'timezone'" lazy :list="TIMEZONE_LIST_ID"
-                :invalid="badTimezone(items(k)[i][ik])" :title="badTimezone(items(k)[i][ik]) ? t('admin.settings.timezone.unknown') : undefined"
-                :model-value="itemText(items(k)[i], ik, itf)" @update:model-value="setItemField(k, i, ik, String($event).trim())" />
-              <BaseInput v-else lazy :list="suggestListId(items(k)[i], itf)" :model-value="itemText(items(k)[i], ik, itf)"
-                @update:model-value="setItemField(k, i, ik, $event)" />
-            </label>
-          </div>
+          <ItemCells :schema="f.itemSchema ?? {}" :item="items(k)[i]" :apps-list-id="APPS_LIST_ID"
+            :timezone-list-id="TIMEZONE_LIST_ID" :time-zones="TIME_ZONES" @set="(key, value) => setItemField(k, i, key, value)" />
+          <template v-for="h in [heldOf(f, k, i)]" :key="0">
+            <div v-if="h" class="held" :data-held="h.key">
+              <span class="cap">{{ pick(h.field.label) }}</span>
+              <p v-if="!h.list.length" class="hint">{{ t('admin.settings.list.heldEmpty') }}</p>
+              <ListItems v-else :field="{ ...h.field, type: 'list' }" :items="h.list"
+                :columns="gridColumns(f, props.schema, props.values)" :open="openHeld[k] ?? null"
+                @toggle="openHeld[k] = openHeld[k] === $event ? null : $event"
+                @move="(from, to) => moveHeld(k, i, h.key, from, to)">
+                <template #editor="{ index: j }">
+                  <ItemCells :schema="h.field.itemSchema ?? {}" :item="h.list[j]" :apps-list-id="APPS_LIST_ID"
+                    :timezone-list-id="TIMEZONE_LIST_ID" :time-zones="TIME_ZONES"
+                    @set="(field, value) => setHeldField(k, i, h.key, j, field, value)" />
+                  <div class="rowActions">
+                    <BaseButton variant="icon" :title="t('admin.settings.list.earlier')" :disabled="j === 0"
+                      @click="moveHeld(k, i, h.key, j, j - 1)">
+                      <BaseIcon name="chevron-up" :size="14" />
+                    </BaseButton>
+                    <BaseButton variant="icon" :title="t('admin.settings.list.later')" :disabled="j === h.list.length - 1"
+                      @click="moveHeld(k, i, h.key, j, j + 1)">
+                      <BaseIcon name="chevron-down" :size="14" />
+                    </BaseButton>
+                    <BaseButton variant="icon" :title="t('admin.settings.list.takeOut')" :disabled="listFull(f, k)"
+                      @click="takeOutHeld(k, f, i, h.key, j)">
+                      <BaseIcon name="folder-output" :size="14" />
+                    </BaseButton>
+                    <BaseButton variant="icon" :title="t('common.remove')" @click="removeHeld(k, i, h.key, j)">
+                      <BaseIcon name="trash-2" :size="14" />
+                    </BaseButton>
+                  </div>
+                </template>
+              </ListItems>
+              <BaseButton class="add" :disabled="h.full" @click="addHeld(k, i, h.key, h.field)">
+                <BaseIcon name="plus" :size="14" />{{ t('admin.settings.list.add') }}
+              </BaseButton>
+            </div>
+          </template>
           <div class="rowActions">
             <BaseButton variant="icon" :title="t('admin.settings.list.earlier')" :disabled="i === 0" @click="moveItem(k, i, i - 1)">
               <BaseIcon name="chevron-up" :size="14" />
@@ -613,12 +689,10 @@ select, .color { width: 100%; box-sizing: border-box; font: inherit; font-size: 
 .apps { list-style: none; margin: 0; padding: 0; max-height: 220px; overflow-y: auto; }
 .apps li { display: flex; align-items: center; gap: var(--space-1); }
 .apps li :deep(.cb) { flex: 1; margin-bottom: 0; padding: 2px 0; min-width: 0; }
-/* The open item: its fields wrap inline, the three buttons under them on the right. */
-.cells { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-2); }
-.cell { flex: 1 1 110px; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-/* A checkbox needs no column of its own: label beside the box, sized to its content. */
-.cell.flag { flex: 0 0 auto; flex-direction: row-reverse; align-items: center; gap: var(--space-1); }
-.cell.flag input { accent-color: var(--accent); width: 16px; height: 16px; }
+/* The open item: its fields wrap inline (ItemCells), the buttons under them on the right. */
+/* The list an open item holds, under its fields: a group's buttons. */
+.held { display: flex; flex-direction: column; gap: var(--space-1); margin-top: var(--space-2);
+  padding-top: var(--space-2); border-top: 1px dashed var(--border); }
 .cap { font-size: var(--fs-xs); color: var(--text-dim); text-transform: uppercase; letter-spacing: .06em;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .rowActions { display: flex; justify-content: flex-end; margin-top: var(--space-1); }

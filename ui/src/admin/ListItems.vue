@@ -13,6 +13,9 @@ import { itemSummary } from './listItems'
  * slot — under its row, or under the grid; one item is open at a time. An item is dragged into
  * place with pointer events, as the pages list and the bar's widgets are (a WKWebView does not
  * deliver HTML drag and drop reliably); each drop is one `move`, so one undo step.
+ *
+ * An item that holds a list of its own (a shortcuts group) takes an item dropped onto its middle:
+ * that drop is one `nest` instead, and the edges of the holder still mean "before" and "after".
  */
 const props = defineProps<{
   field: SettingField
@@ -21,8 +24,13 @@ const props = defineProps<{
   columns: number | null
   /** The open item's index, or null. */
   open: number | null
+  /**
+   * Per item: how many items it holds and whether it takes one more, or null for an item that
+   * holds no list. Absent, no item holds one.
+   */
+  holders?: ({ count: number; accepts: boolean } | null)[]
 }>()
-const emit = defineEmits<{ toggle: [index: number]; move: [from: number, to: number] }>()
+const emit = defineEmits<{ toggle: [index: number]; move: [from: number, to: number]; nest: [from: number, into: number] }>()
 const { t } = useI18n()
 
 const summaries = computed(() => props.items.map((item) => itemSummary(item, props.field, pick)))
@@ -33,6 +41,10 @@ const DRAG_THRESHOLD = 4
 const list = ref<HTMLElement>()
 const dragged = ref<number | null>(null)
 const to = ref<number | null>(null)
+/** The holder the dragged item would go into, instead of landing at `to`. */
+const into = ref<number | null>(null)
+/** The middle share of a holder's box that means "into" rather than "beside". */
+const INTO_SHARE = 0.5
 let pressed: { from: number; x: number; y: number; pointer: number; el: HTMLElement } | null = null
 let swallowClick = false
 
@@ -50,7 +62,23 @@ function onMove(e: PointerEvent): void {
     pressed.el.focus({ preventScroll: true })
     window.addEventListener('keydown', onDragKey, true)
   }
-  to.value = landing(e.clientX, e.clientY)
+  into.value = holderUnder(e.clientX, e.clientY)
+  to.value = into.value === null ? landing(e.clientX, e.clientY) : null
+}
+/** The holder whose middle is under the pointer, if the dragged item may go into it. */
+function holderUnder(x: number, y: number): number | null {
+  const from = dragged.value
+  if (!list.value || from === null || !props.holders || props.holders[from]) return null
+  const els = [...list.value.querySelectorAll<HTMLElement>('[data-list-item]')]
+  for (const [i, el] of els.entries()) {
+    if (i === from || !props.holders[i]?.accepts) continue
+    const r = el.getBoundingClientRect()
+    // Across a tile in a grid, down a row in a list: the edges stay "before" and "after".
+    const [pos, start, size] = props.columns ? [x, r.left, r.width] : [y, r.top, r.height]
+    const margin = (size * (1 - INTO_SHARE)) / 2
+    if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom && pos >= start + margin && pos <= start + size - margin) return i
+  }
+  return null
 }
 /** The index the dragged item would have once dropped, from the items' boxes as they stand. */
 function landing(x: number, y: number): number | null {
@@ -62,17 +90,20 @@ function onUp(e: PointerEvent): void {
   if (!pressed || e.pointerId !== pressed.pointer) return
   const from = dragged.value
   const target = to.value
+  const holder = into.value
   endDrag()
   if (from === null) return
   // The click that follows this release comes before any timer.
   swallowClick = true
   setTimeout(() => { swallowClick = false })
-  if (target !== null && target !== from) emit('move', from, target)
+  if (holder !== null) emit('nest', from, holder)
+  else if (target !== null && target !== from) emit('move', from, target)
 }
 function endDrag(): void {
   pressed = null
   dragged.value = null
   to.value = null
+  into.value = null
   window.removeEventListener('keydown', onDragKey, true)
 }
 function onDragKey(e: KeyboardEvent): void {
@@ -95,14 +126,16 @@ const dropAfter = (i: number) => marker.value === null && i === props.items.leng
 <template>
   <ul ref="list" :class="columns ? 'grid' : 'rows'" :style="gridStyle">
     <template v-for="(item, i) in items" :key="i">
-      <li data-list-item :class="{ open: open === i, lifted: dragged === i, 'drop-before': dropBefore(i), 'drop-after': dropAfter(i) }">
+      <li data-list-item :class="{ open: open === i, lifted: dragged === i, 'drop-before': dropBefore(i), 'drop-after': dropAfter(i), 'drop-into': into === i, holder: holders?.[i] }">
         <!-- data-overlay while lifted: the Escape that drops the drag must not also close the window. -->
         <button type="button" class="item" :aria-expanded="open === i" :title="t('admin.settings.list.drag')"
           :data-overlay="dragged === i ? '' : undefined"
           @pointerdown="onDown($event, i)" @pointermove="onMove" @pointerup="onUp" @pointercancel="endDrag"
           @click="onClick(i)">
           <BaseIcon v-if="!columns" name="grip-vertical" :size="14" class="grip" />
+          <BaseIcon v-if="holders?.[i]" name="folder" :size="14" class="kind" />
           <span class="name" :class="{ unnamed: !summaries[i] }">{{ summaries[i] || t('admin.settings.list.unnamed', { n: i + 1 }) }}</span>
+          <span v-if="holders?.[i]" class="count">{{ holders[i]!.count }}</span>
           <BaseIcon v-if="!columns" :name="open === i ? 'chevron-up' : 'chevron-down'" :size="14" class="fold" />
         </button>
       </li>
@@ -132,6 +165,15 @@ li.lifted { opacity: .4; }
 .rows li.drop-after { box-shadow: 0 3px 0 var(--accent); }
 .grid li.drop-before { box-shadow: -3px 0 0 var(--accent); }
 .grid li.drop-after { box-shadow: 3px 0 0 var(--accent); }
+/* An item that holds others reads as a folder; dropped onto its middle, an item goes in. */
+.holder .item { border-style: dashed; }
+li.drop-into .item { border: 2px solid var(--accent); background: color-mix(in srgb, var(--accent) 14%, var(--surface)); }
+.kind { flex: 0 0 auto; color: var(--accent); }
+.count { flex: 0 0 auto; min-width: 18px; padding: 0 5px; border-radius: 9px; background: var(--surface-2, var(--border));
+  color: var(--text-dim); font-size: var(--fs-xs); text-align: center; }
+/* A tile has no room to spare for it: the count sits in its corner. */
+.grid .item { position: relative; }
+.grid .count { position: absolute; top: 2px; right: 2px; min-width: 14px; padding: 0 4px; line-height: 14px; }
 .editor { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm);
   padding: var(--space-2); }
 .grid-editor { margin-bottom: var(--space-1); }

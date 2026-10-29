@@ -48,3 +48,51 @@ export function moveTo<T>(list: readonly T[], from: number, to: number): T[] {
   out.splice(Math.max(0, Math.min(to, out.length)), 0, item)
   return out
 }
+
+type Item = Record<string, unknown>
+
+/** The key of the one list an item of this setting may hold, or null. */
+export function nestedListKey(field: SettingField): string | null {
+  return Object.entries(field.itemSchema ?? {}).find(([, f]) => f.type === 'list')?.[0] ?? null
+}
+
+/** The items an item holds under `key`; anything else stored there reads as none. */
+export function heldItems(item: Item | undefined, key: string): Item[] {
+  const held = item?.[key]
+  return Array.isArray(held) ? (held as Item[]) : []
+}
+
+/** An item as `schema` describes it: the keys it declares, and nothing it does not. */
+function keepFields(item: Item, schema: Record<string, ListItemField>): Item {
+  return Object.fromEntries(Object.entries(item).filter(([key]) => Object.hasOwn(schema, key) && schema[key].type !== 'list'))
+}
+
+/**
+ * `list` with the item at `from` moved into the list the item at `into` holds under `key`, at its
+ * end. Null when that cannot be: the same item, an item that holds a list itself (one level
+ * only), or a holder already at its `max`. Only the fields the held items declare go along.
+ */
+export function nestInto(list: readonly Item[], from: number, into: number, key: string, held: ListItemField): Item[] | null {
+  const moved = list[from]
+  const holder = list[into]
+  if (!moved || !holder || from === into || heldItems(moved, key).length > 0) return null
+  const inside = heldItems(holder, key)
+  if (held.max !== undefined && inside.length >= held.max) return null
+  const next = list.map((item, i) => (i === into ? { ...item, [key]: [...inside, keepFields(moved, held.itemSchema ?? {})] } : item))
+  next.splice(from, 1)
+  return next
+}
+
+/**
+ * `list` with the item at `j` of the list held under `key` by the item at `i` taken out, and put
+ * back right after its holder as an item of `field`, its missing fields from `fresh`.
+ */
+export function takeOut(list: readonly Item[], i: number, key: string, j: number, field: SettingField, fresh: Item): Item[] {
+  const holder = list[i]
+  const inside = heldItems(holder, key)
+  if (!holder || j < 0 || j >= inside.length) return [...list]
+  const next = [...list]
+  next[i] = { ...holder, [key]: inside.filter((_, n) => n !== j) }
+  next.splice(i + 1, 0, { ...fresh, ...keepFields(inside[j], field.itemSchema ?? {}) })
+  return next
+}

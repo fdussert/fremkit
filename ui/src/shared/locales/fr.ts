@@ -568,6 +568,8 @@ export const fr: Record<string, string> = {
   'admin.settings.list.empty': 'Rien pour le moment.',
   'admin.settings.list.drag': 'Glisser pour déplacer, toucher pour modifier',
   'admin.settings.list.unnamed': 'Sans nom ({n})',
+  'admin.settings.list.takeOut': 'Sortir du groupe',
+  'admin.settings.list.heldEmpty': "Rien dedans pour l’instant. Ajoutez-en, ou déposez un élément sur celui-ci.",
   'admin.settings.list.earlier': 'Déplacer avant',
   'admin.settings.list.later': 'Déplacer après',
   'admin.settings.timezone.unknown': 'Fuseau horaire inconnu',

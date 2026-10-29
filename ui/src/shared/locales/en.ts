@@ -568,6 +568,8 @@ export const en: Record<string, string> = {
   'admin.settings.list.empty': 'Nothing yet.',
   'admin.settings.list.drag': 'Drag to move, touch to edit',
   'admin.settings.list.unnamed': 'Unnamed ({n})',
+  'admin.settings.list.takeOut': 'Take out of the group',
+  'admin.settings.list.heldEmpty': 'Nothing in it yet. Add one, or drop an item onto this one.',
   'admin.settings.list.earlier': 'Move earlier',
   'admin.settings.list.later': 'Move later',
   'admin.settings.timezone.unknown': 'Unknown time zone',
