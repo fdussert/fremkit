@@ -52,8 +52,14 @@
   .btn .minis img.art{border-radius:3px}
   .btn .minis .glyph{font-size:calc(var(--art,34px) * .2)}
   .btn .minis .emoji{font-size:calc(var(--art,34px) * .3)}
-  /* Back out of a group: the first cell, drawn as an outline so it never reads as a shortcut. */
-  html .btn.back{background:transparent;box-shadow:inset 0 0 0 2px rgba(128,128,128,.4)}
+  /* An open group keeps the rows of the grid it replaced, never stretched: what does not fit
+     scrolls. */
+  .grid.in-group{grid-auto-rows:var(--btn,72px);align-content:start}
+  /* Back out of a group: the first cell, drawn as an outline so it never reads as a shortcut, and
+     held in place while the group's buttons scroll under it. */
+  html .btn.back{position:sticky;top:0;z-index:1;background:rgba(16,18,22,.55);-webkit-backdrop-filter:blur(10px);
+    backdrop-filter:blur(10px);box-shadow:inset 0 0 0 2px rgba(128,128,128,.4)}
+  html.on-light .btn.back{background:rgba(255,255,255,.55)}
   html .btn.back .glyph{background:transparent;color:inherit;font-size:calc(var(--art,34px) * .8);font-weight:300}
 
   /* Opening a group: the grid steps back, then the group's buttons fly out of the one touched,
@@ -88,8 +94,6 @@
   var KINDS = { app: '□', url: '↗', shortcut: '⚡' }
   /** A group with nothing to show inside it yet. */
   var GROUP_GLYPH = '▦'
-  /** An open group closes by itself after this long without a touch. */
-  var GROUP_IDLE_MS = 8000
   /** How long the grid takes to step back before the next view flies in. */
   var LEAVE_MS = 160
 
@@ -100,7 +104,6 @@
   var feedback = {}
   /** The saved index of the group shown in place of the grid, or null. */
   var openGroup = null
-  var idleTimer = null
   /** Bumped by every view change, so a transition overtaken by another one stops. */
   var viewToken = 0
 
@@ -307,8 +310,6 @@
       if (feedback[spec.key] !== state) return
       delete feedback[spec.key]
       replace(spec.key)
-      // Done with the group once one of its shortcuts has run: back to the whole grid.
-      if (state === 'ok' && spec.item !== undefined && openGroup === spec.index) closeGroup()
     }, FEEDBACK_MS)
   }
 
@@ -412,7 +413,6 @@
   function openGroupAt(spec, button) {
     var from = centre(button)
     openGroup = spec.index
-    restartIdle()
     swap('leaving', 'opening', function (grid) { aimAt(grid, from) })
   }
 
@@ -421,7 +421,6 @@
     var grid = document.getElementById('grid')
     var group = openGroup
     openGroup = null
-    clearTimeout(idleTimer)
     // The buttons fly back into the first cell, the back button, before the grid returns.
     aimAt(grid, centre(grid.children[0]))
     swap('closing', 'settling', function (g) {
@@ -429,12 +428,6 @@
         if (g.children[i].key === 'g' + group) g.children[i].classList.add('home')
       }
     })
-  }
-
-  /** An open group closes by itself once nobody has touched the tile for a while. */
-  function restartIdle() {
-    clearTimeout(idleTimer)
-    if (openGroup !== null) idleTimer = setTimeout(closeGroup, GROUP_IDLE_MS)
   }
 
   var BACKGROUNDS = { tinted: 1, accent: 1, custom: 1, none: 1 }
@@ -468,6 +461,8 @@
    * Sizes the rows, the artwork and the label to the tile: the grid shares the tile's height
    * between the rows it needs — two rows of buttons are tall, with big icons; six rows are
    * short, with the label beside the icon — and only past the touch-target floor does it scroll.
+   * An open group is sized by the grid it replaced, `count` being that grid's, so its buttons are
+   * the ones the user just saw; more of them than fit scroll.
    */
   function applyRowSize(grid, count, cols) {
     var root = document.documentElement
@@ -494,7 +489,9 @@
     empty.hidden = list.length > 0
     empty.textContent = Fremkit.t(L.empty)
     applyBackground()
-    applyRowSize(grid, list.length, cols)
+    var inGroup = openGroup !== null
+    grid.classList.toggle('in-group', inGroup)
+    applyRowSize(grid, inGroup ? buttons().length : list.length, cols)
     list.forEach(function (spec, position) { grid.appendChild(buttonFor(spec, position)) })
   }
 
@@ -510,8 +507,6 @@
     settings = Fremkit.settings || {}
     applySize(Fremkit.size)
     Fremkit.onResize(applySize)
-    // Any touch on the tile keeps an open group open a little longer.
-    document.getElementById('grid').addEventListener('pointerdown', restartIdle)
     Fremkit.onSettings(function (next) { settings = next || {}; feedback = {}; render() })
     // Only used to turn an application name into the bundle id its icon is served under. The
     // Dock republishes whenever a badge moves, so the grid is rebuilt only when the bundle ids

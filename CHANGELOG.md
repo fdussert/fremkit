@@ -22,7 +22,8 @@ tagged `vX.Y.Z`.
 
 - **Shortcuts: groups.** A button of kind *Group* holds a few buttons of its own (a *Prod*
   pipeline, a *Dev* one) without taking a cell each: it shows their icons in a little square, and
-  a tap opens them in place of the grid, behind a back button, until one has run. In the
+  a tap opens them in place of the grid, at the grid's size and scrolling when there are more,
+  behind a back button that closes it. In the
   settings, drop a button onto a group to put it in; *Take out of the group* puts it back.
 
 - **A wider settings panel when you need it.** Drag the left edge of the editor's right-hand panel

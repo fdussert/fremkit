@@ -183,12 +183,12 @@ describe('a group of shortcuts', () => {
     expect(names(loaded)).toEqual(['Prod', 'Deploy', 'Logs'])
     tap(loaded, 2)
     expect(loaded.sent()[0]).toEqual(['shortcuts', 'open', { instanceId: 'shortcuts-1', index: 1, item: 2 }])
-    // Once the shortcut ran, the group folds back by itself.
-    await vi.advanceTimersByTimeAsync(1400 + 200)
-    expect(names(loaded)).toEqual(['Terminal', 'Prod'])
+    // It stays open after a shortcut ran, for the next one.
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(names(loaded)).toEqual(['Prod', 'Deploy', 'Logs'])
   })
 
-  it('closes on the back button, and by itself after a while untouched', async () => {
+  it('closes on the back button only, never by itself', async () => {
     vi.useFakeTimers()
     const loaded = await loadWidget([], groups)
     tap(loaded, 1)
@@ -198,9 +198,8 @@ describe('a group of shortcuts', () => {
     expect(names(loaded)).toEqual(['Terminal', 'Prod'])
     tap(loaded, 1)
     await vi.advanceTimersByTimeAsync(200)
+    await vi.advanceTimersByTimeAsync(10 * 60_000)
     expect(names(loaded)).toHaveLength(3)
-    await vi.advanceTimersByTimeAsync(8000 + 200)
-    expect(names(loaded)).toEqual(['Terminal', 'Prod'])
   })
 })
 

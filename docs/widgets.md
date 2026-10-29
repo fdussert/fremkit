@@ -407,8 +407,8 @@ the icon it last had, and turning `showIcons` off fetches nothing at all.
 
 A button of kind *Group* holds up to twelve buttons of its own and draws up to four of their icons
 in a small square, as a folder does. A tap opens it in place of the grid, its buttons flying out of
-it, with a back button in the first cell; it folds back once one of its shortcuts has run, or after
-eight seconds without a touch. In the admin, drop a button onto the middle of a group to put it in,
+it, with a back button in the first cell, and stays open until that button is touched. Its buttons
+are the size of the grid's, so more of them than fit scroll, the back button staying put. In the admin, drop a button onto the middle of a group to put it in,
 and use *Take out of the group* in its fields to put it back. The widget only says which button of
 which group was touched; the server reads what it opens from the saved settings, as for any button.
 
