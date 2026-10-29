@@ -34,7 +34,7 @@
   .meta{display:flex;gap:10px;font-size:calc(12px * var(--text-scale, 1));color:var(--text-muted, #8b93a0);align-items:center}
   .sub{background:var(--accent, #d9b36a);color:var(--on-accent,#0b0d10);border-radius:8px;padding:0 6px;font-size:calc(11px * var(--text-scale, 1))}
   [hidden]{display:none!important}
-  .hdr{display:flex;justify-content:space-between;align-items:baseline;flex:0 0 auto}
+  .hdr{display:flex;justify-content:flex-end;align-items:baseline;flex:0 0 auto}
   .stats{font-size:calc(12px * var(--text-scale, 1));color:var(--text-muted, #8b93a0);letter-spacing:.04em}
   .title{font-size:calc(18px * var(--text-scale, 1));font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .where{font-size:calc(12px * var(--text-scale, 1));color:var(--text-muted, #8b93a0);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -53,7 +53,7 @@
   .q{font-size:calc(14px * var(--text-scale, 1));color:var(--text, #e6e8eb);white-space:normal}.q b{display:block;font-size:calc(12px * var(--text-scale, 1));color:#f0a020;text-transform:uppercase;letter-spacing:.06em}.q ul{margin:2px 0 0 16px;padding:0;color:#c3c8d0;font-size:calc(13px * var(--text-scale, 1))}
 </style>
 </head>
-<body><div class="wrap"><div class="hdr"><span class="note" id="count"></span><span class="stats" id="stats"></span></div><div class="cards" id="cards"></div></div>
+<body><div class="wrap"><div class="hdr" id="hdr" hidden><span class="stats" id="stats"></span></div><div class="cards" id="cards"></div></div>
 <script>
   var L = {
     working: { fr: 'en travail', en: 'working' },
@@ -203,8 +203,12 @@
   }
   function render() {
     var el = document.getElementById('cards'), now = Date.now(), seen = {}
-    document.getElementById('count').textContent = sessions.length ? '· ' + sessions.length : ''
-    document.getElementById('stats').textContent = today ? statsFor(today) : ''
+    // The count goes after the tile's title, which the host draws: no title, no count.
+    var note = showCount && sessions.length ? String(sessions.length) : ''
+    if (note !== lastNote && Fremkit.titleNote) { lastNote = note; Fremkit.titleNote(note) }
+    var stats = showStats && today ? statsFor(today) : ''
+    document.getElementById('stats').textContent = stats
+    document.getElementById('hdr').hidden = !stats
     // The count above keeps the real total; the list itself honours the filters and "max".
     var list = visible(now)
     if (maxShown > 0) list = list.slice(0, maxShown)
@@ -247,7 +251,9 @@
       refused()
     }, refused)
   }
-  var maxShown = 0, onlyWaiting = false, hideDone = true, groupByClient = false
+  var maxShown = 0, onlyWaiting = false, hideDone = true, groupByClient = false, showCount = true, showStats = true
+  /** The title note last sent, so a render that changes nothing sends nothing. */
+  var lastNote = null
   function applySettings(s) {
     s = s || {}
     var n = Number(s.max); maxShown = isFinite(n) && n > 0 ? Math.floor(n) : 0
@@ -255,6 +261,8 @@
     // On by default, so an absent setting is not "off" — an older instance keeps the new default.
     hideDone = s.hideDone !== false
     groupByClient = s.groupByClient === true
+    showCount = s.showCount !== false
+    showStats = s.showStats !== false
   }
   Fremkit.whenReady(function () {
     document.documentElement.lang = Fremkit.locale

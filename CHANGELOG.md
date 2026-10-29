@@ -14,6 +14,11 @@ tagged `vX.Y.Z`.
 
 ### Added
 
+- **Claude sessions: the count moves into the title.** The number of sessions now follows the
+  tile's title (*Claude sessions · 18*) instead of taking a line of its own, and goes away with
+  the title. Both it and today's summary (sessions, finished, commits) can be turned off in the
+  widget's settings. Widgets can do the same with `Fremkit.titleNote()` (SDK generation 5).
+
 - **Arranging the bar's widgets.** The screen's settings now list the bar's widgets as the bar
   reads them, under *Left of the dots* and *Right of the dots*. Drag a widget to move it, within a
   side or to the other one; its arrows and the *Move left / right* menu also step across the dots.

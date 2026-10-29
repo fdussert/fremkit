@@ -110,6 +110,8 @@ see [claude-code.md](claude-code.md#going-to-a-session).
 | `max` | number | `0` | both | Sessions shown; `0` means all of them |
 | `onlyWaiting` | boolean | off | both | Show only the sessions waiting for you |
 | `hideDone` | boolean | on | both | Drop a finished or idle session from the board after 30 min |
+| `showCount` | boolean | on | both | The number of sessions after the tile's title (`Claude sessions · 18`); nothing when the title is hidden |
+| `showStats` | boolean | on | both | Today's summary above the cards: sessions, finished, commits |
 | `groupByClient` | boolean | off | both | One section per application (Orca, Terminal, …) |
 | `sound` | enum | `none` | both | A macOS system sound when a session starts waiting |
 | `soundOn` | enum | `attention` | both | What the sound is for: a question, or a question or a permission |
