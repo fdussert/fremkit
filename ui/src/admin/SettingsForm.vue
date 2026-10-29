@@ -5,6 +5,8 @@ import BaseInput from '../shared/ui/BaseInput.vue'
 import BaseCheckbox from '../shared/ui/BaseCheckbox.vue'
 import BaseButton from '../shared/ui/BaseButton.vue'
 import BaseIcon from '../shared/ui/BaseIcon.vue'
+import ListItems from './ListItems.vue'
+import { gridColumns, moveTo } from './listItems'
 import { pick, useI18n } from '../shared/i18n'
 import { useSocket } from '../shared/socket'
 import { useAdminStore } from './store'
@@ -381,19 +383,32 @@ function newItem(f: SettingField): Record<string, unknown> {
   return item
 }
 
+/** Which item of each list shows its fields; one at a time, none at first. */
+const openItem = reactive<Record<string, number | null>>({})
+function toggleItem(k: string, i: number): void {
+  openItem[k] = openItem[k] === i ? null : i
+}
+
 // One emit per action, so adding, removing, moving or editing a row is one undo step each.
 function addItem(k: string, f: SettingField): void {
-  if (!listFull(f, k)) emit('change', k, [...items(k), newItem(f)])
+  if (listFull(f, k)) return
+  // The new item opens: it has nothing to show folded until its fields are filled in.
+  openItem[k] = items(k).length
+  emit('change', k, [...items(k), newItem(f)])
 }
 function removeItem(k: string, i: number): void {
+  openItem[k] = null
   emit('change', k, items(k).filter((_, j) => j !== i))
 }
-function moveItem(k: string, i: number, delta: number): void {
-  const list = [...items(k)]
-  const to = i + delta
-  if (to < 0 || to >= list.length) return
-  list.splice(to, 0, list.splice(i, 1)[0])
-  emit('change', k, list)
+function moveItem(k: string, from: number, to: number): void {
+  if (to < 0 || to >= items(k).length || to === from) return
+  // The open item stays open wherever it goes; another one shifts with the move.
+  const open = openItem[k]
+  if (open !== null && open !== undefined) {
+    const order = moveTo(items(k).map((_, j) => j), from, to)
+    openItem[k] = order.indexOf(open)
+  }
+  emit('change', k, moveTo(items(k), from, to))
 }
 function setItemField(k: string, i: number, key: string, value: unknown): void {
   emit('change', k, items(k).map((item, j) => (j === i ? { ...item, [key]: value } : item)))
@@ -494,39 +509,40 @@ const itemText = (item: Record<string, unknown>, key: string, field: ListItemFie
     <div v-else-if="f.type === 'list'" class="field" :data-setting="k">
       <span class="lbl">{{ pick(f.label) }}</span>
       <p v-if="!items(k).length" class="hint">{{ t('admin.settings.list.empty') }}</p>
-      <ul v-else class="list">
-        <li v-for="(item, i) in items(k)" :key="i">
+      <ListItems v-else :field="f" :items="items(k)" :columns="gridColumns(f, props.schema, props.values)"
+        :open="openItem[k] ?? null" @toggle="toggleItem(k, $event)" @move="(from, to) => moveItem(k, from, to)">
+        <template #editor="{ index: i }">
           <div class="cells">
             <label v-for="(itf, ik) in f.itemSchema" :key="ik" class="cell" :class="{ flag: itf.type === 'boolean' }">
               <span class="cap">{{ pick(itf.label) }}</span>
-              <input v-if="itf.type === 'boolean'" type="checkbox" :checked="Boolean(item[ik])"
+              <input v-if="itf.type === 'boolean'" type="checkbox" :checked="Boolean(items(k)[i][ik])"
                 @change="setItemField(k, i, ik, ($event.target as HTMLInputElement).checked)" />
-              <select v-else-if="itf.type === 'enum'" :value="itemText(item, ik, itf)"
+              <select v-else-if="itf.type === 'enum'" :value="itemText(items(k)[i], ik, itf)"
                 @change="setItemField(k, i, ik, ($event.target as HTMLSelectElement).value)">
                 <option v-for="o in itf.options" :key="optionValue(o)" :value="optionValue(o)">{{ pick(optionLabel(o)) }}</option>
               </select>
-              <BaseInput v-else-if="itf.type === 'number'" type="number" lazy :model-value="Number(item[ik] ?? 0)"
+              <BaseInput v-else-if="itf.type === 'number'" type="number" lazy :model-value="Number(items(k)[i][ik] ?? 0)"
                 @update:model-value="onItemNumber(k, i, ik, $event)" />
               <BaseInput v-else-if="itf.type === 'timezone'" lazy :list="TIMEZONE_LIST_ID"
-                :invalid="badTimezone(item[ik])" :title="badTimezone(item[ik]) ? t('admin.settings.timezone.unknown') : undefined"
-                :model-value="itemText(item, ik, itf)" @update:model-value="setItemField(k, i, ik, String($event).trim())" />
-              <BaseInput v-else lazy :list="suggestListId(item, itf)" :model-value="itemText(item, ik, itf)"
+                :invalid="badTimezone(items(k)[i][ik])" :title="badTimezone(items(k)[i][ik]) ? t('admin.settings.timezone.unknown') : undefined"
+                :model-value="itemText(items(k)[i], ik, itf)" @update:model-value="setItemField(k, i, ik, String($event).trim())" />
+              <BaseInput v-else lazy :list="suggestListId(items(k)[i], itf)" :model-value="itemText(items(k)[i], ik, itf)"
                 @update:model-value="setItemField(k, i, ik, $event)" />
             </label>
           </div>
           <div class="rowActions">
-            <BaseButton variant="icon" :title="t('common.moveUp')" :disabled="i === 0" @click="moveItem(k, i, -1)">
+            <BaseButton variant="icon" :title="t('admin.settings.list.earlier')" :disabled="i === 0" @click="moveItem(k, i, i - 1)">
               <BaseIcon name="chevron-up" :size="14" />
             </BaseButton>
-            <BaseButton variant="icon" :title="t('common.moveDown')" :disabled="i === items(k).length - 1" @click="moveItem(k, i, 1)">
+            <BaseButton variant="icon" :title="t('admin.settings.list.later')" :disabled="i === items(k).length - 1" @click="moveItem(k, i, i + 1)">
               <BaseIcon name="chevron-down" :size="14" />
             </BaseButton>
             <BaseButton variant="icon" :title="t('common.remove')" @click="removeItem(k, i)">
               <BaseIcon name="trash-2" :size="14" />
             </BaseButton>
           </div>
-        </li>
-      </ul>
+        </template>
+      </ListItems>
       <BaseButton class="add" :disabled="listFull(f, k)" @click="addItem(k, f)">
         <BaseIcon name="plus" :size="14" />{{ t('admin.settings.list.add') }}
       </BaseButton>
@@ -597,10 +613,7 @@ select, .color { width: 100%; box-sizing: border-box; font: inherit; font-size: 
 .apps { list-style: none; margin: 0; padding: 0; max-height: 220px; overflow-y: auto; }
 .apps li { display: flex; align-items: center; gap: var(--space-1); }
 .apps li :deep(.cb) { flex: 1; margin-bottom: 0; padding: 2px 0; min-width: 0; }
-/* One item per row: its fields wrap inline on the left, the three buttons stay on the right. */
-.list { list-style: none; margin: 0 0 var(--space-1); padding: 0; display: flex; flex-direction: column; gap: var(--space-1); }
-.list li { display: flex; align-items: flex-end; gap: var(--space-1);
-  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: var(--space-2); }
+/* The open item: its fields wrap inline, the three buttons under them on the right. */
 .cells { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-2); }
 .cell { flex: 1 1 110px; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 /* A checkbox needs no column of its own: label beside the box, sized to its content. */
@@ -608,6 +621,6 @@ select, .color { width: 100%; box-sizing: border-box; font: inherit; font-size: 
 .cell.flag input { accent-color: var(--accent); width: 16px; height: 16px; }
 .cap { font-size: var(--fs-xs); color: var(--text-dim); text-transform: uppercase; letter-spacing: .06em;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.rowActions { display: flex; flex: 0 0 auto; }
+.rowActions { display: flex; justify-content: flex-end; margin-top: var(--space-1); }
 .add { align-self: flex-start; }
 </style>

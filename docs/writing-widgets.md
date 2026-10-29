@@ -159,7 +159,7 @@ a `default` and a `scope`.
 | `connections` | an array of connection ids | `connectionType` (required) |
 | `pick` | an array of ids read live from a connection | `connection`, `source` (both required) |
 | `apps` | an array of app names the Dock currently shows | — |
-| `list` | an array of objects | `itemSchema` (required), `max` |
+| `list` | an array of objects | `itemSchema` (required), `max`, `summary`, `grid` |
 
 **`enum`** — an option is either a bare string (its own value and label) or
 `{ "value": …, "label": … }`. The `value` lands in the user's config, so it must not move when the
@@ -221,6 +221,12 @@ switch with a filter. `homey-devices` does both.
 The widget reads it as an array of objects keyed by `itemSchema`. An item field may be `string`,
 `boolean`, `enum`, `number` or `timezone` — never another list, and nothing that needs the admin's
 own data, because a row is rendered inline. `max` caps how many items the user may add.
+
+The admin shows the items folded, one line each, dragged into place and opened one at a time to
+edit their fields. `summary` lists the item fields that name an item there, the first non-empty one
+winning (`["label", "target"]`); absent, the first text or choice field with a value names it.
+`grid` draws the items as tiles laid out like the widget's own, a number of columns or the key of
+the `number` setting that holds them (`"grid": "columns"`); the editor caps it at six.
 
 A `string` item field may also declare `suggest`, which gives it a drop-down of suggestions while
 the user types. The only source today is `"apps"`, the applications installed on this machine, read

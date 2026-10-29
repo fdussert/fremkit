@@ -14,6 +14,11 @@ tagged `vX.Y.Z`.
 
 ### Added
 
+- **Lists in a widget's settings are folded and dragged.** Each item of a list (the shortcuts'
+  buttons, the clock's cities, the services watched) now shows on one line and opens on a touch to
+  edit its fields, one at a time; drag an item to move it. The shortcuts' buttons are laid out as
+  the widget lays them, in its columns, so they are arranged the way they will read.
+
 - **Claude sessions: the count moves into the title.** The number of sessions now follows the
   tile's title (*Claude sessions · 18*) instead of taking a line of its own, and goes away with
   the title. Both it and today's summary (sessions, finished, commits) can be turned off in the

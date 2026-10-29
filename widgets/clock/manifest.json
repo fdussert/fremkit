@@ -12,7 +12,7 @@
     "compactDate": { "type": "boolean", "scope": "compact", "default": false, "label": { "fr": "Barre : ajouter la date", "en": "Bar: add the date" } },
     "compactCities": { "type": "boolean", "scope": "compact", "default": false, "label": { "fr": "Barre : ajouter les villes", "en": "Bar: add the cities" } },
     "locale": { "type": "string", "default": "", "label": { "fr": "Format (vide = langue de l’app)", "en": "Format (empty = app language)" } },
-    "cities": { "type": "list", "default": [], "max": 6,
+    "cities": { "type": "list", "default": [], "max": 6, "summary": ["label", "timezone"],
       "label": { "fr": "Villes", "en": "Cities" },
       "itemSchema": {
         "label": { "type": "string", "default": "", "label": { "fr": "Libellé", "en": "Label" } },

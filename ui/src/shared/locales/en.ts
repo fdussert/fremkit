@@ -564,6 +564,10 @@ export const en: Record<string, string> = {
   'admin.settings.pick.unknown': '{count} ticked item(s) are no longer offered.',
   'admin.settings.list.add': 'Add',
   'admin.settings.list.empty': 'Nothing yet.',
+  'admin.settings.list.drag': 'Drag to move, touch to edit',
+  'admin.settings.list.unnamed': 'Unnamed ({n})',
+  'admin.settings.list.earlier': 'Move earlier',
+  'admin.settings.list.later': 'Move later',
   'admin.settings.timezone.unknown': 'Unknown time zone',
   'admin.settings.preview': 'Preview',
 

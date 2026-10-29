@@ -7,7 +7,7 @@
   "icon": "layout-grid", "minSize": [8, 4], "defaultSize": [16, 8],
   "subscriptions": ["dock"], "commands": ["shortcuts"],
   "settingsSchema": {
-    "buttons": { "type": "list", "default": [], "max": 24,
+    "buttons": { "type": "list", "default": [], "max": 24, "summary": ["label", "target"], "grid": "columns",
       "label": { "fr": "Boutons", "en": "Buttons" },
       "itemSchema": {
         "label": { "type": "string", "default": "", "label": { "fr": "Libellé", "en": "Label" } },
