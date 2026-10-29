@@ -74,8 +74,11 @@
   function buttons() {
     var list = Array.isArray(settings.buttons) ? settings.buttons : []
     return list
-      .map(function (b) {
+      .map(function (b, at) {
         return {
+          // Its place in the saved list, which is what the host reads: the rows skipped below
+          // must not shift the buttons after them.
+          at: at,
           label: typeof b.label === 'string' ? b.label.trim() : '',
           kind: KINDS[b.kind] ? b.kind : 'app',
           target: typeof b.target === 'string' ? b.target.trim() : '',
@@ -218,7 +221,7 @@
     mark(index, 'pressed')
     // Only the index: the host reads what this button points at from the saved settings, so a
     // widget cannot ask it to open something the user never configured.
-    Fremkit.sendCommand('shortcuts', 'open', { instanceId: Fremkit.instanceId, index: index })
+    Fremkit.sendCommand('shortcuts', 'open', { instanceId: Fremkit.instanceId, index: spec.at })
       .then(function (result) { mark(index, result && result.ok ? 'ok' : 'failed') })
       .catch(function () { mark(index, 'failed') })
   }

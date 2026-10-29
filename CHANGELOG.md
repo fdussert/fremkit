@@ -80,6 +80,10 @@ tagged `vX.Y.Z`.
 
 ### Fixed
 
+- **Shortcuts: a button after an unfinished one opens the right thing.** A button whose target
+  was still empty is not drawn, and the buttons after it used to open the target of the one
+  before them. Each now opens its own.
+
 - **Claude limits follows Claude Code's sign-in when it runs from its own folder.** A terminal
   with profiles (Orca, for one) starts Claude Code with a configuration folder of its own, which
   keeps its sign-in apart; the widget kept reading the old one, which nobody renewed, and said its

@@ -27,6 +27,8 @@ interface Loaded {
   /** Hands the widget one answer from the dock channel, as the host delivers it. */
   publishDock(data: unknown): void
   iconRequests(): string[]
+  /** Every command the widget sent, as `[channel, command, payload]`. */
+  sent(): unknown[][]
 }
 
 async function loadWidget(installed: unknown, settings: Record<string, unknown>): Promise<Loaded> {
@@ -56,6 +58,7 @@ async function loadWidget(installed: unknown, settings: Record<string, unknown>)
   }
   const dockSubscribers: ((data: unknown) => void)[] = []
   const iconRequests: string[] = []
+  const sent: unknown[][] = []
   const document = {
     documentElement: node('html'),
     getElementById: byId,
@@ -70,7 +73,7 @@ async function loadWidget(installed: unknown, settings: Record<string, unknown>)
       return () => {}
     },
     onLocale: () => {}, onResize: () => {}, onSettings: () => {},
-    sendCommand: () => Promise.resolve({ ok: true }),
+    sendCommand: (...args: unknown[]) => { sent.push(args); return Promise.resolve({ ok: true }) },
     el: (tag: string, className: string, text?: unknown) => {
       const n = node(tag)
       n.className = className ?? ''
@@ -91,6 +94,7 @@ async function loadWidget(installed: unknown, settings: Record<string, unknown>)
     artwork: () => grid().children[0]?.children[0],
     publishDock: (data) => dockSubscribers.forEach((cb) => cb(data)),
     iconRequests: () => iconRequests,
+    sent: () => sent,
   }
 }
 
@@ -133,5 +137,15 @@ describe('the shortcuts widget application icons', () => {
     await Promise.resolve()
     expect(loaded.artwork()?.src).toBe('data:image/png;base64,aWNvbg==')
     expect(loaded.iconRequests()).toContain('com.apple.Terminal')
+  })
+})
+
+describe('pressing a shortcuts button', () => {
+  it('names the button by its place in the saved list, a half-typed one before it included', async () => {
+    // The host reads the saved list by index; the skipped row must not shift the ones after it.
+    const loaded = await loadWidget([], { buttons: [{ label: 'Unfinished', kind: 'app', target: '' }, terminal] })
+    expect(loaded.buttons()).toHaveLength(1)
+    ;(loaded.buttons()[0] as unknown as { onclick: () => void }).onclick()
+    expect(loaded.sent()[0]).toEqual(['shortcuts', 'open', { instanceId: 'shortcuts-1', index: 1 }])
   })
 })
