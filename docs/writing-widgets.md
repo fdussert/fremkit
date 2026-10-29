@@ -159,7 +159,7 @@ a `default` and a `scope`.
 | `connections` | an array of connection ids | `connectionType` (required) |
 | `pick` | an array of ids read live from a connection | `connection`, `source` (both required) |
 | `apps` | an array of app names the Dock currently shows | — |
-| `list` | an array of objects | `itemSchema` (required), `max`, `summary`, `grid` |
+| `list` | an array of objects | `itemSchema` (required), `max`, `summary`, `grid`; item fields may take `showWhen`, and one may be a `list` |
 
 **`enum`** — an option is either a bare string (its own value and label) or
 `{ "value": …, "label": … }`. The `value` lands in the user's config, so it must not move when the
@@ -219,8 +219,17 @@ switch with a filter. `homey-devices` does both.
 ```
 
 The widget reads it as an array of objects keyed by `itemSchema`. An item field may be `string`,
-`boolean`, `enum`, `number` or `timezone` — never another list, and nothing that needs the admin's
-own data, because a row is rendered inline. `max` caps how many items the user may add.
+`boolean`, `enum`, `number` or `timezone`, and nothing that needs the admin's own data, because a
+row is rendered inline. `max` caps how many items the user may add.
+
+An item may also hold **one list of its own**: a field of type `list` with its own `itemSchema`
+(plain fields only: one level, never deeper), `max` and `summary`. The shortcuts widget's groups are
+built this way. In the editor, an item dropped onto the middle of an item that holds such a list
+goes into it, and a button takes it back out.
+
+`showWhen` shows an item field only on the items where sibling fields hold given values, one value
+or any of several: `"showWhen": { "kind": "group" }`, `"showWhen": { "kind": ["app", "url"] }`.
+A hidden field keeps its value; the widget decides what it means on that item.
 
 The admin shows the items folded, one line each, dragged into place and opened one at a time to
 edit their fields. `summary` lists the item fields that name an item there, the first non-empty one

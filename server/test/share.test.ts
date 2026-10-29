@@ -44,6 +44,10 @@ const MANIFESTS: Record<string, WidgetManifest> = {
     settingsSchema: {
       items: { type: 'list', label: 'Items', itemSchema: { kind: { type: 'enum', label: 'Kind', options: ['app', 'url'] }, target: { type: 'string', label: 'Target' } } },
       flags: { type: 'list', label: 'Flags', itemSchema: { on: { type: 'boolean', label: 'On' } } },
+      folders: { type: 'list', label: 'Folders', itemSchema: {
+        on: { type: 'boolean', label: 'On' },
+        inner: { type: 'list', label: 'Inner', itemSchema: { on: { type: 'boolean', label: 'On' }, target: { type: 'string', label: 'Target' } } },
+      } },
     },
   }),
 }
@@ -114,6 +118,14 @@ describe('classifySetting', () => {
     expect(classifySetting(s.items, [{ kind: 'url', target: 'x' }])).toBe('optional')
     expect(classifySetting(s.flags, [{ on: true }])).toBe('keep')
     expect(classifySetting(s.flags, [{ on: true, extra: 'x' }])).toBe('invalid')
+  })
+  it('reads the list an item holds by its own fields', () => {
+    const s = MANIFESTS.shortcuts.settingsSchema
+    expect(classifySetting(s.folders, [{ on: true, inner: [{ on: false }] }])).toBe('keep')
+    expect(classifySetting(s.folders, [{ on: true, inner: [{ target: 'x' }] }])).toBe('optional')
+    expect(classifySetting(s.folders, [{ inner: [{ extra: 1 }] }])).toBe('invalid')
+    expect(classifySetting(s.folders, [{ inner: 'x' }])).toBe('invalid')
+    expect(classifySetting(s.folders, [{ constructor: [] }])).toBe('invalid')
   })
 })
 

@@ -199,7 +199,8 @@ export const optionLabel = (option: SettingOption): LocalizedText => (typeof opt
  * nothing that needs the admin's own data, so a row stays one compact inline line.
  */
 export interface ListItemField {
-  type: 'string' | 'boolean' | 'enum' | 'number' | 'timezone'
+  /** `list`: the one list an item may hold, whose own items take plain fields only. */
+  type: 'string' | 'boolean' | 'enum' | 'number' | 'timezone' | 'list'
   label: LocalizedText
   default?: unknown
   options?: SettingOption[]
@@ -214,6 +215,20 @@ export interface ListItemField {
    * `{ kind: 'app' }` offers the applications only while the row's kind is "app".
    */
   suggestWhen?: Record<string, string>
+  /** Shows the field only on the items whose sibling fields hold one of these values. */
+  showWhen?: Record<string, string | string[]>
+  /** A nested `list` only: the fields of its items, how many it holds, what names one. */
+  itemSchema?: Record<string, ListItemField>
+  max?: number
+  summary?: string[]
+}
+
+/** True when a list item field shows on this item: every sibling `showWhen` names holds a value it allows. */
+export function fieldShown(field: ListItemField, item: Record<string, unknown>): boolean {
+  return Object.entries(field.showWhen ?? {}).every(([key, allowed]) => {
+    const value = String(item[key] ?? '')
+    return Array.isArray(allowed) ? allowed.includes(value) : value === allowed
+  })
 }
 
 /**

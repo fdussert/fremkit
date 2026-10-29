@@ -43,17 +43,24 @@ export const SettingOptionSchema = z.union([
 export type SettingOption = z.infer<typeof SettingOptionSchema>
 
 /**
- * The types a `list` item may be made of. Deliberately the plain ones: no nested list, and
- * nothing that needs the admin's own data (a connection, the Dock apps), because a list row is
- * rendered inline and must stay one compact line.
+ * The types a `list` item may be made of. Deliberately the plain ones, and nothing that needs the
+ * admin's own data (a connection, the Dock apps), because an item's fields are rendered inline.
+ * An item may hold one list of its own (`NESTED_LIST_TYPE`), whose items are plain again: one
+ * level, never deeper.
  */
 export const LIST_ITEM_TYPES = ['string', 'boolean', 'enum', 'number', 'timezone'] as const
+export const NESTED_LIST_TYPE = 'list'
 
 /** Where the admin reads the suggestions a list item field offers while the user types. */
 export const SUGGEST_SOURCES = ['apps'] as const
 
-export const ListItemFieldSchema = z.object({
-  type: z.enum(LIST_ITEM_TYPES),
+/**
+ * Shows an item field only on the items where sibling fields hold given values — one value, or
+ * any of several: `{ "kind": "group" }`, `{ "kind": ["app", "url"] }`. Absent, it always shows.
+ */
+const ShowWhenSchema = z.record(z.string(), z.union([z.string(), z.array(z.string()).min(1)]))
+
+const plainItemField = {
   label: LocalizedTextSchema,
   default: z.unknown().optional(),
   options: z.array(SettingOptionSchema).optional(),
@@ -68,6 +75,27 @@ export const ListItemFieldSchema = z.object({
    * the suggestions are offered on every row.
    */
   suggestWhen: z.record(z.string(), z.string()).optional(),
+  showWhen: ShowWhenSchema.optional(),
+}
+
+/** The field of an item nested in another item's list: plain types only. */
+export const NestedItemFieldSchema = z.object({ type: z.enum(LIST_ITEM_TYPES), ...plainItemField })
+  .refine((f) => f.suggest === undefined || f.type === 'string', {
+    message: 'suggest ne vaut que pour un champ de type string',
+  })
+  .refine((f) => f.suggestWhen === undefined || f.suggest !== undefined, {
+    error: () => tr(undefined, 'manifest.suggestWhenWithoutSuggest'),
+  })
+
+export const ListItemFieldSchema = z.object({
+  type: z.enum([...LIST_ITEM_TYPES, NESTED_LIST_TYPE]),
+  ...plainItemField,
+  /** A nested `list` only: the fields of its items, as a list setting's `itemSchema`. */
+  itemSchema: z.record(z.string(), NestedItemFieldSchema).optional(),
+  /** A nested `list` only: how many items it may hold. */
+  max: z.number().int().min(1).optional(),
+  /** A nested `list` only: the item fields that name one of its items in the editor. */
+  summary: z.array(z.string()).min(1).max(4).optional(),
 })
   .refine((f) => f.suggest === undefined || f.type === 'string', {
     message: 'suggest ne vaut que pour un champ de type string',
@@ -75,7 +103,17 @@ export const ListItemFieldSchema = z.object({
   .refine((f) => f.suggestWhen === undefined || f.suggest !== undefined, {
     error: () => tr(undefined, 'manifest.suggestWhenWithoutSuggest'),
   })
+  .refine((f) => f.type !== NESTED_LIST_TYPE || Object.keys(f.itemSchema ?? {}).length > 0, {
+    error: () => tr(undefined, 'manifest.listNeedsItemSchema'),
+  })
+  .refine((f) => f.type === NESTED_LIST_TYPE || (f.itemSchema === undefined && f.max === undefined && f.summary === undefined), {
+    error: () => tr(undefined, 'manifest.itemListOnly'),
+  })
+  .refine((f) => !f.summary || f.summary.every((key) => key in (f.itemSchema ?? {})), {
+    error: () => tr(undefined, 'manifest.listSummaryUnknown'),
+  })
 export type ListItemField = z.infer<typeof ListItemFieldSchema>
+export type NestedItemField = z.infer<typeof NestedItemFieldSchema>
 
 /**
  * Which rendering of the widget a setting belongs to: the `tile` drawn on a page, or the
@@ -140,6 +178,19 @@ export const SettingFieldSchema = z.object({
   .refine((f) => !f.summary || f.summary.every((key) => key in (f.itemSchema ?? {})), {
     error: () => tr(undefined, 'manifest.listSummaryUnknown'),
   })
+  .refine((f) => Object.values(f.itemSchema ?? {}).filter((item) => item.type === NESTED_LIST_TYPE).length <= 1, {
+    error: () => tr(undefined, 'manifest.oneNestedList'),
+  })
+  .refine((f) => showWhenNamesSiblings(f.itemSchema ?? {}), {
+    error: () => tr(undefined, 'manifest.showWhenUnknown'),
+  })
+
+/** Every `showWhen` of a set of item fields names other fields of the same set, at every level. */
+function showWhenNamesSiblings(schema: Record<string, { showWhen?: Record<string, unknown>; itemSchema?: Record<string, { showWhen?: Record<string, unknown> }> }>): boolean {
+  return Object.entries(schema).every(([key, field]) =>
+    Object.keys(field.showWhen ?? {}).every((other) => other !== key && other in schema)
+    && (!field.itemSchema || showWhenNamesSiblings(field.itemSchema)))
+}
 
 /** v1 manifests described a 32x16 grid with fixed `sizes`; the v2 grid has twice the cells. */
 const LEGACY_SCALE = 2

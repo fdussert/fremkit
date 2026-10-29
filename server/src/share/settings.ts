@@ -1,5 +1,5 @@
 import { HEX_COLOR_RE } from '../config/schema.js'
-import type { SettingField, SettingOption } from '../widgets/manifest.js'
+import type { ListItemField, NestedItemField, SettingField, SettingOption } from '../widgets/manifest.js'
 import { isBoundedJson } from './format.js'
 
 /**
@@ -42,6 +42,27 @@ function closed(type: string, options: SettingField['options'], value: unknown):
   }
 }
 
+/**
+ * A list's items checked against their fields, the one list an item may hold included: false for
+ * anything malformed, 'free' when some field holds free text.
+ */
+function listItems(schema: Record<string, ListItemField | NestedItemField>, value: unknown): boolean | 'free' {
+  if (!Array.isArray(value)) return false
+  let free = false
+  for (const item of value) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) return false
+    for (const [key, v] of Object.entries(item as Record<string, unknown>)) {
+      // Own keys only: an item's `constructor` names no field.
+      if (!Object.hasOwn(schema, key)) return false
+      const spec = schema[key]
+      const ok = spec.type === 'list' && 'itemSchema' in spec ? listItems(spec.itemSchema ?? {}, v) : closed(spec.type, spec.options, v)
+      if (ok === false) return false
+      if (ok === 'free') free = true
+    }
+  }
+  return free ? 'free' : true
+}
+
 /** The verdict for one setting. `field` is the manifest's entry for its key, if it has one. */
 export function classifySetting(field: SettingField | undefined, value: unknown): SettingVerdict {
   if (!field) return 'unknown'
@@ -51,20 +72,8 @@ export function classifySetting(field: SettingField | undefined, value: unknown)
     return Array.isArray(value) && value.every((v) => typeof v === 'string') ? 'optional' : 'invalid'
   }
   if (field.type === 'list') {
-    if (!Array.isArray(value)) return 'invalid'
-    const items = Object.entries(field.itemSchema ?? {})
-    let free = false
-    for (const item of value) {
-      if (!item || typeof item !== 'object' || Array.isArray(item)) return 'invalid'
-      for (const [key, v] of Object.entries(item as Record<string, unknown>)) {
-        const spec = items.find(([k]) => k === key)?.[1]
-        if (!spec) return 'invalid'
-        const ok = closed(spec.type, spec.options, v)
-        if (ok === false) return 'invalid'
-        if (ok === 'free') free = true
-      }
-    }
-    return free ? 'optional' : 'keep'
+    const ok = listItems(field.itemSchema ?? {}, value)
+    return ok === false ? 'invalid' : ok === 'free' ? 'optional' : 'keep'
   }
   const ok = closed(field.type, field.options, value)
   return ok === 'free' ? 'optional' : ok ? 'keep' : 'invalid'

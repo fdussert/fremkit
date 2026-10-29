@@ -144,10 +144,33 @@ describe('ManifestSchema', () => {
       expect(withSetting({ type: 'list', label: 'Villes' }).success).toBe(false)
       expect(withSetting({ type: 'list', label: 'Villes', itemSchema: {} }).success).toBe(false)
     })
-    it('refuses a nested list, and any item type the row cannot render inline', () => {
+    it('refuses any item type the row cannot render inline, and a list item with no fields', () => {
       for (const type of ['list', 'color', 'connection', 'apps']) {
         expect(withSetting({ type: 'list', label: 'Villes', itemSchema: { x: { type, label: 'X' } } }).success).toBe(false)
       }
+    })
+    it('accepts one list inside an item, one level deep, with fields shown on some items only', () => {
+      const plain = { label: { type: 'string', label: 'L' } }
+      const list = (itemSchema: Record<string, unknown>) => withSetting({ type: 'list', label: 'Boutons', itemSchema })
+      expect(list({
+        kind: { type: 'enum', label: 'K', options: ['app', 'group'] },
+        target: { type: 'string', label: 'T', showWhen: { kind: ['app', 'url'] } },
+        items: { type: 'list', label: 'I', max: 12, summary: ['label'], showWhen: { kind: 'group' }, itemSchema: plain },
+      }).success).toBe(true)
+      // Never deeper, never two, never without fields.
+      expect(list({ items: { type: 'list', label: 'I', itemSchema: { more: { type: 'list', label: 'M', itemSchema: plain } } } }).success).toBe(false)
+      expect(list({ a: { type: 'list', label: 'A', itemSchema: plain }, b: { type: 'list', label: 'B', itemSchema: plain } }).success).toBe(false)
+      expect(list({ items: { type: 'list', label: 'I' } }).success).toBe(false)
+      expect(list({ items: { type: 'list', label: 'I', itemSchema: plain, summary: ['nope'] } }).success).toBe(false)
+      // A plain field takes none of a list's keys.
+      expect(list({ x: { type: 'string', label: 'X', max: 3 } }).success).toBe(false)
+    })
+    it('refuses a showWhen that names no sibling field, or the field itself', () => {
+      const list = (itemSchema: Record<string, unknown>) => withSetting({ type: 'list', label: 'Boutons', itemSchema })
+      expect(list({ x: { type: 'string', label: 'X', showWhen: { kind: 'app' } } }).success).toBe(false)
+      expect(list({ x: { type: 'string', label: 'X', showWhen: { x: 'a' } } }).success).toBe(false)
+      expect(list({ x: { type: 'string', label: 'X', showWhen: {} }, y: { type: 'string', label: 'Y', showWhen: { x: [] } } }).success).toBe(false)
+      expect(list({ g: { type: 'list', label: 'G', itemSchema: { y: { type: 'string', label: 'Y', showWhen: { kind: 'a' } } } } }).success).toBe(false)
     })
     it('accepts suggest on a string item field, with an optional sibling condition', () => {
       const list = (x: unknown) => withSetting({ type: 'list', label: 'Boutons', itemSchema: { x } })
