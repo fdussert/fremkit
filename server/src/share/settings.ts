@@ -38,6 +38,8 @@ function closed(type: string, options: SettingField['options'], value: unknown):
       // An enum with no options is a free text field the admin happens to draw as a select.
       return options?.length ? options.map(optionValue).includes(value) : 'free'
     case 'string': return typeof value === 'string' ? 'free' : false
+    // An emoji, an address, or a file of the author's own library: free text, as a string is.
+    case 'icon': return typeof value === 'string' ? 'free' : false
     default: return false
   }
 }

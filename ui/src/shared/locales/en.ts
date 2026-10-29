@@ -564,6 +564,7 @@ export const en: Record<string, string> = {
   'admin.settings.pick.all': 'Select all',
   'admin.settings.pick.none': 'Select none',
   'admin.settings.pick.unknown': '{count} ticked item(s) are no longer offered.',
+  'admin.settings.icon.library': 'My icons',
   'admin.settings.list.add': 'Add',
   'admin.settings.list.empty': 'Nothing yet.',
   'admin.settings.list.drag': 'Drag to move, touch to edit',

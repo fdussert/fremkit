@@ -564,6 +564,7 @@ export const fr: Record<string, string> = {
   'admin.settings.pick.all': 'Tout cocher',
   'admin.settings.pick.none': 'Tout décocher',
   'admin.settings.pick.unknown': '{count} élément(s) coché(s) ne sont plus proposés.',
+  'admin.settings.icon.library': 'Mes icônes',
   'admin.settings.list.add': 'Ajouter',
   'admin.settings.list.empty': 'Rien pour le moment.',
   'admin.settings.list.drag': 'Glisser pour déplacer, toucher pour modifier',

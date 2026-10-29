@@ -144,6 +144,9 @@ describe('ManifestSchema', () => {
       expect(withSetting({ type: 'list', label: 'Villes' }).success).toBe(false)
       expect(withSetting({ type: 'list', label: 'Villes', itemSchema: {} }).success).toBe(false)
     })
+    it('accepts an icon item field', () => {
+      expect(withSetting({ type: 'list', label: 'Boutons', itemSchema: { icon: { type: 'icon', label: 'Icône' } } }).success).toBe(true)
+    })
     it('refuses any item type the row cannot render inline, and a list item with no fields', () => {
       for (const type of ['list', 'color', 'connection', 'apps']) {
         expect(withSetting({ type: 'list', label: 'Villes', itemSchema: { x: { type, label: 'X' } } }).success).toBe(false)

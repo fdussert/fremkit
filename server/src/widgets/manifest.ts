@@ -43,12 +43,15 @@ export const SettingOptionSchema = z.union([
 export type SettingOption = z.infer<typeof SettingOptionSchema>
 
 /**
+ * `icon` is a string the admin offers to fill from the user's icon library, as `file:<name>`
+ * (read back with `Fremkit.libraryIcon`); an emoji or an address stays typeable.
+ *
  * The types a `list` item may be made of. Deliberately the plain ones, and nothing that needs the
  * admin's own data (a connection, the Dock apps), because an item's fields are rendered inline.
  * An item may hold one list of its own (`NESTED_LIST_TYPE`), whose items are plain again: one
  * level, never deeper.
  */
-export const LIST_ITEM_TYPES = ['string', 'boolean', 'enum', 'number', 'timezone'] as const
+export const LIST_ITEM_TYPES = ['string', 'boolean', 'enum', 'number', 'timezone', 'icon'] as const
 export const NESTED_LIST_TYPE = 'list'
 
 /** Where the admin reads the suggestions a list item field offers while the user types. */

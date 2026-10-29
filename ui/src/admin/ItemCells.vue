@@ -1,6 +1,11 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import BaseInput from '../shared/ui/BaseInput.vue'
+import BaseButton from '../shared/ui/BaseButton.vue'
+import BaseIcon from '../shared/ui/BaseIcon.vue'
+import TileIcon from '../shared/TileIcon.vue'
+import LibraryIconPicker from './LibraryIconPicker.vue'
+import { LIBRARY_ICON_PREFIX } from '../shared/widgetMessages'
 import { pick, useI18n } from '../shared/i18n'
 import { fieldShown, optionLabel, optionValue, suggestApplies, type ListItemField } from '../shared/types'
 
@@ -39,6 +44,18 @@ function badTimezone(value: unknown): boolean {
  */
 const suggestList = (itf: ListItemField): string | undefined =>
   itf.suggest === 'apps' && suggestApplies(itf, props.item) ? props.appsListId : undefined
+
+/** The `icon` field whose library is open under the fields, or null. */
+const library = ref<string | null>(null)
+/** The library file an `icon` field names, for its preview. */
+function libraryFile(key: string): string | null {
+  const value = String(props.item[key] ?? '').trim()
+  return value.startsWith(LIBRARY_ICON_PREFIX) ? value.slice(LIBRARY_ICON_PREFIX.length) : null
+}
+function pickIcon(key: string, value: string): void {
+  emit('set', key, value)
+  library.value = null
+}
 </script>
 
 <template>
@@ -56,9 +73,19 @@ const suggestList = (itf: ListItemField): string | undefined =>
       <BaseInput v-else-if="itf.type === 'timezone'" lazy :list="timezoneListId"
         :invalid="badTimezone(item[ik])" :title="badTimezone(item[ik]) ? t('admin.settings.timezone.unknown') : undefined"
         :model-value="text(ik, itf)" @update:model-value="emit('set', ik, String($event).trim())" />
+      <span v-else-if="itf.type === 'icon'" class="iconRow">
+        <BaseInput lazy :model-value="text(ik, itf)" @update:model-value="emit('set', ik, $event)" />
+        <TileIcon v-if="libraryFile(ik)" class="thumb" :icon="{ kind: 'file', name: libraryFile(ik)!, tint: false }" />
+        <BaseButton variant="icon" :title="t('admin.settings.icon.library')" :aria-expanded="library === ik"
+          @click.prevent="library = library === ik ? null : ik">
+          <BaseIcon name="folder" :size="16" />
+        </BaseButton>
+      </span>
       <BaseInput v-else lazy :list="suggestList(itf)" :model-value="text(ik, itf)"
         @update:model-value="emit('set', ik, $event)" />
     </label>
+    <LibraryIconPicker v-if="library && shown.some(([k]) => k === library)" class="wide"
+      :value="String(item[library] ?? '')" @pick="pickIcon(library!, $event)" />
   </div>
 </template>
 
@@ -68,6 +95,10 @@ const suggestList = (itf: ListItemField): string | undefined =>
 /* A checkbox needs no column of its own: label beside the box, sized to its content. */
 .cell.flag { flex: 0 0 auto; flex-direction: row-reverse; align-items: center; gap: var(--space-1); }
 .cell.flag input { accent-color: var(--accent); width: 16px; height: 16px; }
+.iconRow { display: flex; align-items: center; gap: var(--space-1); }
+.iconRow > :first-child { flex: 1; min-width: 0; }
+.thumb { flex: 0 0 auto; width: 22px; height: 22px; }
+.wide { flex: 1 1 100%; }
 .cap { font-size: var(--fs-xs); color: var(--text-dim); text-transform: uppercase; letter-spacing: .06em;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 </style>

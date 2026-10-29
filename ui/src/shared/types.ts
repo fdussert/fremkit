@@ -200,7 +200,8 @@ export const optionLabel = (option: SettingOption): LocalizedText => (typeof opt
  */
 export interface ListItemField {
   /** `list`: the one list an item may hold, whose own items take plain fields only. */
-  type: 'string' | 'boolean' | 'enum' | 'number' | 'timezone' | 'list'
+  /** `icon`: a string the admin can fill from the user's icon library, as `file:<name>`. */
+  type: 'string' | 'boolean' | 'enum' | 'number' | 'timezone' | 'icon' | 'list'
   label: LocalizedText
   default?: unknown
   options?: SettingOption[]
