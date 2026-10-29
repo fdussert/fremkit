@@ -51,6 +51,23 @@ export function imageTarget(message: { url?: unknown }, settings: unknown): stri
   return settingsHold(settings, url) ? url : null
 }
 
+/** How an `icon` setting names an icon of the user's library: `file:` and the file's name. */
+export const LIBRARY_ICON_PREFIX = 'file:'
+/** The library's own rule for a name (`isSafeTileIconName` on the server): one file, never a path. */
+const LIBRARY_ICON_NAME_RE = /^[A-Za-z0-9._-]+\.(png|webp|svg)$/
+
+/**
+ * The library icon a `fremkit:library-icon` message asks for, as its file name, or null. Only one
+ * the widget's own settings name, as `file:<name>`: a widget does not get to browse the library.
+ */
+export function libraryIconTarget(message: { value?: unknown }, settings: unknown): string | null {
+  const value = nonEmptyString(message.value)?.trim()
+  if (!value?.startsWith(LIBRARY_ICON_PREFIX)) return null
+  const name = value.slice(LIBRARY_ICON_PREFIX.length)
+  if (name.length > 200 || name.startsWith('.') || name.includes('..') || !LIBRARY_ICON_NAME_RE.test(name)) return null
+  return settingsHold(settings, value) ? name : null
+}
+
 /**
  * The address a `fremkit:gif` message asks the host for, or null.
  *

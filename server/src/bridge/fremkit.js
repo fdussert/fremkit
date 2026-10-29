@@ -328,7 +328,7 @@
      * lowest generation it needs, and the server refuses to install one asking for more than it
      * has. Kept in step with `SDK_VERSION` in ./sdk.ts by bridge.test.ts.
      */
-    sdk: 5,
+    sdk: 6,
     instanceId: null,
     /**
      * The id of the screen this frame is drawn on (the Edge, a paired device), or null when the
@@ -437,6 +437,14 @@
      */
     image: function (url) {
       return request({ type: 'fremkit:image', url: url })
+    },
+    /**
+     * An icon from the user's library (the one the tiles' title icons come from), as a `data:`
+     * URL. `value` is what an `icon` setting stores, `file:<name>`; only an icon this widget's own
+     * settings name is answered, and an SVG drawn in an `<img>` runs nothing.
+     */
+    libraryIcon: function (value) {
+      return request({ type: 'fremkit:library-icon', value: value })
     },
     /**
      * A GIF the server already keeps, as a `data:` URL; rejects when it has none for `url`. Only

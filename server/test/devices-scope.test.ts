@@ -25,7 +25,7 @@ const RAW_CONFIG = {
   widgets: {
     'cal-b': { widgetId: 'cal', settings: { source: 'ics-b' } },
     'cal-edge': { widgetId: 'cal', settings: { source: 'ics-edge' } },
-    'sc-b': { widgetId: 'shortcuts', settings: { buttons: [] } },
+    'sc-b': { widgetId: 'shortcuts', settings: { buttons: [{ label: 'Pipelines', kind: 'group', items: [{ icon: 'file:2-b.svg' }] }] } },
     'sc-edge': { widgetId: 'shortcuts', settings: { buttons: [] } },
     'clock-edge': { widgetId: 'clock', settings: {}, icon: { kind: 'file', name: '1-edge.svg' } },
     'clock-a': { widgetId: 'clock', settings: {}, icon: { kind: 'file', name: '1-a.svg', tint: false } },
@@ -138,6 +138,12 @@ describe('tileIconInScope', () => {
     expect(tileIconInScope(config(), a, '1-edge.svg')).toBe(false)
     expect(tileIconInScope(config(), { kind: 'screen', screenId: 'tab-b' }, '1-a.svg')).toBe(false)
     expect(tileIconInScope(config(), { kind: 'none' }, '1-a.svg')).toBe(false)
+  })
+  it('gives a device an icon a widget of its screen names in its settings, and only there', () => {
+    expect(tileIconInScope(config(), { kind: 'screen', screenId: 'tab-b' }, '2-b.svg')).toBe(true)
+    expect(tileIconInScope(config(), { kind: 'screen', screenId: 'tab-a' }, '2-b.svg')).toBe(false)
+    // The bare name in a setting is not a library icon.
+    expect(tileIconInScope(config(), { kind: 'screen', screenId: 'tab-b' }, 'i.png')).toBe(false)
   })
 })
 

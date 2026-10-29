@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { FrameTrust, helloNonce, appIconTarget, cleanTitleNote, faviconTarget, fetchTarget, gifTarget, imageTarget, mayListApps, nonEmptyString, stampInstance } from '../src/shared/widgetMessages'
+import { FrameTrust, helloNonce, appIconTarget, cleanTitleNote, faviconTarget, fetchTarget, gifTarget, imageTarget, libraryIconTarget, mayListApps, nonEmptyString, stampInstance } from '../src/shared/widgetMessages'
 
 describe('nonEmptyString', () => {
   it('accepts a non-empty string and nothing else', () => {
@@ -100,6 +100,21 @@ describe('imageTarget', () => {
     expect(imageTarget({ url: 'https://evil.example.net/x.png' }, settings)).toBeNull()
     expect(imageTarget({ url: 'file:///etc/hosts' }, { p: 'file:///etc/hosts' })).toBeNull()
     expect(imageTarget({ url: 42 }, settings)).toBeNull()
+  })
+})
+
+describe('libraryIconTarget', () => {
+  const settings = { buttons: [{ label: 'Prod', items: [{ icon: ' file:12-pipeline.svg ' }] }] }
+  it('gives the file name of a library icon the widget settings name', () => {
+    expect(libraryIconTarget({ value: 'file:12-pipeline.svg' }, settings)).toBe('12-pipeline.svg')
+  })
+  it('refuses an icon the settings do not name, a path, and anything not an icon file', () => {
+    expect(libraryIconTarget({ value: 'file:13-other.svg' }, settings)).toBeNull()
+    expect(libraryIconTarget({ value: '12-pipeline.svg' }, settings)).toBeNull()
+    for (const value of ['file:../secrets.json', 'file:a/b.svg', 'file:.hidden.svg', 'file:x.html', 'file:']) {
+      expect(libraryIconTarget({ value }, { icon: value }), value).toBeNull()
+    }
+    expect(libraryIconTarget({ value: 42 }, settings)).toBeNull()
   })
 })
 
