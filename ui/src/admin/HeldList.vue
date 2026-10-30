@@ -15,7 +15,7 @@ import ListItems from './ListItems.vue'
 import ItemCells from './ItemCells.vue'
 import { heldItems, moveTo, nestInto, nestedListKey, newItem, takeOut } from './listItems'
 import { pick, useI18n } from '../shared/i18n'
-import { fieldShown, type ListItemField } from '../shared/types'
+import { fieldShown, type ListItemField, type SuggestSource } from '../shared/types'
 
 type Item = Record<string, unknown>
 
@@ -27,7 +27,7 @@ const props = defineProps<{
   columns: number | null
   /** The holder's own list is full: an item taken out of here would not fit there. */
   outerFull: boolean
-  appsListId: string
+  suggestLists: Partial<Record<SuggestSource, string>>
   timezoneListId: string
   timeZones: string[]
 }>()
@@ -97,11 +97,11 @@ function takeOutOf(i: number, key: string, j: number): void {
       :open="open !== null && open < items.length ? open : null" :holders="holders" :can-nest="canNest"
       @toggle="toggle" @move="move" @nest="nest">
       <template #editor="{ index: j }">
-        <ItemCells :schema="field.itemSchema ?? {}" :item="items[j]" :apps-list-id="appsListId"
+        <ItemCells :schema="field.itemSchema ?? {}" :item="items[j]" :suggest-lists="suggestLists"
           :timezone-list-id="timezoneListId" :time-zones="timeZones" @set="(key, value) => setField(j, key, value)" />
         <template v-for="h in [inner(items[j])]" :key="j">
           <HeldList v-if="h" :field="h.field" :held-key="h.key" :items="heldItems(items[j], h.key)" :columns="columns"
-            :outer-full="full" :apps-list-id="appsListId" :timezone-list-id="timezoneListId" :time-zones="timeZones"
+            :outer-full="full" :suggest-lists="suggestLists" :timezone-list-id="timezoneListId" :time-zones="timeZones"
             @change="setInner(j, h.key, $event)" @take-out="takeOutOf(j, h.key, $event)" />
         </template>
         <div class="rowActions">

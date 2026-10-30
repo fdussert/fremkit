@@ -253,3 +253,18 @@ describe('a subgroup', () => {
     expect(names(loaded)).toEqual(['Terminal', 'Prod'])
   })
 })
+
+describe('a link opened in a browser profile', () => {
+  const badges = (loaded: Loaded) => loaded.buttons().map((b) => b.children.find((c) => c.className === 'profile')?.textContent ?? null)
+  const buttons = [
+    { label: 'Mail', kind: 'url', target: 'https://example.com/mail', profile: 'Brave — boulot' },
+    { label: 'Site', kind: 'url', target: 'https://example.com' },
+    { label: 'Calc', kind: 'app', target: 'Calculator', profile: 'Brave — Perso' },
+  ]
+  it('wears the profile\'s initial, on links only', async () => {
+    expect(badges(await loadWidget([], { buttons }))).toEqual(['B', null, null])
+  })
+  it('wears none when the badge is turned off', async () => {
+    expect(badges(await loadWidget([], { buttons, profileBadge: false }))).toEqual([null, null, null])
+  })
+})

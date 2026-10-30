@@ -241,8 +241,11 @@ winning (`["label", "target"]`); absent, the first text or choice field with a v
 the `number` setting that holds them (`"grid": "columns"`); the editor caps it at six.
 
 A `string` item field may also declare `suggest`, which gives it a drop-down of suggestions while
-the user types. The only source today is `"apps"`, the applications installed on this machine, read
-once per admin session from `GET /api/apps/installed` and offered by name. `suggestWhen` narrows
+the user types. `"apps"` offers the applications installed on this machine, read once per admin
+session from `GET /api/apps/installed` and offered by name. `"browserProfiles"` offers the profiles
+of the Brave, Chrome and Edge installed here as `Brave — Perso`, read from
+`GET /api/browsers/profiles`; the shortcuts widget is the only one whose host command knows what to
+do with that value. `suggestWhen` narrows
 the suggestions to the rows where sibling fields of the same item hold given values.
 
 ```json

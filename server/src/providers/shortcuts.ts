@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { isTrusted, type CommandContext, type Provider } from './types.js'
 import { noInstances, type InstanceLookup } from '../config/instances.js'
 import { tr } from '../i18n.js'
+import type { BrowserProfiles } from '../browsers/profiles.js'
 
 /** Longest a target may be: an application name, a URL or a shortcut name, never a document. */
 const MAX_TARGET = 200
@@ -54,7 +55,12 @@ const UrlSchema = z
 export const OpenPayloadSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('app'), target: NameSchema }),
   z.object({ kind: z.literal('shortcut'), target: NameSchema }),
-  z.object({ kind: z.literal('url'), target: UrlSchema }),
+  z.object({
+    kind: z.literal('url'),
+    target: UrlSchema,
+    /** `Brave — Perso`: the browser profile to open the link in; empty for the default browser. */
+    profile: z.string().trim().max(MAX_TARGET).optional(),
+  }),
 ])
 export type OpenPayload = z.infer<typeof OpenPayloadSchema>
 
@@ -126,6 +132,17 @@ export const runProgram: Runner = (file, args) =>
     })
   })
 
+/**
+ * The argv that opens a link in one browser profile.
+ *
+ * `-n` starts a second copy of the browser, which hands the link to the one already running and
+ * quits; plain `open -a … --args` would drop the flags whenever the browser is open. The bundle
+ * and the profile folder come from `BrowserProfiles.resolve`, never from the setting itself.
+ */
+export function profileArgv(app: string, dir: string, url: string): [string, string[]] {
+  return ['/usr/bin/open', ['-n', '-a', app, '--args', `--profile-directory=${dir}`, url]]
+}
+
 /** Which program opens which kind of target, as an argv. */
 export function argvFor(payload: OpenPayload): [string, string[]] {
   switch (payload.kind) {
@@ -146,6 +163,7 @@ export interface OpenResult { ok: boolean; error?: string }
 export function createShortcutsProvider(
   run: Runner = runProgram,
   instances: InstanceLookup = noInstances,
+  profiles?: Pick<BrowserProfiles, 'resolve'>,
 ): Provider {
   return {
     channel: 'shortcuts',
@@ -165,7 +183,16 @@ export function createShortcutsProvider(
         // device finds only the instances of its own screen.
         const resolved = resolveButton((id) => instances(id, ctx), request.data)
         if (!resolved.ok) return { ok: false, error: resolved.error }
-        const [file, args] = argvFor(resolved.payload)
+        const button = resolved.payload
+        let argv = argvFor(button)
+        if (button.kind === 'url' && button.profile) {
+          // A profile that is not there is an error, not the default browser: a work link opened
+          // in the personal profile is the very thing the setting exists to prevent.
+          const profile = profiles ? await profiles.resolve(button.profile) : { ok: false as const, error: 'unknownBrowser' as const }
+          if (!profile.ok) return { ok: false, error: tr(undefined, `shortcuts.${profile.error}`) }
+          argv = profileArgv(profile.app, profile.dir, button.target)
+        }
+        const [file, args] = argv
         try {
           await run(file, args)
           return { ok: true }

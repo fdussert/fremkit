@@ -55,7 +55,7 @@ export const LIST_ITEM_TYPES = ['string', 'boolean', 'enum', 'number', 'timezone
 export const NESTED_LIST_TYPE = 'list'
 
 /** Where the admin reads the suggestions a list item field offers while the user types. */
-export const SUGGEST_SOURCES = ['apps'] as const
+export const SUGGEST_SOURCES = ['apps', 'browserProfiles'] as const
 
 /**
  * Shows an item field only on the items where sibling fields hold given values — one value, or
@@ -69,7 +69,8 @@ const plainItemField = {
   options: z.array(SettingOptionSchema).optional(),
   /**
    * `string` fields only: the admin offers these as a drop-down while typing. `apps` names the
-   * applications installed on this machine. Suggestions never restrict: any value stays typeable.
+   * applications installed on this machine, `browserProfiles` the profiles of its Brave, Chrome
+   * and Edge as `Brave — Perso`. Suggestions never restrict: any value stays typeable.
    */
   suggest: z.enum(SUGGEST_SOURCES).optional(),
   /**

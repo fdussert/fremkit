@@ -14,6 +14,11 @@ tagged `vX.Y.Z`.
 
 ### Added
 
+- **Shortcuts: open a link in a browser profile.** A link button's *Open in* box offers the
+  profiles of Brave, Chrome and Edge found on this Mac, such as `Brave — Work`, and the link opens
+  in that profile's window. A profile can also be typed by hand. The button wears the profile's
+  initial in its corner, which a setting turns off.
+
 - **Shortcuts: your own icons, SVG included.** A button's or a group's icon can now come from
   your icon library, the one the tiles' title icons use: the folder button beside the field picks
   one or imports a PNG, WebP or SVG, such as a CI service's pipeline mark. A group also takes an

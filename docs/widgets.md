@@ -413,6 +413,15 @@ are the size of the grid's, so more of them than fit scroll, the back button sta
 and use *Take out of the group* in its fields to put it back. The widget only says which button of
 which group was touched; the server reads what it opens from the saved settings, as for any button.
 
+A link may open in **a browser profile**: its *Open in* box offers the profiles of the Brave,
+Chrome and Edge installed on this Mac, as `Brave — Perso`, read from each browser's own
+`Local State` (the profile's name only, never the account signed into it). A profile the list does
+not show can be typed by its folder name, `Brave — Profile 3`. The server finds the browser in
+`/Applications` or `~/Applications` and the profile folder in the browser's data folder, then runs
+`open -n -a <browser> --args --profile-directory=<folder> <url>`; a browser or a profile it cannot
+find is an error, never the default browser. The button wears the profile's initial in its corner
+unless `profileBadge` is off.
+
 Only three kinds exist, and none of them is a shell: `app` runs `open -a <name>`, `url` runs
 `open <url>` for an `http`, `https` or `mailto` address only, and `shortcut` runs
 `shortcuts run <name>`. The server validates every payload — a name holding a path separator or a
@@ -424,8 +433,9 @@ tall, with icons to match — down to a finger-sized minimum, past which the gri
 
 | Setting | Type | Default | Scope | What it is |
 |---|---|---|---|---|
-| `buttons` | list of `{ label, kind, target, icon, items }` | `[]` | both | One row per button, in the order drawn |
+| `buttons` | list of `{ label, kind, target, profile, icon, items }` | `[]` | both | One row per button, in the order drawn |
 | `columns` | number | `4` | both | How many buttons per row |
+| `profileBadge` | boolean | `true` | both | Draw the initial of the browser profile a link opens in |
 | `showIcons` | boolean | `true` | both | Draw the icon of an application button, and the site's favicon for a link |
 | `background` | `tinted` / `accent` / `custom` / `none` | `tinted` | both | What the buttons are drawn on: a translucent tint, the tile's accent, the colour below, or nothing |
 | `color` | colour | `#d9b36a` | both | The buttons' colour when `background` is `custom`; the text on it is black or white, whichever reads |

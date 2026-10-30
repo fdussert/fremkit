@@ -207,10 +207,10 @@ export interface ListItemField {
   options?: SettingOption[]
   /**
    * `string` fields only: where the admin reads the suggestions it offers while typing.
-   * `apps` lists the applications installed on this machine. A suggestion is only that — any
-   * value stays typeable.
+   * `apps` lists the applications installed on this machine, `browserProfiles` the profiles of its
+   * Brave, Chrome and Edge. A suggestion is only that — any value stays typeable.
    */
-  suggest?: 'apps'
+  suggest?: SuggestSource
   /**
    * Narrows `suggest` to the rows where a sibling field of the same item holds a given value —
    * `{ kind: 'app' }` offers the applications only while the row's kind is "app".
@@ -241,6 +241,17 @@ export function fieldShown(field: ListItemField, item: Record<string, unknown>):
 export function suggestApplies(field: ListItemField, item: Record<string, unknown>): boolean {
   if (!field.suggest) return false
   return Object.entries(field.suggestWhen ?? {}).every(([key, value]) => String(item[key] ?? '') === value)
+}
+
+/** Where a list item field's suggestions come from. */
+export type SuggestSource = 'apps' | 'browserProfiles'
+
+/** One profile of an installed browser, as `GET /api/browsers/profiles` returns it. */
+export interface BrowserProfileInfo {
+  browser: string
+  name: string
+  /** What a shortcut saves: `Brave — Perso`. */
+  value: string
 }
 
 /** One installed application, as `GET /api/apps/installed` returns it. */

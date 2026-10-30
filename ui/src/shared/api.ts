@@ -1,4 +1,4 @@
-import type { Config, ConnectionSummary, ExportPreview, ImportPreview, LayoutScope, ConnectionTypeInfo, InstalledAppInfo, MarketplaceResponse, PickOption, WidgetPermissionSet, WidgetsResponse } from './types'
+import type { Config, ConnectionSummary, ExportPreview, ImportPreview, LayoutScope, ConnectionTypeInfo, InstalledAppInfo, BrowserProfileInfo, MarketplaceResponse, PickOption, WidgetPermissionSet, WidgetsResponse } from './types'
 
 /**
  * The install was refused because the package asks for something the dialog did not show.
@@ -250,6 +250,7 @@ export const api = {
 
   /** The applications installed on this machine, for the fields a manifest marks `suggest: apps`. */
   getInstalledApps: () => fetch('/api/apps/installed').then((r) => json<InstalledAppInfo[]>(r)),
+  getBrowserProfiles: () => fetch('/api/browsers/profiles').then((r) => json<BrowserProfileInfo[]>(r)),
 
   /**
    * Downloads the whole dashboard as a zip.

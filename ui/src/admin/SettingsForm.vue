@@ -14,7 +14,7 @@ import { useSocket } from '../shared/socket'
 import { useAdminStore } from './store'
 import { useConnectionsStore } from './connections'
 import { api } from '../shared/api'
-import { channelAllowed, fieldShown, fieldsInScope, optionLabel, optionValue, type InstalledAppInfo, type ListItemField, type PickOption, type SettingField, type SettingScope } from '../shared/types'
+import { channelAllowed, fieldShown, fieldsInScope, optionLabel, optionValue, type BrowserProfileInfo, type InstalledAppInfo, type ListItemField, type PickOption, type SettingField, type SettingScope } from '../shared/types'
 
 /**
  * The installed applications, fetched at most once per admin session.
@@ -27,6 +27,12 @@ function installedAppsOnce(): Promise<InstalledAppInfo[]> {
   // A failure is not retried within the session: the field still accepts anything typed into it.
   installedAppsRequest ??= api.getInstalledApps().catch(() => [])
   return installedAppsRequest
+}
+/** The browsers' profiles, fetched at most once per admin session for the same reason. */
+let browserProfilesRequest: Promise<BrowserProfileInfo[]> | null = null
+function browserProfilesOnce(): Promise<BrowserProfileInfo[]> {
+  browserProfilesRequest ??= api.getBrowserProfiles().catch(() => [])
+  return browserProfilesRequest
 }
 
 const props = defineProps<{
@@ -353,6 +359,14 @@ const hasSuggestApps = computed(() => itemFields.value.some((itf) => itf.suggest
 watch(hasSuggestApps, (has) => {
   if (has && !installedApps.value.length) void installedAppsOnce().then((apps) => { installedApps.value = apps })
 }, { immediate: true })
+/** One <datalist> serves every `suggest: browserProfiles` input too. */
+const BROWSER_PROFILES_LIST_ID = 'fremkit-browser-profiles'
+const browserProfiles = ref<BrowserProfileInfo[]>([])
+const hasSuggestProfiles = computed(() => itemFields.value.some((itf) => itf.suggest === 'browserProfiles'))
+watch(hasSuggestProfiles, (has) => {
+  if (has && !browserProfiles.value.length) void browserProfilesOnce().then((list) => { browserProfiles.value = list })
+}, { immediate: true })
+const SUGGEST_LISTS = { apps: APPS_LIST_ID, browserProfiles: BROWSER_PROFILES_LIST_ID } as const
 
 /** An empty zone is merely unfinished; one this browser does not know is wrong and shows red. */
 function badTimezone(value: unknown): boolean {
@@ -529,12 +543,12 @@ function nestItem(k: string, f: SettingField, from: number, into: number): void 
         :can-nest="(from: number, into: number) => canNest(f, k, from, into)" @toggle="toggleItem(k, $event)"
         @move="(from, to) => moveItem(k, from, to)" @nest="(from, into) => nestItem(k, f, from, into)">
         <template #editor="{ index: i }">
-          <ItemCells :schema="f.itemSchema ?? {}" :item="items(k)[i]" :apps-list-id="APPS_LIST_ID"
+          <ItemCells :schema="f.itemSchema ?? {}" :item="items(k)[i]" :suggest-lists="SUGGEST_LISTS"
             :timezone-list-id="TIMEZONE_LIST_ID" :time-zones="TIME_ZONES" @set="(key, value) => setItemField(k, i, key, value)" />
           <template v-for="h in [heldList(f, items(k)[i])]" :key="i">
             <HeldList v-if="h" :field="h.field" :held-key="h.key" :items="heldItems(items(k)[i], h.key)"
               :columns="gridColumns(f, props.schema, props.values)" :outer-full="listFull(f, k)"
-              :apps-list-id="APPS_LIST_ID" :timezone-list-id="TIMEZONE_LIST_ID" :time-zones="TIME_ZONES"
+              :suggest-lists="SUGGEST_LISTS" :timezone-list-id="TIMEZONE_LIST_ID" :time-zones="TIME_ZONES"
               @change="setItemField(k, i, h.key, $event)" @take-out="takeOutHeld(k, f, i, h.key, $event)" />
           </template>
           <div class="rowActions">
@@ -587,6 +601,11 @@ function nestItem(k: string, f: SettingField, from: number, into: number): void 
        both what is shown and what is stored; typing something else stays perfectly valid. -->
   <datalist v-if="hasSuggestApps" :id="APPS_LIST_ID">
     <option v-for="app in installedApps" :key="app.bundleId" :value="app.name" />
+  </datalist>
+
+  <!-- Shared by every `suggest: browserProfiles` input: `Brave — Perso`, which is what is saved. -->
+  <datalist v-if="hasSuggestProfiles" :id="BROWSER_PROFILES_LIST_ID">
+    <option v-for="p in browserProfiles" :key="p.value" :value="p.value" />
   </datalist>
 </template>
 

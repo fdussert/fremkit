@@ -20,6 +20,12 @@
     justify-content:center;gap:6px;text-align:center;cursor:pointer;overflow:hidden}
   .btn .art{flex:0 0 auto;width:var(--art,34px);height:var(--art,34px);display:flex;align-items:center;justify-content:center}
   .btn img.art{border-radius:8px;object-fit:contain}
+  /* The browser profile a link opens in, as its initial in the button's corner. */
+  .btn .profile{position:absolute;top:6px;right:6px;min-width:18px;height:18px;padding:0 4px;box-sizing:border-box;
+    border-radius:9px;background:var(--accent,#d9b36a);color:var(--on-accent,#0b0d10);font-size:11px;font-weight:700;
+    line-height:18px;text-align:center}
+  html.bg-accent .btn .profile{background:var(--on-accent,#0b0d10);color:var(--accent,#d9b36a)}
+  .btn:not(.back){position:relative}
   .btn .glyph{width:var(--art,34px);height:var(--art,34px);border-radius:50%;background:var(--accent,#d9b36a);
     color:var(--on-accent,#0b0d10);display:flex;align-items:center;justify-content:center;
     font-size:calc(calc(var(--art,34px) * .5) * var(--text-scale, 1));line-height:1}
@@ -123,7 +129,9 @@
       label: typeof b.label === 'string' ? b.label.trim() : '',
       kind: KINDS[b.kind] ? b.kind : 'app',
       target: typeof b.target === 'string' ? b.target.trim() : '',
-      icon: typeof b.icon === 'string' ? b.icon.trim() : ''
+      icon: typeof b.icon === 'string' ? b.icon.trim() : '',
+      // `Brave — Perso`: only a link opens in a browser profile.
+      profile: b.kind === 'url' && typeof b.profile === 'string' ? b.profile.trim() : ''
     }
     return spec.target === '' ? null : spec
   }
@@ -377,11 +385,24 @@
       : spec.kind === 'group' ? groupArt(button, spec)
       : artwork(button, spec))
     button.appendChild(Fremkit.el('div', 'name', spec.kind === 'back' ? (spec.label || Fremkit.t(L.back)) : (spec.label || spec.target)))
+    var initial = settings.profileBadge === false ? '' : profileInitial(spec.profile)
+    if (initial) {
+      var badge = Fremkit.el('span', 'profile', initial)
+      badge.title = spec.profile
+      button.appendChild(badge)
+    }
     button.onclick = spec.kind === 'group' ? function () { openGroupAt(spec, button) }
       : spec.kind === 'back' ? function () { closeGroup() }
       : function () { press(spec) }
     if (spec.kind === 'back') button.setAttribute && button.setAttribute('aria-label', Fremkit.t(L.back))
     return button
+  }
+
+  /** "P" for `Brave — Perso`; a profile typed without a browser gets no badge. */
+  function profileInitial(profile) {
+    var m = /^\S+\s+[—–-]\s+(.+)$/.exec(profile || '')
+    var first = m ? Array.from(m[1].trim())[0] : ''
+    return first ? first.toUpperCase() : ''
   }
 
   function reducedMotion() {

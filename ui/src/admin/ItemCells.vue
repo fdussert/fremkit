@@ -7,7 +7,7 @@ import TileIcon from '../shared/TileIcon.vue'
 import LibraryIconPicker from './LibraryIconPicker.vue'
 import { LIBRARY_ICON_PREFIX } from '../shared/widgetMessages'
 import { pick, useI18n } from '../shared/i18n'
-import { fieldShown, optionLabel, optionValue, suggestApplies, type ListItemField } from '../shared/types'
+import { fieldShown, optionLabel, optionValue, suggestApplies, type ListItemField, type SuggestSource } from '../shared/types'
 
 /**
  * The fields of one open item of a `list` setting, laid inline. Only the plain ones: the list an
@@ -18,7 +18,8 @@ const props = defineProps<{
   schema: Record<string, ListItemField>
   item: Record<string, unknown>
   /** The form's datalists: the installed applications and the time zones. */
-  appsListId: string
+  /** The <datalist> id of each suggestion source, rendered once by the form. */
+  suggestLists: Partial<Record<SuggestSource, string>>
   timezoneListId: string
   timeZones: string[]
 }>()
@@ -43,7 +44,7 @@ function badTimezone(value: unknown): boolean {
  * something — a shortcut button whose kind is "app" — so a link keeps a plain text box.
  */
 const suggestList = (itf: ListItemField): string | undefined =>
-  itf.suggest === 'apps' && suggestApplies(itf, props.item) ? props.appsListId : undefined
+  itf.suggest && suggestApplies(itf, props.item) ? props.suggestLists[itf.suggest] : undefined
 
 /** The `icon` field whose library is open under the fields, or null. */
 const library = ref<string | null>(null)

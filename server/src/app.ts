@@ -54,6 +54,8 @@ import { dockRoutes } from './dock/routes.js'
 import { InstalledApps } from './apps/installed.js'
 import { AppIcons } from './apps/icons.js'
 import { appsRoutes } from './apps/routes.js'
+import { BrowserProfiles } from './browsers/profiles.js'
+import { browserRoutes } from './browsers/routes.js'
 import { helperRoutes } from './helper/routes.js'
 import { createDockProvider } from './dock/provider.js'
 import { bambuCameras } from './bambu/cameras.js'
@@ -248,6 +250,8 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   const demo = opts.demo === true
   // A demo lists no installed application and extracts no icon from one: both read the Mac.
   const installedApps = demo ? new InstalledApps({ roots: [] }) : new InstalledApps()
+  // Nor does it read a browser's profiles: a demo knows no browser.
+  const browserProfiles = demo ? new BrowserProfiles({ appDirs: [] }) : new BrowserProfiles()
   const appIcons = demo ? undefined : new AppIcons({ dir: join(opts.dataDir, 'icons', 'apps'), apps: installedApps })
   if (demo) {
     // The helper uploads the Dock's icons; a demo has no helper, so it draws its own.
@@ -326,7 +330,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     // to this Mac's pasteboard, so a demo never constructs it.
     registry.register(createGifBoardProvider({ config: () => store.get(), gifs }))
     // Registered here, not in providers/index.ts, because that is where the config store lives.
-    registry.register(createShortcutsProvider(undefined, instances))
+    registry.register(createShortcutsProvider(undefined, instances, browserProfiles))
     registry.register(createServiceStatusProvider({}, instances))
     // A paired device may set only its own screen's brightness: see mayCommandBrightness. Read
     // at command time, so a device moved to another screen (or unpaired) is judged as it is now.
@@ -533,6 +537,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   /** Whether this is a demo server: `pnpm widget:preview` refuses to capture anything else. */
   app.get('/api/demo', async () => ({ demo }))
   await app.register(appsRoutes, { apps: installedApps, deviceMayListApps: (id) => deviceService.maySubscribe(id, 'dock') })
+  await app.register(browserRoutes, { profiles: browserProfiles })
   await app.register(helperRoutes)
   await app.register(brightnessRoutes, { service: brightness, changed: brightnessChanged })
   await app.register(bambuRoutes, { cameras: bambuCameras })
