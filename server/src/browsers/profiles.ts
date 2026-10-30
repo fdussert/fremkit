@@ -47,6 +47,9 @@ const VALUE_RE = /^\s*(\S+)\s+[—–-]\s+(.+?)\s*$/
 /** How many profiles one browser may list, so a damaged `Local State` cannot grow the answer forever. */
 const MAX_PROFILES = 50
 
+/** How far the folders are probed when `Local State` cannot be read: `Profile 1` to `Profile 20`. */
+const PROBED_PROFILES = 20
+
 export const profileValue = (browser: string, name: string): string => `${browser} — ${name}`
 
 export interface BrowserProfilesOptions {
@@ -104,13 +107,19 @@ export class BrowserProfiles {
     return null
   }
 
-  /** The profiles `Local State` lists: only each one's folder and display name are read. */
+  /**
+   * The profiles `Local State` lists: only each one's folder and display name are read.
+   *
+   * macOS keeps another application's data from a process that was not granted access to it
+   * (Full Disk Access): the file cannot be opened, though a folder in it can still be looked at.
+   * The profiles are then the folders Chromium names, found one by one, under their folder name.
+   */
   private async profilesOf(browser: KnownBrowser): Promise<{ dir: string; name: string }[]> {
     let state: unknown
     try {
       state = JSON.parse(await readFile(join(this.dataOf(browser), 'Local State'), 'utf8'))
     } catch {
-      return []
+      return this.probedProfiles(browser)
     }
     const cache = (state as { profile?: { info_cache?: unknown } } | null)?.profile?.info_cache
     if (!cache || typeof cache !== 'object') return []
@@ -118,6 +127,13 @@ export class BrowserProfiles {
       .filter(([dir, info]) => PROFILE_DIR_RE.test(dir) && typeof info?.name === 'string' && info.name.trim() !== '')
       .slice(0, MAX_PROFILES)
       .map(([dir, info]) => ({ dir, name: (info!.name as string).trim().slice(0, 100) }))
+  }
+
+  private async probedProfiles(browser: KnownBrowser): Promise<{ dir: string; name: string }[]> {
+    const base = this.dataOf(browser)
+    const dirs = ['Default', ...Array.from({ length: PROBED_PROFILES }, (_, i) => `Profile ${i + 1}`)]
+    const found = await Promise.all(dirs.map((dir) => isDir(join(base, dir))))
+    return dirs.filter((_, i) => found[i]).map((dir) => ({ dir, name: dir }))
   }
 }
 

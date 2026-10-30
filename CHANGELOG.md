@@ -16,8 +16,9 @@ tagged `vX.Y.Z`.
 
 - **Shortcuts: open a link in a browser profile.** A link button's *Open in* box offers the
   profiles of Brave, Chrome and Edge found on this Mac, such as `Brave — Work`, and the link opens
-  in that profile's window. A profile can also be typed by hand. The button wears the profile's
-  initial in its corner, which a setting turns off.
+  in that profile's window. Without Full Disk Access for Fremkit Helper, macOS hides the profiles'
+  names and they are offered by folder (`Brave — Profile 1`). A profile can also be typed by hand.
+  The button wears the profile's initial in its corner, which a setting turns off.
 
 - **Shortcuts: your own icons, SVG included.** A button's or a group's icon can now come from
   your icon library, the one the tiles' title icons use: the folder button beside the field picks

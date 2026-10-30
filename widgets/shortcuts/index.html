@@ -398,9 +398,14 @@
     return button
   }
 
-  /** "P" for `Brave — Perso`; a profile typed without a browser gets no badge. */
+  /**
+   * "P" for `Brave — Perso`, "2" for `Brave — Profile 2`, a folder name being all macOS may let
+   * the server read; a profile typed without a browser gets no badge.
+   */
   function profileInitial(profile) {
     var m = /^\S+\s+[—–-]\s+(.+)$/.exec(profile || '')
+    var folder = m ? /^Profile (\d+)$/.exec(m[1].trim()) : null
+    if (folder) return folder[1]
     var first = m ? Array.from(m[1].trim())[0] : ''
     return first ? first.toUpperCase() : ''
   }

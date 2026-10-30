@@ -415,8 +415,12 @@ which group was touched; the server reads what it opens from the saved settings,
 
 A link may open in **a browser profile**: its *Open in* box offers the profiles of the Brave,
 Chrome and Edge installed on this Mac, as `Brave — Perso`, read from each browser's own
-`Local State` (the profile's name only, never the account signed into it). A profile the list does
-not show can be typed by its folder name, `Brave — Profile 3`. The server finds the browser in
+`Local State` (the profile's name only, never the account signed into it). macOS keeps that file
+from an app it did not give **Full Disk Access** (System Settings → Privacy & Security), and then
+the box offers the profile folders instead, `Brave — Default`, `Brave — Profile 1`…, which work
+just as well; grant the access to *Fremkit Helper* to see the names. A profile the list does not
+show can be typed by its folder name, `Brave — Profile 3`; `brave://version` shows a profile's
+folder as the last part of its *Profile path*. The server finds the browser in
 `/Applications` or `~/Applications` and the profile folder in the browser's data folder, then runs
 `open -n -a <browser> --args --profile-directory=<folder> <url>`; a browser or a profile it cannot
 find is an error, never the default browser. The button wears the profile's initial in its corner

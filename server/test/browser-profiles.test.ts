@@ -27,6 +27,9 @@ beforeAll(async () => {
     'Profile 1': { name: 'Boulot', user_name: 'work@example.com' },
     '../escape': { name: 'Escape' },
   }, ['Default', 'Profile 1', 'Profile 3'])
+  // Chrome's `Local State` cannot be read, as when macOS keeps the server out of it.
+  await mkdir(join(apps, 'Google Chrome.app'), { recursive: true })
+  for (const dir of ['Default', 'Profile 2']) await mkdir(support('Google/Chrome', dir), { recursive: true })
   // Edge's data is there, its bundle is not: an uninstalled browser offers nothing.
   await mkdir(support('Microsoft Edge', 'Default'), { recursive: true })
   await writeFile(support('Microsoft Edge', 'Local State'), JSON.stringify({ profile: { info_cache: { Default: { name: 'Edge' } } } }))
@@ -41,6 +44,8 @@ describe('BrowserProfiles', () => {
     expect(list).toEqual([
       { browser: 'Brave', name: 'Perso', value: 'Brave — Perso' },
       { browser: 'Brave', name: 'Boulot', value: 'Brave — Boulot' },
+      { browser: 'Chrome', name: 'Default', value: 'Chrome — Default' },
+      { browser: 'Chrome', name: 'Profile 2', value: 'Chrome — Profile 2' },
     ])
     expect(JSON.stringify(list)).not.toContain('example.com')
   })
@@ -52,6 +57,9 @@ describe('BrowserProfiles', () => {
   it('resolves a profile folder typed by hand when it exists', async () => {
     expect(await profiles().resolve('Brave — Profile 3')).toMatchObject({ ok: true, dir: 'Profile 3' })
     expect(await profiles().resolve('Brave — Profile 9')).toEqual({ ok: false, error: 'unknownProfile' })
+  })
+  it('finds the folders one by one when Local State cannot be read', async () => {
+    expect(await profiles().resolve('Chrome — Profile 2')).toEqual({ ok: true, app: join(apps, 'Google Chrome.app'), dir: 'Profile 2' })
   })
   it('refuses a folder that would leave the data folder', async () => {
     for (const value of ['Brave — ../escape', 'Brave — ..', 'Brave — a/b', 'Brave — Escape']) {
@@ -71,7 +79,7 @@ describe('GET /api/browsers/profiles', () => {
     await app.register(browserRoutes, { profiles: profiles() })
     const local = await app.inject({ url: '/api/browsers/profiles', remoteAddress: '127.0.0.1' })
     expect(local.statusCode).toBe(200)
-    expect(local.json()).toHaveLength(2)
+    expect(local.json()).toHaveLength(4)
     expect((await app.inject({ url: '/api/browsers/profiles', remoteAddress: '198.51.100.7' })).statusCode).toBe(403)
     await app.close()
   })

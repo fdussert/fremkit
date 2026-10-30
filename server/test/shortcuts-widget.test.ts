@@ -260,11 +260,12 @@ describe('a link opened in a browser profile', () => {
     { label: 'Mail', kind: 'url', target: 'https://example.com/mail', profile: 'Brave — boulot' },
     { label: 'Site', kind: 'url', target: 'https://example.com' },
     { label: 'Calc', kind: 'app', target: 'Calculator', profile: 'Brave — Perso' },
+    { label: 'Work', kind: 'url', target: 'https://example.com/work', profile: 'Chrome — Profile 2' },
   ]
   it('wears the profile\'s initial, on links only', async () => {
-    expect(badges(await loadWidget([], { buttons }))).toEqual(['B', null, null])
+    expect(badges(await loadWidget([], { buttons }))).toEqual(['B', null, null, '2'])
   })
   it('wears none when the badge is turned off', async () => {
-    expect(badges(await loadWidget([], { buttons, profileBadge: false }))).toEqual([null, null, null])
+    expect(badges(await loadWidget([], { buttons, profileBadge: false }))).toEqual([null, null, null, null])
   })
 })
