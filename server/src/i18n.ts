@@ -229,6 +229,15 @@ const fr = {
     'Connecté à GitHub en tant que {login} · jeton à granularité fine : notifications indisponibles, revues et Actions OK',
   'github.privateRepo': 'privé',
 
+  // connections/types/openai-shellsmith.ts
+  'shellsmith.unconfigured': 'connexion IA incomplète',
+  'shellsmith.unreachable': 'fournisseur IA injoignable',
+  'shellsmith.tokenRefused': 'clé API refusée',
+  'shellsmith.rateLimited': 'quota atteint ; réessayez plus tard',
+  'shellsmith.modelUnavailable': 'modèle introuvable ou inaccessible',
+  'shellsmith.unexpected': 'réponse inattendue du fournisseur (HTTP {status})',
+  'shellsmith.connected': 'Modèle IA vérifié : {model}',
+
   // providers/bambu.ts — `stg_cur`, the printer's current stage
   'bambu.stage.-1': 'Au repos',
   'bambu.stage.0': 'Impression',
@@ -517,6 +526,14 @@ const en: Record<MessageKey, string> = {
   'github.connectedFineGrained':
     'Connected to GitHub as {login} · fine-grained token: notifications unavailable, reviews and Actions OK',
   'github.privateRepo': 'private',
+
+  'shellsmith.unconfigured': 'AI connection is incomplete',
+  'shellsmith.unreachable': 'AI provider is unreachable',
+  'shellsmith.tokenRefused': 'API key refused',
+  'shellsmith.rateLimited': 'rate limit reached; try again later',
+  'shellsmith.modelUnavailable': 'model not found or unavailable',
+  'shellsmith.unexpected': 'unexpected provider response (HTTP {status})',
+  'shellsmith.connected': 'AI model verified: {model}',
 
   'bambu.stage.-1': 'Idle',
   'bambu.stage.0': 'Printing',
