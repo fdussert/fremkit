@@ -144,6 +144,10 @@ export const pbPasteboard: Pasteboard = {
     const child = execFile('/usr/bin/pbcopy', [], { timeout: 5000 }, (err) => (err ? reject(new Error(err.message)) : resolve()))
     child.stdin?.end(text)
   }),
+  // A process of its own, which registers with LaunchServices like every `osascript` (see
+  // osascript-host.ts for why that is counted). It stays one because the poll asks only when the
+  // pasteboard holds something new: once per copy, not once per second. Anything that would ask
+  // on the clock itself has to go through a host instead.
   types: () => new Promise((resolve) => {
     execFile('/usr/bin/osascript', ['-l', 'JavaScript', '-e', TYPES_SCRIPT], { timeout: 5000 }, (err, stdout) => {
       // A machine that will not run this simply gets the old behaviour, not an empty widget.

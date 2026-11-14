@@ -99,6 +99,13 @@ tagged `vX.Y.Z`.
 
 ### Fixed
 
+- **A Mac that shows the Spotify or the Volume widget no longer stops opening applications
+  after a few days.** To read the track and the volume, Fremkit started a small system program
+  (`osascript`) up to three times a second, and macOS can only count about a million of those
+  between two restarts: after three to four days nothing new would open until the Mac was
+  rebooted. Fremkit now keeps one such program open per widget and asks it again and again. If
+  your Mac is in that state now, restart it once after updating.
+
 - **Shortcuts: a button after an unfinished one opens the right thing.** A button whose target
   was still empty is not drawn, and the buttons after it used to open the target of the one
   before them. Each now opens its own.
