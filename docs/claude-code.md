@@ -45,6 +45,12 @@ themselves, so keep the two together if you copy them. The hooks are asynchronou
 Claude Code, even when Fremkit is not running. The status line needs `jq` and degrades to one line of text
 without it.
 
+The status line reads `name · model · repository/place · branch · ctx · cost · limits`. The name is
+the session's own, given with `/rename` in Claude Code; it titles the session's card too, and is
+the way to tell twenty chats apart. The repository is named after the repository, not the folder,
+so a session in a worktree or a subfolder of it (`tools/bg-rollup`) shows `platform/tools/bg-rollup`
+rather than `bg-rollup` alone.
+
 ## What is sent
 
 Only the tool name and a short summary reach Fremkit. Tool inputs and outputs are never sent and

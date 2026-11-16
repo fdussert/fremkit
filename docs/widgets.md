@@ -105,6 +105,11 @@ A card that is waiting for you goes to its session when you touch it; every othe
 in its corner that does the same. Which window is raised depends on the terminal application —
 see [claude-code.md](claude-code.md#going-to-a-session).
 
+A card is titled with the session's name, the one Claude Code's `/rename` gives it, and otherwise
+with the repository's name. The line under the title says where the session sits: the repository,
+the worktree or subfolder it runs in, and the branch (`platform/tools/bg-rollup@develop`). An idle
+or finished card says how long it has been silent.
+
 | Setting | Type | Default | Scope | What it is |
 |---|---|---|---|---|
 | `max` | number | `0` | both | Sessions shown; `0` means all of them |
@@ -112,6 +117,7 @@ see [claude-code.md](claude-code.md#going-to-a-session).
 | `hideDone` | boolean | on | both | Drop a finished or idle session from the board after 30 min |
 | `showCount` | boolean | on | both | The number of sessions after the tile's title (`Claude sessions · 18`); nothing when the title is hidden |
 | `showStats` | boolean | on | both | Today's summary above the cards: sessions, finished, commits |
+| `sort` | enum | `state` | both | `state`: the sessions waiting for you first, then working, failed, finished and idle, the most recent first within each; `recent`: by last activity alone |
 | `groupByClient` | boolean | off | both | One section per application (Orca, Terminal, …) |
 | `sound` | enum | `none` | both | A macOS system sound when a session starts waiting |
 | `soundOn` | enum | `attention` | both | What the sound is for: a question, or a question or a permission |

@@ -132,7 +132,8 @@
   function update(card, s, now) {
     if (card.getAttribute('data-state') !== s.state) { card.className = 'card ' + s.state; card.setAttribute('data-state', s.state) }
     if (s.discovered) card.setAttribute('data-discovered', '1'); else card.removeAttribute('data-discovered')
-    card.querySelector('.title').textContent = s.title || s.project
+    var title = s.title || s.repo || s.project
+    card.querySelector('.title').textContent = title
     card.querySelector('.badge').textContent = LABELS[s.state] ? Fremkit.t(LABELS[s.state]) : s.state
     // Which application the session lives in, as the server named it. Two panes of the same
     // folder are the same project and the same branch; this is what tells them apart.
@@ -143,7 +144,11 @@
     var goEl = card.querySelector('.go')
     goEl.textContent = '\u2197'
     goEl.setAttribute('aria-label', Fremkit.t(L.go))
-    var where = s.branch ? s.project + '@' + s.branch : (s.title ? s.project : ''), whereEl = card.querySelector('.where')
+    // The repository's name, not the folder's: a session in a worktree or a subfolder of it would
+    // otherwise read as a project of its own. Where in it comes after, then the branch.
+    var place = s.repo ? s.repo + (s.place ? '/' + s.place : '') : s.project
+    var where = place + (s.branch ? '@' + s.branch : ''), whereEl = card.querySelector('.where')
+    if (where === title) where = ''
     whereEl.textContent = where; whereEl.hidden = !where
     var qEl = card.querySelector('.q')
     if (s.question) {
@@ -183,6 +188,8 @@
     if (hideDone) out = out.filter(function (s) {
       return !((s.state === 'done' || s.state === 'idle') && now - s.lastEventAt > HIDE_AFTER_MS)
     })
+    // The server sends them by state, most recent first within each; this mixes the states.
+    if (sortRecent) out = out.slice().sort(function (a, b) { return b.lastEventAt - a.lastEventAt })
     return out
   }
   /** Rows to draw: a card per session, and a heading before each run when grouping is on. */
@@ -251,7 +258,7 @@
       refused()
     }, refused)
   }
-  var maxShown = 0, onlyWaiting = false, hideDone = true, groupByClient = false, showCount = true, showStats = true
+  var maxShown = 0, onlyWaiting = false, hideDone = true, groupByClient = false, showCount = true, showStats = true, sortRecent = false
   /** The title note last sent, so a render that changes nothing sends nothing. */
   var lastNote = null
   function applySettings(s) {
@@ -261,6 +268,7 @@
     // On by default, so an absent setting is not "off" — an older instance keeps the new default.
     hideDone = s.hideDone !== false
     groupByClient = s.groupByClient === true
+    sortRecent = s.sort === 'recent'
     showCount = s.showCount !== false
     showStats = s.showStats !== false
   }

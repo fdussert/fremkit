@@ -67,6 +67,8 @@ export const HookEventSchema = z.object({
   model: ModelSchema,
   session_name: shortText(NAME_MAX),
   fremkit_branch: shortText(NAME_MAX),
+  fremkit_repo: shortText(NAME_MAX),
+  fremkit_place: shortText(PATH_MAX),
   client: ClientSchema,
   workspace: z.object({
     current_dir: shortText(PATH_MAX),

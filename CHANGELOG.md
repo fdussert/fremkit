@@ -14,6 +14,11 @@ tagged `vX.Y.Z`.
 
 ### Added
 
+- **Claude sessions: tell the sessions apart.** A card names the repository rather than the folder
+  the session sits in, followed by the worktree or subfolder and the branch, and is titled with the
+  name Claude Code's `/rename` gives a session; the status line shows that name and that place too.
+  A new *Session order* setting sorts the cards by last activity instead of by state.
+
 - **Shortcuts: open a link in a browser profile.** A link button's *Open in* box offers the
   profiles of Brave, Chrome and Edge found on this Mac, such as `Brave — Work`, and the link opens
   in that profile's window. Without Full Disk Access for Fremkit Helper, macOS hides the profiles'
