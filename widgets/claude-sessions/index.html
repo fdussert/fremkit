@@ -37,6 +37,11 @@
   .hdr{display:flex;justify-content:flex-end;align-items:baseline;flex:0 0 auto}
   .stats{font-size:calc(12px * var(--text-scale, 1));color:var(--text-muted, #8b93a0);letter-spacing:.04em}
   .title{font-size:calc(18px * var(--text-scale, 1));font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  /* The title is what tells one session from another: it keeps most of the row, and the state and
+     the application give way first. */
+  .head .title{flex:0 0 auto;max-width:100%}
+  .head .badge,.head .client{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
+  .head .client:empty,.head .badge:empty{display:none}
   .where{font-size:calc(12px * var(--text-scale, 1));color:var(--text-muted, #8b93a0);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .foot{display:flex;align-items:center;gap:8px;margin-top:auto;font-family:var(--font-mono, ui-monospace,SFMono-Regular,Menlo,monospace);font-size:calc(13px * var(--text-scale, 1));color:#c3c8d0;background:#0f1216;border-radius:8px;padding:5px 8px}
   .foot .model{color:var(--text, #e6e8eb);font-weight:600}
