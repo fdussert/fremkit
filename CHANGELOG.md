@@ -14,6 +14,10 @@ tagged `vX.Y.Z`.
 
 ### Added
 
+- **Device screens: pick the orientation.** *Create a screen its size* offers Landscape or
+  Portrait, starting with the way the tablet was held when it paired, so a tablet paired upright
+  can still get a landscape screen without pairing it again.
+
 - **Claude sessions: tell the sessions apart.** A card names the repository rather than the folder
   the session sits in, followed by the worktree or subfolder and the branch, and is titled with the
   name Claude Code's `/rename` gives a session; the status line shows that name and that place too.

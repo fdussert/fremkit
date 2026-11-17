@@ -111,6 +111,27 @@ describe('the add-screen dialog', () => {
     wrapper.unmount()
   })
 
+  it('starts in the orientation the device paired in and turns the size with the other one', async () => {
+    const s = useAdminStore()
+    // The same iPad, paired while held upright.
+    const upright = { ...ipad, viewport: { width: 1032, height: 1376 } }
+    const wrapper = mount(AddScreenDialog, { props: { device: upright }, attachTo: document.body, global: { stubs } })
+    expect(button(wrapper, 'Portrait').classes()).toContain('on')
+    expect(wrapper.find('[data-test="device-size"]').text()).toBe('1032 × 1376 px')
+
+    await button(wrapper, 'Landscape').trigger('click')
+    expect(wrapper.find('[data-test="device-size"]').text()).toBe('1376 × 1032 px')
+    expect(wrapper.text()).toContain('Grid: 34 × 24 cells under a 40 px bar.')
+    const add = vi.spyOn(s, 'addScreen')
+    await button(wrapper, 'Add').trigger('click')
+    expect(add).toHaveBeenCalledWith(expect.objectContaining({
+      kind: 'device', viewport: { width: 1376, height: 1032 }, orientation: 'landscape',
+    }))
+    expect(s.state.config!.screens[1]).toMatchObject({ display: { viewport: { width: 1376, height: 1032 }, orientation: 'landscape' } })
+    add.mockRestore()
+    wrapper.unmount()
+  })
+
   it('previews a pre-fill, names what is left out, and saves only on Accept', async () => {
     const s = useAdminStore()
     const wrapper = mount(AddScreenDialog, { props: { device: ipad }, attachTo: document.body, global: { stubs } })
