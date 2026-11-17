@@ -4,11 +4,13 @@ import { homedir, userInfo } from 'node:os'
 import { join } from 'node:path'
 import { z } from 'zod'
 import type { Provider } from '../providers/types.js'
+import { defaultConfigDir } from './configDirs.js'
 
 const Status = z.object({
   loggedIn: z.boolean(),
   authMethod: z.string().max(100).nullish(),
   subscriptionType: z.string().max(100).nullish(),
+  orgName: z.string().max(200).nullish(),
 })
 
 export interface ClaudeIdentity {
@@ -42,8 +44,14 @@ export async function resolveClaudeBinary(
   throw new Error('offline')
 }
 
-function readStatus(): Promise<string> {
+/**
+ * `claude auth status --json`, for the server's own configuration folder (`auto`) or for one the
+ * user picked: the default folder means no `CLAUDE_CONFIG_DIR` at all, as Claude Code itself runs.
+ */
+function readStatus(configDir = 'auto'): Promise<string> {
   const env = identityEnv(process.env)
+  if (configDir === defaultConfigDir()) delete env.CLAUDE_CONFIG_DIR
+  else if (configDir !== 'auto') env.CLAUDE_CONFIG_DIR = configDir
   env.USER ??= userInfo().username
   env.LOGNAME ??= env.USER
   return resolveClaudeBinary().then((binary) => new Promise((resolve, reject) => {
@@ -60,11 +68,38 @@ function plan(type: string | null | undefined): string | null {
   return type === 'max' || type === 'pro' || type === 'team' || type === 'enterprise' ? type : null
 }
 
+/** How the admin names a configuration folder in the account picker. */
+export interface ConfigDirAccount {
+  dir: string
+  /** The plan, as the identity channel spells it, or null when not signed in to claude.ai. */
+  plan: string | null
+  /** The organisation's name; null when it holds an address (a personal one is named after it). */
+  org: string | null
+}
+
+/** What `claude auth status` says about one folder's account, without its e-mail address. */
+export async function describeConfigDir(dir: string, read: (dir: string) => Promise<string> = readStatus): Promise<ConfigDirAccount> {
+  try {
+    const status = Status.parse(JSON.parse(await read(dir)))
+    const org = status.orgName?.trim() || null
+    return {
+      dir,
+      plan: status.loggedIn && status.authMethod === 'claude.ai' ? plan(status.subscriptionType) : null,
+      org: org && !org.includes('@') ? org : null,
+    }
+  } catch {
+    return { dir, plan: null, org: null }
+  }
+}
+
 export function createClaudeIdentityProvider(opts: {
   read?: () => Promise<string>
   now?: () => number
+  /** `privacy.claudeAccountDir`: whose plan to show, the same account the usage is read for. */
+  configDir?: () => string
 } = {}): Provider<ClaudeIdentity> {
-  const read = opts.read ?? readStatus
+  const configDir = opts.configDir ?? (() => 'auto')
+  const read = opts.read ?? (() => readStatus(configDir()))
   const now = opts.now ?? Date.now
   let last: ClaudeIdentity = {
     loggedIn: null, subscriptionType: null, authMethod: null,

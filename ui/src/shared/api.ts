@@ -144,8 +144,13 @@ export type GifSearchResponse =
   | { ok: true; results: GifSearchResult[]; total: number }
   | { ok: false; error: GifSearchError }
 
+/** A Claude Code configuration folder and how its account is named, never by its address. */
+export interface ClaudeAccount { dir: string; plan: string | null; org: string | null }
+
 export const api = {
   getConfig: () => fetch('/api/config').then((r) => json<Config>(r)),
+  /** The Claude Code configuration folders seen on this Mac, for the account usage's picker. */
+  getClaudeAccounts: () => fetch('/api/claude/accounts').then((r) => json<{ accounts: ClaudeAccount[] }>(r)),
   /** A Giphy search made by the server with the Giphy connection's key; `q` has 2 characters or more. */
   searchGifs: (q: string, offset = 0) =>
     fetch(`/api/gifs/search?${new URLSearchParams({ q, offset: String(offset) }).toString()}`).then((r) => json<GifSearchResponse>(r)),

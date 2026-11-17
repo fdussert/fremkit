@@ -14,6 +14,11 @@ tagged `vX.Y.Z`.
 
 ### Added
 
+- **Claude limits: pick the account.** When Claude Code runs from several profiles signed in to
+  different accounts, **Settings → Privacy → Claude account** picks the one whose usage the Claude
+  widgets show, named by its organisation and plan. *Automatic*, the default, keeps following the
+  profile used last.
+
 - **Claude sessions: tell the sessions apart.** A card names the repository rather than the folder
   the session sits in, followed by the worktree or subfolder and the branch, and is titled with the
   name Claude Code's `/rename` gives a session; the status line shows that name and that place too.

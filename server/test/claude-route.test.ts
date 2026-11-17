@@ -24,6 +24,22 @@ beforeEach(async () => {
 })
 afterEach(() => app.close())
 
+describe('GET /api/claude/accounts', () => {
+  it('lists the learnt folders and the default one, each described', async () => {
+    const { ClaudeConfigDirs, defaultConfigDir } = await import('../src/claude/configDirs.js')
+    const dirs = new ClaudeConfigDirs()
+    dirs.note('/u/profile/projects/-p/1.jsonl')
+    const local = Fastify()
+    await local.register(claudeRoutes, { tracker, usage, configDirs: dirs, describe: async (d) => ({ dir: d, plan: 'max', org: null }) })
+    const res = await local.inject({ method: 'GET', url: '/api/claude/accounts' })
+    expect(res.json()).toEqual({ accounts: [
+      { dir: '/u/profile', plan: 'max', org: null },
+      { dir: defaultConfigDir(), plan: 'max', org: null },
+    ] })
+    await local.close()
+  })
+})
+
 describe('POST /api/hooks/claude', () => {
   it('feeds the tracker and usage, answers 204', async () => {
     const res = await app.inject({ method: 'POST', url: '/api/hooks/claude', payload: { hook_event_name: 'UserPromptSubmit', session_id: 'a', cwd: '/p/a' } })

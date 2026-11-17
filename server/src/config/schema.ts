@@ -380,6 +380,14 @@ export const PrivacySchema = z.object({
    */
   claudeAccountUsage: z.boolean().default(false),
   /**
+   * Whose usage that is when Claude Code runs from several configuration folders (profiles, each
+   * signed in to its own account): `auto` takes the token refreshed last, which follows whichever
+   * profile was used last; an absolute folder reads that folder's token only.
+   */
+  claudeAccountDir: z.string().max(4096)
+    .refine((v) => v === 'auto' || v.startsWith('/'), { message: 'auto or an absolute folder' })
+    .default('auto'),
+  /**
    * Let an account provider (Claude, Codex, …) put the account's e-mail address in what it
    * publishes. Off, the field is never in the snapshot: anything on a channel reaches every
    * widget subscribed to it, a third-party one with network access included, and the Edge sits
@@ -545,7 +553,7 @@ export const DEFAULT_CONFIG: Config = {
   connections: [],
   secrets: { backend: defaultSecretsBackend() },
   locale: defaultLocale(),
-  privacy: { claudeAccountUsage: false, showAccountEmail: false, codexAccount: false, codexHistorySources: [], macmonTemperature: false },
+  privacy: { claudeAccountUsage: false, claudeAccountDir: 'auto', showAccountEmail: false, codexAccount: false, codexHistorySources: [], macmonTemperature: false },
   labs: { devices: false, companion: false },
   marketplace: { installed: {} },
   widgets: {

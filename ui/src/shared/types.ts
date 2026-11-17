@@ -144,6 +144,8 @@ export interface Privacy {
    * usage — the gauges of the claude-usage widget.
    */
   claudeAccountUsage: boolean
+  /** Whose usage: `auto` (the token refreshed last) or one Claude Code configuration folder. */
+  claudeAccountDir?: string
   /**
    * Let account providers publish the account's e-mail address. Off, the server leaves it out
    * of every snapshot, so no widget and no screen ever sees it.
