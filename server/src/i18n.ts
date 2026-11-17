@@ -229,6 +229,14 @@ const fr = {
     'Connecté à GitHub en tant que {login} · jeton à granularité fine : notifications indisponibles, revues et Actions OK',
   'github.privateRepo': 'privé',
 
+  // connections/types/vercel.ts
+  'vercel.missingToken': 'jeton Vercel manquant',
+  'vercel.unreachable': 'Vercel injoignable',
+  'vercel.tokenRefused': 'jeton Vercel refusé',
+  'vercel.rateLimited': 'quota Vercel atteint ; réessayez plus tard',
+  'vercel.unexpected': 'réponse Vercel inattendue (HTTP {status})',
+  'vercel.connected': 'Connecté à Vercel en tant que {account}',
+
   // providers/bambu.ts — `stg_cur`, the printer's current stage
   'bambu.stage.-1': 'Au repos',
   'bambu.stage.0': 'Impression',
@@ -517,6 +525,13 @@ const en: Record<MessageKey, string> = {
   'github.connectedFineGrained':
     'Connected to GitHub as {login} · fine-grained token: notifications unavailable, reviews and Actions OK',
   'github.privateRepo': 'private',
+
+  'vercel.missingToken': 'Vercel token missing',
+  'vercel.unreachable': 'Vercel unreachable',
+  'vercel.tokenRefused': 'Vercel token refused',
+  'vercel.rateLimited': 'Vercel rate limit reached; try again later',
+  'vercel.unexpected': 'unexpected Vercel response (HTTP {status})',
+  'vercel.connected': 'Connected to Vercel as {account}',
 
   'bambu.stage.-1': 'Idle',
   'bambu.stage.0': 'Printing',
