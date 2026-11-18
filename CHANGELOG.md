@@ -103,6 +103,16 @@ tagged `vX.Y.Z`.
   key, added under **Connections**, and pasting an address works without one. On a paired tablet,
   a touch copies to the Mac's clipboard the same way.
 
+- **Recent projects widget.** Lists the folders you worked in lately — git repositories under the
+  folders you choose, plus, if you tick them, Claude Code, Codex, VS Code, Cursor, JetBrains IDEs,
+  zoxide, tmux and Herdr — and opens one with a tap in Finder, a terminal, your editor (a
+  JetBrains IDE included) or Herdr (the pane already in that folder, else a new one, with Herdr's
+  terminal brought to the front), or starts Claude Code or Codex in a new Herdr pane or tmux
+  window on it; a long press offers the other installed applications, and can make one the
+  project's own for every later tap. Without one, the files at a project's root can suggest the
+  right IDE (a `.sln` for Rider, a `Cargo.toml` for RustRover…). Only folder paths, dates and
+  the names at a project's root are read, never a conversation or a file's contents.
+
 ### Changed
 
 - **Paired devices are filed as tablets.** Fremkit now records a paired iPad as a tablet and
