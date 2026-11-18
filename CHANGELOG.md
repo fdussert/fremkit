@@ -14,17 +14,48 @@ tagged `vX.Y.Z`.
 
 ### Added
 
+- **The Fremkit app for iPad is on the App Store.** [Fremkit on the App Store](https://apps.apple.com/app/id6824504862)
+  shows a screen of your dashboard on an iPad, live and touchable. Pair it by scanning the QR code
+  in **Settings → Devices**, or by picking your Mac in the app's list and typing its code after
+  checking the four words; then give the iPad a screen of its own with **Create a screen its
+  size**. It finds the Mac again when its address changes, follows the brightness set for its
+  screen and keeps the screen on. Free, for iPadOS 17 or later, with no account and nothing sent
+  anywhere but your Mac.
+
+- **The Fremkit app for Android tablets.** It shows a screen of your dashboard on an Android tablet
+  (Android 9 or later) as the iPad app does: pair it by scanning the QR code in **Settings →
+  Devices**, or by typing the code after checking the four words; it finds the Mac again when its
+  address changes, follows the brightness set for its screen (move the tablet's own slider and
+  yours wins, and the admin follows), runs full screen and keeps the screen on. Its settings,
+  opened over the dashboard with the gesture that opens the admin on the Edge, can pin the app to
+  the screen with Android's screen pinning, or forget the Mac. The APK comes with each release
+  rather than from the Play Store, and needs nothing from Google Play: **Settings → Devices** and the
+  site link to it, and the site shows its signing certificate's fingerprint to check it against.
+  Obtainium can keep it up to date.
+
+- **Pairing by address when the tablet finds no Mac.** **Settings → Devices** now shows, beside the
+  code, the Mac's addresses to type on a tablet, and the Android app (the iPad app from its next
+  version) has **Enter the Mac's address** under its list of Macs: for networks where the tablet
+  never sees the Mac on its own, such as a Mac on both Wi-Fi and Ethernet. You still check the
+  four words before typing the code.
+
+- **Device screens: pick the orientation.** *Create a screen its size* offers Landscape or
+  Portrait, starting with the way the tablet was held when it paired, so a tablet paired upright
+  can still get a landscape screen without pairing it again.
+
 - **Fremplay: a browser tab's video on the Edge, with touch controls.** Play and pause, ten
   seconds back or ahead, volume, mute, fill the tile, bring the tab back, stop. The volume and mute
   buttons drive the Mac's output by default; the **Volume buttons** setting switches them to the
   video in the browser. The Edge turns to the page holding Fremplay when a share starts, and once
   more after Fremkit restarts when the share comes back. On a paired iPad's screen the tile says
   it only shows on the Mac's Edge.
+
 - **Fremkit Companion, the browser extension that feeds it**, for Chrome and other Chromium
   browsers, [on the Chrome Web Store](https://chromewebstore.google.com/detail/fremkit-companion/lnckeodobpbbmfbdlpnegjpchgkehdlk). Send the video of any tab from its toolbar menu or
   with ⌃⇧F. A player embedded from another site asks for that site's permission the first time,
   after the popup names the site, and the extension gives the permission back unless the share
   starts with a video in that site's frame.
+
 - **Pairing the extension takes the code shown on the Edge, typed into the extension.** The Edge
   shows the code and the browser's name with a Refuse button; typing the code is the approval, and
   three wrong tries refuse the request. A request is taken only while the dashboard or **Settings →
@@ -33,38 +64,35 @@ tagged `vX.Y.Z`.
   cannot link your browser to itself (the popup says *The server on this port is not your
   Fremkit*). After five requests refused for wrong codes within a day, pairing locks until you
   press **Unlock pairing** in **Settings → Devices**.
+
 - **Paired browser extensions are listed in Settings → Devices**, with their name (editable),
   when they paired and were last seen, whether they are connected, and a Remove button (**Remove
   every tablet** and **Reset the certificate** leave them linked), beside the pairing request
   waiting for an answer and a link to the extension's store page.
 
-- **Device screens: pick the orientation.** *Create a screen its size* offers Landscape or
-  Portrait, starting with the way the tablet was held when it paired, so a tablet paired upright
-  can still get a landscape screen without pairing it again.
+- **GIF board.** A widget of your favourite GIFs, sorted into groups: touch one on the Edge and
+  press ⌘V in Teams (or Slack) to send it, animated. The row of GIFs loops when it does not fit, and
+  the groups are reordered by dragging them in the editor. It also fits in the navigation bar as a
+  GIF badge that opens the board when touched (tick *Full widget on touch*). Fill it from the
+  widget's settings in **/admin**, by searching Giphy or by pasting a GIF's address; Giphy search
+  needs a free Giphy API key, added under **Connections**, and pasting an address works without one.
+  On a paired tablet, a touch copies to the Mac's clipboard the same way. *Rows of GIFs* in its
+  settings shows two rows of smaller GIFs in the same space, on a page and in the bar's popover
+  alike.
 
-- **Claude limits: pick the account.** When Claude Code runs from several profiles signed in to
-  different accounts, **Settings → Privacy → Claude account** picks the one whose usage the Claude
-  widgets show, named by its organisation and plan. *Automatic*, the default, keeps following the
-  profile used last. A profile whose sign-in has lapsed is marked *sign-in expired* in the list,
-  picking another account reads it at once, and the widget says in words why its gauges are old
-  (*sign-in expired*, *too many requests*) instead of an error code.
+- **Recent projects widget.** Lists the folders you worked in lately — git repositories under the
+  folders you choose, plus, if you tick them, Claude Code, Codex, VS Code, Cursor, JetBrains IDEs,
+  zoxide, tmux and Herdr — and opens one with a tap in Finder, a terminal, your editor (a
+  JetBrains IDE included) or Herdr (the pane already in that folder, else a new one, with Herdr's
+  terminal brought to the front), or starts Claude Code or Codex in a new Herdr pane or tmux
+  window on it; a long press offers the other installed applications, and can make one the
+  project's own for every later tap. Without one, the files at a project's root can suggest the
+  right IDE (a `.sln` for Rider, a `Cargo.toml` for RustRover…). Only folder paths, dates and
+  the names at a project's root are read, never a conversation or a file's contents.
 
-- **Claude sessions: tell the sessions apart.** A card names the repository rather than the folder
-  the session sits in, followed by the worktree or subfolder and the branch, and is titled with the
-  name Claude Code's `/rename` gives a session; the status line shows that name and that place too.
-  A new *Session order* setting sorts the cards by last activity instead of by state.
-
-- **Shortcuts: open a link in a browser profile.** A link button's *Open in* box offers the
-  profiles of Brave, Chrome and Edge found on this Mac, such as `Brave — Work`, and the link opens
-  in that profile's window. Without Full Disk Access for Fremkit Helper, macOS hides the profiles'
-  names and they are offered by folder (`Brave — Profile 1`). A profile can also be typed by hand.
-  The button wears the profile's initial in its corner, which a setting turns off.
-
-- **Shortcuts: your own icons, SVG included.** A button's or a group's icon can now come from
-  your icon library, the one the tiles' title icons use: the folder button beside the field picks
-  one or imports a PNG, WebP or SVG, such as a CI service's pipeline mark. A group also takes an
-  image address now. Widgets can do the same with an `icon` item field and
-  `Fremkit.libraryIcon()` (SDK generation 6).
+- **Tile icons.** A tile's title can show an icon: a pictogram from the built-in set, or your own
+  SVG, PNG or WebP, tinted to the theme or in its own colours. Under **/admin**, select a tile,
+  then **Icon**. Fremkit ships no brand logos; the marks you import stay in your installation.
 
 - **Shortcuts: groups.** A button of kind *Group* holds a few buttons of its own (a *Prod*
   pipeline, a *Dev* one) without taking a cell each: it shows their icons in a little square, and
@@ -73,19 +101,47 @@ tagged `vX.Y.Z`.
   settings, drop a button onto a group to put it in; *Take out of the group* puts it back. A group
   may hold subgroups, one level deep, and the back button climbs one level at a time.
 
-- **A wider settings panel when you need it.** Drag the left edge of the editor's right-hand panel
-  to widen it, up to 720 px; the canvas always keeps its room. The width is remembered in this
-  browser, and a double click on the edge brings back the usual one.
+- **Shortcuts: your own icons, SVG included.** A button's or a group's icon can now come from
+  your icon library, the one the tiles' title icons use: the folder button beside the field picks
+  one or imports a PNG, WebP or SVG, such as a CI service's pipeline mark. A group also takes an
+  image address now. Widgets can do the same with an `icon` item field and
+  `Fremkit.libraryIcon()` (SDK generation 6).
+
+- **Shortcuts: open a link in a browser profile.** A link button's *Open in* box offers the
+  profiles of Brave, Chrome and Edge found on this Mac, such as `Brave — Work`, and the link opens
+  in that profile's window. Without Full Disk Access for Fremkit Helper, macOS hides the profiles'
+  names and they are offered by folder (`Brave — Profile 1`). A profile can also be typed by hand.
+  The button wears the profile's initial in its corner, which a setting turns off.
+
+- **Claude sessions: tell the sessions apart.** A card names the repository rather than the folder
+  the session sits in, followed by the worktree or subfolder and the branch, and is titled with the
+  name Claude Code's `/rename` gives a session; the status line shows that name and that place too.
+  A new *Session order* setting sorts the cards by last activity instead of by state.
+
+- **Claude sessions: the count moves into the title.** The number of sessions now follows the
+  tile's title (*Claude sessions · 18*) instead of taking a line of its own, and goes away with
+  the title. Both it and today's summary (sessions, finished, commits) can be turned off in the
+  widget's settings. Widgets can do the same with `Fremkit.titleNote()` (SDK generation 5).
+
+- **Claude limits: pick the account.** When Claude Code runs from several profiles signed in to
+  different accounts, **Settings → Privacy → Claude account** picks the one whose usage the Claude
+  widgets show, named by its organisation and plan. *Automatic*, the default, keeps following the
+  profile used last. A profile whose sign-in has lapsed is marked *sign-in expired* in the list,
+  picking another account reads it at once, and the widget says in words why its gauges are old
+  (*sign-in expired*, *too many requests*) instead of an error code.
+
+- **Claude widgets can hide the cost.** **Claude limits** and **Claude sessions** have a **Show
+  cost** setting: turned off, the tiles no longer show what today's tokens or a session would cost
+  in dollars. It is on by default, so a tile already on the dashboard looks the same.
 
 - **Lists in a widget's settings are folded and dragged.** Each item of a list (the shortcuts'
   buttons, the clock's cities, the services watched) now shows on one line and opens on a touch to
   edit its fields, one at a time; drag an item to move it. The shortcuts' buttons are laid out as
   the widget lays them, in its columns, so they are arranged the way they will read.
 
-- **Claude sessions: the count moves into the title.** The number of sessions now follows the
-  tile's title (*Claude sessions · 18*) instead of taking a line of its own, and goes away with
-  the title. Both it and today's summary (sessions, finished, commits) can be turned off in the
-  widget's settings. Widgets can do the same with `Fremkit.titleNote()` (SDK generation 5).
+- **A wider settings panel when you need it.** Drag the left edge of the editor's right-hand panel
+  to widen it, up to 720 px; the canvas always keeps its room. The width is remembered in this
+  browser, and a double click on the edge brings back the usual one.
 
 - **Arranging the bar's widgets.** The screen's settings now list the bar's widgets as the bar
   reads them, under *Left of the dots* and *Right of the dots*. Drag a widget to move it, within a
@@ -97,48 +153,6 @@ tagged `vX.Y.Z`.
 
 - **A bar widget's popover stays open while you use it.** Its 15-second countdown now starts again
   on every touch, drag or scroll inside the widget, so browsing a long list no longer closes it.
-
-- **GIFs on two rows.** The GIF board can show two rows of smaller GIFs in the same space
-  (*Rows of GIFs* in its settings), on a page and in the bar's popover alike.
-
-- **Tile icons.** A tile's title can show an icon: a pictogram from the built-in set, or your own
-  SVG, PNG or WebP, tinted to the theme or in its own colours. Under **/admin**, select a tile,
-  then **Icon**. Fremkit ships no brand logos; the marks you import stay in your installation.
-- **The Fremkit app for Android tablets.** It shows a screen of your dashboard on an Android tablet
-  (Android 9 or later) as the iPad app does: pair it by scanning the QR code in **Settings →
-  Devices**, or by typing the code after checking the four words; it finds the Mac again when its
-  address changes, follows the brightness set for its screen (move the tablet's own slider and
-  yours wins, and the admin follows), runs full screen and keeps the screen on. Its settings,
-  opened over the dashboard with the gesture that opens the admin on the Edge, can pin the app to
-  the screen with Android's screen pinning, or forget the Mac. The APK comes with each release
-  rather than from the Play Store, and needs nothing from Google Play: **Settings → Devices** and the
-  site link to it, and the site shows its signing certificate's fingerprint to check it against.
-  Obtainium can keep it up to date.
-- **Pairing by address when the tablet finds no Mac.** **Settings → Devices** now shows, beside the
-  code, the Mac's addresses to type on a tablet, and the Android app (the iPad app from its next
-  version) has **Enter the Mac's address** under its list of Macs: for networks where the tablet
-  never sees the Mac on its own, such as a Mac on both Wi-Fi and Ethernet. You still check the
-  four words before typing the code.
-- **GIF board.** A widget of your favourite GIFs, sorted into groups: touch one on the Edge and
-  press ⌘V in Teams (or Slack) to send it, animated. The row of GIFs loops when it does not fit, and
-  the groups are reordered by dragging them in the editor. It also fits in the navigation bar as a
-  GIF badge that opens the board when touched (tick *Full widget on touch*). Fill it from the widget's settings in
-  **/admin**, by searching Giphy or by pasting a GIF's address; Giphy search needs a free Giphy API
-  key, added under **Connections**, and pasting an address works without one. On a paired tablet,
-  a touch copies to the Mac's clipboard the same way.
-
-- **Recent projects widget.** Lists the folders you worked in lately — git repositories under the
-  folders you choose, plus, if you tick them, Claude Code, Codex, VS Code, Cursor, JetBrains IDEs,
-  zoxide, tmux and Herdr — and opens one with a tap in Finder, a terminal, your editor (a
-  JetBrains IDE included) or Herdr (the pane already in that folder, else a new one, with Herdr's
-  terminal brought to the front), or starts Claude Code or Codex in a new Herdr pane or tmux
-  window on it; a long press offers the other installed applications, and can make one the
-  project's own for every later tap. Without one, the files at a project's root can suggest the
-  right IDE (a `.sln` for Rider, a `Cargo.toml` for RustRover…). Only folder paths, dates and
-  the names at a project's root are read, never a conversation or a file's contents.
-- **Claude widgets can hide the cost.** **Claude limits** and **Claude sessions** have a **Show
-  cost** setting: turned off, the tiles no longer show what today's tokens or a session would cost
-  in dollars. It is on by default, so a tile already on the dashboard looks the same.
 
 ### Changed
 
