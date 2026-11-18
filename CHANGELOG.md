@@ -17,6 +17,7 @@ tagged `vX.Y.Z`.
 - **Device screens: pick the orientation.** *Create a screen its size* offers Landscape or
   Portrait, starting with the way the tablet was held when it paired, so a tablet paired upright
   can still get a landscape screen without pairing it again.
+
 - **Claude limits: pick the account.** When Claude Code runs from several profiles signed in to
   different accounts, **Settings → Privacy → Claude account** picks the one whose usage the Claude
   widgets show, named by its organisation and plan. *Automatic*, the default, keeps following the
