@@ -265,6 +265,18 @@ export function mayListApps(subscriptions: string[] | undefined): boolean {
 /** Dispatched on the host window when a widget asks, through the bridge, to hold swipes off. */
 export const HOLD_SWIPE_EVENT = 'fremkit:hold-swipe'
 
+/**
+ * Dispatched on the host window, as a `CustomEvent` whose detail is the direction, when a widget's
+ * bridge saw a finger swipe across it. The dashboard turns the page; the admin does not listen.
+ */
+export const WIDGET_SWIPE_EVENT = 'fremkit:widget-swipe'
+
+/** The direction a `fremkit:swipe` message asks for: 1 (next page) or -1 (previous); null for anything else. */
+export function swipeDelta(m: unknown): 1 | -1 | null {
+  const d = (m as { delta?: unknown } | null)?.delta
+  return d === 1 || d === -1 ? d : null
+}
+
 /** Longest title note the host shows; the title bar is one line and the note follows the title. */
 export const TITLE_NOTE_MAX = 24
 

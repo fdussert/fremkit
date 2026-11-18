@@ -6,7 +6,7 @@ import { useAppliedTheme, useThemeColors } from './theme'
 import { channelAllowed, mergeSettings, type AccentMode, type NavSlot, type WidgetInstance, type WidgetManifest, type WidgetSize } from './types'
 import { onWidgetReload } from './widgetDev'
 import { tileIconUrl } from './tileIcon'
-import { FrameTrust, HOLD_SWIPE_EVENT, appIconTarget, cleanTitleNote, connRequest, faviconTarget, fetchTarget, gifTarget, helloNonce, imageTarget, libraryIconTarget, mayListApps, nonEmptyString, stampInstance } from './widgetMessages'
+import { FrameTrust, HOLD_SWIPE_EVENT, WIDGET_SWIPE_EVENT, appIconTarget, cleanTitleNote, connRequest, faviconTarget, fetchTarget, gifTarget, helloNonce, imageTarget, libraryIconTarget, mayListApps, nonEmptyString, stampInstance, swipeDelta } from './widgetMessages'
 
 export type BridgeState = 'loading' | 'ready' | 'error'
 
@@ -49,6 +49,11 @@ export interface BridgeOptions {
    * bar's popover restarts its idle countdown on it.
    */
   onActivity?: () => void
+  /**
+   * False where a swipe across the widget must not turn the page: the bar's popover, which a
+   * page change would close under the finger.
+   */
+  swipes?: boolean
 }
 
 /**
@@ -197,6 +202,13 @@ export function useWidgetBridge(
         // useSwipe listens on the host window; the admin has no swipe and ignores it.
         window.dispatchEvent(new Event(HOLD_SWIPE_EVENT))
         break
+      case 'fremkit:swipe': {
+        // Heard by the dashboard (App.vue), which turns the page under the same lock as its own
+        // swipes; the admin has no listener.
+        const delta = swipeDelta(m)
+        if (delta && options.swipes !== false) window.dispatchEvent(new CustomEvent(WIDGET_SWIPE_EVENT, { detail: delta }))
+        break
+      }
       case 'fremkit:title-note':
         titleNote.value = cleanTitleNote(m.text)
         break

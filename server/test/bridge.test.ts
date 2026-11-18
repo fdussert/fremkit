@@ -9,6 +9,7 @@ import { SDK_GENERATIONS, SDK_VERSION } from '../src/bridge/sdk.js'
  * widget now relies on for escaping can be exercised without a DOM.
  */
 interface Bridge {
+  holdSwipe(): void
   subscribe(channel: string, cb: (data: unknown) => void): () => void
   appIcon(bundleId: string): Promise<string>
   sdk: number
@@ -37,12 +38,13 @@ interface LoadResult {
   port: { onmessage: ((event: { data: unknown }) => void) | null }
 }
 
-async function loadBridge(): Promise<LoadResult> {
+async function loadBridge(windowExtras: Record<string, unknown> = {}): Promise<LoadResult> {
   const src = await readFile(fileURLToPath(new URL('../src/bridge/fremkit.js', import.meta.url)), 'utf8')
   let onMessage: ((event: { source: unknown; data: unknown }) => void) | null = null
   const posted: Record<string, unknown>[] = []
   const windowPosts: Record<string, unknown>[] = []
   const window: Record<string, unknown> = {
+    ...windowExtras,
     parent: { postMessage: (message: Record<string, unknown>) => { windowPosts.push(message) } },
     addEventListener: (type: string, cb: (event: { source: unknown; data: unknown }) => void) => {
       if (type === 'message') onMessage = cb
@@ -247,6 +249,74 @@ describe('telling the host someone is using the widget', () => {
     fresh.fire('pointermove', { buttons: 0 })
     fresh.fire('pointerdown', { isTrusted: false })
     expect(activity(fresh)).toHaveLength(0)
+  })
+})
+
+describe('a swipe across the widget', () => {
+  const swipes = (r: LoadResult) => r.posted.filter((m) => m.type === 'fremkit:swipe')
+  const touch = (x: number, y: number) => ({ clientX: x, clientY: y })
+  /** One finger from (x0, y0) to (x1, y1), as WebKit reports it. */
+  function drag(r: LoadResult, x0: number, y0: number, x1: number, y1: number, start: Record<string, unknown> = {}) {
+    r.fire('touchstart', { touches: [touch(x0, y0)], ...start })
+    r.fire('touchend', { touches: [], changedTouches: [touch(x1, y1)] })
+  }
+
+  it('tells the host to turn the page, next for a swipe to the left, previous to the right', async () => {
+    const fresh = await loadBridge()
+    drag(fresh, 300, 100, 200, 110)
+    drag(fresh, 200, 100, 300, 90)
+    expect(swipes(fresh)).toEqual([{ type: 'fremkit:swipe', delta: 1 }, { type: 'fremkit:swipe', delta: -1 }])
+  })
+  it('ignores a short drag, and one that goes more down than across', async () => {
+    const fresh = await loadBridge()
+    drag(fresh, 300, 100, 260, 100)
+    drag(fresh, 300, 100, 200, 220)
+    expect(swipes(fresh)).toHaveLength(0)
+  })
+  it('hears the touch driver\'s pointer on the Edge, and leaves a touch\'s pointer to the touch events', async () => {
+    const fresh = await loadBridge()
+    fresh.fire('pointerdown', { pointerType: 'mouse', isPrimary: true, clientX: 300, clientY: 50 })
+    fresh.fire('pointerup', { pointerType: 'mouse', clientX: 180, clientY: 60 })
+    fresh.fire('pointerdown', { pointerType: 'touch', isPrimary: true, clientX: 300, clientY: 50 })
+    fresh.fire('pointerup', { pointerType: 'touch', clientX: 180, clientY: 60 })
+    expect(swipes(fresh)).toEqual([{ type: 'fremkit:swipe', delta: 1 }])
+  })
+  it('leaves the gesture to the widget once it called holdSwipe', async () => {
+    const fresh = await loadBridge()
+    fresh.fire('touchstart', { touches: [touch(300, 100)] })
+    fresh.bridge.holdSwipe()
+    fresh.fire('touchend', { touches: [], changedTouches: [touch(100, 100)] })
+    expect(swipes(fresh)).toHaveLength(0)
+  })
+  it('leaves a slider, a sideways scroller and a touch-action surface to the widget', async () => {
+    type Node = { nodeType: 1; tagName: string; type?: string; parentElement: Node | null; scrollWidth: number; clientWidth: number; css: Record<string, string> }
+    const node = (tagName: string, extra: Partial<Node> = {}, parent: Node | null = null): Node =>
+      ({ nodeType: 1, tagName, parentElement: parent, scrollWidth: 100, clientWidth: 100, css: {}, ...extra })
+    const body = node('BODY')
+    const fresh = await loadBridge({
+      getComputedStyle: (n: Node) => ({ touchAction: 'auto', overflowX: 'visible', ...n.css }),
+    })
+    const slider = node('INPUT', { type: 'range' }, body)
+    const strip = node('DIV', { scrollWidth: 400, css: { overflowX: 'auto' } }, body)
+    const inStrip = node('SPAN', {}, strip)
+    const wideButFits = node('DIV', { css: { overflowX: 'auto' } }, body)
+    const knob = node('CANVAS', { css: { touchAction: 'none' } }, body)
+    for (const target of [slider, inStrip, knob]) drag(fresh, 300, 100, 100, 100, { target })
+    expect(swipes(fresh)).toHaveLength(0)
+    drag(fresh, 300, 100, 100, 100, { target: wideButFits })
+    expect(swipes(fresh)).toHaveLength(1)
+  })
+  it('ignores two fingers, a cancelled touch, and events the widget made up', async () => {
+    const fresh = await loadBridge()
+    fresh.fire('touchstart', { touches: [touch(300, 100), touch(320, 100)] })
+    fresh.fire('touchend', { touches: [], changedTouches: [touch(100, 100)] })
+    fresh.fire('touchstart', { touches: [touch(300, 100)] })
+    fresh.fire('touchcancel')
+    fresh.fire('touchend', { touches: [], changedTouches: [touch(100, 100)] })
+    drag(fresh, 300, 100, 100, 100, { isTrusted: false })
+    fresh.fire('touchstart', { touches: [touch(300, 100)] })
+    fresh.fire('touchend', { isTrusted: false, touches: [], changedTouches: [touch(100, 100)] })
+    expect(swipes(fresh)).toHaveLength(0)
   })
 })
 

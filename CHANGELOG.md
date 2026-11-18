@@ -113,6 +113,10 @@ tagged `vX.Y.Z`.
 
 ### Fixed
 
+- **Swiping across a widget turns the page.** A swipe only worked when it started between the
+  tiles: on a tablet a finger on a widget stayed in the widget, and the page did not move. Sliders,
+  sideways scrolling lists and widgets that hold the swipe for their own gestures keep it.
+
 - **A Mac that shows the Spotify or the Volume widget no longer stops opening applications
   after a few days.** To read the track and the volume, Fremkit started a small system program
   (`osascript`) up to three times a second, and macOS can only count about a million of those

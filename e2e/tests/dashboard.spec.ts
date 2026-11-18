@@ -71,6 +71,23 @@ test.describe('pages', () => {
     await page.waitForTimeout(100)
     await expect(current(page)).toHaveAttribute('aria-label', 'Second')
   })
+
+  test('a drag across a widget turns the page, though its frame keeps the touch', async ({ page, signIn }) => {
+    await signIn('/')
+    await expect(current(page)).toHaveAttribute('aria-label', 'Home')
+    const frame = page.locator('.stage iframe').first()
+    await expect(frame).toBeVisible()
+    // Wait for the bridge's handshake: the widget has drawn once it is connected.
+    await expect(page.frameLocator('.stage iframe').first().locator('body')).not.toBeEmpty()
+    const box = (await frame.boundingBox())!
+    const y = box.y + box.height / 2
+    // Real input, inside the frame: the host document never hears it, only the bridge does.
+    await page.mouse.move(box.x + box.width * 0.7, y)
+    await page.mouse.down()
+    await page.mouse.move(box.x + box.width * 0.3, y + 10, { steps: 5 })
+    await page.mouse.up()
+    await expect(current(page)).toHaveAttribute('aria-label', 'Second')
+  })
 })
 
 /** The built-in theme by day, Edge by night, switching at fixed times an hour either side of now. */

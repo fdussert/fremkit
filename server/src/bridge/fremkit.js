@@ -196,6 +196,8 @@
    */
   var port = null
   var outbox = []
+  /** The finger (or button) down in this document, for the page swipe below; null when none. */
+  var swipeStart = null
   var nonce = makeNonce()
 
   function makeNonce() {
@@ -379,7 +381,11 @@
      * land on the dashboard, which would otherwise take the end of the slide for a swipe.
      * Generation 3.
      */
-    holdSwipe: function () { post({ type: 'fremkit:hold-swipe' }) },
+    holdSwipe: function () {
+      // The gesture under way is the widget's: it does not turn the page when the finger lifts.
+      if (swipeStart) swipeStart.held = true
+      post({ type: 'fremkit:hold-swipe' })
+    },
     /**
      * A few words the host shows after the tile's title, such as a count: `Fremkit.titleNote('18')`.
      * Plain text on one line, cut by the host; an empty string or null takes it away. Shown only
@@ -644,6 +650,72 @@
   ;['pointerdown', 'pointermove', 'wheel', 'scroll'].forEach(function (type) {
     // Capture, and passive: scroll does not bubble, and this must never slow a gesture down.
     document.addEventListener(type, onActivity, { capture: true, passive: true })
+  })
+
+  /**
+   * Turns the page when a finger swipes across the widget. A touch inside a frame never reaches
+   * the host document, so the dashboard's own swipe only worked between the tiles; this tells it
+   * the direction instead, the same threshold as the host's (50 px, more across than down).
+   *
+   * Left alone: a gesture that starts on a slider (`input[type=range]`), on something that scrolls
+   * sideways, or on an element with `touch-action: none` or `pan-x` (a canvas, a knob); and one
+   * during which the widget called `holdSwipe()`. Only real input counts.
+   *
+   * Touch goes through touch events, not pointer events: WebKit cancels the pointer as soon as it
+   * starts scrolling something, which is exactly when the finger is still on its way.
+   */
+  var SWIPE_MIN_PX = 50
+  function swipeExempt(target) {
+    var getStyle = window.getComputedStyle
+    for (var n = target; n && n.nodeType === 1; n = n.parentElement) {
+      if (n.tagName === 'INPUT' && String(n.type).toLowerCase() === 'range') return true
+      var cs = getStyle ? getStyle(n) : null
+      if (!cs) continue
+      if (cs.touchAction === 'none' || cs.touchAction.indexOf('pan-x') >= 0) return true
+      if ((cs.overflowX === 'auto' || cs.overflowX === 'scroll') && n.scrollWidth > n.clientWidth) return true
+    }
+    return false
+  }
+  function swipeBegin(x, y, target, kind) {
+    swipeStart = { x: x, y: y, kind: kind, held: swipeExempt(target) }
+  }
+  function swipeEnd(x, y, kind) {
+    var s = swipeStart
+    if (!s || s.kind !== kind) return
+    swipeStart = null
+    if (s.held || !port) return
+    var dx = x - s.x
+    var dy = y - s.y
+    if (Math.abs(dx) < SWIPE_MIN_PX || Math.abs(dx) <= Math.abs(dy)) return
+    port.postMessage({ type: 'fremkit:swipe', delta: dx < 0 ? 1 : -1 })
+  }
+  function swipeCancel() { swipeStart = null }
+  var swipeListeners = {
+    touchstart: function (e) {
+      if (!e.isTrusted) return
+      if (e.touches.length !== 1) { swipeCancel(); return }
+      var t = e.touches[0]
+      swipeBegin(t.clientX, t.clientY, e.target, 'touch')
+    },
+    touchend: function (e) {
+      if (!e.isTrusted || e.touches.length) { swipeCancel(); return }
+      var t = e.changedTouches[0]
+      if (t) swipeEnd(t.clientX, t.clientY, 'touch')
+    },
+    touchcancel: swipeCancel,
+    pointerdown: function (e) {
+      // A touch also raises pointer events; the touch listeners above own those.
+      if (!e.isTrusted || e.pointerType === 'touch' || !e.isPrimary) return
+      swipeBegin(e.clientX, e.clientY, e.target, 'pointer')
+    },
+    pointerup: function (e) {
+      if (!e.isTrusted || e.pointerType === 'touch') return
+      swipeEnd(e.clientX, e.clientY, 'pointer')
+    },
+    pointercancel: function (e) { if (e.pointerType !== 'touch') swipeCancel() },
+  }
+  Object.keys(swipeListeners).forEach(function (type) {
+    document.addEventListener(type, swipeListeners[type], { capture: true, passive: true })
   })
 
   Object.defineProperty(window, 'Fremkit', { value: F, writable: false, configurable: false, enumerable: true })

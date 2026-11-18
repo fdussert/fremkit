@@ -69,6 +69,7 @@ const { state } = useWidgetBridge(iframe, () => instance.value, () => props.mani
   pixelSize: () => ({ width: box.value.width, height: box.value.height - TITLE_H }),
   // Touches and scrolls inside the frame never reach this document; the bridge reports them.
   onActivity: () => emit('activity'),
+  swipes: false,
 })
 const { t } = useI18n()
 const title = computed(() => pick(props.manifest?.name) || instance.value.widgetId)

@@ -303,7 +303,7 @@ than wait.
 | `Fremkit.sdk` | The bridge generation this Fremkit speaks, as a number |
 | `Fremkit.instanceId` | This instance's id |
 | `Fremkit.screen` | The id of the screen the widget is drawn on (the Edge, a paired device), or `null` when the host does not say. For data that is per screen, like brightness. Generation 3 |
-| `Fremkit.holdSwipe()` | Keeps the page from swiping for half a second. Call it on every move of a slider or a knob: a quick slide arrives as wheel events at the finger, and once the finger leaves the widget they would land on the dashboard and turn the page. Generation 3 |
+| `Fremkit.holdSwipe()` | Keeps the page from swiping for half a second. Call it on every move of a slider or a knob: a quick slide arrives as wheel events at the finger, and once the finger leaves the widget they would land on the dashboard and turn the page. A swipe across the widget turns the page too (more than 50 px, more across than down), except one that starts on an `input[type=range]`, on an element that scrolls sideways or has `touch-action: none` or `pan-x`, or one during which the widget called `holdSwipe()`: anything else that drags sideways calls it on its first move. Generation 3 |
 | `Fremkit.titleNote(text)` | A few words the host shows after the tile's title, such as a count (`titleNote('18')` reads "Claude sessions · 18"). Plain text on one line, cut to 24 characters; `''` or `null` takes it away. Shown only where the host draws a title: nothing in the bar, nothing when the title is hidden. Generation 5 |
 | `Fremkit.settings` | The settings object, manifest defaults merged in |
 | `Fremkit.locale` | `'fr'` or `'en'` |

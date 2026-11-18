@@ -1,6 +1,7 @@
 // Shared horizontal-swipe gesture handling for dashboard-owned areas (the
 // nav bar, the stage, and the two screen-edge strips). Widget iframes are
-// sandboxed, so swipes must start here rather than inside a widget.
+// sandboxed and their touches never reach this document: a swipe across a
+// widget is seen by its bridge and arrives through `fling`.
 //
 // Two input paths feed the same `onSwipe` callback:
 // - a real pointer drag (down/up, 50px threshold);
@@ -86,5 +87,15 @@ export function useSwipe(onSwipe: (delta: 1 | -1) => void) {
     else if (wheelAcc <= -WHEEL_THRESHOLD) { wheelAcc = 0; trigger(-1) }
   }
 
-  return { down, up, cancel, wheel }
+  /**
+   * A swipe a widget's bridge saw inside its frame (`WIDGET_SWIPE_EVENT`). Under the same lock as
+   * the two paths above, so the wheel events the same drag sends once the finger leaves the frame
+   * do not turn a second page.
+   */
+  function fling(delta: 1 | -1) {
+    if (startX !== null || performance.now() < lockUntil) return
+    trigger(delta)
+  }
+
+  return { down, up, cancel, wheel, fling }
 }
