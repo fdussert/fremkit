@@ -310,11 +310,12 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     registry.register(createSystemProvider({ macmonTemperatureEnabled: () => store.get().privacy.macmonTemperature }))
     registry.register(createClaudeSessionsProvider(tracker))
     registry.register(createClaudeUsageProvider(usage))
-    registry.register(createClaudeIdentityProvider())
+    registry.register(createClaudeIdentityProvider({ configDir: () => store.get().privacy.claudeAccountDir }))
     registry.register(createClaudeAccountProvider({
       filePath: join(opts.dataDir, 'claude-account.json'),
       enabled: () => store.get().privacy.claudeAccountUsage,
       configDirs: () => claudeConfigDirs.list(),
+      accountDir: () => store.get().privacy.claudeAccountDir,
     }))
     const codex = createCodexProvider({
       enabled: () => store.get().privacy.codexAccount || store.get().privacy.codexHistorySources.length > 0,
@@ -528,7 +529,11 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   await app.register(faviconRoutes, { dir: join(opts.dataDir, 'icons', 'favicons'), config: () => store.get(), screenOfDevice })
   // The editor's GIF search and link check, on the one GIF store the provider shares.
   await app.register(gifRoutes, { store, gifs, screenOfDevice, secretsFor: (c) => connections.secretsFor(c), demo })
-  await app.register(claudeRoutes, { tracker, usage, configDirs: claudeConfigDirs })
+  await app.register(claudeRoutes, {
+    tracker, usage, configDirs: claudeConfigDirs,
+    // A demo never runs the Claude CLI: its one account is the folder Claude Code uses by default.
+    ...(demo ? { describe: async (dir: string) => ({ dir, plan: 'max', org: null }) } : {}),
+  })
   await app.register(dockRoutes, {
     state: dock,
     ...(appIcons ? { appIcons } : {}),

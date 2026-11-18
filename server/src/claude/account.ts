@@ -4,7 +4,7 @@ import type { Provider } from '../providers/types.js'
 import type { UsageWindow } from './usage.js'
 import { tr, type MessageKey } from '../i18n.js'
 import { USER_AGENT } from '../version.js'
-import { DEFAULT_KEYCHAIN_SERVICE, keychainServiceFor } from './configDirs.js'
+import { keychainServicesFor } from './configDirs.js'
 
 export interface AccountLimit { kind: string; name: string; percent: number; resetsAt: number | null; active: boolean }
 export interface AccountUsage { fiveHour: UsageWindow | null; sevenDay: UsageWindow | null; limits: AccountLimit[]; breakdown: { name: string; percent: number }[] }
@@ -105,11 +105,16 @@ export function freshestToken(items: (KeychainToken | null)[]): string | null {
  * Reads the token from the macOS keychain. Never logs or stores it.
  *
  * Tries the default item and the one for each configuration folder sessions were seen running from
- * (see `configDirs.ts`); the item names are computed here, so an event can only ever point this at
- * another `Claude Code-credentials-<8 hex>` item.
+ * (see `configDirs.ts`), or only the folder the user picked (`privacy.claudeAccountDir`); the item
+ * names are computed here, so an event can only ever point this at another
+ * `Claude Code-credentials-<8 hex>` item.
  */
-export async function readClaudeOAuthToken(configDirs: string[] = [], read: (service: string) => Promise<string> = (service) => run('/usr/bin/security', ['find-generic-password', '-s', service, '-w'])): Promise<string | null> {
-  const services = [...new Set([DEFAULT_KEYCHAIN_SERVICE, ...configDirs.map(keychainServiceFor)])]
+export async function readClaudeOAuthToken(
+  configDirs: string[] = [],
+  read: (service: string) => Promise<string> = (service) => run('/usr/bin/security', ['find-generic-password', '-s', service, '-w']),
+  pinned = 'auto',
+): Promise<string | null> {
+  const services = keychainServicesFor(configDirs, pinned)
   const items: (KeychainToken | null)[] = []
   for (const service of services) {
     try { items.push(parseKeychainItem(await read(service))) } catch { /* no such item */ }
@@ -156,10 +161,13 @@ export function createClaudeAccountProvider(opts: {
   enabled?: () => boolean
   /** The Claude Code configuration folders seen so far, whose keychain items are tried too. */
   configDirs?: () => string[]
+  /** `privacy.claudeAccountDir`: `auto`, or the one folder whose account is read. Read on every poll. */
+  accountDir?: () => string
 } = {}): Provider {
   const fetchFn = opts.fetchFn ?? fetch
   const configDirs = opts.configDirs ?? (() => [])
-  const readToken = opts.readToken ?? (() => readClaudeOAuthToken(configDirs()))
+  const accountDir = opts.accountDir ?? (() => 'auto')
+  const readToken = opts.readToken ?? (() => readClaudeOAuthToken(configDirs(), undefined, accountDir()))
   const now = opts.now ?? Date.now
   const filePath = opts.filePath
   const enabled = opts.enabled ?? (() => true)

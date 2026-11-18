@@ -23,7 +23,11 @@ vi.mock('../src/claude/providers.js', async (orig) => ({
   createClaudeUsageProvider: spy('claude-usage'),
   createClaudeAccountProvider: spy('claude-account'),
 }))
-vi.mock('../src/claude/identity.js', async (orig) => ({ ...(await orig<object>()), createClaudeIdentityProvider: spy('claude-identity') }))
+vi.mock('../src/claude/identity.js', async (orig) => ({
+  ...(await orig<object>()),
+  createClaudeIdentityProvider: spy('claude-identity'),
+  describeConfigDir: spy('claude-describe-config-dir'),
+}))
 vi.mock('../src/providers/codex.js', async (orig) => ({ ...(await orig<object>()), createCodexProvider: spy('codex') }))
 vi.mock('../src/dock/provider.js', async (orig) => ({ ...(await orig<object>()), createDockProvider: spy('dock') }))
 vi.mock('../src/providers/disk-map.js', async (orig) => ({ ...(await orig<object>()), createDiskMapProvider: spy('disk-map') }))
@@ -89,6 +93,10 @@ describe('demo mode', () => {
     app = await demoApp()
     for (const [name, fn] of Object.entries(spies)) expect(fn, name).not.toHaveBeenCalled()
     expect((await app.inject({ url: '/api/demo' })).json()).toEqual({ demo: true })
+    // The Claude account picker lists a made-up account: a demo never runs the Claude CLI.
+    const accounts = await app.inject({ url: '/api/claude/accounts' })
+    expect(accounts.statusCode).toBe(200)
+    expect(accounts.json().accounts).toEqual([expect.objectContaining({ plan: 'max', org: null })])
   })
 
   it('the spies are live: a normal build trips them', async () => {

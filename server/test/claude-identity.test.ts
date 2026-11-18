@@ -1,8 +1,23 @@
 import { describe, it, expect } from 'vitest'
-import { createClaudeIdentityProvider, identityEnv, resolveClaudeBinary } from '../src/claude/identity.js'
+import { createClaudeIdentityProvider, describeConfigDir, identityEnv, resolveClaudeBinary } from '../src/claude/identity.js'
 import { ProviderRegistry } from '../src/providers/registry.js'
 
 const status = JSON.stringify({ loggedIn: true, authMethod: 'claude.ai', subscriptionType: 'max', email: 'PRIVATE', accessToken: 'PRIVATE' })
+
+describe('describeConfigDir', () => {
+  it('names a folder\'s account by plan and organisation, never by an address', async () => {
+    const read = async (dir: string) => JSON.stringify(dir === '/u/work'
+      ? { loggedIn: true, authMethod: 'claude.ai', subscriptionType: 'team', orgName: 'Example Corp', email: 'PRIVATE' }
+      : { loggedIn: true, authMethod: 'claude.ai', subscriptionType: 'max', orgName: "someone@example.com's Organization", email: 'PRIVATE' })
+    expect(await describeConfigDir('/u/work', read)).toEqual({ dir: '/u/work', plan: 'team', org: 'Example Corp' })
+    const personal = await describeConfigDir('/u/personal', read)
+    expect(personal).toEqual({ dir: '/u/personal', plan: 'max', org: null })
+    expect(JSON.stringify(personal)).not.toContain('example.com')
+  })
+  it('says nothing about a folder whose status cannot be read', async () => {
+    expect(await describeConfigDir('/u/gone', async () => { throw new Error('offline') })).toEqual({ dir: '/u/gone', plan: null, org: null })
+  })
+})
 
 describe('Claude identity', () => {
   it('projects only login and plan from CLI status', async () => {

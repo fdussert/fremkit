@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import { readFile, writeFile, rename } from 'node:fs/promises'
-import { isAbsolute } from 'node:path'
+import { homedir } from 'node:os'
+import { isAbsolute, join } from 'node:path'
 import { z } from 'zod'
 
 /**
@@ -37,6 +38,23 @@ export function configDirOf(transcriptPath: unknown): string | null {
 /** The keychain item Claude Code writes its token to when it runs from `dir`. */
 export function keychainServiceFor(dir: string): string {
   return `${DEFAULT_KEYCHAIN_SERVICE}-${createHash('sha256').update(dir).digest('hex').slice(0, 8)}`
+}
+
+/** The folder Claude Code uses when `CLAUDE_CONFIG_DIR` is not set: its token is the plain item. */
+export function defaultConfigDir(): string {
+  return join(homedir(), '.claude')
+}
+
+/**
+ * The keychain items to try for the account usage. `auto`: the plain item and every known folder's,
+ * the freshest token winning. A folder: that folder's item only, plus the plain one for the default
+ * folder, which a Claude Code run without `CLAUDE_CONFIG_DIR` writes.
+ */
+export function keychainServicesFor(known: string[], pinned: string): string[] {
+  if (pinned !== 'auto') {
+    return pinned === defaultConfigDir() ? [DEFAULT_KEYCHAIN_SERVICE, keychainServiceFor(pinned)] : [keychainServiceFor(pinned)]
+  }
+  return [...new Set([DEFAULT_KEYCHAIN_SERVICE, ...known.map(keychainServiceFor)])]
 }
 
 export class ClaudeConfigDirs {
