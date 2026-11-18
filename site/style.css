@@ -382,6 +382,31 @@ details p { margin: 0 0 22px; color: var(--muted); max-width: 640px; }
 .foot nav a { text-decoration: none; } .foot nav a:hover { color: var(--text); }
 .foot .fine { flex-basis: 100%; }
 
+/* beyond the strip: the iPad app and the browser companion */
+/* The Widgets section follows this one with the same background: a hairline between them. */
+#beyond + .section:not(.alt) { border-top: 1px solid var(--border); }
+.beyond { display: grid; gap: 20px; margin-top: 56px; }
+.card.addon { display: grid; grid-template-columns: minmax(0, var(--shot-w, 300px)) minmax(0, 1fr); gap: 40px; align-items: center; padding: 24px; }
+.card.addon > .addon-text { max-width: 560px; }
+.addon-shot { margin: 0; border-radius: 14px; overflow: hidden; border: 1px solid var(--border-strong); background: var(--bg); box-shadow: 0 30px 60px -30px rgba(0,0,0,.9); }
+.addon-shot img { display: block; width: 100%; height: auto; }
+.card.addon.companion { --shot-w: 480px; }
+.addon-shot .credit { padding: 6px 10px; font: 400 11px/1.4 var(--mono); color: var(--dim); border-top: 1px solid var(--border); }
+.addon-shot .credit a { color: var(--muted); }
+.addon-shot .credit .nw { white-space: nowrap; }
+.addon-shot.ipad { border-radius: 20px; border-width: 6px; border-color: #1d2127; }
+.addon-text .tag { margin-top: 0; }
+.addon-text .checks { margin: 20px 0 24px; }
+.addon-cta { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; }
+.addon-text .tablet-fine { margin-top: 18px; }
+.addon-text .tablet-fine + .tablet-fine { margin-top: 6px; }
+.tablet-fine code { font: 500 12.5px var(--mono); color: var(--accent); white-space: nowrap; }
+.addon .fp { display: flex; align-items: center; gap: 14px; margin-top: 20px; padding: 12px 12px 12px 16px; border: 1px solid var(--border); border-radius: 12px; background: var(--bg); }
+.addon .fp-txt { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.addon .fp-txt small { font: 400 12px/1.5 var(--mono); color: var(--dim); }
+.addon .fp-txt small a { color: var(--muted); }
+.addon .fp-txt code { font: 500 13px/1.5 var(--mono); color: var(--text); word-break: break-all; }
+
 /* responsive */
 @media (max-width: 1000px) {
   .nav-links { display: none; }
@@ -391,6 +416,9 @@ details p { margin: 0 0 22px; color: var(--muted); max-width: 640px; }
   .steps { grid-template-columns: 1fr 1fr; }
   .split, .install, .w-head { grid-template-columns: 1fr; gap: 40px; }
   .w-shot { max-height: 420px; }
+  .card.addon { grid-template-columns: 1fr; gap: 28px; }
+  .addon-shot.ipad { width: min(300px, 100%); justify-self: center; }
+  .addon .fp { flex-direction: column; align-items: flex-start; }
 }
 @media (max-width: 720px) {
   .wrap, .wrap.narrow, .ticker { width: calc(100% - 32px); }
@@ -440,19 +468,5 @@ details p { margin: 0 0 22px; color: var(--muted); max-width: 640px; }
 .legal a:not(.brand) { color: var(--accent); }
 .legal .fr { padding-top: 40px; border-top: 1px solid var(--border); }
 
-/* Android: the tablet app's APK in the install section, with its signing fingerprint */
-.card.addon.android { margin-top: 48px; padding: 28px; }
-.android .addon-text .tag { margin-top: 0; }
-.android .addon-text .checks { margin: 20px 0 24px; }
-.android .addon-text .checks code { font: 500 13px var(--mono); color: var(--accent); word-break: break-all; }
-.android .addon-text .checks a { color: var(--text); }
-.android .addon-cta { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; }
-.android .fp { display: flex; align-items: center; gap: 14px; margin-top: 24px; padding: 12px 12px 12px 16px; border: 1px solid var(--border); border-radius: 12px; background: var(--bg); }
-.android .fp-txt { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-.android .fp-txt small { font: 400 12px/1.5 var(--mono); color: var(--dim); }
-.android .fp-txt small a { color: var(--muted); }
-.android .fp-txt code { font: 500 13px/1.5 var(--mono); color: var(--text); word-break: break-all; }
-@media (max-width: 720px) {
-  .card.addon.android { padding: 20px; }
   .android .fp { flex-direction: column; align-items: flex-start; }
 }

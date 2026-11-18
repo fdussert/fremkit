@@ -5,6 +5,7 @@ import { findInstance, type InstanceLookup } from '../config/instances.js'
 import { resolveServices, type ServiceResult } from '../providers/service-status.js'
 import { buildView, findNode, type DiskNode } from '../providers/disk-map-tree.js'
 import { codexProviders } from './codex.js'
+import { tr } from '../i18n.js'
 import {
   DEMO_APPS, DEMO_CLIPBOARD, DEMO_PROCESSES, DEMO_SESSIONS, DEMO_TRACKS,
   clamp, coverArt, round1, wander,
@@ -379,7 +380,7 @@ function demoTree(): DiskNode {
     folder('Movies', 74, [['Holiday 2025', 38], ['Screen recordings', 21], ['Edits', 12]]),
     folder('Pictures', 58, [['Photos Library.photoslibrary', 51], ['Wallpapers', 4]]),
     folder('Projects', 46, [['website', 14], ['api', 11], ['mobile-app', 9], ['experiments', 6]]),
-    folder('Documents', 31, [['Archive', 12], ['Invoices', 3], ['Books', 6]]),
+    folder('Documents', 31, [['Archive', 12], ['Letters', 3], ['Books', 6]]),
     folder('Music', 22, [['Library', 19]]),
     folder('Downloads', 17, [['installers', 9], ['dataset.csv', 2.4]]),
     folder('Desktop', 4),
@@ -436,7 +437,7 @@ function claudeProviders(now: () => number, config: () => Config): Provider[] {
     const t = now()
     // The working session moves on to another file every twenty seconds.
     const step = Math.floor(t / 20_000)
-    const files = ['src/pages/pricing.vue', 'src/components/PlanCard.vue', 'src/styles/pricing.css', 'test/pricing.spec.ts']
+    const files = ['src/pages/settings.vue', 'src/components/ThemeCard.vue', 'src/styles/settings.css', 'test/settings.spec.ts']
     return DEMO_SESSIONS.map((s, i) => {
       const sessionId = `demo-session-${i + 1}`
       const since = t - s.minutesAgo * 60_000
@@ -517,8 +518,9 @@ function claudeProviders(now: () => number, config: () => Config): Provider[] {
           fiveHour: { pct: five, resetsAt: resetIn(t, 2.3) },
           sevenDay: { pct: 61, resetsAt: resetIn(t, 76) },
           limits: [
-            { kind: 'five_hour', name: '5 h', percent: five, resetsAt: resetIn(t, 2.3), active: true },
-            { kind: 'seven_day', name: 'Week', percent: 61, resetsAt: resetIn(t, 76), active: true },
+            // Named as the real provider names them, in the user's language.
+            { kind: 'session', name: tr(undefined, 'claude.limit.session'), percent: five, resetsAt: resetIn(t, 2.3), active: true },
+            { kind: 'weekly_all', name: tr(undefined, 'claude.limit.weeklyAll'), percent: 61, resetsAt: resetIn(t, 76), active: true },
             { kind: 'seven_day_opus', name: 'Opus', percent: 44, resetsAt: resetIn(t, 76), active: true },
           ],
           breakdown: [{ name: 'Opus', percent: 72 }, { name: 'Sonnet', percent: 28 }],

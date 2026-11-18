@@ -14,6 +14,30 @@ tagged `vX.Y.Z`.
 
 ### Added
 
+- **Fremplay: a browser tab's video on the Edge, with touch controls.** Play and pause, ten
+  seconds back or ahead, volume, mute, fill the tile, bring the tab back, stop. The volume and mute
+  buttons drive the Mac's output by default; the **Volume buttons** setting switches them to the
+  video in the browser. The Edge turns to the page holding Fremplay when a share starts, and once
+  more after Fremkit restarts when the share comes back. On a paired iPad's screen the tile says
+  it only shows on the Mac's Edge.
+- **Fremkit Companion, the browser extension that feeds it**, for Chrome and other Chromium
+  browsers, [on the Chrome Web Store](https://chromewebstore.google.com/detail/fremkit-companion/lnckeodobpbbmfbdlpnegjpchgkehdlk). Send the video of any tab from its toolbar menu or
+  with ⌃⇧F. A player embedded from another site asks for that site's permission the first time,
+  after the popup names the site, and the extension gives the permission back unless the share
+  starts with a video in that site's frame.
+- **Pairing the extension takes the code shown on the Edge, typed into the extension.** The Edge
+  shows the code and the browser's name with a Refuse button; typing the code is the approval, and
+  three wrong tries refuse the request. A request is taken only while the dashboard or **Settings →
+  Devices** is open to show its code. The code never leaves the Mac's screen, and the extension
+  checks it is talking to your Fremkit before it signs in, so a program holding Fremkit's port
+  cannot link your browser to itself (the popup says *The server on this port is not your
+  Fremkit*). After five requests refused for wrong codes within a day, pairing locks until you
+  press **Unlock pairing** in **Settings → Devices**.
+- **Paired browser extensions are listed in Settings → Devices**, with their name (editable),
+  when they paired and were last seen, whether they are connected, and a Remove button (**Remove
+  every tablet** and **Reset the certificate** leave them linked), beside the pairing request
+  waiting for an answer and a link to the extension's store page.
+
 - **Device screens: pick the orientation.** *Create a screen its size* offers Landscape or
   Portrait, starting with the way the tablet was held when it paired, so a tablet paired upright
   can still get a landscape screen without pairing it again.
@@ -112,16 +136,25 @@ tagged `vX.Y.Z`.
   project's own for every later tap. Without one, the files at a project's root can suggest the
   right IDE (a `.sln` for Rider, a `Cargo.toml` for RustRover…). Only folder paths, dates and
   the names at a project's root are read, never a conversation or a file's contents.
+- **Claude widgets can hide the cost.** **Claude limits** and **Claude sessions** have a **Show
+  cost** setting: turned off, the tiles no longer show what today's tokens or a session would cost
+  in dollars. It is on by default, so a tile already on the dashboard looks the same.
 
 ### Changed
 
+- **The Disks widget says "available", as macOS does.** The space left on a disk reads "120 GB
+  available" ("120 Go disponibles") instead of "free".
 - **Paired devices are filed as tablets.** Fremkit now records a paired iPad as a tablet and
   notes which platform it runs, ready for tablets other than the iPad. Nothing changes for an
   iPad already paired. Going back to an older version of Fremkit afterwards sets the list of
   paired devices aside: every iPad and browser extension then has to pair again.
-- **The Devices settings speak of tablets.** Pairing, the empty list, **Remove every tablet** and
-  the experimental option (now **Tablets and extra screens**) say "tablet" rather than "iPad", since
-  an Android tablet pairs too. A paired screen's own messages still say "iPad" in the iPad app.
+- **The Devices settings speak of tablets.** Pairing, the empty list and **Remove every tablet**
+  say "tablet" rather than "iPad", since an Android tablet pairs too. A paired screen's own
+  messages still say "iPad" in the iPad app.
+- **Tablet pairing and extra screens are no longer experimental.** **Settings → Devices** pairs an
+  iPad running the Fremkit app from the App Store, and links to the app there; the screen
+  selector with its **+ Add a screen** is always above the canvas. Importing a layout brings its
+  tablet screens along with the rest.
 
 ### Fixed
 
@@ -164,6 +197,12 @@ tagged `vX.Y.Z`.
 - **Backgrounds with dots at the end of their name.** A background uploaded from a file called,
   say, "a..png" was saved under a name the dashboard then refused: it never showed in the
   library and could not be deleted. It is now saved under a clean name.
+- **Claude sessions keeps a session's name readable.** A long status such as "attend ta
+  permission" squeezed the name to a single letter on a narrow card; the status and the
+  application now move under the name instead.
+- **The disk map's centre fits its name.** "Dossier personnel" and long folder names ran past the
+  hole in the middle of the ring; the name now goes on two lines, and shrinks or is cut short
+  only when that is not enough.
 
 ## 0.5.0 — 2026-10-19
 

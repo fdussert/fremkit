@@ -174,13 +174,12 @@ export type ServerMessage =
   | { type: 'proof'; mac: string }
   /**
    * `modules`: which of the extension's modules this server has switched on, Fremplay alone so
-   * far (`labs.companion`). Optional and new within protocol 2: an extension that does not read
-   * it learns the same from `tab.refused` with `disabled`.
+   * far, and always on since the companion left the experimental features. Optional within
+   * protocol 2; kept because an extension released before then reads it.
    */
   | { type: 'ready'; protocol: number; modules?: { fremplay: boolean } }
   | { type: 'tab.accepted'; sessionId: string }
-  /** `disabled`: Fremplay is off in Fremkit (`labs.companion`). */
-  | { type: 'tab.refused'; sessionId: string; reason: 'noWidget' | 'protocol' | 'disabled' }
+  | { type: 'tab.refused'; sessionId: string; reason: 'noWidget' | 'protocol' }
   /** One receiver's offer named more than this Mac: that receiver gets no video, the share goes on. */
   | { type: 'tab.refused'; sessionId: string; reason: 'offer'; receiverId: string }
   | { type: 'tab.view'; receiverId: string }

@@ -21,7 +21,6 @@ import { useAdminStore } from './store'
 import { dropIndex } from './pageDrag'
 import { dropMarker } from './gifDrag'
 import { navStep } from './navOrder'
-import { offeredManifests } from './labs'
 import { widgetDelete, widgetDeleteKey } from './widgetDelete'
 import { openContextMenu } from '../shared/ui/contextMenu'
 import { editorFocus } from './editorFocus'
@@ -45,7 +44,7 @@ const POPUP_SIZE_OPTIONS = computed(() => [
 /** The arrows step along the bar and cross the dots, so they disable at the bar's two ends only. */
 const canStep = (id: string, delta: -1 | 1): boolean => navStep(navItemsOf(s.screen.value!), id, delta) !== null
 /** Only widgets with a compact rendering may go in the bar; the server refuses the others. */
-const addable = computed(() => offeredManifests(s.state.config, s.state.manifests).filter((m) => m.compact))
+const addable = computed(() => Object.values(s.state.manifests).filter((m) => m.compact))
 
 const manifestOf = (widgetId: string) => s.state.manifests[widgetId]
 const label = (widgetId: string): string => pick(manifestOf(widgetId)?.name) || widgetId

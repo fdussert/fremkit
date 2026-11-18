@@ -1,9 +1,24 @@
 import type { FastifyInstance } from 'fastify'
-import { ConfigSchema, validateConnections, validateLayout, validateNavWidgets } from './schema.js'
+import { ConfigSchema, validateConnections, validateLayout, validateNavWidgets, type Config } from './schema.js'
 import type { ConfigStore } from './store.js'
 import type { WidgetCatalog } from '../widgets/catalog.js'
 import { tr, type Locale } from '../i18n.js'
 import { configForScope, requestScope, type ScreenOfDevice } from '../devices/scope.js'
+
+/**
+ * The experimental switches a PUT saves: each one the body states, and the current value of each
+ * one it leaves out, since the schema's default would turn a feature off behind the user's back
+ * for any client that does not send it. Reads every flag, so a flag added to `LabsSchema` needs
+ * nothing here.
+ */
+export function keepUnsentLabs(parsed: Record<string, boolean>, sent: unknown, current: Record<string, boolean>): Record<string, boolean> {
+  const stated = sent !== null && typeof sent === 'object' ? sent as Record<string, unknown> : {}
+  const labs = { ...parsed }
+  for (const [flag, value] of Object.entries(current)) {
+    if (typeof stated[flag] !== 'boolean') labs[flag] = value
+  }
+  return labs
+}
 
 /** Shown to the user, and the reason every save is refused, while the store runs degraded. */
 export const degradedMessage = (locale?: Locale): string => tr(locale, 'config.degraded')
@@ -47,11 +62,7 @@ export async function configRoutes(
     // what is granted. A stale admin tab saving an old copy must not bring back a revoked share
     // or a consent the user withdrew, and a PUT must not forge one.
     parsed.data.marketplace = { ...parsed.data.marketplace, installed: current.marketplace.installed }
-    // A body without `labs` keeps the switch as it is: the schema's default would turn the
-    // experimental features off behind the user's back for any client that does not send it.
-    const body = req.body as { labs?: { devices?: unknown; companion?: unknown } } | null
-    if (typeof body?.labs?.devices !== 'boolean') parsed.data.labs = { ...parsed.data.labs, devices: current.labs.devices }
-    if (typeof body?.labs?.companion !== 'boolean') parsed.data.labs = { ...parsed.data.labs, companion: current.labs.companion }
+    parsed.data.labs = keepUnsentLabs(parsed.data.labs, (req.body as { labs?: unknown } | null)?.labs, current.labs) as Config['labs']
 
     const errors = [
       ...validateLayout(parsed.data, opts.catalog.manifests),

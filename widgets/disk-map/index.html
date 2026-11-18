@@ -356,8 +356,55 @@
     function drawCentre() {
       $('cSize').textContent = view ? S.formatBytes(view.size, Fremkit.locale) : (scanningHere() ? '…' : '')
       var name = path.length ? path[path.length - 1] : (rootId() === 'home' ? Fremkit.t(L.home) : rootLabel())
-      $('cName').textContent = name.length > 22 ? name.slice(0, 21) + '…' : name
       $('cUp').textContent = path.length ? Fremkit.t(L.up) : ''
+      // The hole is 58 units across and narrower still where each line sits: a label wider than
+      // its chord ("Dossier personnel", a long folder name) shrinks, then loses its end.
+      fitText($('cSize'), 52, 15, 10)
+      fitName($('cName'), name.length > 22 ? name.slice(0, 21) + '…' : name)
+    }
+
+    /**
+     * The folder's name under the size: on one line when it fits, else on two lines split at the
+     * space nearest its middle (each line held to its chord), else shrunk and cut.
+     */
+    function fitName(el, text) {
+      el.textContent = text
+      el.style.fontSize = ''
+      if (typeof el.getComputedTextLength !== 'function') return
+      var width = el.getComputedTextLength()
+      if (!width || width <= 44) return
+      var mid = text.length / 2, cut = -1
+      for (var i = 0; i < text.length; i++) if (text[i] === ' ' && (cut < 0 || Math.abs(i - mid) < Math.abs(cut - mid))) cut = i
+      if (cut > 0) {
+        var ns = 'http://www.w3.org/2000/svg'
+        el.textContent = ''
+        var lines = [[text.slice(0, cut), 113, 46], [text.slice(cut + 1), 121.5, 36]]
+        var tspans = lines.map(function (l) {
+          var t = document.createElementNS(ns, 'tspan')
+          t.setAttribute('x', '100'); t.setAttribute('y', String(l[1])); t.textContent = l[0]
+          el.appendChild(t)
+          return t
+        })
+        var scale = Math.min.apply(null, tspans.map(function (t, k) { var w = t.getComputedTextLength(); return w > lines[k][2] ? lines[k][2] / w : 1 }))
+        if (scale >= 5.5 / 7.5) { if (scale < 1) el.style.fontSize = (7.5 * scale) + 'px'; return }
+        el.textContent = text
+      }
+      fitText(el, 44, 7.5, 5.5)
+    }
+
+    /** Shrinks an SVG text to `max` units wide, down to `min`, then cuts it with an ellipsis. */
+    function fitText(el, max, base, min) {
+      el.style.fontSize = ''
+      if (typeof el.getComputedTextLength !== 'function') return
+      var width = el.getComputedTextLength()
+      if (!width || width <= max) return
+      var size = Math.max(min, base * max / width)
+      el.style.fontSize = size + 'px'
+      var text = el.textContent
+      while (text.length > 1 && el.getComputedTextLength() > max) {
+        text = text.slice(0, -1)
+        el.textContent = text.replace(/\s+$/, '') + '…'
+      }
     }
 
     function drawCrumbs() {

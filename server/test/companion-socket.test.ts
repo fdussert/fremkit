@@ -542,7 +542,7 @@ describe('companion socket in the app', () => {
     ws.send(JSON.stringify({ type: 'challenge', deviceId: device.id, nonce: n }))
     expect(await next()).toEqual({ type: 'proof', mac: expectedMac(token, n) })
     ws.send(JSON.stringify({ type: 'hello', token, installId: INSTALL, protocol: PROTOCOL }))
-    expect(await next()).toEqual({ type: 'ready', protocol: PROTOCOL, modules: { fremplay: false } })
+    expect(await next()).toEqual({ type: 'ready', protocol: PROTOCOL, modules: { fremplay: true } })
     ws.close()
   }, 10_000)
 

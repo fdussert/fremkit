@@ -140,32 +140,9 @@ function adoptPrivacy(config: V3Config, raw: unknown): V3Config {
  */
 export function migrateConfig(raw: unknown): Config {
   const version = (raw as { version?: unknown } | null)?.version
-  if (version === CONFIG_VERSION) return adoptLabs(renameFieldValues(ConfigSchema.parse(raw)), raw)
+  if (version === CONFIG_VERSION) return renameFieldValues(ConfigSchema.parse(raw))
   // Anything older than v4 had one screen and no pairing: the default (off) is the right answer.
   return toV4(normalizeV3(readV3(raw, version)))
-}
-
-/**
- * Decides the `labs` switches a v4 config was written without, one by one.
- *
- * `devices`: a fresh install starts with iPad pairing and extra screens hidden. But a config that
- * already has more than one screen, or a screen made for a paired device, was written by someone
- * using them, and an upgrade that hid their screens' selector would be a regression — so that case
- * starts on. Pairing itself lives in `devices.json`, which this pure function does not read; a
- * paired device shows a device screen, which is what is checked here.
- *
- * `companion`: on when a Fremplay widget is already placed, since that config was written by
- * someone using the browser extension; off otherwise.
- *
- * A switch the file already carries is left exactly as written.
- */
-export function adoptLabs(config: Config, raw: unknown): Config {
-  const stated = (raw as { labs?: unknown } | null)?.labs
-  const has = (key: string): boolean => !!stated && typeof stated === 'object' && key in stated
-  const labs = { ...config.labs }
-  if (!has('devices')) labs.devices = config.screens.length > 1 || config.screens.some((x) => x.kind === 'device')
-  if (!has('companion')) labs.companion = Object.values(config.widgets).some((w) => w.widgetId === 'fremplay')
-  return { ...config, labs }
 }
 
 /** Any file older than v4, as the v3 config it would have become under the previous release. */

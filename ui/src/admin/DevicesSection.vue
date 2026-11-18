@@ -16,11 +16,11 @@ import BaseCheckbox from '../shared/ui/BaseCheckbox.vue'
 import BaseIcon from '../shared/ui/BaseIcon.vue'
 import { useI18n } from '../shared/i18n'
 import { useConfirm } from '../shared/useConfirm'
+import { COMPANION_STORE_URL, IPAD_APP_STORE_URL } from '../shared/credits'
 import { shortExtensionId, type PublicExtensionDevice, type PublicTabletDevice } from '../shared/api'
 import type { Screen } from '../shared/types'
 import AddScreenDialog from './AddScreenDialog.vue'
 import { useDevices } from './devices'
-import { labsCompanion, labsDevices, showsExtensions, showsIpads } from './labs'
 import { useAdminStore } from './store'
 import { ANDROID_APK_URL } from '../shared/credits'
 
@@ -87,28 +87,13 @@ const deviceScreens = computed<Screen[]>(() => (s.state.config?.screens ?? []).f
 const list = computed<PublicTabletDevice[]>(() => (status.value?.devices ?? []).filter((d): d is PublicTabletDevice => d.kind === 'tablet'))
 const extensions = computed<PublicExtensionDevice[]>(() => (status.value?.devices ?? []).filter((d): d is PublicExtensionDevice => d.kind === 'extension'))
 /**
- * Two parts, each with its own rule (`labs.ts`): the iPad one follows `labs.devices` or iPad
- * pairing in use, the browser extension one `labs.companion` or a paired extension, so a paired
- * device of either kind can always be renamed or removed. Once shown, a part stays while the pane
- * is open, so removing the last device does not pull it from under the pointer; turning its flag
- * off reads the rule again. The request card follows `labs.companion` alone: with it off, no
- * request can be allowed here.
- */
-const companionOn = computed(() => labsCompanion(s.state.config))
-const ipadsShown = ref(false)
-const extensionsShown = ref(false)
-watch(() => showsIpads(s.state.config, status.value), (on) => { if (on) ipadsShown.value = true }, { immediate: true })
-watch(() => showsExtensions(s.state.config, status.value), (on) => { if (on) extensionsShown.value = true }, { immediate: true })
-watch(() => labsDevices(s.state.config), (on) => { if (!on) ipadsShown.value = showsIpads(s.state.config, status.value) })
-watch(companionOn, (on) => { if (!on) extensionsShown.value = showsExtensions(s.state.config, status.value) })
-/**
  * The extension's request, until its expiry even if the next poll is still to come, and never
  * while the last poll failed: a server that restarted has dropped it, and a code left on show
  * could be typed for a program that took the port meanwhile.
  */
 const request = computed(() => {
   if (pollError.value) return null
-  const r = companionOn.value ? status.value?.companionRequest ?? null : null
+  const r = status.value?.companionRequest ?? null
   return r && now.value < r.expiresAt ? r : null
 })
 
@@ -152,7 +137,10 @@ async function onCreated(screenId: string): Promise<void> {
 
 <template>
   <div class="devices">
-    <template v-if="ipadsShown">
+    <div class="ipads" data-test="ipads">
+      <!-- A new tab in a browser; the helper's admin window hands it to the default browser rather
+           than replacing the admin with it, as About's links. -->
+      <p class="ro"><a :href="IPAD_APP_STORE_URL" target="_blank" rel="noopener noreferrer" data-test="app-store">{{ t('admin.devices.appStore') }}</a></p>
       <BaseCheckbox :model-value="enabled" :label="t('admin.devices.enable')"
         @update:model-value="devices.setEnabled($event)" />
       <p class="ro">{{ t('admin.devices.firewall') }}</p>
@@ -221,10 +209,11 @@ async function onCreated(screenId: string): Promise<void> {
         </BaseButton>
       </div>
       <p class="ro">{{ t('admin.devices.resetCertificate.hint') }}</p>
-    </template>
+    </div>
 
-    <section v-if="extensionsShown" class="extensions" data-test="extensions">
+    <section class="extensions" data-test="extensions">
       <h4>{{ t('admin.devices.extensions') }}</h4>
+      <p class="ro"><a :href="COMPANION_STORE_URL" target="_blank" rel="noopener noreferrer" data-test="companion-store">{{ t('admin.devices.companionStore') }}</a></p>
       <div v-if="status?.companionLocked" class="request" role="alert" data-test="companion-locked">
         <p class="ask">{{ t('admin.devices.extension.locked') }}</p>
         <div class="row">

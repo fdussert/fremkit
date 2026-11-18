@@ -86,6 +86,9 @@
   }
   function errorText(code) { return Object.prototype.hasOwnProperty.call(L.errors, code) ? Fremkit.t(L.errors[code]) : String(code) }
   var data = null, account = null, accountOff = false, identity = null
+  /** On by default, so an absent setting is not "off": an older instance keeps showing the cost. */
+  var showCost = true
+  function applySettings(s) { showCost = !s || s.showCost !== false }
   function cls(p) { return p < 60 ? 'ok' : p < 85 ? 'warn' : 'hot' }
   /** A decimal separator follows the language: a comma in French, a point in English. */
   function dec(n, digits) { var text = n.toFixed(digits); return Fremkit.locale === 'fr' ? text.replace('.', ',') : text }
@@ -145,7 +148,7 @@
       var t = data.today, total = t.input + t.output + t.cacheRead + t.cacheWrite
       var sessions = t.sessions === 1 ? Fremkit.t(L.sessionOne) : Fremkit.t(L.sessionMany, { n: t.sessions })
       parts.push(Fremkit.t(L.today, { tokens: tokens(total), sessions: sessions })
-        + (t.costUsd ? Fremkit.t(L.cost, { amount: dec(t.costUsd, 2) }) : ''))
+        + (showCost && t.costUsd ? Fremkit.t(L.cost, { amount: dec(t.costUsd, 2) }) : ''))
     }
     footText.innerHTML = parts.map(Fremkit.esc).join('<br>')
     var histrow = document.getElementById('histrow'), hist = document.getElementById('hist'), histlbl = document.getElementById('histlbl')
@@ -159,6 +162,8 @@
     }
   }
   Fremkit.whenReady(function () {
+    applySettings(Fremkit.settings)
+    Fremkit.onSettings(function (s) { applySettings(s); render() })
     Fremkit.subscribe('claude-identity', function (d) { identity = d; render() })
     Fremkit.subscribe('claude-usage', function (d) { if (d.error) return; data = d; render() })
     // A rate-limited poll still carries the last good gauges (flagged stale): keep showing them.

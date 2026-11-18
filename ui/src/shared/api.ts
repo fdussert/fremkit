@@ -342,7 +342,8 @@ export const api = {
     fetch(`/api/companion/requests/${encodeURIComponent(requestId)}/refuse`, {
       method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ code }),
     }).then(empty),
-  getDevices: () => fetch('/api/devices').then((r) => json<DeviceStatus>(r)),
+  /** `watching`: the Devices pane's own poll, which shows a companion request while it is open. */
+  getDevices: (watching = false) => fetch(watching ? '/api/devices?watch=1' : '/api/devices').then((r) => json<DeviceStatus>(r)),
   /** Answers the status after the switch; on `portInUse` the switch stays off and `message` says why. */
   setDevicesEnabled: (enabled: boolean) =>
     fetch('/api/devices/settings', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ enabled }) })

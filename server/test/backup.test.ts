@@ -450,37 +450,27 @@ describe('what an archive or a PUT cannot change', () => {
     expect(after.marketplace.installed['evil-widget']).toBeUndefined()
   })
 
-  it('restoring keeps this Mac\'s experimental features switches, either way', async () => {
-    for (const here of [true, false]) {
-      const current = (await app.inject({ url: '/api/config' })).json()
-      const mine = { devices: here, companion: !here }
-      expect((await app.inject({ method: 'PUT', url: '/api/config', payload: { ...current, labs: mine } })).statusCode).toBe(200)
-      // A file stating the opposite, then one written before the switches existed with two
-      // screens and a Fremplay widget, which the migration would turn both on for.
-      for (const labs of [{ labs: { devices: !here, companion: here } }, {}]) {
-        const crafted = {
-          ...CONFIG, ...labs,
-          widgets: { ...CONFIG.widgets, 'fremplay-1': { widgetId: 'fremplay', showTitle: false, settings: {} } },
-          screens: [CONFIG.screens[0], { ...CONFIG.screens[0], id: 'second', name: 'Second' }],
-        }
-        const archive = writeZip([{ name: CONFIG_ENTRY, data: Buffer.from(JSON.stringify(crafted)) }])
-        expect((await post(archive)).statusCode).toBe(200)
-        expect((await app.inject({ url: '/api/config' })).json().labs).toEqual(mine)
+  it('restoring keeps this Mac\'s experimental features switches, and drops the former ones', async () => {
+    // A file written by 0.5.0 with both former switches on, then one written before they existed.
+    for (const labs of [{ labs: { devices: true, companion: true } }, {}]) {
+      const crafted = {
+        ...CONFIG, ...labs,
+        widgets: { ...CONFIG.widgets, 'fremplay-1': { widgetId: 'fremplay', showTitle: false, settings: {} } },
+        screens: [CONFIG.screens[0], { ...CONFIG.screens[0], id: 'second', name: 'Second' }],
       }
+      const archive = writeZip([{ name: CONFIG_ENTRY, data: Buffer.from(JSON.stringify(crafted)) }])
+      expect((await post(archive)).statusCode).toBe(200)
+      expect((await app.inject({ url: '/api/config' })).json().labs).toEqual({})
     }
   })
 
-  it('PUT /api/config without labs keeps the switches, and with them sets them', async () => {
+  it('PUT /api/config drops the former switches an older admin may send', async () => {
     const current = (await app.inject({ url: '/api/config' })).json()
-    expect((await app.inject({ method: 'PUT', url: '/api/config', payload: { ...current, labs: { devices: true, companion: true } } })).statusCode).toBe(200)
     const { labs: _labs, ...without } = current
-    expect((await app.inject({ method: 'PUT', url: '/api/config', payload: without })).statusCode).toBe(200)
-    expect((await app.inject({ url: '/api/config' })).json().labs).toEqual({ devices: true, companion: true })
-    // One switch sent, the other kept.
-    expect((await app.inject({ method: 'PUT', url: '/api/config', payload: { ...current, labs: { devices: false } } })).statusCode).toBe(200)
-    expect((await app.inject({ url: '/api/config' })).json().labs).toEqual({ devices: false, companion: true })
-    expect((await app.inject({ method: 'PUT', url: '/api/config', payload: { ...current, labs: { companion: false } } })).statusCode).toBe(200)
-    expect((await app.inject({ url: '/api/config' })).json().labs).toEqual({ devices: false, companion: false })
+    for (const payload of [without, { ...current, labs: { devices: true, companion: false } }]) {
+      expect((await app.inject({ method: 'PUT', url: '/api/config', payload })).statusCode).toBe(200)
+      expect((await app.inject({ url: '/api/config' })).json().labs).toEqual({})
+    }
   })
 
   it('PUT /api/config replays the current consent records', async () => {

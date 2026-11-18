@@ -53,38 +53,7 @@ describe('migrateConfig', () => {
       codexHistorySources: [],
     })
   })
-  describe('labs.devices', () => {
-    /** A v4 file as a release before the flag wrote it: no `labs` key at all. */
-    const withoutLabs = (screens: Record<string, unknown>[]) => {
-      const c = JSON.parse(JSON.stringify(migrateConfig(v1))) as Record<string, any>
-      delete c.labs
-      c.screens = screens
-      return c
-    }
-    const edge = () => JSON.parse(JSON.stringify(migrateConfig(v1).screens[0])) as Record<string, any>
-    const device = () => ({ ...edge(), id: 'kitchen', name: 'Kitchen', kind: 'device' })
-
-    it('starts off for a fresh install and for an older file', () => {
-      expect(DEFAULT_CONFIG.labs).toEqual({ devices: false, companion: false })
-      expect(migrateConfig(v1).labs).toEqual({ devices: false, companion: false })
-    })
-    it('starts off for a v4 file with only the Edge', () => {
-      expect(migrateConfig(withoutLabs([edge()])).labs.devices).toBe(false)
-    })
-    it('starts on for a v4 file with more than one screen', () => {
-      expect(migrateConfig(withoutLabs([edge(), { ...edge(), id: 'edge-2', name: 'Second' }])).labs.devices).toBe(true)
-    })
-    it('starts on for a v4 file whose only screen is a device one', () => {
-      expect(migrateConfig(withoutLabs([device()])).labs.devices).toBe(true)
-    })
-    it('keeps a stated value either way, whatever the screens', () => {
-      const off = { ...withoutLabs([edge(), device()]), labs: { devices: false } }
-      expect(migrateConfig(off).labs.devices).toBe(false)
-      const on = { ...withoutLabs([edge()]), labs: { devices: true } }
-      expect(migrateConfig(on).labs.devices).toBe(true)
-    })
-  })
-  describe('labs.companion', () => {
+  describe('labs, with no flag left', () => {
     /** A v4 file holding these widgets, with `labs` as given (absent when undefined). */
     const v4 = (widgetIds: string[], labs?: Record<string, boolean>) => {
       const c = JSON.parse(JSON.stringify(migrateConfig(v1))) as Record<string, any>
@@ -96,17 +65,17 @@ describe('migrateConfig', () => {
       return c
     }
 
-    it('starts off for a v4 file with no Fremplay, the devices switch stated or not', () => {
-      expect(migrateConfig(v4(['clock'])).labs.companion).toBe(false)
-      expect(migrateConfig(v4(['clock'], { devices: true })).labs).toEqual({ devices: true, companion: false })
+    it('is empty in a fresh config and in an older file brought up to date', () => {
+      expect(DEFAULT_CONFIG.labs).toEqual({})
+      expect(migrateConfig(v1).labs).toEqual({})
     })
-    it('starts on for a v4 file that already holds a Fremplay widget', () => {
-      expect(migrateConfig(v4(['clock', 'fremplay'])).labs.companion).toBe(true)
-      expect(migrateConfig(v4(['fremplay'], { devices: false })).labs).toEqual({ devices: false, companion: true })
-    })
-    it('keeps a stated value either way, whatever the widgets', () => {
-      expect(migrateConfig(v4(['fremplay'], { devices: false, companion: false })).labs.companion).toBe(false)
-      expect(migrateConfig(v4(['clock'], { devices: false, companion: true })).labs.companion).toBe(true)
+    it('strips the former switches from a v4 file that still states them, on or off', () => {
+      for (const on of [true, false]) {
+        expect(migrateConfig(v4(['clock'], { devices: on, companion: on })).labs, String(on)).toEqual({})
+        // A Fremplay widget used to turn `companion` on for a file without it; nothing to decide now.
+        expect(migrateConfig(v4(['fremplay'], { devices: on })).labs, String(on)).toEqual({})
+      }
+      expect(migrateConfig(v4(['fremplay'])).labs).toEqual({})
     })
   })
   it('rejects an unknown version with a clear message', () => {
@@ -134,6 +103,18 @@ describe('ConfigStore migration', () => {
     await new ConfigStore(file).load()
     expect(await readFile(file, 'utf8')).toBe(before)
     await expect(readFile(file + '.bak', 'utf8')).rejects.toThrow()
+  })
+  it('loads a 0.5.0 file with labs.devices and labs.companion and saves it without them', async () => {
+    for (const on of [true, false]) {
+      const file = join(dir, `fremkit-${on}.json`)
+      const written = { ...migrateConfig(v1), labs: { devices: on, companion: !on } }
+      await writeFile(file, JSON.stringify(written, null, 2))
+      const store = new ConfigStore(file)
+      const cfg = await store.load()
+      expect(cfg.labs, String(on)).toEqual({})
+      await store.save(cfg)
+      expect(JSON.parse(await readFile(file, 'utf8')).labs, String(on)).toEqual({})
+    }
   })
   it('serves the defaults on an unknown version and leaves the file untouched', async () => {
     const file = join(dir, 'fremkit.json')

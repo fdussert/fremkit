@@ -27,7 +27,7 @@ afterEach(() => {
 
 async function dropWith(protocol: string) {
   const reload = vi.fn()
-  vi.stubGlobal('location', { protocol, host: 'example.local:4243', reload })
+  vi.stubGlobal('location', { protocol, host: 'example.local:4243', pathname: '/', reload })
   vi.stubGlobal('fetch', vi.fn(async () => new Response(null, { status: 401 })))
   vi.stubGlobal('WebSocket', FakeWebSocket)
   vi.useFakeTimers()

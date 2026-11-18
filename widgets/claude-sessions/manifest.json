@@ -1,6 +1,6 @@
 { "id": "claude-sessions",
   "name": { "fr": "Sessions Claude", "en": "Claude sessions" },
-  "version": "1.3.0", "sdk": 5, "preview": "preview.webp",
+  "version": "1.4.0", "sdk": 5, "preview": "preview.webp",
   "description": { "fr": "Sessions Claude Code en direct", "en": "Live Claude Code sessions" },
   "category": "ai",
   "icon": "message-square", "minSize": [16, 4], "defaultSize": [16, 8],
@@ -16,6 +16,7 @@
         { "value": "state", "label": { "fr": "Par état (celles qui t’attendent d’abord)", "en": "By state (those waiting for you first)" } },
         { "value": "recent", "label": { "fr": "Par dernière activité", "en": "By last activity" } }
       ] },
+    "showCost": { "type": "boolean", "label": { "fr": "Afficher le coût", "en": "Show cost" }, "default": true },
     "groupByClient": { "type": "boolean", "label": { "fr": "Grouper par application", "en": "Group by application" }, "default": false },
     "sound": { "type": "enum", "label": { "fr": "Son quand une session attend", "en": "Sound when a session waits" }, "default": "none",
       "preview": { "channel": "claude-sessions", "command": "preview" },

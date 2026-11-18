@@ -35,8 +35,8 @@ Fremkit turns a Corsair Xeneon Edge (a 2560 × 720 touch strip) into a widget da
   Xcode project), tested with `scripts/test-helper.sh`. The bundle also carries `fremkit-scan`
   (`native/Sources/FremkitScan`), the disk map's scanner, which the server runs by the path the
   helper passes in `FREMKIT_SCANNER`; without it the server falls back to `du`.
-- `companion/` — the Fremkit Companion browser extension (MV3, Chromium only, loaded unpacked from
-  here), which pairs with the server and sends a tab's video to `widgets/fremplay` over WebRTC.
+- `companion/` — the Fremkit Companion browser extension (MV3, Chromium only, published on the
+  Chrome Web Store; loaded unpacked from here to work on it), which pairs with the server and sends a tab's video to `widgets/fremplay` over WebRTC.
   Its ID is fixed by the manifest `key`. Server side: `server/src/companion/`; the routes that
   skip the access secret are listed in `server/src/http/access.ts` (`COMPANION_ROUTES`). See
   [docs/companion.md](docs/companion.md).

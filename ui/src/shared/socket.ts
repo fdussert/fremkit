@@ -11,6 +11,17 @@ export interface Socket {
 
 let instance: Socket | null = null
 
+/**
+ * The socket's URL. A dashboard page says so (`?view=dashboard`): it shows the companion's pairing
+ * prompt, and the server takes a pairing request only while someone could see it
+ * (`server/src/companion/viewers.ts`). The admin lives under `/admin` and says nothing.
+ */
+export function socketUrl(loc: Pick<Location, 'protocol' | 'host' | 'pathname'> = location): string {
+  const proto = loc.protocol === 'https:' ? 'wss' : 'ws'
+  const admin = loc.pathname === '/admin' || loc.pathname.startsWith('/admin/') || loc.pathname.startsWith('/admin.html')
+  return `${proto}://${loc.host}/ws${admin ? '' : '?view=dashboard'}`
+}
+
 export function useSocket(): Socket {
   if (instance) return instance
   const status = ref<'connecting' | 'open' | 'closed'>('connecting')
@@ -47,10 +58,11 @@ export function useSocket(): Socket {
 
   function connect() {
     status.value = 'connecting'
-    const proto = location.protocol === 'https:' ? 'wss' : 'ws'
-    ws = new WebSocket(`${proto}://${location.host}/ws`)
+    ws = new WebSocket(socketUrl())
     ws.onopen = () => {
       status.value = 'open'; retryMs = 500
+      // The server takes a page as visible until it says otherwise (`sendVisibility`).
+      if (document.visibilityState !== 'visible') sendVisibility()
       for (const ch of subs.keys()) send({ type: 'subscribe', channel: ch })
     }
     ws.onmessage = (ev) => {
@@ -80,6 +92,17 @@ export function useSocket(): Socket {
     }
     ws.onerror = () => ws?.close()
   }
+  /**
+   * Whether the page is on screen, for the server: a dashboard counts as someone who could see a
+   * companion pairing code only while it is (`server/src/companion/viewers.ts`). A message rather
+   * than dropping the `companion` subscription: the page keeps its data, a Fremplay widget's
+   * subscription on the same socket would hold the channel anyway, and the prompt is there the
+   * moment the page is back.
+   */
+  function sendVisibility(): void {
+    send({ type: 'visibility', visible: document.visibilityState === 'visible' })
+  }
+  document.addEventListener('visibilitychange', sendVisibility)
   connect()
 
   instance = {

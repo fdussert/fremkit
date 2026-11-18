@@ -48,7 +48,6 @@ import { useMarketplaceStore } from './marketplace'
 import { groupByCategory, matchesQuery, otherScreenWidgets, widgetKindsOnScreen } from './library'
 import { openContextMenu } from '../shared/ui/contextMenu'
 import { libraryMenu } from './menus'
-import { offeredManifests } from './labs'
 
 const s = useAdminStore()
 const market = useMarketplaceStore()
@@ -92,7 +91,7 @@ const filtering = computed(() => searching.value || hidePlaced.value)
  * language in force. The category's own name is searched too, so "dev" lists the whole shelf.
  */
 const groups = computed(() => groupByCategory(
-  offeredManifests(s.state.config, s.state.manifests),
+  Object.values(s.state.manifests),
   (a, b) => pick(a.name).localeCompare(pick(b.name)),
 ).map((g) => {
   const title = t(`admin.library.category.${g.id}`)
@@ -117,7 +116,7 @@ const nothingFound = computed(() => filtering.value && !groups.value.length && !
 /** Every shelf this list can show, found or not, so "fold all" also folds the ones a search hid. */
 const sectionIds = computed(() => [
   'library.elsewhere',
-  ...groupByCategory(offeredManifests(s.state.config, s.state.manifests), () => 0).map((g) => `library.${g.id}`),
+  ...groupByCategory(Object.values(s.state.manifests), () => 0).map((g) => `library.${g.id}`),
 ])
 
 /** Enter places the first card the search left, the same as clicking it. */

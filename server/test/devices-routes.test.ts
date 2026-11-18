@@ -41,7 +41,7 @@ const screen = (id: string, kind: 'edge' | 'device', viewport?: { width: number;
 const CONFIG = {
   version: CONFIG_VERSION,
   locale: 'en',
-  labs: { devices: false, companion: true },
+  labs: {},
   secrets: { backend: 'file' },
   connections: [],
   widgets: {},
@@ -832,6 +832,8 @@ describe('browser extensions in the device list', () => {
 
   /** A new install by default: one install may ask only three times a minute. */
   async function pairExtension(installId: string = randomUUID()): Promise<{ requestId: string; deviceId: string }> {
+    // The Devices pane is open: a request nobody can see is refused (`companion/viewers.ts`).
+    await eapp.inject({ url: '/api/devices?watch=1', headers: { host: HOST } })
     const asked = await eapp.inject({
       method: 'POST', url: '/api/companion/pair',
       headers: { host: HOST, origin: ORIGIN, 'content-type': 'application/json' },
@@ -872,7 +874,7 @@ describe('browser extensions in the device list', () => {
   })
 
   it('status lists extension devices and the pending request without tokens', async () => {
-    expect((await eapp.inject({ url: '/api/devices', headers: { host: HOST } })).json().companionRequest).toBeNull()
+    expect((await eapp.inject({ url: '/api/devices?watch=1', headers: { host: HOST } })).json().companionRequest).toBeNull()
     const asked = await eapp.inject({
       method: 'POST', url: '/api/companion/pair',
       headers: { host: HOST, origin: ORIGIN, 'content-type': 'application/json' },

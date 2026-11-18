@@ -3,9 +3,6 @@
  * Which screen the editor works on, above the canvas: a segmented control up to three screens, a
  * menu beyond, and "+ Add a screen". Each screen shows its name and an icon for its kind, and a
  * right click on one opens its menu: rename (in place, as a page is), its settings, delete.
- *
- * Hidden altogether for a single screen while adding screens is an experimental feature that is
- * off (`labs.ts`): there is nothing to choose between, and nothing to add yet.
  */
 import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
 import BaseIcon from '../shared/ui/BaseIcon.vue'
@@ -18,7 +15,6 @@ import { screenMenu } from './menus'
 import { renameRequest } from './editorFocus'
 import { useDevices } from './devices'
 import HealthDot from './HealthDot.vue'
-import { showsScreens } from './labs'
 import { screenLevel } from './health'
 import { useHealth } from './useHealth'
 
@@ -29,7 +25,6 @@ const s = useAdminStore()
 const { t } = useI18n()
 
 const screens = computed<Screen[]>(() => s.state.config?.screens ?? [])
-const shown = computed(() => showsScreens(s.state.config))
 const current = computed(() => s.screen.value)
 const adding = ref(false)
 const menuOpen = ref(false)
@@ -118,7 +113,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <nav v-if="shown" ref="nav" class="screens" :aria-label="t('admin.screens.aria')">
+  <nav v-if="s.state.config" ref="nav" class="screens" :aria-label="t('admin.screens.aria')">
     <div v-if="screens.length <= SEGMENTED_MAX" class="seg" role="tablist">
       <template v-for="x in screens" :key="x.id">
         <span v-if="renaming === x.id" class="renaming" :class="{ on: x.id === current?.id }">

@@ -53,6 +53,9 @@ export async function wsRoutes(app: FastifyInstance, opts: { hub: Hub }): Promis
       opts.hub.attach(socket, { loopback: false, paired: true, deviceId: req.deviceId })
       return
     }
-    opts.hub.attach(socket, { loopback: isLocalRequest(req), paired: false })
+    // `?view=dashboard`: the dashboard page, which shows the companion's pairing prompt
+    // (`companion/viewers.ts`). The hub holds it only for a loopback socket.
+    const view = (req.query as { view?: unknown } | undefined)?.view
+    opts.hub.attach(socket, { loopback: isLocalRequest(req), paired: false }, { dashboard: view === 'dashboard' })
   })
 }

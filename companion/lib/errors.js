@@ -40,3 +40,26 @@ export function fremplaySwitch(session, off) {
   if (!off && session?.lastError === 'disabled') patch.lastError = null
   return Object.keys(patch).length > 0 ? patch : null
 }
+
+/**
+ * The pairing error to store for a refused `POST /api/companion/pair` (`pairError`), or null for
+ * another status. Each refusal names its reason; one this version does not know reads as the
+ * status's usual one.
+ *
+ * - 409 `busy`: another extension's request waits on the Edge. `unseen`: nobody on the Mac could
+ *   see the code (no dashboard on screen, Settings → Devices shut); Fremkit 0.5.1 and later.
+ *   `disabled`: a 0.5.0 server with the companion switched off.
+ * - 423 `locked`: pairing locked after too many wrong codes.
+ * - 429 `limited`: too many requests; `cooldown`: refused a moment ago.
+ */
+const PAIR_REFUSALS = {
+  409: { known: ['busy', 'unseen', 'disabled'], fallback: 'busy' },
+  423: { known: ['locked'], fallback: 'locked' },
+  429: { known: ['limited', 'cooldown'], fallback: 'limited' },
+}
+
+export function pairRefusal(status, reason) {
+  const refusal = PAIR_REFUSALS[status]
+  if (!refusal) return null
+  return refusal.known.includes(reason) ? reason : refusal.fallback
+}

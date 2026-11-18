@@ -6,19 +6,12 @@ device**: the Mac trusts it explicitly, it can be revoked at any time, and nothi
 network until you turn it on. This page follows the iPad; the Android app pairs and behaves the
 same way, and [Android](#android) says where it differs.
 
-The app is iPad only (iPadOS 17 or later). It is distributed through TestFlight; to build it
-yourself see [Building the app](#building-the-app).
+The app is iPad only (iPadOS 17 or later). It is on the App Store (**Settings → Devices** links to
+it); to build it yourself see [Building the app](#building-the-app).
 
 ## Turn it on
 
-Until the app is available to everyone, pairing is an experimental feature, hidden on a fresh
-install. To show it, open **Settings → About** in the admin, click the version number seven times
-within a few seconds (or focus it and press Enter seven times), and tick **Tablets and extra
-screens** under **Experimental features**. That shows **Settings → Devices**, and the screen selector
-with **+ Add a screen** above the canvas. **Settings → Devices** also stays visible, option or not,
-while pairing is on or an iPad is paired, so it can always be switched off or the iPad unpaired.
-
-Then open **Settings → Devices** and switch on **Allow a tablet on the local network**.
+Open **Settings → Devices** and switch on **Allow a tablet on the local network**.
 Fremkit generates a key the first time and starts a second listener on port **4243**, over TLS,
 with a self-signed certificate. It answers only private and link-local addresses, IPv4 or
 IPv6, and the Mac itself: a public address and Tailscale get no answer. A VPN that uses the same

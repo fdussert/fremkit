@@ -13,7 +13,7 @@ import { IDLE_SLACK_MS, idleDelay } from '../../companion/lib/presence.js'
 // @ts-expect-error plain JS module
 import { closeOutcome, POLICY_CLOSE_CODE, refusalOf, REVOKED_CLOSE_CODE } from '../../companion/lib/link.js'
 // @ts-expect-error plain JS module
-import { fremplayBlocked, fremplaySwitch, SHARE_ERRORS, shareErrorKey } from '../../companion/lib/errors.js'
+import { fremplayBlocked, fremplaySwitch, pairRefusal, SHARE_ERRORS, shareErrorKey } from '../../companion/lib/errors.js'
 // @ts-expect-error plain JS module
 import { localCandidatesOnly, loopbackAnswer, loopbackForMdns, offerSdp } from '../../companion/lib/sdp.js'
 // @ts-expect-error plain JS module
@@ -1028,6 +1028,34 @@ describe('withVolumeHint (the volume set through YouTube)', () => {
     const share = { volumeHint: { element: 0.42, value: 0.8 } }
     expect(withVolumeHint(share, null)).toBeNull()
     expect(share.volumeHint).toEqual({ element: 0.42, value: 0.8 })
+  })
+})
+
+describe('a refused pairing request (lib/errors.js pairRefusal)', () => {
+  it('names each reason the server gives, unseen included', () => {
+    expect(pairRefusal(409, 'busy')).toBe('busy')
+    expect(pairRefusal(409, 'unseen')).toBe('unseen')
+    expect(pairRefusal(409, 'disabled')).toBe('disabled')
+    expect(pairRefusal(423, 'locked')).toBe('locked')
+    expect(pairRefusal(429, 'limited')).toBe('limited')
+    expect(pairRefusal(429, 'cooldown')).toBe('cooldown')
+  })
+
+  it('reads an unknown reason as the status\'s usual one, and another status as none', () => {
+    expect(pairRefusal(409, 'later')).toBe('busy')
+    expect(pairRefusal(409, undefined)).toBe('busy')
+    expect(pairRefusal(423, 'unseen')).toBe('locked')
+    expect(pairRefusal(429, 'unseen')).toBe('limited')
+    expect(pairRefusal(500, 'unseen')).toBeNull()
+  })
+
+  it('has a popup message for every reason it stores, in both languages', () => {
+    const popup = readFileSync(fileURLToPath(new URL('../../companion/popup.js', import.meta.url)), 'utf8')
+    for (const locale of ['en', 'fr']) {
+      const messages = JSON.parse(readFileSync(fileURLToPath(new URL(`../../companion/_locales/${locale}/messages.json`, import.meta.url)), 'utf8'))
+      expect(messages.pairUnseen?.message, locale).toMatch(/Settings → Devices|Réglages → Appareils/)
+    }
+    expect(popup).toContain("unseen: () => t('pairUnseen')")
   })
 })
 

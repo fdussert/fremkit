@@ -150,7 +150,7 @@ describe('tileIconInScope', () => {
 describe('deviceConfigView', () => {
   it('keeps its screen, the instances it shows, and what drawing it takes', () => {
     const view = deviceConfigView(config(), 'tab-b')
-    expect(Object.keys(view).sort()).toEqual(['labs', 'locale', 'screens', 'theme', 'version', 'widgets'])
+    expect(Object.keys(view).sort()).toEqual(['locale', 'screens', 'theme', 'version', 'widgets'])
     expect(view.screens.map((s) => s.id)).toEqual(['tab-b'])
     expect(Object.keys(view.widgets).sort()).toEqual(['cal-b', 'clock-b', 'docky-b', 'sc-b', 'status-b'])
   })
@@ -168,27 +168,17 @@ describe('deviceConfigView', () => {
     // No night theme on the Mac: none on the device either.
     expect(Object.hasOwn(deviceConfigView(config(), 'tab-b'), 'themeSchedule')).toBe(false)
   })
-  it('carries labs.companion and nothing else of labs', () => {
-    for (const companion of [true, false]) {
-      const cfg = ConfigSchema.parse({ ...RAW_CONFIG, labs: { devices: true, companion } })
-      const view = deviceConfigView(cfg, 'tab-b')
-      expect(view.labs).toEqual({ companion })
-      expect(Object.keys(view.labs)).toEqual(['companion'])
-    }
-    // Every key the schema gives `labs`, other than `companion`, stays on the Mac.
-    const others = Object.keys(ConfigSchema.parse(RAW_CONFIG).labs).filter((k) => k !== 'companion')
-    expect(others.length).toBeGreaterThan(0)
-    const view = deviceConfigView(ConfigSchema.parse({ ...RAW_CONFIG, labs: { devices: true, companion: true } }), 'tab-b')
-    for (const key of others) expect(Object.hasOwn(view.labs, key), key).toBe(false)
+  it('carries nothing of labs, the admin\'s experimental switches', () => {
+    const cfg = ConfigSchema.parse({ ...RAW_CONFIG, labs: { devices: true, companion: true } })
+    expect(Object.hasOwn(deviceConfigView(cfg, 'tab-b'), 'labs')).toBe(false)
   })
   it('projects or deliberately withholds every top-level config key', () => {
     // A key main adds to the config is dropped from the device view without a word; this makes
     // the next one a decision. Withheld: hosts and accounts, the secrets backend, the privacy
     // switches, the marketplace records and the admin's experimental features are the Mac's own business.
     // So is the GIF board's collection: copying a GIF only works on the Mac.
-    // `labs` is projected in part: `companion` only (see the next test).
-    const projected = ['version', 'theme', 'themeSchedule', 'locale', 'widgets', 'screens', 'labs']
-    const withheld = ['connections', 'secrets', 'privacy', 'marketplace', 'gifs']
+    const projected = ['version', 'theme', 'themeSchedule', 'locale', 'widgets', 'screens']
+    const withheld = ['connections', 'secrets', 'privacy', 'marketplace', 'gifs', 'labs']
     expect(Object.keys(ConfigSchema.shape).sort()).toEqual([...projected, ...withheld].sort())
   })
   it('has no screen and no instance for a device with none, or a screen that is gone', () => {

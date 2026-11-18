@@ -17,6 +17,7 @@ const PAIR_ERRORS = {
   expired: () => t('pairExpired'),
   limited: () => t('pairLimited'),
   busy: () => t('pairBusy'),
+  unseen: () => t('pairUnseen'),
   cooldown: () => t('pairCooldown'),
   exhausted: () => t('pairExhausted'),
   locked: () => t('pairLocked'),

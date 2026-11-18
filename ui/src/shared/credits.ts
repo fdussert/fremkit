@@ -35,5 +35,11 @@ export const ANDROID_APK_URL = `${REPOSITORY}/releases/latest/download/Fremkit-A
 /** A new issue on the bug form, which asks for what the diagnostics report holds. */
 export const BUG_REPORT_URL = `${REPOSITORY}/issues/new?template=bug.yml`
 
+/** The iPad app's App Store page. */
+export const IPAD_APP_STORE_URL = 'https://apps.apple.com/app/id6824504862'
+
+/** The Fremkit Companion extension's Chrome Web Store page. */
+export const COMPANION_STORE_URL = 'https://chromewebstore.google.com/detail/fremkit-companion/lnckeodobpbbmfbdlpnegjpchgkehdlk'
+
 /** The UI's own version, bumped with the three others at every release. */
 export const VERSION: string = version

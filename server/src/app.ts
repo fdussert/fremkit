@@ -95,6 +95,8 @@ import { deviceRoutes } from './devices/routes.js'
 import { REMOTE_PORT } from './devices/listener.js'
 import type { Advertiser } from './devices/bonjour.js'
 import { createCompanion, type Companion } from './companion/index.js'
+import { PairingViewers } from './companion/viewers.js'
+import { COMPANION_CHANNEL } from './companion/provider.js'
 import type { Exec } from './secrets/keychain.js'
 import { diagnosticsRoutes } from './diagnostics/routes.js'
 import { shareRoutes } from './share/routes.js'
@@ -578,6 +580,9 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   // Built after the device service, which lists its extensions and waiting request: it reads them
   // through these closures.
   let companion: Companion | null = null
+  // Who would see a companion pairing request: this Mac's dashboards on the channel, or the
+  // Devices pane polling (`companion/viewers.ts`).
+  const pairingViewers = new PairingViewers(() => hub.localDashboardsOn(COMPANION_CHANNEL))
   // After the hub and the config store, which it feeds and listens to.
   const deviceService = new DeviceService({
     app,
@@ -610,6 +615,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     service: deviceService,
     config: store,
     reportBrightness: (screenId, report) => { brightness.deviceReport(screenId, report); brightnessChanged() },
+    notePanePoll: () => pairingViewers.notePanePoll(),
   })
   await app.register(diagnosticsRoutes, {
     deps: {
@@ -650,7 +656,10 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   // The browser extension: pairing by approval on the Edge, its socket, the share it carries and
   // the `companion` channel the dashboard watches. Closed with the app.
   // The pairing lock lives next to devices.json: a restart must not clear it.
-  companion = await createCompanion({ app, store: devices, config: store, registry, lockPath: join(opts.dataDir, 'companion-lock.json') })
+  companion = await createCompanion({
+    app, store: devices, config: store, registry, lockPath: join(opts.dataDir, 'companion-lock.json'),
+    seen: () => pairingViewers.seen(),
+  })
 
   if (opts.uiDist && (await access(opts.uiDist).then(() => true, () => false))) {
     await app.register(fastifyStatic, { root: opts.uiDist, prefix: '/', serve: true, decorateReply: false })

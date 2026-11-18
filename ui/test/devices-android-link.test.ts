@@ -1,9 +1,9 @@
 /**
  * @vitest-environment jsdom
  *
- * The Android download link of the Devices section: shown with the rest of the tablet part, under
- * the same rule (`showsIpads`), pointing at the stable name of the newest release's APK, and
- * found by the settings search.
+ * The Android download link of the Devices section: shown with the rest of the tablet part on a
+ * fresh config, pointing at the stable name of the newest release's APK, and found by the settings
+ * search.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
@@ -31,12 +31,12 @@ const { searchSettings } = await import('../src/admin/settingsWindow')
 const { en } = await import('../src/shared/locales/en')
 const { fr } = await import('../src/shared/locales/fr')
 
-function config(devices: boolean): Config {
+function config(): Config {
   return {
     version: 4,
     connections: [], secrets: { backend: 'file' }, locale: 'en',
     privacy: { claudeAccountUsage: false, showAccountEmail: false, codexAccount: false, codexHistorySources: [], macmonTemperature: false },
-    labs: { devices, companion: false },
+    labs: {},
     widgets: {},
     screens: [
       { id: 'edge', name: 'Edge', kind: 'edge', display: { cols: 64, rows: 16, cell: 40, autoCycleSeconds: 0 }, nav: [], pages: [{ id: 'home', name: 'Home', items: [] }] },
@@ -64,7 +64,7 @@ afterEach(async () => {
 
 describe('the Android download link', () => {
   it('points at the newest release’s APK and opens outside the admin', async () => {
-    useAdminStore().state.config = config(true)
+    useAdminStore().state.config = config()
     const w = mount(DevicesSection)
     await flushPromises()
     const a = w.get('[data-test="android-apk"]')
@@ -72,14 +72,6 @@ describe('the Android download link', () => {
     expect(a.attributes('target')).toBe('_blank')
     expect(a.attributes('rel')).toContain('noopener')
     expect(a.text()).toBe(en['admin.devices.androidApk'])
-    w.unmount()
-  })
-
-  it('stays hidden with the tablet part while tablets are off and nothing is paired', async () => {
-    useAdminStore().state.config = config(false)
-    const w = mount(DevicesSection)
-    await flushPromises()
-    expect(w.find('[data-test="android-apk"]').exists()).toBe(false)
     w.unmount()
   })
 

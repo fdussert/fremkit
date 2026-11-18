@@ -666,3 +666,49 @@ describe('the device channel', () => {
     expect(local.sent).toEqual([{ type: 'data', channel: 'spotify', data: 1 }])
   })
 })
+
+describe('localDashboardsOn', () => {
+  it('counts this Mac\'s dashboard sockets on the channel, and nothing else', () => {
+    const { hub } = setup()
+    const on = (socket: FakeSocket, channel = 'companion') => { socket.receive({ type: 'subscribe', channel }); return socket }
+    const dashboard = new FakeSocket()
+    hub.attach(dashboard, { loopback: true, paired: false }, { dashboard: true })
+    expect(hub.localDashboardsOn('companion')).toBe(0)
+    on(dashboard)
+    expect(hub.localDashboardsOn('companion')).toBe(1)
+    // The admin (no `view`), a page that is not loopback, and a paired device claiming to be a
+    // dashboard: none of them shows the pairing prompt.
+    const admin = new FakeSocket(); hub.attach(admin, { loopback: true, paired: false }); on(admin)
+    const far = new FakeSocket(); hub.attach(far, { loopback: false, paired: false }, { dashboard: true }); on(far)
+    const ipad = new FakeSocket(); hub.attach(ipad, { loopback: false, paired: true, deviceId: 'ipad-1' }, { dashboard: true }); on(ipad)
+    expect(hub.localDashboardsOn('companion')).toBe(1)
+    // Another channel does not count, and the count follows unsubscribing and closing.
+    const other = new FakeSocket(); hub.attach(other, { loopback: true, paired: false }, { dashboard: true }); on(other, 'config')
+    expect(hub.localDashboardsOn('companion')).toBe(1)
+    dashboard.receive({ type: 'unsubscribe', channel: 'companion' })
+    expect(hub.localDashboardsOn('companion')).toBe(0)
+    on(dashboard)
+    dashboard.close()
+    expect(hub.localDashboardsOn('companion')).toBe(0)
+  })
+})
+
+describe('a dashboard that says it is hidden', () => {
+  it('stops counting until it says it is back, and keeps its subscription meanwhile', () => {
+    const { hub } = setup()
+    const dashboard = new FakeSocket()
+    hub.attach(dashboard, { loopback: true, paired: false }, { dashboard: true })
+    dashboard.receive({ type: 'subscribe', channel: 'companion' })
+    expect(hub.localDashboardsOn('companion')).toBe(1)
+    dashboard.receive({ type: 'visibility', visible: false })
+    expect(hub.localDashboardsOn('companion')).toBe(0)
+    // Still subscribed: what the channel says while hidden reaches the page.
+    hub.broadcast('companion', { pairing: null })
+    expect(dashboard.sent.at(-1)).toEqual({ type: 'data', channel: 'companion', data: { pairing: null } })
+    // Anything but a boolean changes nothing.
+    dashboard.receive({ type: 'visibility', visible: 'yes' })
+    expect(hub.localDashboardsOn('companion')).toBe(0)
+    dashboard.receive({ type: 'visibility', visible: true })
+    expect(hub.localDashboardsOn('companion')).toBe(1)
+  })
+})

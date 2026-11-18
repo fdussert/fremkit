@@ -171,6 +171,9 @@
   "pairBusy": {
     "message": "Une autre demande d'appairage attend déjà sur l'Edge."
   },
+  "pairUnseen": {
+    "message": "Personne ne verrait le code : ouvrez le dashboard sur l'Edge, ou Réglages → Appareils dans Fremkit, puis recommencez."
+  },
   "pairCooldown": {
     "message": "Demande refusée, réessayez dans une minute."
   },

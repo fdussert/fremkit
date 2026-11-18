@@ -34,6 +34,7 @@
     <nav class="nav-links">
       <a href="#how" data-i18n="nav.how">How it works</a>
       <a href="#features" data-i18n="nav.features">Features</a>
+      <a href="#beyond" data-i18n="nav.beyond">Tablets &amp; browser</a>
       <a href="#widgets" data-i18n="nav.widgets">Widgets</a>
       <a href="#privacy" data-i18n="nav.privacy">Privacy</a>
       <a href="#build" data-i18n="nav.build">Build a widget</a>
@@ -228,6 +229,59 @@
   </div>
 </section>
 
+<!-- BEYOND THE STRIP -->
+<section class="section" id="beyond">
+  <div class="wrap">
+    <p class="kicker" data-i18n="be.kicker">Tablets and browser</p>
+    <h2 data-i18n-html="be.title">Beyond the strip, <em>still on your desk.</em></h2>
+    <p class="sub" data-i18n="be.sub">The Edge stays the heart of it. Free add-ons take the dashboard a little further, never off your own network.</p>
+
+    <div class="beyond">
+      <article class="card wide addon tablet">
+        <figure class="addon-shot ipad"><img src="assets/ipad.webp" alt="The Fremkit app on an iPad, with sample data: clocks, weather, the day's events, Spotify, Dock badges, Claude Code sessions and limits" width="900" height="1200" loading="lazy"></figure>
+        <div class="addon-text">
+          <p class="tag" data-i18n="tag.tablet">IPAD · ANDROID</p>
+          <h3 data-i18n="be.tabT">A screen of its own, on an iPad or an Android tablet.</h3>
+          <p data-i18n="be.tab">The free Fremkit app shows one screen of your dashboard on a tablet: real widgets, live data, touch. Pair it with the Mac by scanning the QR code in Settings → Devices.</p>
+          <ul class="checks">
+            <li data-i18n="be.tab1">Local network only, no server in between</li>
+            <li data-i18n="be.tab2">No account to create, nothing from Google Play on Android</li>
+            <li data-i18n="be.tab3">Unpair it from the admin at any time</li>
+          </ul>
+          <div class="addon-cta">
+            <a class="btn primary" href="https://apps.apple.com/app/id6824504862" target="_blank" rel="noopener" data-i18n="be.ipadCta">Download on the App Store</a>
+            <a class="btn ghost" href="https://github.com/fdussert/fremkit/releases/latest/download/Fremkit-Android.apk" data-i18n="be.apkCta">Download the Android APK</a>
+          </div>
+          <p class="fine tablet-fine" data-i18n="be.tabFine">Free · iPadOS 17+ · Android 9+, not on the Play Store</p>
+          <p class="fine tablet-fine"><span data-i18n-html="be.apkUpd">Keep the APK up to date with <a href="https://github.com/ImranR98/Obtainium" target="_blank" rel="noopener">Obtainium</a> and the filter <code>^Fremkit-Android-.*\.apk$</code></span></p>
+          <div class="fp" data-copy="a6ccdda6b0f8df2923cc25227c8cf05b8a0376672be827cd351e787557a58225">
+            <span class="fp-txt"><small data-i18n-html="be.fp">APK signing certificate, SHA-256: <a href="https://github.com/fdussert/fremkit/blob/main/docs/devices.md#android">how to check it</a></small><code>a6ccdda6b0f8df2923cc25227c8cf05b8a0376672be827cd351e787557a58225</code></span>
+            <button type="button" class="copy" data-i18n="copy">Copy</button>
+          </div>
+        </div>
+      </article>
+
+      <article class="card wide addon companion">
+        <figure class="addon-shot"><img src="assets/fremplay.webp" alt="The Fremplay widget on the Edge: a browser tab's video with touch buttons to seek ten seconds, pause, change the volume, fill the tile, go back to the tab and stop" width="1200" height="638" loading="lazy"><figcaption class="credit" data-i18n-html="be.compCredit"><a href="https://peach.blender.org" target="_blank" rel="noopener">Big Buck Bunny</a> © Blender Foundation, <span class="nw">CC BY 3.0</span></figcaption></figure>
+        <div class="addon-text">
+          <p class="tag" data-i18n="tag.comp">BROWSER</p>
+          <h3 data-i18n="be.compT">A tab's video, on the strip.</h3>
+          <p data-i18n="be.comp">Fremkit Companion sends the video playing in a browser tab to the Fremplay widget on the Edge, with touch controls: play, pause, ten seconds back or ahead, volume. Pair it by typing the code the Edge shows.</p>
+          <ul class="checks">
+            <li data-i18n="be.comp1">The picture goes to the strip, the sound stays in the browser</li>
+            <li data-i18n="be.comp2">Talks to Fremkit on this Mac and nothing else</li>
+            <li data-i18n="be.comp3">Chrome, Edge, Brave, Arc; not Firefox or Safari</li>
+          </ul>
+          <div class="addon-cta">
+            <a class="btn primary" href="https://chromewebstore.google.com/detail/fremkit-companion/lnckeodobpbbmfbdlpnegjpchgkehdlk" target="_blank" rel="noopener" data-i18n="be.compCta">Add to Chrome</a>
+            <span class="fine" data-i18n="be.compFine">Free · Chrome Web Store</span>
+          </div>
+        </div>
+      </article>
+    </div>
+  </div>
+</section>
+
 <!-- WIDGETS -->
 <section class="section" id="widgets">
   <div class="wrap">
@@ -344,29 +398,6 @@
     <div class="reqs">
       <span>macOS 13+</span><span>Apple silicon</span><span data-i18n="i.edge">Corsair Xeneon Edge (any display works, without touch)</span><span data-i18n="i.fda">Full Disk Access, optional, for the disk map</span>
     </div>
-
-    <!-- ANDROID: the tablet app, attached to the same release as the Mac's download. Hidden until
-         the first release that carries the APK (0.5.1): its link answers 404 before that. -->
-    <article class="card wide addon android" id="android" hidden>
-      <div class="addon-text">
-        <p class="tag" data-i18n="tag.android">ANDROID</p>
-        <h3 data-i18n="an.title">A screen of its own, on an Android tablet.</h3>
-        <p data-i18n="an.body">The free Fremkit app for Android shows one screen of your dashboard on a spare tablet: real widgets, live data, touch. Pair it with the Mac by scanning the QR code in Settings → Devices.</p>
-        <ul class="checks">
-          <li data-i18n="an.1">Local network only, no server in between</li>
-          <li data-i18n="an.2">Nothing from Google Play inside, no account to create</li>
-          <li><span data-i18n-html="an.3">Kept up to date by <a href="https://github.com/ImranR98/Obtainium" target="_blank" rel="noopener">Obtainium</a>, with the filter <code>^Fremkit-Android-.*\.apk$</code></span></li>
-        </ul>
-        <div class="addon-cta">
-          <a class="btn primary" href="https://github.com/fdussert/fremkit/releases/latest/download/Fremkit-Android.apk" data-i18n="an.cta">Download the APK</a>
-          <span class="fine" data-i18n="an.fine">Free · Android 9+ · not on the Play Store</span>
-        </div>
-        <div class="fp" data-copy="a6ccdda6b0f8df2923cc25227c8cf05b8a0376672be827cd351e787557a58225">
-          <span class="fp-txt"><small data-i18n-html="an.fp">Signing certificate, SHA-256: <a href="https://github.com/fdussert/fremkit/blob/main/docs/devices.md#android">how to check it</a></small><code>a6ccdda6b0f8df2923cc25227c8cf05b8a0376672be827cd351e787557a58225</code></span>
-          <button type="button" class="copy" data-i18n="copy">Copy</button>
-        </div>
-      </div>
-    </article>
 
     <details class="source">
       <summary data-i18n="i.srcT">Build from source, to work on Fremkit</summary>

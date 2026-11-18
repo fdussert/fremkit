@@ -405,10 +405,21 @@ keep asking: after five requests refused for wrong codes within a day, pairing l
 you press **Unlock pairing** in **Settings → Devices** (`POST /api/companion/unlock`, behind the
 secret, local-only, on no allow-list). The lock is a flag in `companion-lock.json` next to
 `devices.json` as well as in memory, so restarting Fremkit does not clear it; a file that cannot be
-read counts as locked. Fifteen guesses in all is about one chance in 70,000. While
-`labs.companion` is off and no extension is linked, pairing requests are refused outright (409),
-since the Edge would show nobody the request; this keeps guessing from going unseen and is not a
-security boundary, as nothing else relies on the switch. A program that keeps a request of its own waiting can
+read counts as locked. Fifteen guesses in all is about one chance in 70,000. Nor can guessing go
+unseen: a request is taken only while someone on this Mac could see its code, that is while a
+dashboard page of this Mac's (loopback, unpaired, its socket opened as `?view=dashboard`) is
+subscribed to the `companion` channel and on screen, or the admin's **Settings → Devices** pane has
+polled within the last 9 seconds (three of its 3-second polls, `?watch=1`) while on screen. On
+screen is the page's `document.visibilityState`: a background tab, a minimised window, the helper's
+admin window once closed (it is only ordered out) and the kiosk while the dashboard is hidden or the
+Edge unplugged all report `hidden` and stop counting; the kiosk on the Edge reports `visible`. Otherwise the request is refused
+with 409 `unseen` before it exists, after the origin check (`companion/viewers.ts`). A paired
+device never counts. Both signals come from callers holding the access secret, which the pairing
+route does not ask for, so a process that cannot read the secret cannot pass for a viewer; one
+that can read it could open such a socket itself, and is beyond what this guard is for. The lock is
+checked before this (423 while locked, whoever watches); what is left is a presence signal: a local
+program without the secret can tell from 409 `unseen` that no dashboard or Devices pane is on screen,
+and gets any other answer only by making a request that one of them shows. A program that keeps a request of its own waiting can
 hold pairing up (you then see a request you did not start, and the Edge counts the other browsers
 turned away since you last answered one, a count only your answer clears, or two minutes with no
 request waiting at all: refuse it), but it cannot swap its request in under the code you type: the
