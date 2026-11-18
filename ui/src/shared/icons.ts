@@ -114,7 +114,7 @@ export const TILE_ICONS: readonly string[] = [
   'activity', 'gauge', 'chart-line', 'chart-pie', 'list', 'layout-grid', 'package', 'copy',
   'message-square', 'mail', 'bell', 'bot', 'code', 'terminal', 'git-branch', 'shield',
   'music', 'volume-2', 'headphones', 'gamepad-2', 'book-open', 'coffee', 'shopping-cart',
-  'briefcase', 'car', 'rocket', 'heart', 'star', 'cat', 'dog',
+  'briefcase', 'folder-clock', 'car', 'rocket', 'heart', 'star', 'cat', 'dog',
 ]
 
 export const DEFAULT_ICON = 'layout-grid'
