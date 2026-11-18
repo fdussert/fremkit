@@ -2,8 +2,8 @@
 # Casks/fremkit.rb; scripts/release.sh fills `version` and `sha256` here and prints the commands
 # that copy it there. Install: brew install --cask fdussert/fremkit/fremkit
 cask "fremkit" do
-  version "0.5.0"
-  sha256 "08f3f89517011e9d51b6b61284785fc338365fdb94da35ec96d008f324965cab"
+  version "0.5.1"
+  sha256 "d956a8533cbbc288a3fbc45e629b1965f744e91c778e70ddc14205e0bbc4c1c6"
 
   url "https://github.com/fdussert/fremkit/releases/download/v#{version}/Fremkit-#{version}.dmg"
   name "Fremkit"
