@@ -1,0 +1,370 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Recent projects</title>
+<style>
+  html,body{margin:0;height:100%;background:transparent;color:var(--text, #e6e8eb);font-family:var(--font, -apple-system,system-ui,sans-serif);overflow:hidden}
+  html.on-light body,html.accent-fill body{color:var(--on-surface,#0b0d10)}
+  [hidden]{display:none!important}
+  .wrap{box-sizing:border-box;height:100%;padding:10px 14px;display:flex;flex-direction:column;gap:6px;position:relative}
+  .list{flex:1;min-height:0;overflow-y:auto;touch-action:pan-y;-webkit-overflow-scrolling:touch;display:flex;flex-direction:column;gap:4px}
+  /* One finger-sized row per project: the folder's name big, where it lives under it, then which
+     sources saw it and when. */
+  .row{box-sizing:border-box;font:inherit;color:inherit;border:0;border-radius:12px;min-height:56px;padding:6px 12px;
+    background:rgba(128,128,128,.12);display:flex;align-items:center;gap:12px;text-align:left;cursor:pointer;flex:0 0 auto;
+    -webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+  .row .text{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:2px}
+  .row .name{font-size:calc(19px * var(--text-scale, 1));font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .row .parent{font-size:calc(13px * var(--text-scale, 1));opacity:.6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;direction:rtl;text-align:left}
+  .row .meta{flex:0 0 auto;display:flex;flex-direction:column;align-items:flex-end;gap:4px}
+  .row .ago{font-size:calc(13px * var(--text-scale, 1));opacity:.7;white-space:nowrap;font-variant-numeric:tabular-nums}
+  .badges{display:flex;gap:4px;align-items:center}
+  .badge{font-size:calc(10px * var(--text-scale, 1));font-weight:700;letter-spacing:.03em;line-height:1;padding:3px 5px;border-radius:5px;
+    border:1px solid currentColor;opacity:.55}
+  .badge.git{color:var(--accent,#d9b36a);opacity:.9}
+  html.accent-fill .badge.git,html.on-light .badge.git{color:inherit;opacity:.75}
+  /* The application a tap uses when it is not the tile's: filled when chosen for this project,
+     dashed when only suggested by its files. */
+  .opener{font-size:calc(11px * var(--text-scale, 1));font-weight:700;line-height:1;padding:3px 6px;border-radius:6px;white-space:nowrap;
+    max-width:110px;overflow:hidden;text-overflow:ellipsis}
+  .opener.chosen{background:var(--accent,#d9b36a);color:var(--on-accent,#0b0d10)}
+  .opener.suggested{border:1px dashed currentColor;opacity:.7}
+  html.accent-fill .opener.chosen{background:var(--on-surface,#0b0d10);color:var(--accent,#d9b36a)}
+  .row.pressed{background:var(--accent,#d9b36a);color:var(--on-accent,#0b0d10)}
+  html.accent-fill .row.pressed{background:var(--on-surface,#0b0d10);color:var(--accent,#d9b36a)}
+  .row.ok{background:rgba(52,152,86,.38)}
+  .row.failed{background:rgba(179,38,30,.38)}
+  html.accent-fill .row:not(.pressed){background:rgba(0,0,0,.08)}
+  .note{font-size:calc(14px * var(--text-scale, 1));opacity:.7;margin:auto 0;text-align:center;padding:0 12px}
+  /* "Open with…": the installed applications, over the list, after a long press. */
+  .picker{position:absolute;inset:0;box-sizing:border-box;padding:10px 14px;display:flex;flex-direction:column;gap:8px;
+    background:rgba(16,18,22,.98);color:#e6e8eb;border-radius:12px;z-index:2}
+  html.on-light .picker{background:rgba(248,248,246,.97);color:#0b0d10}
+  .picker .head{display:flex;align-items:center;gap:8px}
+  .picker .title{flex:1;min-width:0;font-size:calc(15px * var(--text-scale, 1));opacity:.75;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .picker .apps{flex:1;min-height:0;overflow-y:auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));grid-auto-rows:56px;gap:8px;touch-action:pan-y}
+  .btn{box-sizing:border-box;font:inherit;color:inherit;border:0;border-radius:12px;background:rgba(128,128,128,.22);cursor:pointer;
+    font-size:calc(15px * var(--text-scale, 1));font-weight:600;padding:0 10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .btn.default{box-shadow:inset 0 0 0 2px var(--accent,#d9b36a)}
+  .close{flex:0 0 auto;width:56px;height:44px}
+  .picker .options{display:flex;gap:8px;flex-wrap:wrap}
+  .toggle{box-sizing:border-box;font:inherit;color:inherit;border:0;background:none;cursor:pointer;min-height:44px;padding:0 6px;
+    display:flex;align-items:center;gap:10px;font-size:calc(15px * var(--text-scale, 1))}
+  .toggle .box{width:22px;height:22px;border-radius:6px;border:2px solid currentColor;opacity:.7;box-sizing:border-box;display:flex;
+    align-items:center;justify-content:center;font-size:15px;line-height:1}
+  .toggle[aria-pressed="true"] .box{background:var(--accent,#d9b36a);border-color:var(--accent,#d9b36a);color:var(--on-accent,#0b0d10);opacity:1}
+  .reset{min-height:44px;padding:0 14px}
+  /* In the bar: the first few names side by side, tap to open. */
+  html.compact .wrap{padding:0 6px;justify-content:center}
+  html.compact .list{flex-direction:row;overflow:hidden;align-items:center;gap:6px;flex:0 0 auto;height:100%}
+  html.compact .row{min-height:0;height:calc(var(--h, 80px) - 16px);min-width:0;flex:0 1 auto;padding:0 12px;gap:0}
+  html.compact .row .meta,html.compact .row .parent{display:none}
+  html.compact .row .name{font-size:calc(min(17px, var(--h, 80px) * .3) * var(--text-scale, 1))}
+  html.compact.slot-right .list{justify-content:flex-end}
+  html.compact .note{margin:0;font-size:calc(13px * var(--text-scale, 1))}
+</style></head>
+<body><div class="wrap">
+  <div class="list" id="list"></div>
+  <div class="note" id="note" hidden></div>
+  <div class="picker" id="picker" hidden>
+    <div class="head"><div class="title" id="pickerTitle"></div><button class="btn close" id="pickerClose">✕</button></div>
+    <div class="options">
+      <button class="toggle" id="pickerAlways" aria-pressed="false"><span class="box"></span><span id="pickerAlwaysLabel"></span></button>
+      <button class="btn reset" id="pickerReset" hidden></button>
+    </div>
+    <div class="apps" id="pickerApps"></div>
+  </div>
+</div>
+<script>
+  var L = {
+    loading: { fr: 'Chargement…', en: 'Loading…' },
+    noSource: { fr: 'Cochez au moins une source dans les réglages', en: 'Tick at least one source in the settings' },
+    noRoot: { fr: 'Ajoutez un dossier où chercher vos dépôts git dans les réglages', en: 'Add a folder to look for git repositories in, in the settings' },
+    nothing: { fr: 'Aucun projet récent trouvé', en: 'No recent project found' },
+    openWith: { fr: 'Ouvrir « {name} » avec', en: 'Open “{name}” with' },
+    always: { fr: 'Toujours ouvrir ce projet avec', en: 'Always open this project with' },
+    reset: { fr: 'Revenir au choix par défaut', en: 'Back to default' },
+    chosen: { fr: 'Choisi pour ce projet', en: 'Chosen for this project' },
+    suggested: { fr: 'Suggéré d’après les fichiers du projet', en: 'Suggested by the project’s files' },
+    now: { fr: 'à l’instant', en: 'just now' },
+    min: { fr: 'il y a {n} min', en: '{n} min ago' },
+    hour: { fr: 'il y a {n} h', en: '{n} h ago' },
+    day: { fr: 'il y a {n} j', en: '{n} d ago' },
+    week: { fr: 'il y a {n} sem.', en: '{n} wk ago' }
+  }
+  var SOURCES = {
+    git: { short: 'git', fr: 'Dépôt git', en: 'Git repository' },
+    claude: { short: 'CC', fr: 'Claude Code', en: 'Claude Code' },
+    codex: { short: 'CX', fr: 'Codex', en: 'Codex' },
+    vscode: { short: 'VS', fr: 'VS Code', en: 'VS Code' },
+    cursor: { short: 'CU', fr: 'Cursor', en: 'Cursor' },
+    jetbrains: { short: 'JB', fr: 'JetBrains', en: 'JetBrains' },
+    zoxide: { short: 'z', fr: 'zoxide', en: 'zoxide' },
+    tmux: { short: 'tm', fr: 'tmux', en: 'tmux' },
+    herdr: { short: 'hd', fr: 'Herdr', en: 'Herdr' }
+  }
+  var APPS = {
+    finder: 'Finder', terminal: 'Terminal', iterm: 'iTerm', ghostty: 'Ghostty', vscode: 'VS Code',
+    cursor: 'Cursor', zed: 'Zed', xcode: 'Xcode', herdr: 'Herdr', tmux: 'tmux',
+    'herdr-claude': 'Herdr + Claude', 'herdr-codex': 'Herdr + Codex',
+    'tmux-claude': 'tmux + Claude', 'tmux-codex': 'tmux + Codex',
+    'jetbrains-idea': 'IntelliJ IDEA', 'jetbrains-idea-ce': 'IntelliJ IDEA CE', 'jetbrains-webstorm': 'WebStorm',
+    'jetbrains-pycharm': 'PyCharm', 'jetbrains-pycharm-ce': 'PyCharm CE', 'jetbrains-phpstorm': 'PhpStorm',
+    'jetbrains-goland': 'GoLand', 'jetbrains-rider': 'Rider', 'jetbrains-clion': 'CLion',
+    'jetbrains-rustrover': 'RustRover', 'jetbrains-rubymine': 'RubyMine', 'jetbrains-datagrip': 'DataGrip',
+    'jetbrains-android-studio': 'Android Studio'
+  }
+  /** What the `herdrTerminal` setting may hold: the server refuses anything else. */
+  var TERMINALS = ['auto', 'terminal', 'iterm', 'ghostty']
+  /** How long a row keeps its ✓ or ✗ colour after a tap. */
+  var FEEDBACK_MS = 1400
+  /** A mouse held this long opens the picker; the Edge's driver sends `contextmenu` instead. */
+  var HOLD_MS = 550
+
+  var settings = {}, data = null
+  /** path -> 'pressed' | 'ok' | 'failed' */
+  var feedback = {}
+  var pickerPath = null
+  /** The picker's "always open with" box, ticked when it opens on a project that has its own app. */
+  var pickerAlways = false
+
+  function enabled(id) {
+    var v = settings['source_' + id]
+    return v === true || (v === undefined && id === 'git')
+  }
+
+  function roots() {
+    var list = Array.isArray(settings.gitRoots) ? settings.gitRoots : []
+    return list.map(function (r) { return r && typeof r.path === 'string' ? r.path.trim() : '' }).filter(Boolean)
+  }
+
+  function clampInt(v, lo, hi, dflt) {
+    var n = Math.round(Number(v))
+    return isFinite(n) && n >= lo ? Math.min(hi, n) : dflt
+  }
+
+  /**
+   * The rows this tile shows. The channel carries what every tile on the dashboard asked for, so
+   * each keeps only the projects one of its own sources saw — a repository only when it sits
+   * under one of its own roots.
+   */
+  function visible() {
+    if (!data || !Array.isArray(data.projects)) return []
+    var mine = roots()
+    var rows = data.projects.filter(function (p) {
+      return (p.sources || []).some(function (s) {
+        if (!enabled(s)) return false
+        if (s !== 'git') return true
+        return (p.gitRoots || []).some(function (r) { return mine.indexOf(r) >= 0 })
+      })
+    })
+    var max = Fremkit.compact ? clampInt(settings.compactCount, 1, 8, 3) : clampInt(settings.max, 1, 50, 8)
+    return rows.slice(0, max)
+  }
+
+  function emptyText() {
+    var ids = Object.keys(SOURCES).filter(enabled)
+    if (!ids.length) return Fremkit.t(L.noSource)
+    if (ids.length === 1 && ids[0] === 'git' && !roots().length) return Fremkit.t(L.noRoot)
+    if (!data) return Fremkit.t(L.loading)
+    return Fremkit.t(L.nothing)
+  }
+
+  function ago(at) {
+    if (typeof at !== 'number') return ''
+    var s = Math.max(0, (Date.now() - at) / 1000)
+    if (s < 60) return Fremkit.t(L.now)
+    if (s < 3600) return Fremkit.t(L.min, { n: Math.floor(s / 60) })
+    if (s < 86400) return Fremkit.t(L.hour, { n: Math.floor(s / 3600) })
+    if (s < 14 * 86400) return Fremkit.t(L.day, { n: Math.floor(s / 86400) })
+    return Fremkit.t(L.week, { n: Math.floor(s / (7 * 86400)) })
+  }
+
+  function installed() { return data && Array.isArray(data.apps) ? data.apps : ['finder'] }
+
+  /** The tile's chosen application, or Finder when that one is not on this Mac. */
+  function defaultApp() {
+    var app = typeof settings.defaultApp === 'string' ? settings.defaultApp : 'finder'
+    return installed().indexOf(app) >= 0 ? app : 'finder'
+  }
+
+  /**
+   * What a tap on this project opens it with: the application chosen for it, else the one its
+   * files suggest (when the tile allows suggestions), else the tile's. Only one this Mac has.
+   */
+  function appFor(p) {
+    var apps = installed()
+    if (p.opener && apps.indexOf(p.opener) >= 0) return { app: p.opener, kind: 'chosen' }
+    if (settings.suggestApp !== false && p.suggested && apps.indexOf(p.suggested) >= 0) return { app: p.suggested, kind: 'suggested' }
+    return { app: defaultApp(), kind: 'default' }
+  }
+
+  function mark(path, state) {
+    feedback[path] = state
+    render()
+    if (state === 'pressed') return
+    setTimeout(function () {
+      if (feedback[path] !== state) return
+      delete feedback[path]
+      render()
+    }, FEEDBACK_MS)
+  }
+
+  function open(path, app) {
+    mark(path, 'pressed')
+    var payload = { path: path, app: app }
+    if (app === 'herdr' || app.indexOf('herdr-') === 0) payload.terminal = TERMINALS.indexOf(settings.herdrTerminal) >= 0 ? settings.herdrTerminal : 'auto'
+    Fremkit.sendCommand('recent-projects', 'open', payload)
+      .then(function (r) { mark(path, r && r.ok ? 'ok' : 'failed') })
+      .catch(function () { mark(path, 'failed') })
+  }
+
+  function projectAt(path) {
+    return data && (data.projects || []).filter(function (p) { return p.path === path })[0]
+  }
+
+  function showPicker(path) {
+    if (Fremkit.compact) return
+    var project = projectAt(path)
+    pickerPath = path
+    pickerAlways = !!(project && project.opener)
+    renderPicker()
+  }
+
+  /** Gives the project its own application (or, with null, takes it back); the snapshot follows. */
+  function setOpener(path, app) {
+    return Fremkit.sendCommand('recent-projects', 'setOpener', { path: path, app: app })
+      .then(function (r) { if (!r || !r.ok) mark(path, 'failed') })
+      .catch(function () { mark(path, 'failed') })
+  }
+
+  function hidePicker() {
+    pickerPath = null
+    renderPicker()
+  }
+
+  function renderPicker() {
+    var picker = document.getElementById('picker')
+    var project = projectAt(pickerPath)
+    picker.hidden = !project
+    if (!project) return
+    document.getElementById('pickerTitle').textContent = Fremkit.t(L.openWith, { name: project.name })
+    var always = document.getElementById('pickerAlways')
+    always.setAttribute('aria-pressed', pickerAlways ? 'true' : 'false')
+    always.querySelector('.box').textContent = pickerAlways ? '✓' : ''
+    document.getElementById('pickerAlwaysLabel').textContent = Fremkit.t(L.always)
+    var reset = document.getElementById('pickerReset')
+    reset.hidden = !project.opener
+    reset.textContent = Fremkit.t(L.reset)
+    var box = document.getElementById('pickerApps')
+    box.innerHTML = ''
+    var current = appFor(project).app
+    installed().forEach(function (app) {
+      if (!APPS[app]) return
+      var b = Fremkit.el('button', 'btn' + (app === current ? ' default' : ''), APPS[app])
+      b.onclick = function () {
+        var path = pickerPath, keep = pickerAlways
+        hidePicker()
+        if (keep) setOpener(path, app)
+        open(path, app)
+      }
+      box.appendChild(b)
+    })
+  }
+
+  function rowFor(p) {
+    var state = feedback[p.path]
+    var row = Fremkit.el('button', 'row' + (state ? ' ' + state : ''))
+    row.dataset.path = p.path
+    var text = Fremkit.el('div', 'text')
+    text.appendChild(Fremkit.el('div', 'name', p.name))
+    // Right to left so a long parent keeps its end ("…/clients/acme"); the marks keep it readable.
+    text.appendChild(Fremkit.el('div', 'parent', '‎' + p.parent + '‎'))
+    row.appendChild(text)
+    var meta = Fremkit.el('div', 'meta')
+    var badges = Fremkit.el('div', 'badges')
+    ;(p.sources || []).forEach(function (s) {
+      if (!SOURCES[s]) return
+      var b = Fremkit.el('span', 'badge ' + s, SOURCES[s].short)
+      b.title = Fremkit.t(SOURCES[s])
+      badges.appendChild(b)
+    })
+    meta.appendChild(badges)
+    var line = Fremkit.el('div', 'badges')
+    var use = appFor(p)
+    // Shown when the tap does something other than the tile's choice: chosen, or a suggestion.
+    if (use.kind === 'chosen' || (use.kind === 'suggested' && use.app !== defaultApp())) {
+      var chip = Fremkit.el('span', 'opener ' + use.kind, APPS[use.app] || use.app)
+      chip.title = Fremkit.t(L[use.kind])
+      line.appendChild(chip)
+    }
+    line.appendChild(Fremkit.el('div', 'ago', ago(p.seenAt)))
+    meta.appendChild(line)
+    row.appendChild(meta)
+    attachPress(row, p.path)
+    return row
+  }
+
+  /** Tap opens with the default application; a long press (or a held mouse) opens the picker. */
+  function attachPress(row, path) {
+    var timer = null, held = false
+    row.addEventListener('pointerdown', function (e) {
+      if (e.button !== 0) return
+      held = false
+      timer = setTimeout(function () { held = true; showPicker(path) }, HOLD_MS)
+    })
+    function cancel() { clearTimeout(timer); timer = null }
+    row.addEventListener('pointerup', cancel)
+    row.addEventListener('pointerleave', cancel)
+    row.addEventListener('pointercancel', cancel)
+    row.addEventListener('click', function () {
+      if (held) { held = false; return }
+      var project = projectAt(path)
+      open(path, project ? appFor(project).app : defaultApp())
+    })
+  }
+
+  function render() {
+    document.documentElement.lang = Fremkit.locale
+    var list = document.getElementById('list'), note = document.getElementById('note')
+    var rows = visible()
+    // Rebuilt on every snapshot and every minute: keep the finger's scroll position.
+    var scroll = list.scrollTop
+    list.innerHTML = ''
+    rows.forEach(function (p) { list.appendChild(rowFor(p)) })
+    list.scrollTop = scroll
+    list.hidden = rows.length === 0
+    note.hidden = rows.length > 0
+    note.textContent = rows.length ? '' : emptyText()
+    renderPicker()
+  }
+
+  function applySize(size) {
+    if (size && size.px) document.documentElement.style.setProperty('--h', size.px.height + 'px')
+    render()
+  }
+
+  Fremkit.whenReady(function () {
+    settings = Fremkit.settings || {}
+    Fremkit.onLocale(render)
+    Fremkit.onSettings(function (next) { settings = next || {}; render() })
+    Fremkit.onResize(applySize)
+    document.getElementById('pickerClose').onclick = hidePicker
+    document.getElementById('pickerAlways').onclick = function () { pickerAlways = !pickerAlways; renderPicker() }
+    document.getElementById('pickerReset').onclick = function () {
+      var path = pickerPath
+      hidePicker()
+      setOpener(path, null)
+    }
+    // The Edge's long press arrives as a right click: the row under the finger gets the picker.
+    document.addEventListener('contextmenu', function (e) {
+      var row = e.target && e.target.closest ? e.target.closest('.row') : null
+      if (row && row.dataset.path) showPicker(row.dataset.path)
+    })
+    Fremkit.subscribe('recent-projects', function (next) {
+      data = next
+      render()
+    })
+    // "2 h ago" moves on its own.
+    setInterval(render, 60000)
+    applySize(Fremkit.size)
+  })
+</script></body></html>

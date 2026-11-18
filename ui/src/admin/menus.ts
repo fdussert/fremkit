@@ -17,6 +17,7 @@ import { screensShowing } from '../shared/screens'
 import type { AdminStore } from './store'
 import { openExport, pickLayoutFile } from './share'
 import { openSettings } from './settingsWindow'
+import { navStep } from './navOrder'
 
 /** What the pages list adds to a menu: the inline rename lives in the list itself. */
 export interface PageMenuUi extends MenuUi {
@@ -76,9 +77,9 @@ export function navWidgetMenu(s: AdminStore, instanceId: string, ui: MenuUi): Me
   if (!cfg || !scr || !item || !widget) return []
   const manifest = s.state.manifests[widget.widgetId]
   const name = widget.title?.trim() || pick(manifest?.name) || widget.widgetId
-  // Reordering is within a side, as the panel's arrows do it; the ends of a side are disabled.
-  const side = navItemsOf(scr).filter((x) => x.slot === item.slot)
-  const at = side.findIndex((x) => x.instanceId === instanceId)
+  // A step along the bar, across the dots at the end of a side, as the panel's arrows do it.
+  const canLeft = navStep(navItemsOf(scr), instanceId, -1) !== null
+  const canRight = navStep(navItemsOf(scr), instanceId, 1) !== null
   const fix = ui.fix?.(instanceId)
   const update = ui.update?.(instanceId)
   return tidy([
@@ -94,8 +95,8 @@ export function navWidgetMenu(s: AdminStore, instanceId: string, ui: MenuUi): Me
       },
     },
     SEPARATOR,
-    { label: t('admin.menu.moveLeft'), disabled: at <= 0, run: () => s.moveNavWidget(instanceId, -1) },
-    { label: t('admin.menu.moveRight'), disabled: at < 0 || at >= side.length - 1, run: () => s.moveNavWidget(instanceId, 1) },
+    { label: t('admin.menu.moveLeft'), disabled: !canLeft, run: () => s.moveNavWidget(instanceId, -1) },
+    { label: t('admin.menu.moveRight'), disabled: !canRight, run: () => s.moveNavWidget(instanceId, 1) },
     SEPARATOR,
     s.isLastPlace(instanceId)
       ? {

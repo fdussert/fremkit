@@ -114,6 +114,46 @@ describe('theme schedule', () => {
   })
 })
 
+describe('gifs', () => {
+  const giphy = { id: 'gifitem01', kind: 'giphy', giphyId: 'abc123XYZ', label: 'Party' }
+  const link = { id: 'gifitem02', kind: 'link', url: 'https://example.com/a.gif' }
+  const board = (group: object = {}, items: object[] = [giphy, link]) =>
+    ({ groups: [{ id: 'group01', name: 'Reactions', items, ...group }] })
+
+  it('leaves a file written before it existed untouched: no key', () => {
+    expect(ConfigSchema.parse(v4())).not.toHaveProperty('gifs')
+    expect(ConfigSchema.parse(DEFAULT_CONFIG)).not.toHaveProperty('gifs')
+  })
+  it('round-trips a group holding a Giphy item and a link item', () => {
+    const gifs = board()
+    const once = ConfigSchema.parse(v4({ gifs }))
+    expect(once.gifs).toEqual(gifs)
+    expect(ConfigSchema.parse(once)).toEqual(once)
+  })
+  it('refuses a plain http link, a Giphy id that is not one, an empty name and an unknown kind', () => {
+    const bad = [
+      board({}, [{ ...link, url: 'http://example.com/a.gif' }]),
+      board({}, [{ ...giphy, giphyId: '../x' }]),
+      board({ name: '' }),
+      board({ name: '   ' }),
+      board({}, [{ ...link, kind: 'file' }]),
+      board({ id: 'BAD ID' }),
+      board({}, [{ ...giphy, id: 'short' }]),
+      board({}, [{ ...giphy, label: 'x'.repeat(41) }]),
+      board({}, [{ ...link, url: `https://example.com/${'a'.repeat(2048)}.gif` }]),
+    ]
+    for (const gifs of bad) expect(() => ConfigSchema.parse(v4({ gifs })), JSON.stringify(gifs).slice(0, 120)).toThrow()
+  })
+  it('refuses more than 30 groups and more than 200 items in a group', () => {
+    const groups = Array.from({ length: 31 }, (_, i) => ({ id: `group${String(i).padStart(2, '0')}`, name: `G${i}`, items: [] }))
+    expect(() => ConfigSchema.parse(v4({ gifs: { groups } }))).toThrow()
+    expect(ConfigSchema.parse(v4({ gifs: { groups: groups.slice(0, 30) } })).gifs?.groups).toHaveLength(30)
+    const items = Array.from({ length: 201 }, (_, i) => ({ ...link, id: `item${String(i).padStart(3, '0')}` }))
+    expect(() => ConfigSchema.parse(v4({ gifs: board({}, items) }))).toThrow()
+    expect(ConfigSchema.parse(v4({ gifs: board({}, items.slice(0, 200)) })).gifs?.groups[0].items).toHaveLength(200)
+  })
+})
+
 describe('page background', () => {
   const page = (background?: unknown) =>
     ScreenSchema.parse({ id: 'edge', name: 'E', kind: 'edge', pages: [{ id: 'p', name: 'P', ...(background === undefined ? {} : { background }) }] }).pages[0]
@@ -384,6 +424,12 @@ describe('the navigation bar', () => {
     expect(NavItemSchema.parse({ instanceId: 'a', popup: true }).popup).toBe(true)
     expect(NavItemSchema.parse({ instanceId: 'a', popup: false }).popup).toBe(false)
     expect(() => NavItemSchema.parse({ instanceId: 'a', popup: 'yes' })).toThrow()
+  })
+  it('keeps a popover shape from the closed list, and refuses any other', () => {
+    expect(NavItemSchema.parse({ instanceId: 'a', popup: true }).popupSize).toBeUndefined()
+    expect(NavItemSchema.parse({ instanceId: 'a', popup: true, popupSize: 'wide' }).popupSize).toBe('wide')
+    expect(NavItemSchema.parse({ instanceId: 'a', popup: true, popupSize: 'large' }).popupSize).toBe('large')
+    expect(() => NavItemSchema.parse({ instanceId: 'a', popupSize: 'huge' })).toThrow()
   })
   it('carries no widget settings: those live in `widgets`', () => {
     expect(NavItemSchema.parse({ instanceId: 'a', widgetId: 'clock', settings: { x: 1 } })).toEqual({ instanceId: 'a', slot: 'left' })

@@ -376,6 +376,13 @@ Each line here was a real hole once. Break one only with the owner's explicit sa
 - `playwright install` deletes every browser build in `~/Library/Caches/ms-playwright` that no
   installed Playwright version links to — including one another tool or agent launches by path.
   Install for the e2e package only when needed, and say so if you did.
+- A poll never starts `osascript`. Each one registers with LaunchServices, macOS numbers the
+  registrations from a counter that only grows, and past 32 bits (about a million of them; four
+  days at three a second, which is what the Spotify and volume polls did) it starts no new
+  application until the Mac is rebooted. What a poll asks goes through `createScriptHost()`
+  (`server/src/providers/osascript-host.ts`), one process kept open; the one-shot `osascript`
+  runner is for what a tap asks. `pbpaste`, `ps`, `pmset`, `route` and the other tools the
+  providers poll with were checked and do not register.
 - A layer drawn above a `BaseModal` (a context menu, the command palette) carries `data-overlay`:
   the dialog and the layer both hear Escape on the window, and without it one Escape closes both.
 

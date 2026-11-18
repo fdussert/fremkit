@@ -31,13 +31,14 @@ extension NSRect {
     }
 }
 
-/// Borderless window that can still take the keyboard focus.
+/// Borderless non-activating panel that never takes the keyboard focus.
 ///
-/// `NSWindow` refuses to become key or main when it is borderless, which in an accessory
-/// (`LSUIElement`) app leaves the dashboard unable to receive clicks and key events at all.
-private final class KioskNSWindow: NSWindow {
-    override var canBecomeKey: Bool { true }
-    override var canBecomeMain: Bool { true }
+/// Touches reach the page through `acceptsFirstMouse` on the web view below, so the window has
+/// no need to become key. Refusing it keeps the app the user is typing into frontmost on the
+/// primary display when a tap lands on the Edge dashboard.
+private final class KioskNSWindow: NSPanel {
+    override var canBecomeKey: Bool { false }
+    override var canBecomeMain: Bool { false }
 }
 
 /// Web view that lets the very first click reach the page.
@@ -85,10 +86,12 @@ final class KioskWindow: NSObject, WKNavigationDelegate {
         self.url = url
         self.access = access
 
-        window = KioskNSWindow(contentRect: frame,
-                               styleMask: .borderless,
-                               backing: .buffered,
-                               defer: false)
+        let panel = KioskNSWindow(contentRect: frame,
+                                  styleMask: [.borderless, .nonactivatingPanel],
+                                  backing: .buffered,
+                                  defer: false)
+        panel.hidesOnDeactivate = false
+        window = panel
         // Above the menu bar and status items: with "Displays have separate Spaces" macOS draws
         // a menu bar on every display, and a floating window would leave it visible on the Edge.
         window.level = Self.kioskLevel

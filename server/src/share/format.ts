@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import {
   AccentModeSchema, AdminGestureSchema, BackgroundFitSchema, HEX_COLOR_RE, MAX_NAV_WIDGETS, MAX_WIDGET_DIM,
-  NavHeightSchema, NavSlotSchema, NavStyleSchema, OpacitySchema, ThemeIdSchema, WIDGET_ID_RE,
+  NavHeightSchema, NavSlotSchema, PopupSizeSchema, NavStyleSchema, OpacitySchema, ThemeIdSchema, WIDGET_ID_RE,
 } from '../config/schema.js'
 
 /**
@@ -44,7 +44,8 @@ export const MAX_SHARED_NAME = 60
 export const MAX_SETTING_KEYS = 64
 export const MAX_SETTING_STRING = 2000
 export const MAX_SETTING_ITEMS = 100
-export const MAX_SETTING_DEPTH = 4
+/** A list whose items hold a list whose items hold one more (a shortcuts subgroup) is 6 deep. */
+export const MAX_SETTING_DEPTH = 6
 
 /** A widget's key inside the file: `w1`, `w2`… never the instance id it had on the author's Mac. */
 export const SHARED_KEY_RE = /^[a-z0-9][a-z0-9_-]{0,31}$/
@@ -120,6 +121,7 @@ export const SharedNavItemSchema = z.object({
   widget: WidgetKey,
   slot: NavSlotSchema.default('left'),
   popup: z.boolean().optional(),
+  popupSize: PopupSizeSchema.optional(),
 })
 
 /**

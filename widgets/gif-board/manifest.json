@@ -1,0 +1,17 @@
+{ "id": "gif-board",
+  "name": { "fr": "GIFs", "en": "GIFs" },
+  "version": "1.0.0", "sdk": 4, "preview": "preview.webp",
+  "description": { "fr": "Vos GIF préférés, rangés par groupes : touchez-en un pour le copier, puis ⌘V pour l’envoyer animé dans Teams ou Slack. Remplissez-le depuis ses réglages, par une recherche Giphy ou en collant une adresse.",
+                   "en": "Your favourite GIFs, sorted into groups: touch one to copy it, then ⌘V sends it animated in Teams or Slack. Fill it from its settings, with a Giphy search or by pasting an address." },
+  "category": "productivity",
+  "icon": "video", "minSize": [8, 4], "defaultSize": [16, 8],
+  "compact": { "width": 2 },
+  "subscriptions": ["gif-board"], "commands": ["gif-board"],
+  "settingsSchema": {
+    "showLabels": { "type": "boolean", "default": true, "label": { "fr": "Afficher les libellés", "en": "Show labels" } },
+    "rows": { "type": "enum", "default": "1", "label": { "fr": "Rangées de GIF", "en": "Rows of GIFs" },
+      "options": [
+        { "value": "1", "label": { "fr": "Une, en grand", "en": "One, large" } },
+        { "value": "2", "label": { "fr": "Deux, plus petits", "en": "Two, smaller" } }
+      ] }
+  } }

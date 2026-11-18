@@ -4,6 +4,8 @@
  * dashboard and the admin's scaled preview share one rule and it can be tested on its own.
  */
 
+import type { PopupSize } from './types'
+
 /** A box in the coordinate space the popover is drawn in: the viewport, or the admin's board. */
 export interface Box { left: number; top: number; width: number; height: number }
 
@@ -36,4 +38,19 @@ export function popoverRect(
   const left = Math.min(Math.max(centred, margin), Math.max(margin, screen.width - margin - width))
   const top = Math.max(margin, anchor.top - margin - height)
   return { left, top, width, height }
+}
+
+/**
+ * The popover's size in cells, from the widget's default tile size and the shape the bar item
+ * asks for. A popover is looked at up close and for a moment, so the standard shape gets half
+ * again the tile's height: the default tile size is drawn for a wall of tiles, and a four-cell-high
+ * strip plus a caption came out cramped. `wide` trades that height for twice the width, `large`
+ * takes more of both. Not rounded: the caller rounds pixels. `popoverRect` then clamps whatever
+ * this asks to the screen.
+ */
+export function popupCells(defaultSize: readonly [number, number], size?: PopupSize): { w: number; h: number } {
+  const [w, h] = defaultSize
+  if (size === 'wide') return { w: w * 2, h }
+  if (size === 'large') return { w: Math.round(w * 1.5), h: h * 2 }
+  return { w, h: h * 1.5 }
 }

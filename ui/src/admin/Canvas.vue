@@ -133,7 +133,7 @@ onUnmounted(() => observer?.disconnect())
         :cell="display.cell"
         :anchor="popover.open.value.anchor"
         :screen="popover.open.value.screen"
-        @root="popover.setPopoverEl" />
+        @root="popover.setPopoverEl" @activity="popover.keepAlive" />
       <EditOverlay v-if="s.state.mode === 'edit'" :scale="scale" />
     </div>
   </div>

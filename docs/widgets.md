@@ -19,6 +19,7 @@ To write your own, see [writing-widgets.md](writing-widgets.md).
 | [disk](#disk) | Disk usage and available space | — | — | 16 × 4 |
 | [disk-map](#disk-map) | What fills the disk, as rings you drill into | — | 2 cells | 24 × 9 |
 | [fremplay](#fremplay) | The video of a Chrome tab, with touch controls | — | 3 cells | 28 × 16 |
+| [gif-board](#gif-board) | Favourite GIFs in groups, tap to copy one | Giphy (search only, optional) | 2 cells | 16 × 8 |
 | [memory](#memory) | Memory usage, available RAM and swap | — | 4 cells | 8 × 4 |
 | [uptime](#uptime) | Time since the Mac last booted | — | — | 8 × 4 |
 | [network](#network) | Live network throughput | — | 6 cells | 12 × 4 |
@@ -104,11 +105,19 @@ A card that is waiting for you goes to its session when you touch it; every othe
 in its corner that does the same. Which window is raised depends on the terminal application —
 see [claude-code.md](claude-code.md#going-to-a-session).
 
+A card is titled with the session's name, the one Claude Code's `/rename` gives it, and otherwise
+with the repository's name. The line under the title says where the session sits: the repository,
+the worktree or subfolder it runs in, and the branch (`platform/tools/bg-rollup@develop`). An idle
+or finished card says how long it has been silent.
+
 | Setting | Type | Default | Scope | What it is |
 |---|---|---|---|---|
 | `max` | number | `0` | both | Sessions shown; `0` means all of them |
 | `onlyWaiting` | boolean | off | both | Show only the sessions waiting for you |
 | `hideDone` | boolean | on | both | Drop a finished or idle session from the board after 30 min |
+| `showCount` | boolean | on | both | The number of sessions after the tile's title (`Claude sessions · 18`); nothing when the title is hidden |
+| `showStats` | boolean | on | both | Today's summary above the cards: sessions, finished, commits |
+| `sort` | enum | `state` | both | `state`: the sessions waiting for you first, then working, failed, finished and idle, the most recent first within each; `recent`: by last activity alone |
 | `groupByClient` | boolean | off | both | One section per application (Orca, Terminal, …) |
 | `sound` | enum | `none` | both | A macOS system sound when a session starts waiting |
 | `soundOn` | enum | `attention` | both | What the sound is for: a question, or a question or a permission |
@@ -223,6 +232,37 @@ bar it is a live thumbnail; a tap opens the full widget in the popover.
 
 The picture goes from Chrome to the dashboard directly, over this Mac; the server only passes
 the connection details along.
+
+## gif-board
+
+*GIFs* — your favourite GIFs, sorted into groups shown as tabs. Touching one copies it to the
+pasteboard as an animated GIF, so the next ⌘V sends it animated in Teams, Slack or Messages.
+When the GIFs do not fit the tile, the row loops: past the last one comes the first again, in
+either direction.
+
+In the navigation bar it is a **GIF** badge. Tick *Full widget on touch* for it (your screen →
+Navigation bar widgets) and touching the badge opens the whole board above the bar.
+
+The collection is one per Mac: every GIF board tile shows the same groups. Fill it from the tile's
+inspector, **Manage the GIFs…**: create and rename groups, search Giphy and add a result to the
+chosen group, or paste a GIF's address. Drag a GIF to reorder it or move it to another group,
+and a group by its name to reorder the groups (the order of the widget's tabs); right-click it to label or remove it, right-click a group to rename or delete it. Every change is
+undoable like any other edit.
+
+Searching needs a [Giphy connection](connections.md#giphy); pasting an address works without one.
+A Giphy GIF is kept as its id and fetched from Giphy when touched; a GIF added by its own `https:`
+address is checked and copied to a cache on this Mac when it is added, and shown from there.
+
+On a paired iPad or Android tablet the board works the same way and copies to the **Mac's**
+clipboard: the tablet is a second Edge beside the Mac. It reaches the cached GIFs of the
+collection only, and only while its screen shows a GIF board.
+
+Minimum size 8 × 4, default 16 × 8.
+
+| Setting | Type | Default | Scope | What it is |
+|---|---|---|---|---|
+| `showLabels` | boolean | `true` | both | Show each GIF's label on it |
+| `rows` | enum `1`, `2` | `1` | both | One row of large GIFs, or two of smaller ones in the same space |
 
 ## memory
 
@@ -371,6 +411,27 @@ itself — only its origin, never the path the button points at — at most once
 image under `data/icons/favicons/` and never logs the address; a site that is down keeps serving
 the icon it last had, and turning `showIcons` off fetches nothing at all.
 
+A button of kind *Group* holds up to twelve buttons of its own, a *Subgroup* among them if need be
+(which holds twelve more, and no further group), and draws up to four of their icons
+in a small square, as a folder does. A tap opens it in place of the grid, its buttons flying out of
+it, with a back button in the first cell, and stays open until that button is touched. Its buttons
+are the size of the grid's, so more of them than fit scroll, the back button staying put. In the admin, drop a button onto the middle of a group to put it in,
+and use *Take out of the group* in its fields to put it back. The widget only says which button of
+which group was touched; the server reads what it opens from the saved settings, as for any button.
+
+A link may open in **a browser profile**: its *Open in* box offers the profiles of the Brave,
+Chrome and Edge installed on this Mac, as `Brave — Perso`, read from each browser's own
+`Local State` (the profile's name only, never the account signed into it). macOS keeps that file
+from an app it did not give **Full Disk Access** (System Settings → Privacy & Security), and then
+the box offers the profile folders instead, `Brave — Default`, `Brave — Profile 1`…, which work
+just as well; grant the access to *Fremkit Helper* to see the names. A profile the list does not
+show can be typed by its folder name, `Brave — Profile 3`; `brave://version` shows a profile's
+folder as the last part of its *Profile path*. The server finds the browser in
+`/Applications` or `~/Applications` and the profile folder in the browser's data folder, then runs
+`open -n -a <browser> --args --profile-directory=<folder> <url>`; a browser or a profile it cannot
+find is an error, never the default browser. The button wears the profile's initial in its corner
+unless `profileBadge` is off.
+
 Only three kinds exist, and none of them is a shell: `app` runs `open -a <name>`, `url` runs
 `open <url>` for an `http`, `https` or `mailto` address only, and `shortcut` runs
 `shortcuts run <name>`. The server validates every payload — a name holding a path separator or a
@@ -382,8 +443,9 @@ tall, with icons to match — down to a finger-sized minimum, past which the gri
 
 | Setting | Type | Default | Scope | What it is |
 |---|---|---|---|---|
-| `buttons` | list of `{ label, kind, target, icon }` | `[]` | both | One row per button, in the order drawn |
+| `buttons` | list of `{ label, kind, target, profile, icon, items }` | `[]` | both | One row per button, in the order drawn |
 | `columns` | number | `4` | both | How many buttons per row |
+| `profileBadge` | boolean | `true` | both | Draw the initial of the browser profile a link opens in |
 | `showIcons` | boolean | `true` | both | Draw the icon of an application button, and the site's favicon for a link |
 | `background` | `tinted` / `accent` / `custom` / `none` | `tinted` | both | What the buttons are drawn on: a translucent tint, the tile's accent, the colour below, or nothing |
 | `color` | colour | `#d9b36a` | both | The buttons' colour when `background` is `custom`; the text on it is black or white, whichever reads |
@@ -395,6 +457,12 @@ optional and wins over the button's own icon: an emoji, drawn as it is, the addr
 (PNG, ICO, … — no SVG, nothing on the LAN), or the address of a site whose favicon the button
 borrows — for a link whose site only paints its icon once you are signed
 in, or one on the LAN, which gets none of its own.
+
+`icon` may also be one of **your own icons**: the folder button beside the field opens the library
+the tiles' title icons come from, where you pick one or import a PNG, WebP or SVG (256 KB at most).
+That is the way to an SVG mark, such as a CI service's pipeline icon: imported files are checked
+and served so that they cannot run anything, and the widget draws them as plain images. A group
+takes an icon the same way, an address included, instead of the square of what it holds.
 
 ## spotify
 

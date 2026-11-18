@@ -757,6 +757,37 @@ describe('navigation bar widgets', () => {
     await vi.advanceTimersByTimeAsync(SAVE_DEBOUNCE_MS)
   })
 
+  it('places a dragged widget on the other side in one undo step, unless that side has no room', async () => {
+    const { store } = makeBar()
+    await store.load()
+    // Twelve names leave room for three 5-cell clocks a side (see above).
+    store.apply((c) => {
+      c.screens[0].pages = Array.from({ length: 12 }, (_, i) => ({ id: `page-${i}`, name: `Page ${i}`, items: [] }))
+      c.screens[0].display.navStyle = 'names'
+    })
+    for (let i = 0; i < 3; i++) store.addNavWidget('clock')
+    const [a, b, c] = ids(store)
+    const side = (slot: 'left' | 'right') => bar(store).filter((w) => w.slot === slot).map((w) => w.instanceId)
+
+    store.placeNavWidget(b, 'right', 0)
+    expect(side('left')).toEqual([a, c])
+    expect(side('right')).toEqual([b])
+    store.undo()
+    expect(side('left')).toEqual([a, b, c])
+    store.redo()
+
+    store.addNavWidget('clock')
+    const d = ids(store).find((id) => ![a, b, c].includes(id))!
+    expect(side('left')).toEqual([a, c, d])
+    store.state.toast = ''
+    // A fourth clock on the left would push the names off centre.
+    store.placeNavWidget(b, 'left', 0)
+    expect(side('left')).toEqual([a, c, d])
+    expect(side('right')).toEqual([b])
+    expect(store.state.toast).toMatch(/buttons|boutons/)
+    await vi.advanceTimersByTimeAsync(SAVE_DEBOUNCE_MS)
+  })
+
   it('moves a widget to the other cluster', async () => {
     const { store } = makeBar()
     await store.load()
@@ -767,27 +798,34 @@ describe('navigation bar widgets', () => {
     await vi.advanceTimersByTimeAsync(SAVE_DEBOUNCE_MS)
   })
 
-  it('reorders within a side only, ignoring the widgets of the other one', async () => {
+  it('steps along the bar, past the other side\'s widgets in the stored list and across the dots', async () => {
     const { store } = makeBar()
     await store.load()
     store.addNavWidget('clock')
     store.addNavWidget('cpu')
     store.addNavWidget('clock')
     const [a, b, c] = ids(store)
-    // b sits on the right, between a and c: it must not take part in their ordering.
+    // b sits on the right, between a and c in the stored list: it must not take part in their ordering.
     store.updateNavWidget(b, { slot: 'right' })
+    const side = (slot: 'left' | 'right') => bar(store).filter((w) => w.slot === slot).map((w) => w.instanceId)
 
     store.moveNavWidget(c, -1)
-    expect(ids(store)).toEqual([c, b, a])
-    expect(bar(store).map((w) => w.slot)).toEqual(['left', 'right', 'left'])
+    expect(side('left')).toEqual([c, a])
+    expect(side('right')).toEqual([b])
 
-    // Each is now at an end of its own side, and b is alone on its side: all no-ops.
-    const settled = ids(store)
+    // The ends of the bar are no-ops.
     store.moveNavWidget(c, -1)
-    store.moveNavWidget(a, 1)
-    store.moveNavWidget(b, -1)
     store.moveNavWidget(b, 1)
-    expect(ids(store)).toEqual(settled)
+    expect(side('left')).toEqual([c, a])
+    expect(side('right')).toEqual([b])
+
+    // The last on the left steps over the dots to the front of the right, and back.
+    store.moveNavWidget(a, 1)
+    expect(side('left')).toEqual([c])
+    expect(side('right')).toEqual([a, b])
+    store.moveNavWidget(a, -1)
+    expect(side('left')).toEqual([c, a])
+    expect(side('right')).toEqual([b])
     await vi.advanceTimersByTimeAsync(SAVE_DEBOUNCE_MS)
   })
 

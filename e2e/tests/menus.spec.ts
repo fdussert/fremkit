@@ -142,6 +142,35 @@ test('bar widget menu: reorder within the bar, remove from it', async ({ page, o
   }).toEqual({ nav: ['clock-bar'], widget: false })
 })
 
+test('bar widgets editor: a row dragged to the other side of the dots lands there, and undo puts it back', async ({ page, openAdmin, savedConfig }) => {
+  await openAdmin()
+  await page.locator('.board [data-nav-instance="clock-bar"]').click({ button: 'right' })
+  await menuItem(page, 'Settings…').click()
+  const left = page.locator('[data-nav-side="left"]')
+  const right = page.locator('[data-nav-side="right"]')
+  await expect(left.getByRole('heading', { name: 'Left of the dots' })).toBeVisible()
+  await expect(right.getByText('Drag a widget here')).toBeVisible()
+
+  // Located when the mouse moves, not before: the window is still scrolling to the section.
+  await left.locator('li[data-nav-item]', { hasText: 'Pomodoro' }).locator('.grip').hover()
+  await page.mouse.down()
+  const box = await left.locator('li[data-nav-item]', { hasText: 'Pomodoro' }).locator('.grip').boundingBox()
+  if (!box) throw new Error('no row')
+  await page.mouse.move(box.x, box.y + 12, { steps: 4 })
+  await right.getByText('Drag a widget here').hover()
+  await page.mouse.up()
+  const bar = async () => edge(await savedConfig()).nav.map((n) => `${n.instanceId}:${n.slot}`)
+  await expect.poll(bar).toEqual(['clock-bar:left', 'pomodoro-bar:right'])
+  await expect(right.locator('li[data-nav-item]', { hasText: 'Pomodoro' })).toBeVisible()
+
+  // The arrows cross the dots too: up from the first on the right is the last on the left.
+  await right.getByRole('button', { name: 'Move up' }).click()
+  await expect.poll(bar).toEqual(['clock-bar:left', 'pomodoro-bar:left'])
+
+  await page.keyboard.press('ControlOrMeta+z')
+  await expect.poll(bar).toEqual(['clock-bar:left', 'pomodoro-bar:right'])
+})
+
 test('screen selector menu: rename, open the screen settings', async ({ page, openAdmin, savedConfig }) => {
   await openAdmin()
   await screenTab(page, 'Desk').click({ button: 'right' })

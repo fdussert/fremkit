@@ -25,7 +25,7 @@ const RAW_CONFIG = {
   widgets: {
     'cal-b': { widgetId: 'cal', settings: { source: 'ics-b' } },
     'cal-edge': { widgetId: 'cal', settings: { source: 'ics-edge' } },
-    'sc-b': { widgetId: 'shortcuts', settings: { buttons: [] } },
+    'sc-b': { widgetId: 'shortcuts', settings: { buttons: [{ label: 'Pipelines', kind: 'group', items: [{ icon: 'file:2-b.svg' }] }] } },
     'sc-edge': { widgetId: 'shortcuts', settings: { buttons: [] } },
     'clock-edge': { widgetId: 'clock', settings: {}, icon: { kind: 'file', name: '1-edge.svg' } },
     'clock-a': { widgetId: 'clock', settings: {}, icon: { kind: 'file', name: '1-a.svg', tint: false } },
@@ -139,6 +139,12 @@ describe('tileIconInScope', () => {
     expect(tileIconInScope(config(), { kind: 'screen', screenId: 'tab-b' }, '1-a.svg')).toBe(false)
     expect(tileIconInScope(config(), { kind: 'none' }, '1-a.svg')).toBe(false)
   })
+  it('gives a device an icon a widget of its screen names in its settings, and only there', () => {
+    expect(tileIconInScope(config(), { kind: 'screen', screenId: 'tab-b' }, '2-b.svg')).toBe(true)
+    expect(tileIconInScope(config(), { kind: 'screen', screenId: 'tab-a' }, '2-b.svg')).toBe(false)
+    // The bare name in a setting is not a library icon.
+    expect(tileIconInScope(config(), { kind: 'screen', screenId: 'tab-b' }, 'i.png')).toBe(false)
+  })
 })
 
 describe('deviceConfigView', () => {
@@ -174,10 +180,11 @@ describe('deviceConfigView', () => {
   it('projects or deliberately withholds every top-level config key', () => {
     // A key main adds to the config is dropped from the device view without a word; this makes
     // the next one a decision. Withheld: hosts and accounts, the secrets backend, the privacy
-    // switches, the marketplace records and the admin's experimental features are the Mac's own business.
-    // `labs` is projected in part: `fremdev` only (see the test above).
+    // switches and the marketplace records are the Mac's own business.
+    // `labs` is projected in part: `fremdev` only (see the test above). The GIF board's collection
+    // is withheld: copying a GIF only works on the Mac.
     const projected = ['version', 'theme', 'themeSchedule', 'locale', 'widgets', 'screens', 'labs']
-    const withheld = ['connections', 'secrets', 'privacy', 'marketplace']
+    const withheld = ['connections', 'secrets', 'privacy', 'marketplace', 'gifs']
     expect(Object.keys(ConfigSchema.shape).sort()).toEqual([...projected, ...withheld].sort())
   })
   it('has no screen and no instance for a device with none, or a screen that is gone', () => {
@@ -190,7 +197,7 @@ describe('deviceConfigView', () => {
 })
 
 /** What a device must never read in the config, whatever its screen. */
-const MAC_ONLY = ['connections', 'secrets', 'marketplace', 'privacy']
+const MAC_ONLY = ['connections', 'secrets', 'marketplace', 'privacy', 'gifs']
 
 describe.skipIf(!hasOpenssl)('a paired device acts on its own screen only', () => {
   let dir: string

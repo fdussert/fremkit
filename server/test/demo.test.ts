@@ -35,10 +35,29 @@ vi.mock('../src/claude/providers.js', async (orig) => ({
   createClaudeUsageProvider: spy('claude-usage'),
   createClaudeAccountProvider: spy('claude-account'),
 }))
-vi.mock('../src/claude/identity.js', async (orig) => ({ ...(await orig<object>()), createClaudeIdentityProvider: spy('claude-identity') }))
+vi.mock('../src/claude/identity.js', async (orig) => ({
+  ...(await orig<object>()),
+  createClaudeIdentityProvider: spy('claude-identity'),
+  describeConfigDir: spy('claude-describe-config-dir'),
+}))
 vi.mock('../src/providers/codex.js', async (orig) => ({ ...(await orig<object>()), createCodexProvider: spy('codex') }))
 vi.mock('../src/dock/provider.js', async (orig) => ({ ...(await orig<object>()), createDockProvider: spy('dock') }))
 vi.mock('../src/providers/disk-map.js', async (orig) => ({ ...(await orig<object>()), createDiskMapProvider: spy('disk-map') }))
+vi.mock('../src/gifs/provider.js', async (orig) => ({ ...(await orig<object>()), createGifBoardProvider: spy('gif-board') }))
+// Every GifStore the app builds, and every DNS lookup made to judge a host: a demo makes none.
+const gifStores = vi.hoisted(() => [] as unknown[])
+const lookups = vi.hoisted(() => [] as string[])
+vi.mock('../src/gifs/store.js', async (orig) => {
+  const mod = await orig<typeof import('../src/gifs/store.js')>()
+  class RecordedGifStore extends mod.GifStore {
+    constructor(...args: ConstructorParameters<typeof mod.GifStore>) { super(...args); gifStores.push(this) }
+  }
+  return { ...mod, GifStore: RecordedGifStore }
+})
+vi.mock('../src/net/private.js', async (orig) => {
+  const mod = await orig<typeof import('../src/net/private.js')>()
+  return { ...mod, resolvesToPrivate: (host: string, ...rest: unknown[]) => { lookups.push(host); return (mod.resolvesToPrivate as (...a: unknown[]) => Promise<boolean>)(host, ...rest) } }
+})
 vi.mock('../src/providers/shortcuts.js', async (orig) => ({ ...(await orig<object>()), createShortcutsProvider: spy('shortcuts') }))
 vi.mock('../src/providers/service-status.js', async (orig) => ({ ...(await orig<object>()), createServiceStatusProvider: spy('service-status') }))
 vi.mock('../src/companion/servers/provider.js', async (orig) => ({ ...(await orig<object>()), createServersProvider: spy('companion-servers') }))
@@ -87,6 +106,10 @@ describe('demo mode', () => {
     app = await demoApp()
     for (const [name, fn] of Object.entries(spies)) expect(fn, name).not.toHaveBeenCalled()
     expect((await app.inject({ url: '/api/demo' })).json()).toEqual({ demo: true })
+    // The Claude account picker lists a made-up account: a demo never runs the Claude CLI.
+    const accounts = await app.inject({ url: '/api/claude/accounts' })
+    expect(accounts.statusCode).toBe(200)
+    expect(accounts.json().accounts).toEqual([expect.objectContaining({ plan: 'max', org: null })])
   })
 
   it('keeps Fremdev\'s report and shot off the Mac\'s clipboard', async () => {
@@ -114,6 +137,17 @@ describe('demo mode', () => {
     const forecast = await app.inject({ url: '/api/proxy/weather?url=' + encodeURIComponent('https://api.open-meteo.com/v1/forecast?latitude=1&longitude=2') })
     expect(forecast.statusCode).toBe(200)
     expect(typeof forecast.json().current.temperature_2m).toBe('number')
+  })
+
+  it('downloads a GIF through the demo fetch, without a DNS lookup', async () => {
+    gifStores.length = 0
+    app = await demoApp()
+    expect(gifStores).toHaveLength(1)
+    const gifs = gifStores[0] as import('../src/gifs/store.js').GifStore
+    lookups.length = 0
+    // The demo fetch answers 503 to a host it does not know: unreachable, never privateHost.
+    await expect(gifs.ensureCached('https://example.com/a.gif')).rejects.toMatchObject({ code: 'unreachable' })
+    expect(lookups).toEqual([])
   })
 
   it('keeps every other host off the wire', async () => {

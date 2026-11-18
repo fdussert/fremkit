@@ -46,7 +46,8 @@ possible.
 Connections, their fields and secrets; host names and addresses; e-mail addresses; device names;
 the privacy switches; the marketplace's consent records; paired devices; brightness settings (the
 day/night schedule carries your coordinates). Instance ids are replaced by `w1`, `w2`, … for the
-same reason as image names.
+same reason as image names. The GIF board's collection stays home too: it travels in a backup and in the
+editor's history, never in a shared layout.
 
 The last net is the diagnostics' own `redact()` (`server/src/diagnostics/redact.ts`), fed with
 this Mac's connection secrets and hosts, the names of connections, devices and device screens,

@@ -22,7 +22,7 @@ const THREADS: {
   id: string; title: string; source: HistorySource; project: string; branch: string
   state: SessionObservation['state']; minutesAgo: number; model: string; effort: string; agents: number
 }[] = [
-  { id: '0d5e7a10-4c1b-4f2e-9a01-000000000001', title: 'Add a monthly / yearly toggle to the pricing page', source: 'vscode', project: 'website', branch: 'feature/pricing', state: 'working', minutesAgo: 14, model: 'gpt-5-codex', effort: 'medium', agents: 2 },
+  { id: '0d5e7a10-4c1b-4f2e-9a01-000000000001', title: 'Add a light / dark toggle to the settings page', source: 'vscode', project: 'website', branch: 'feature/settings', state: 'working', minutesAgo: 14, model: 'gpt-5-codex', effort: 'medium', agents: 2 },
   { id: '0d5e7a10-4c1b-4f2e-9a01-000000000002', title: 'Retry uploads on a flaky network', source: 'cli', project: 'mobile-app', branch: 'hotfix/upload-retry', state: 'waiting', minutesAgo: 6, model: 'gpt-5-codex', effort: 'high', agents: 0 },
   { id: '0d5e7a10-4c1b-4f2e-9a01-000000000003', title: 'Rate-limit the public endpoints', source: 'cli', project: 'api', branch: 'feature/rate-limit', state: 'done', minutesAgo: 41, model: 'gpt-5', effort: 'low', agents: 0 },
   { id: '0d5e7a10-4c1b-4f2e-9a01-000000000004', title: 'Write the changelog for 2.4', source: 'appServer', project: 'website', branch: 'main', state: 'done', minutesAgo: 95, model: 'gpt-5', effort: 'medium', agents: 0 },

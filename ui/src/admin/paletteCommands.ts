@@ -5,7 +5,8 @@
  * selected tile's (`widgetMenu`), the canvas's, the page's, the screen's, a library card's — and
  * turns each item into a command, submenus included (`fromMenu`). A command added to one of those
  * menus is therefore in the palette with nothing to do here. What is written here is what no menu
- * holds: the top bar's buttons (undo, redo, Edit/Test, Connections, Sietch, history), the theme,
+ * holds: the top bar's buttons (undo, redo, Edit/Test, Connections, Sietch, history), the GIF
+ * board's panel (its button is in a tile's inspector and a bar widget's row only), the theme,
  * diagnostics, the shortcuts sheet, and the lists — pages and screens to go to, tiles to select,
  * widgets to add, connections, settings and the widget health's fixes.
  */
@@ -134,6 +135,10 @@ export function buildCommands(src: PaletteSources): Command[] {
     },
     { id: 'app:connections', group: 'actions', label: t('admin.palette.openConnections'), run: () => s.openModal('connections') },
     { id: 'app:sietch', group: 'actions', label: t('admin.palette.openSietch'), keywords: ['marketplace', 'registry'], run: () => s.openModal('marketplace') },
+    // One collection per Mac: offered while any GIF board exists, on a page or in a bar.
+    ...(Object.values(cfg.widgets).some((w) => w.widgetId === 'gif-board')
+      ? [{ id: 'app:gifs', group: 'actions' as const, label: t('admin.gifs.open'), keywords: ['GIF', 'Giphy'], run: () => s.openModal('gifs') }]
+      : []),
     { id: 'app:history', group: 'actions', label: t('admin.palette.history'), run: () => ui.openHistory() },
     {
       id: 'app:theme', group: 'actions', label: t('admin.palette.theme'),

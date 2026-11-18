@@ -1,6 +1,7 @@
 import { execFile } from 'node:child_process'
 import { isTrusted, type CommandContext, type Provider } from './types.js'
 import { osascript, type Runner } from './osascript.js'
+import { createScriptHost } from './osascript-host.js'
 import { tr } from '../i18n.js'
 
 /**
@@ -72,16 +73,28 @@ const openProgram: Opener = (file, args) =>
     })
   })
 
-export function createSpotifyProvider(run: Runner = osascript, open: Opener = openProgram): Provider {
-  const tell = (cmd: string) => run(`tell application "Spotify" to ${cmd}`).then(() => ({ ok: true }))
+/**
+ * `command` runs what a tap asks for (play, pause, next), one process each: taps are rare.
+ * `poll` asks two scripts a second, for as long as the widget is on screen, and must not start a
+ * process for either: it was two of the three `osascript` a second that used up the Mac's
+ * LaunchServices registrations in under four days (osascript-host.ts has the account). The real
+ * one is a host kept open, this provider's own, so a Spotify that stops answering cannot hold up
+ * the volume. A test hands in one fake and gets it for both.
+ */
+export function createSpotifyProvider(
+  command: Runner = osascript,
+  open: Opener = openProgram,
+  poll: Runner = command === osascript ? createScriptHost().run : command,
+): Provider {
+  const tell = (cmd: string) => command(`tell application "Spotify" to ${cmd}`).then(() => ({ ok: true }))
   return {
     channel: 'spotify',
     // The widget's fill glides across exactly this second: `POLL_MS` and the `1s` transition in
     // widgets/spotify/index.html say it again. Change the three together.
     intervalMs: 1000,
     async poll() {
-      if ((await run(IS_RUNNING)) !== 'true') return { available: false }
-      const raw = await run(STATE)
+      if ((await poll(IS_RUNNING)) !== 'true') return { available: false }
+      const raw = await poll(STATE)
       if (raw === 'stopped') return { available: true, state: 'stopped' }
       return parseSpotify(raw)
     },

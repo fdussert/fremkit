@@ -14,32 +14,74 @@ tagged `vX.Y.Z`.
 
 ### Added
 
-- **Fremplay: a browser tab's video on the Edge, with touch controls.** Play and pause, ten
-  seconds back or ahead, volume, mute, fill the tile, bring the tab back, stop. The volume and mute
-  buttons drive the Mac's output by default; the **Volume buttons** setting switches them to the
-  video in the browser. The Edge turns to the page holding Fremplay when a share starts, and once
-  more after Fremkit restarts when the share comes back. On a paired iPad's screen the tile says
-  it only shows on the Mac's Edge.
-- **Fremkit Companion, the browser extension that feeds it**, for Chrome and other Chromium
-  browsers, [on the Chrome Web Store](https://chromewebstore.google.com/detail/fremkit-companion/lnckeodobpbbmfbdlpnegjpchgkehdlk). Send the video of any tab from its toolbar menu or
-  with ⌃⇧F. A player embedded from another site asks for that site's permission the first time,
-  after the popup names the site, and the extension gives the permission back unless the share
-  starts with a video in that site's frame.
-- **Pairing the extension takes the code shown on the Edge, typed into the extension.** The Edge
-  shows the code and the browser's name with a Refuse button; typing the code is the approval, and
-  three wrong tries refuse the request. A request is taken only while the dashboard or **Settings →
-  Devices** is open to show its code. The code never leaves the Mac's screen, and the extension
-  checks it is talking to your Fremkit before it signs in, so a program holding Fremkit's port
-  cannot link your browser to itself (the popup says *The server on this port is not your
-  Fremkit*). After five requests refused for wrong codes within a day, pairing locks until you
-  press **Unlock pairing** in **Settings → Devices**.
-- **Paired browser extensions are listed in Settings → Devices**, with their name (editable),
-  when they paired and were last seen, whether they are connected, and a Remove button (**Remove
-  every tablet** and **Reset the certificate** leave them linked), beside the pairing request
-  waiting for an answer and a link to the extension's store page.
-- **Tile icons.** A tile's title can show an icon: a pictogram from the built-in set, or your own
-  SVG, PNG or WebP, tinted to the theme or in its own colours. Under **/admin**, select a tile,
-  then **Icon**. Fremkit ships no brand logos; the marks you import stay in your installation.
+- **Fremdev**: a new widget lists the dev tabs the Fremkit Companion extension (0.2.0) watches (JS
+  errors, failed requests, dev server down), each with a red/orange/green light; tap a row to
+  unfold its last 20 errors and failed requests (time, repeat count, message, file:line where it
+  came from), bring the tab forward with Show tab, or mark its errors seen with one touch (the
+  light dims until a new error or a reload). Copy report puts a Markdown bug report for that tab on
+  the Mac's clipboard, ready to paste into a ticket, a chat or a coding agent; Copy with stack adds
+  each error's stack. Line numbers are those of the code the dev server sent. Experimental, behind
+  its own switch, **Fremdev**, under Experimental features. Fremkit's own ports are never watched.
+  Each row shows the page's title (or its host:port) and its host:port; request URLs are sent as
+  their path only (never query or fragment, nothing from bodies, headers or cookies); an error's
+  own message is sent as the page logged it, clipped to 300 characters. With no dev tab open the
+  widget says so rather than "Extension offline", and on a paired iPad it says it only shows on the
+  Mac's Edge.
+- **Fremdev in the extension**: turn Fremdev on from the Companion popup; Chrome asks once, in one
+  prompt, for the webRequest permission and access to your dev hosts (nothing new is asked when the
+  extension updates). Tabs already open are watched at once, no reload needed. Add your own dev
+  hosts (`bo-dev.example.com`, `*-dev.example.com`) on its options page; a wildcard over a common
+  public suffix such as `*.co.uk` or over an IP range is refused, and Chrome's prompt names the
+  hosts for any other. localhost, 127.0.0.1, `*.localhost` and `*.test` are always included. The
+  popup's Fremdev card lists your dev tabs, each with Copy report and a "with stack" option.
+  Fremkit 0.5.1 and earlier keep working with the new extension (Fremplay only); Fremdev needs
+  the next Fremkit, and the extension asks an older one again only every few minutes.
+- **Fremdev cockpit** (extension 0.2.0, experimental): a dev server's compile error overlay (Vite,
+  webpack, Next.js) turns the row red with a **Build** entry giving the message and the file, and
+  clears by itself once fixed; hot updates (Vite, Next Fast Refresh) now clear the row's earlier
+  errors without a reload. Tap an entry's file to open it in your editor at that line through the
+  dev server's own open-in-editor endpoint (Vite for runtime errors and build errors, Next and
+  webpack for build errors). **Reload** and **Reload without cache** buttons on an unfolded row.
+  Requests that took 1 s or more are listed (they never change the light) and the row shows how
+  many requests are in flight. Each tab shows its load time, LCP, CLS, long tasks and JS heap; a
+  load 1.5× slower than the last five (and 500 ms slower or more), or a poor LCP or CLS, lights the
+  row orange. **Copy screenshot** in the popup's card, and ⌃⇧S anywhere in the browser copies the
+  current dev tab's screenshot to the Mac's clipboard. Home-folder paths leave the extension as
+  `~/…`.
+- **Fremdev screenshot feedback** (experimental): a screenshot copied with ⌃⇧S or from the popup
+  now flashes the tab and shows its thumbnail in the corner for 3 seconds, and the Fremdev widget
+  shows it on that tab's row with "Copied". A new option of the extension plays the Mac's
+  screenshot sound (off by default).
+- **Fremdev reports carry the whole build error** (experimental): Copy with stack now includes a
+  build error's code frame and the stack the dev server's overlay shows (Vite, webpack, Next.js),
+  as a code block that keeps its alignment when pasted; a build error's text no longer ends with
+  the file path and a stray `12 |`; runtime errors keep up to 30 stack frames (Chrome records 10
+  unless the page raises `Error.stackTraceLimit`).
+- **Fremdev dev servers** (experimental, no extension change): the Fremdev widget gains a
+  **Servers** tab listing the dev servers listening on this Mac (port, project, tool, uptime, CPU,
+  memory, and the light of the tab open on it). Open one in the browser, show its folder in Finder,
+  stop it, or restart it: Fremkit then runs it and shows its last output lines on the Edge. Kill
+  and Restart take two touches; Fremkit never touches itself, macOS programs, browsers, Docker or
+  another account's processes, and secrets in command lines and output are masked. Restart needs
+  the Fremkit app (its helper).
+
+### Fixed
+
+- **The clipboard widget keeps accents and symbols intact.** Under the Fremkit Helper, text with
+  an accent, a `·` or a `×` came out garbled in the clipboard history and when copied back from it.
+
+## 0.5.1 — 2026-11-18
+
+### Added
+
+- **The Fremkit app for iPad is on the App Store.** [Fremkit on the App Store](https://apps.apple.com/app/id6824504862)
+  shows a screen of your dashboard on an iPad, live and touchable. Pair it by scanning the QR code
+  in **Settings → Devices**, or by picking your Mac in the app's list and typing its code after
+  checking the four words; then give the iPad a screen of its own with **Create a screen its
+  size**. It finds the Mac again when its address changes, follows the brightness set for its
+  screen and keeps the screen on. Free, for iPadOS 17 or later, with no account and nothing sent
+  anywhere but your Mac.
+
 - **The Fremkit app for Android tablets.** It shows a screen of your dashboard on an Android tablet
   (Android 9 or later) as the iPad app does: pair it by scanning the QR code in **Settings →
   Devices**, or by typing the code after checking the four words; it finds the Mac again when its
@@ -50,14 +92,132 @@ tagged `vX.Y.Z`.
   rather than from the Play Store, and needs nothing from Google Play: **Settings → Devices** and the
   site link to it, and the site shows its signing certificate's fingerprint to check it against.
   Obtainium can keep it up to date.
+
 - **Pairing by address when the tablet finds no Mac.** **Settings → Devices** now shows, beside the
   code, the Mac's addresses to type on a tablet, and the Android app (the iPad app from its next
   version) has **Enter the Mac's address** under its list of Macs: for networks where the tablet
   never sees the Mac on its own, such as a Mac on both Wi-Fi and Ethernet. You still check the
   four words before typing the code.
 
+- **Device screens: pick the orientation.** *Create a screen its size* offers Landscape or
+  Portrait, starting with the way the tablet was held when it paired, so a tablet paired upright
+  can still get a landscape screen without pairing it again.
+
+- **Fremplay: a browser tab's video on the Edge, with touch controls.** Play and pause, ten
+  seconds back or ahead, volume, mute, fill the tile, bring the tab back, stop. The volume and mute
+  buttons drive the Mac's output by default; the **Volume buttons** setting switches them to the
+  video in the browser. The Edge turns to the page holding Fremplay when a share starts, and once
+  more after Fremkit restarts when the share comes back. On a paired iPad's screen the tile says
+  it only shows on the Mac's Edge.
+
+- **Fremkit Companion, the browser extension that feeds it**, for Chrome and other Chromium
+  browsers, [on the Chrome Web Store](https://chromewebstore.google.com/detail/fremkit-companion/lnckeodobpbbmfbdlpnegjpchgkehdlk). Send the video of any tab from its toolbar menu or
+  with ⌃⇧F. A player embedded from another site asks for that site's permission the first time,
+  after the popup names the site, and the extension gives the permission back unless the share
+  starts with a video in that site's frame.
+
+- **Pairing the extension takes the code shown on the Edge, typed into the extension.** The Edge
+  shows the code and the browser's name with a Refuse button; typing the code is the approval, and
+  three wrong tries refuse the request. A request is taken only while the dashboard or **Settings →
+  Devices** is open to show its code. The code never leaves the Mac's screen, and the extension
+  checks it is talking to your Fremkit before it signs in, so a program holding Fremkit's port
+  cannot link your browser to itself (the popup says *The server on this port is not your
+  Fremkit*). After five requests refused for wrong codes within a day, pairing locks until you
+  press **Unlock pairing** in **Settings → Devices**.
+
+- **Paired browser extensions are listed in Settings → Devices**, with their name (editable),
+  when they paired and were last seen, whether they are connected, and a Remove button (**Remove
+  every tablet** and **Reset the certificate** leave them linked), beside the pairing request
+  waiting for an answer and a link to the extension's store page.
+
+- **GIF board.** A widget of your favourite GIFs, sorted into groups: touch one on the Edge and
+  press ⌘V in Teams (or Slack) to send it, animated. The row of GIFs loops when it does not fit, and
+  the groups are reordered by dragging them in the editor. It also fits in the navigation bar as a
+  GIF badge that opens the board when touched (tick *Full widget on touch*). Fill it from the
+  widget's settings in **/admin**, by searching Giphy or by pasting a GIF's address; Giphy search
+  needs a free Giphy API key, added under **Connections**, and pasting an address works without one.
+  On a paired tablet, a touch copies to the Mac's clipboard the same way. *Rows of GIFs* in its
+  settings shows two rows of smaller GIFs in the same space, on a page and in the bar's popover
+  alike.
+
+- **Recent projects widget.** Lists the folders you worked in lately — git repositories under the
+  folders you choose, plus, if you tick them, Claude Code, Codex, VS Code, Cursor, JetBrains IDEs,
+  zoxide, tmux and Herdr — and opens one with a tap in Finder, a terminal, your editor (a
+  JetBrains IDE included) or Herdr (the pane already in that folder, else a new one, with Herdr's
+  terminal brought to the front), or starts Claude Code or Codex in a new Herdr pane or tmux
+  window on it; a long press offers the other installed applications, and can make one the
+  project's own for every later tap. Without one, the files at a project's root can suggest the
+  right IDE (a `.sln` for Rider, a `Cargo.toml` for RustRover…). Only folder paths, dates and
+  the names at a project's root are read, never a conversation or a file's contents.
+
+- **Tile icons.** A tile's title can show an icon: a pictogram from the built-in set, or your own
+  SVG, PNG or WebP, tinted to the theme or in its own colours. Under **/admin**, select a tile,
+  then **Icon**. Fremkit ships no brand logos; the marks you import stay in your installation.
+
+- **Shortcuts: groups.** A button of kind *Group* holds a few buttons of its own (a *Prod*
+  pipeline, a *Dev* one) without taking a cell each: it shows their icons in a little square, and
+  a tap opens them in place of the grid, at the grid's size and scrolling when there are more,
+  behind a back button that closes it. In the
+  settings, drop a button onto a group to put it in; *Take out of the group* puts it back. A group
+  may hold subgroups, one level deep, and the back button climbs one level at a time.
+
+- **Shortcuts: your own icons, SVG included.** A button's or a group's icon can now come from
+  your icon library, the one the tiles' title icons use: the folder button beside the field picks
+  one or imports a PNG, WebP or SVG, such as a CI service's pipeline mark. A group also takes an
+  image address now. Widgets can do the same with an `icon` item field and
+  `Fremkit.libraryIcon()` (SDK generation 6).
+
+- **Shortcuts: open a link in a browser profile.** A link button's *Open in* box offers the
+  profiles of Brave, Chrome and Edge found on this Mac, such as `Brave — Work`, and the link opens
+  in that profile's window. Without Full Disk Access for Fremkit Helper, macOS hides the profiles'
+  names and they are offered by folder (`Brave — Profile 1`). A profile can also be typed by hand.
+  The button wears the profile's initial in its corner, which a setting turns off.
+
+- **Claude sessions: tell the sessions apart.** A card names the repository rather than the folder
+  the session sits in, followed by the worktree or subfolder and the branch, and is titled with the
+  name Claude Code's `/rename` gives a session; the status line shows that name and that place too.
+  A new *Session order* setting sorts the cards by last activity instead of by state.
+
+- **Claude sessions: the count moves into the title.** The number of sessions now follows the
+  tile's title (*Claude sessions · 18*) instead of taking a line of its own, and goes away with
+  the title. Both it and today's summary (sessions, finished, commits) can be turned off in the
+  widget's settings. Widgets can do the same with `Fremkit.titleNote()` (SDK generation 5).
+
+- **Claude limits: pick the account.** When Claude Code runs from several profiles signed in to
+  different accounts, **Settings → Privacy → Claude account** picks the one whose usage the Claude
+  widgets show, named by its organisation and plan. *Automatic*, the default, keeps following the
+  profile used last. A profile whose sign-in has lapsed is marked *sign-in expired* in the list,
+  picking another account reads it at once, and the widget says in words why its gauges are old
+  (*sign-in expired*, *too many requests*) instead of an error code.
+
+- **Claude widgets can hide the cost.** **Claude limits** and **Claude sessions** have a **Show
+  cost** setting: turned off, the tiles no longer show what today's tokens or a session would cost
+  in dollars. It is on by default, so a tile already on the dashboard looks the same.
+
+- **Lists in a widget's settings are folded and dragged.** Each item of a list (the shortcuts'
+  buttons, the clock's cities, the services watched) now shows on one line and opens on a touch to
+  edit its fields, one at a time; drag an item to move it. The shortcuts' buttons are laid out as
+  the widget lays them, in its columns, so they are arranged the way they will read.
+
+- **A wider settings panel when you need it.** Drag the left edge of the editor's right-hand panel
+  to widen it, up to 720 px; the canvas always keeps its room. The width is remembered in this
+  browser, and a double click on the edge brings back the usual one.
+
+- **Arranging the bar's widgets.** The screen's settings now list the bar's widgets as the bar
+  reads them, under *Left of the dots* and *Right of the dots*. Drag a widget to move it, within a
+  side or to the other one; its arrows and the *Move left / right* menu also step across the dots.
+
+- **Shape of a bar widget's popover.** A bar widget opened in full on touch can now open *Low and
+  wide* or *Large* as well as in the standard shape: pick it under the widget in the navigation
+  bar's list.
+
+- **A bar widget's popover stays open while you use it.** Its 15-second countdown now starts again
+  on every touch, drag or scroll inside the widget, so browsing a long list no longer closes it.
+
 ### Changed
 
+- **The Disks widget says "available", as macOS does.** The space left on a disk reads "120 GB
+  available" ("120 Go disponibles") instead of "free".
 - **Paired devices are filed as tablets.** Fremkit now records a paired iPad as a tablet and
   notes which platform it runs, ready for tablets other than the iPad. Nothing changes for an
   iPad already paired. Going back to an older version of Fremkit afterwards sets the list of
@@ -72,9 +232,35 @@ tagged `vX.Y.Z`.
 
 ### Fixed
 
-- **Backgrounds with dots at the end of their name.** A background uploaded from a file called,
-  say, "a..png" was saved under a name the dashboard then refused: it never showed in the
-  library and could not be deleted. It is now saved under a clean name.
+- **Swiping across a widget turns the page.** A swipe only worked when it started between the
+  tiles: on a tablet a finger on a widget stayed in the widget, and the page did not move. Sliders,
+  sideways scrolling lists and widgets that hold the swipe for their own gestures keep it.
+
+- **A Mac that shows the Spotify or the Volume widget no longer stops opening applications
+  after a few days.** To read the track and the volume, Fremkit started a small system program
+  (`osascript`) up to three times a second, and macOS can only count about a million of those
+  between two restarts: after three to four days nothing new would open until the Mac was
+  rebooted. Fremkit now keeps one such program open per widget and asks it again and again. If
+  your Mac is in that state now, restart it once after updating.
+
+- **Shortcuts: a button after an unfinished one opens the right thing.** A button whose target
+  was still empty is not drawn, and the buttons after it used to open the target of the one
+  before them. Each now opens its own.
+
+- **Claude limits follows Claude Code's sign-in when it runs from its own folder.** A terminal
+  with profiles (Orca, for one) starts Claude Code with a configuration folder of its own, which
+  keeps its sign-in apart; the widget kept reading the old one, which nobody renewed, and said its
+  credentials were refused. It now finds the sign-in each folder's sessions use, and today's token
+  count includes those sessions too.
+
+- **Claude limits recovers from a long rate limit.** When Anthropic asked it to wait the best
+  part of an hour, the widget asked again every two minutes, which kept it rate-limited and its
+  gauges stale for days. It now waits as long as it is told (up to an hour), even across a
+  reload of the widget.
+- **Tapping the Edge dashboard no longer steals the keyboard.** The dashboard window took the
+  key focus on every tap, so the app you were typing into on the main display lost it and a
+  shortcut such as ⌘V landed in the dashboard. The window is now a non-activating panel that
+  never becomes key; touches still reach the page.
 - **The clipboard widget masks one-time codes.** A six-digit code copied from a text message or
   an authenticator (`482913`, `482 913`, `4829-1375`) showed in full on the Edge and on a paired
   iPad; any run of four to eight digits copied on its own is now shown as a secret, and still
@@ -82,8 +268,15 @@ tagged `vX.Y.Z`.
 - **The clipboard widget leaves alone what more password managers copy.** Besides the standard
   "concealed" and "transient" markers, a copy from 1Password, KeeWeb, Butler, Typeit4me or a
   Keyboard Maestro generator is no longer recorded at all.
-- **The clipboard widget keeps accents and symbols intact.** Under the Fremkit Helper, text with
-  an accent, a `·` or a `×` came out garbled in the clipboard history and when copied back from it.
+- **Backgrounds with dots at the end of their name.** A background uploaded from a file called,
+  say, "a..png" was saved under a name the dashboard then refused: it never showed in the
+  library and could not be deleted. It is now saved under a clean name.
+- **Claude sessions keeps a session's name readable.** A long status such as "attend ta
+  permission" squeezed the name to a single letter on a narrow card; the status and the
+  application now move under the name instead.
+- **The disk map's centre fits its name.** "Dossier personnel" and long folder names ran past the
+  hole in the middle of the ring; the name now goes on two lines, and shrinks or is cut short
+  only when that is not enough.
 
 ## 0.5.0 — 2026-10-19
 

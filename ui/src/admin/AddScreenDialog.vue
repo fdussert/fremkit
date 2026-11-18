@@ -5,7 +5,9 @@
  * before Accept.
  *
  * Without `device` it adds an Edge screen. A device screen is born from a paired device: its size
- * is the one the device reported, shown and not edited, so the screen fits the device exactly.
+ * is the one the device reported, shown and not edited, so the screen fits the device exactly. The
+ * orientation starts as the one the device was held in when it paired and can be turned: the
+ * other one is the same size with width and height swapped, which the device fits as well.
  */
 import { computed, ref } from 'vue'
 import BaseModal from '../shared/ui/BaseModal.vue'
@@ -13,6 +15,7 @@ import BaseButton from '../shared/ui/BaseButton.vue'
 import BaseField from '../shared/ui/BaseField.vue'
 import BaseInput from '../shared/ui/BaseInput.vue'
 import BaseIcon from '../shared/ui/BaseIcon.vue'
+import BaseSegmented from '../shared/ui/BaseSegmented.vue'
 import PageView from '../dashboard/PageView.vue'
 import { turnedOff } from '../shared/fremdevGate'
 import { pick, useI18n } from '../shared/i18n'
@@ -44,7 +47,18 @@ const step = ref<'form' | 'preview'>('form')
 const screens = computed<Screen[]>(() => s.state.config?.screens ?? [])
 const source = computed(() => screens.value.find((x) => x.id === from.value) ?? null)
 
-const viewport = computed(() => props.device?.viewport ?? { width: 0, height: 0 })
+type Orientation = 'landscape' | 'portrait'
+const orientationOf = (v: { width: number; height: number }): Orientation => (v.width >= v.height ? 'landscape' : 'portrait')
+
+const reported = computed(() => props.device?.viewport ?? { width: 0, height: 0 })
+const orientation = ref<Orientation>(orientationOf(reported.value))
+const ORIENTATIONS = computed(() => (['landscape', 'portrait'] as const).map((value) =>
+  ({ value, label: t(`admin.inspector.screen.orientation.${value}`) })))
+/** The reported size, turned when the user picked the other orientation. */
+const viewport = computed(() => {
+  const v = reported.value
+  return orientationOf(v) === orientation.value ? { ...v } : { width: v.height, height: v.width }
+})
 const grid = computed(() => {
   if (kind.value === 'edge') return EDGE_GRID
   const { width: w, height: h } = viewport.value
@@ -80,10 +94,6 @@ const previewDisplay = computed<Display>(() => ({
 }))
 const thumbScale = computed(() => THUMB_WIDTH / (Math.max(1, grid.value.cols) * DEVICE_CELL))
 
-function orientation(): 'landscape' | 'portrait' {
-  return viewport.value.width >= viewport.value.height ? 'landscape' : 'portrait'
-}
-
 function submit(): void {
   if (!sizeOk.value) return
   if (source.value) { step.value = 'preview'; return }
@@ -95,7 +105,7 @@ function create(): void {
   const id = s.addScreen({
     name: name.value.trim() || defaultName.value,
     kind: kind.value,
-    ...(kind.value === 'device' ? { viewport: { ...viewport.value }, orientation: orientation() } : {}),
+    ...(kind.value === 'device' ? { viewport: { ...viewport.value }, orientation: orientation.value } : {}),
     prefill: source.value && a ? { from: source.value.id, pages: a.pages, nav: a.nav } : null,
   })
   if (!id) return
@@ -115,6 +125,10 @@ function create(): void {
       <p v-if="kind === 'edge'" class="note"><BaseIcon name="alert-triangle" :size="16" />{{ t('admin.screens.edgeNote') }}</p>
 
       <template v-else>
+        <BaseField :label="t('admin.inspector.screen.orientation')">
+          <BaseSegmented :model-value="orientation" :options="ORIENTATIONS"
+            @update:model-value="orientation = $event as Orientation" />
+        </BaseField>
         <BaseField :label="t('admin.screens.dialog.size')">
           <p class="ro" data-test="device-size">{{ t('admin.inspector.screen.viewport.value', viewport) }}</p>
         </BaseField>

@@ -42,6 +42,7 @@ import { tileIconRoutes } from './tile-icons/routes.js'
 import { faviconRoutes } from './favicons/routes.js'
 import { ClaudeTracker } from './claude/tracker.js'
 import { ClaudeUsage } from './claude/usage.js'
+import { ClaudeConfigDirs } from './claude/configDirs.js'
 import { claudeRoutes } from './claude/routes.js'
 import { createClaudeSessionsProvider, createClaudeUsageProvider, createClaudeAccountProvider } from './claude/providers.js'
 import { createCodexProvider } from './providers/codex.js'
@@ -53,6 +54,8 @@ import { dockRoutes } from './dock/routes.js'
 import { InstalledApps } from './apps/installed.js'
 import { AppIcons } from './apps/icons.js'
 import { appsRoutes } from './apps/routes.js'
+import { BrowserProfiles } from './browsers/profiles.js'
+import { browserRoutes } from './browsers/routes.js'
 import { helperRoutes } from './helper/routes.js'
 import { createDockProvider } from './dock/provider.js'
 import { bambuCameras } from './bambu/cameras.js'
@@ -65,6 +68,10 @@ import { createShortcutsProvider } from './providers/shortcuts.js'
 import { createServiceStatusProvider } from './providers/service-status.js'
 import { createSystemProvider } from './providers/system.js'
 import { createDiskMapProvider } from './providers/disk-map.js'
+import { GifStore } from './gifs/store.js'
+import { gifRoutes } from './gifs/routes.js'
+import { createGifBoardProvider } from './gifs/provider.js'
+import { createRecentProjectsProvider, MEMORY_FILE as RECENT_PROJECTS_FILE, RECENT_PROJECTS_CHANNEL, RECENT_PROJECTS_WIDGET } from './providers/recent-projects/index.js'
 import { BrightnessService } from './brightness/service.js'
 import { createBrightnessProvider, BRIGHTNESS_INTERVAL_MS } from './brightness/provider.js'
 import { brightnessRoutes } from './brightness/routes.js'
@@ -248,6 +255,8 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   const demo = opts.demo === true
   // A demo lists no installed application and extracts no icon from one: both read the Mac.
   const installedApps = demo ? new InstalledApps({ roots: [] }) : new InstalledApps()
+  // Nor does it read a browser's profiles: a demo knows no browser.
+  const browserProfiles = demo ? new BrowserProfiles({ appDirs: [] }) : new BrowserProfiles()
   const appIcons = demo ? undefined : new AppIcons({ dir: join(opts.dataDir, 'icons', 'apps'), apps: installedApps })
   if (demo) {
     // The helper uploads the Dock's icons; a demo has no helper, so it draws its own.
@@ -260,8 +269,18 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   const attention = createAttention({ instances: () => findInstances(store.get(), 'claude-sessions') })
   const tracker = new ClaudeTracker({ filePath: join(opts.dataDir, 'claude-sessions.json'), onAttention: attention })
   await tracker.load()
-  const usage = new ClaudeUsage({ filePath: join(opts.dataDir, 'claude-usage.json'), transcriptsDir: demo ? join(opts.dataDir, 'demo-transcripts') : opts.claudeTranscriptsDir ?? join(homedir(), '.claude', 'projects') })
+  // Demo mode learns nothing from real hooks and reads no keychain, so it keeps no file either.
+  const claudeConfigDirs = new ClaudeConfigDirs({ filePath: demo ? undefined : join(opts.dataDir, 'claude-config-dirs.json') })
+  await claudeConfigDirs.load()
+  const usage = new ClaudeUsage({ filePath: join(opts.dataDir, 'claude-usage.json'), transcriptsDir: demo ? join(opts.dataDir, 'demo-transcripts') : opts.claudeTranscriptsDir ?? join(homedir(), '.claude', 'projects'),
+    moreTranscriptsDirs: demo ? undefined : () => claudeConfigDirs.list().map((d) => join(d, 'projects')),
+  })
   await usage.load()
+  // The GIF board's files, shared by its provider and its routes. A demo reaches no network: its
+  // fetch answers the hosts the demo knows and refuses the rest, and no host is looked up in DNS.
+  const gifs = new GifStore({ dataDir: opts.dataDir, ...(demo ? { fetchImpl: demoPublicFetch(), isPrivate: async () => false } : {}) })
+  // A temp copy left by an earlier run goes now, not whenever a board is next on screen.
+  void gifs.sweepTemp().catch(() => {})
 
   /**
    * The device screen a paired device is attached to, asked of the device service at call time:
@@ -289,6 +308,8 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     const config = store.get()
     return instanceInScope(config, commandScope(ctx, screenOfDevice), instanceId) ? findInstance(config, instanceId) : null
   }
+  /** Kept for the diagnostics, which report its sources' counts. Null in demo mode. */
+  let recentProjects: ReturnType<typeof createRecentProjectsProvider> | null = null
   /** Every real provider: the Mac, the accounts, the helper's reports. Never called in demo mode. */
   function registerRealProviders(): void {
     for (const p of opts.providers ?? []) registry.register(p)
@@ -296,10 +317,12 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     registry.register(createSystemProvider({ macmonTemperatureEnabled: () => store.get().privacy.macmonTemperature }))
     registry.register(createClaudeSessionsProvider(tracker))
     registry.register(createClaudeUsageProvider(usage))
-    registry.register(createClaudeIdentityProvider())
+    registry.register(createClaudeIdentityProvider({ configDir: () => store.get().privacy.claudeAccountDir }))
     registry.register(createClaudeAccountProvider({
       filePath: join(opts.dataDir, 'claude-account.json'),
       enabled: () => store.get().privacy.claudeAccountUsage,
+      configDirs: () => claudeConfigDirs.list(),
+      accountDir: () => store.get().privacy.claudeAccountDir,
     }))
     const codex = createCodexProvider({
       enabled: () => store.get().privacy.codexAccount || store.get().privacy.codexHistorySources.length > 0,
@@ -311,9 +334,19 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     registry.register(createDockProvider(dock))
     // Registered here, not in providers/index.ts, because its last scan is saved under the data dir.
     registry.register(createDiskMapProvider({ dataDir: opts.dataDir }))
+    // Here because it reads the config store and shares the GIF store with the routes. It writes
+    // to this Mac's pasteboard, so a demo never constructs it.
+    registry.register(createGifBoardProvider({ config: () => store.get(), gifs }))
     // Registered here, not in providers/index.ts, because that is where the config store lives.
-    registry.register(createShortcutsProvider(undefined, instances))
+    registry.register(createShortcutsProvider(undefined, instances, browserProfiles))
     registry.register(createServiceStatusProvider({}, instances))
+    // Reads what every shown tile ticked, so a source no tile asked for is never read.
+    recentProjects = createRecentProjectsProvider({
+      instances: () => findInstances(store.get(), RECENT_PROJECTS_WIDGET),
+      memoryFile: join(opts.dataDir, RECENT_PROJECTS_FILE),
+      onChange: () => registry.refresh(RECENT_PROJECTS_CHANNEL),
+    })
+    registry.register(recentProjects)
     // A paired device may set only its own screen's brightness: see mayCommandBrightness. Read
     // at command time, so a device moved to another screen (or unpaired) is judged as it is now.
     registry.register(createBrightnessProvider(brightness, brightnessChanged, (id) => deviceService.deviceScreenOf(id)))
@@ -388,7 +421,23 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   // How each provider's last poll went, for the editor's widget health (providers/health.ts).
   const stopHealth = publishHealth(registry, (channel, data) => hub.broadcast(channel, data))
   let showAccountEmail = store.get().privacy.showAccountEmail
+  let claudeAccount = `${store.get().privacy.claudeAccountUsage}:${store.get().privacy.claudeAccountDir}`
+  // A tile that ticks a source or adds a git root sees it now, not on the next minute's poll.
+  let recentProjectsWants = JSON.stringify(findInstances(store.get(), RECENT_PROJECTS_WIDGET))
   store.onChange((cfg) => {
+    // Another Claude account, or the reading turned on: read it now rather than at the next poll,
+    // which can be minutes away and would keep showing the old account's state until then.
+    const account = `${cfg.privacy.claudeAccountUsage}:${cfg.privacy.claudeAccountDir}`
+    if (account !== claudeAccount) {
+      claudeAccount = account
+      registry.refresh('claude-account')
+      registry.refresh('claude-identity')
+    }
+    const wants = JSON.stringify(findInstances(cfg, RECENT_PROJECTS_WIDGET))
+    if (wants !== recentProjectsWants) {
+      recentProjectsWants = wants
+      registry.refresh(RECENT_PROJECTS_CHANNEL)
+    }
     setServerLocale(cfg.locale)
     if (cfg.privacy.showAccountEmail !== showAccountEmail) {
       showAccountEmail = cfg.privacy.showAccountEmail
@@ -516,7 +565,13 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     onRestored: async (config) => { await connections.sync(config.connections); retainCameras(config) },
   })
   await app.register(faviconRoutes, { dir: join(opts.dataDir, 'icons', 'favicons'), config: () => store.get(), screenOfDevice })
-  await app.register(claudeRoutes, { tracker, usage })
+  // The editor's GIF search and link check, on the one GIF store the provider shares.
+  await app.register(gifRoutes, { store, gifs, screenOfDevice, secretsFor: (c) => connections.secretsFor(c), demo })
+  await app.register(claudeRoutes, {
+    tracker, usage, configDirs: claudeConfigDirs,
+    // A demo never runs the Claude CLI: its one account is the folder Claude Code uses by default.
+    ...(demo ? { describe: async (dir: string) => ({ dir, plan: 'max', org: null }), expiry: async () => null } : {}),
+  })
   await app.register(dockRoutes, {
     state: dock,
     ...(appIcons ? { appIcons } : {}),
@@ -525,6 +580,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   /** Whether this is a demo server: `pnpm widget:preview` refuses to capture anything else. */
   app.get('/api/demo', async () => ({ demo }))
   await app.register(appsRoutes, { apps: installedApps, deviceMayListApps: (id) => deviceService.maySubscribe(id, 'dock') })
+  await app.register(browserRoutes, { profiles: browserProfiles })
   await app.register(helperRoutes)
   await app.register(brightnessRoutes, { service: brightness, changed: brightnessChanged })
   await app.register(bambuRoutes, { cameras: bambuCameras })
@@ -582,6 +638,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
       channelFor: (connection) => connections.channelFor(connection),
       secretsFor: (connection) => connections.secretsFor(connection),
       channels: () => registry.status(),
+      recentProjects: () => recentProjects?.snapshot()?.sources ?? null,
       devices: () => devices.list(),
       remoteAccess: () => devices.enabled,
       accessToken: opts.accessToken,

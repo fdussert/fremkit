@@ -171,6 +171,16 @@ export function tileIconInScope(config: Config, scope: ScreenScope, name: string
     if (!Object.hasOwn(config.widgets, id)) continue
     const icon = config.widgets[id].icon
     if (icon?.kind === 'file' && icon.name === name) return true
+    // An `icon` setting names one as `file:<name>` (a shortcuts button's), and the widget asks for
+    // it through the host page, which the device loads like any other.
+    if (namesLibraryIcon(config.widgets[id].settings, `file:${name}`)) return true
   }
+  return false
+}
+
+function namesLibraryIcon(value: unknown, wanted: string): boolean {
+  if (typeof value === 'string') return value.trim() === wanted
+  if (Array.isArray(value)) return value.some((v) => namesLibraryIcon(v, wanted))
+  if (value && typeof value === 'object') return Object.values(value).some((v) => namesLibraryIcon(v, wanted))
   return false
 }

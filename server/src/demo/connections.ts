@@ -54,11 +54,11 @@ function githubSnapshot(t: number): unknown {
     ],
     myPrs: [
       { id: 'p3', number: 219, title: 'Rate-limit the public endpoints', repo: repo('api'), author: 'demo-user', updatedAt: t - 20 * MIN, url, draft: false },
-      { id: 'p4', number: 488, title: 'WIP: new pricing page', repo: repo('website'), author: 'demo-user', updatedAt: t - 2 * 60 * MIN, url, draft: true },
+      { id: 'p4', number: 488, title: 'WIP: new settings page', repo: repo('website'), author: 'demo-user', updatedAt: t - 2 * 60 * MIN, url, draft: true },
     ],
     runs: [
       { id: 'r1', repo: repo('api'), name: 'CI', branch: 'feature/rate-limit', status: 'running', event: 'push', actor: 'demo-user', startedAt: t - 3 * MIN, updatedAt: t - 10_000, url },
-      { id: 'r2', repo: repo('website'), name: 'Deploy preview', branch: 'feature/pricing', status: 'completed', conclusion: 'success', event: 'pull_request', actor: 'demo-user', startedAt: t - 26 * MIN, updatedAt: t - 21 * MIN, url },
+      { id: 'r2', repo: repo('website'), name: 'Deploy preview', branch: 'feature/settings', status: 'completed', conclusion: 'success', event: 'pull_request', actor: 'demo-user', startedAt: t - 26 * MIN, updatedAt: t - 21 * MIN, url },
       { id: 'r3', repo: repo('mobile-app'), name: 'CI', branch: 'hotfix/login', status: 'completed', conclusion: 'failure', event: 'push', actor: 'sam-example', startedAt: t - 70 * MIN, updatedAt: t - 62 * MIN, url },
     ],
     rateLimit: { remaining: 4_812, reset: Math.floor(t / 1000) + 2_400 },

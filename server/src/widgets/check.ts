@@ -14,7 +14,7 @@
 
 import { lstat, readdir, readFile } from 'node:fs/promises'
 import { basename, join, relative, sep } from 'node:path'
-import { builtinOnlyChannels, ManifestSchema, previewProblems, type WidgetManifest } from './manifest.js'
+import { builtinOnlyChannels, ManifestSchema, previewProblems, type ListItemField, type NestedItemField, type WidgetManifest } from './manifest.js'
 import { isPrivateLiteral } from '../net/private.js'
 import { writeZip } from '../backup/zip.js'
 import { LIMITS, safeEntryName } from '../marketplace/install.js'
@@ -59,12 +59,16 @@ function localizedTexts(manifest: WidgetManifest): { path: string; value: unknow
   ]
   for (const [key, field] of Object.entries(manifest.settingsSchema)) {
     texts.push({ path: `settingsSchema.${key}.label`, value: field.label })
-    for (const [itemKey, item] of Object.entries(field.itemSchema ?? {})) {
-      texts.push({ path: `settingsSchema.${key}.itemSchema.${itemKey}.label`, value: item.label })
-      for (const [i, option] of (item.options ?? []).entries()) {
-        if (typeof option === 'object') texts.push({ path: `settingsSchema.${key}.itemSchema.${itemKey}.options[${i}].label`, value: option.label })
+    const items = (schema: Record<string, ListItemField | NestedItemField>, at: string): void => {
+      for (const [itemKey, item] of Object.entries(schema)) {
+        texts.push({ path: `${at}.${itemKey}.label`, value: item.label })
+        for (const [i, option] of (item.options ?? []).entries()) {
+          if (typeof option === 'object') texts.push({ path: `${at}.${itemKey}.options[${i}].label`, value: option.label })
+        }
+        if ('itemSchema' in item && item.itemSchema) items(item.itemSchema, `${at}.${itemKey}.itemSchema`)
       }
     }
+    items(field.itemSchema ?? {}, `settingsSchema.${key}.itemSchema`)
     for (const [i, option] of (field.options ?? []).entries()) {
       if (typeof option === 'object') texts.push({ path: `settingsSchema.${key}.options[${i}].label`, value: option.label })
     }

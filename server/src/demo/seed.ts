@@ -38,6 +38,7 @@ export const DEMO_SETTINGS: Record<string, Record<string, unknown>> = {
       { name: 'Backup NAS', kind: 'ping', url: '192.0.2.10' },
     ],
   },
+  'recent-projects': { source_git: true, source_claude: true, source_vscode: true, source_herdr: true, gitRoots: [{ path: '~/Dev' }] },
   shortcuts: {
     buttons: [
       { label: 'Mail', kind: 'app', target: 'Mail', icon: '✉️' },
@@ -47,7 +48,11 @@ export const DEMO_SETTINGS: Record<string, Record<string, unknown>> = {
       { label: 'Music', kind: 'app', target: 'Music', icon: '🎵' },
       { label: 'Calendar', kind: 'app', target: 'Calendar', icon: '📅' },
       { label: 'Timer', kind: 'shortcut', target: 'Start timer', icon: '⏱️' },
-      { label: 'Status', kind: 'url', target: 'https://status.example.com', icon: '🟢' },
+      { label: 'Pipelines', kind: 'group', target: '', icon: '', items: [
+        { label: 'Prod', kind: 'url', target: 'https://ci.example.com/prod', icon: '🚀' },
+        { label: 'Dev', kind: 'url', target: 'https://ci.example.com/dev', icon: '🧪' },
+        { label: 'Status', kind: 'url', target: 'https://status.example.com', icon: '🟢' },
+      ] },
     ],
   },
   weather: { location: 'Paris' },
@@ -95,7 +100,8 @@ const PAGES: { id: string; name: string; items: (Placement & { widgetId: string 
       { instanceId: 'processes-1', widgetId: 'processes', x: 24, y: 0, w: 16, h: 8 },
       { instanceId: 'clipboard-1', widgetId: 'clipboard', x: 24, y: 8, w: 16, h: 8 },
       { instanceId: 'shortcuts-1', widgetId: 'shortcuts', x: 40, y: 0, w: 24, h: 8 },
-      { instanceId: 'clock-2', widgetId: 'clock', x: 40, y: 8, w: 24, h: 8 },
+      { instanceId: 'gif-board-1', widgetId: 'gif-board', x: 40, y: 8, w: 12, h: 8 },
+      { instanceId: 'recent-projects-1', widgetId: 'recent-projects', x: 52, y: 8, w: 12, h: 8 },
     ],
   },
 ]
@@ -125,7 +131,7 @@ export function demoConfig(locale: 'fr' | 'en' = 'en'): Config {
     // A file next to the config, never the keychain: a demo has nothing to keep secret.
     secrets: { backend: 'file' },
     locale,
-    privacy: { claudeAccountUsage: true, showAccountEmail: false, codexAccount: true, codexHistorySources: ['cli', 'vscode', 'appServer'], macmonTemperature: false },
+    privacy: { claudeAccountUsage: true, claudeAccountDir: 'auto', showAccountEmail: false, codexAccount: true, codexHistorySources: ['cli', 'vscode', 'appServer'], macmonTemperature: false },
     marketplace: { installed: {} },
     // As on a fresh install: Fremdev stays an experimental feature until it is ticked.
     labs: { fremdev: false },

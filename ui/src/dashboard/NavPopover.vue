@@ -8,7 +8,7 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useWidgetBridge } from '../shared/useWidgetBridge'
 import { pick, useI18n } from '../shared/i18n'
-import { popoverRect, type Anchor } from '../shared/popover'
+import { popoverRect, popupCells, type Anchor } from '../shared/popover'
 import { compactOf } from '../shared/screens'
 import type { Config, NavItem, WidgetInstance, WidgetManifest } from '../shared/types'
 
@@ -27,7 +27,7 @@ const props = defineProps<{
    */
   fixed?: boolean
 }>()
-const emit = defineEmits<{ root: [el: Element | null] }>()
+const emit = defineEmits<{ root: [el: Element | null]; activity: [] }>()
 
 /** The caption's height, so the widget is told the size of the body and not of the whole box. */
 const TITLE_H = 26
@@ -35,17 +35,10 @@ const TITLE_H = 26
 const root = ref<HTMLElement>()
 const iframe = ref<HTMLIFrameElement>()
 
-/**
- * A popover is looked at up close and for a moment, so it gets half again the height the widget
- * asks for as a tile: the default tile size is drawn for a wall of tiles, and a four-cell-high
- * strip plus a caption came out cramped.
- */
-const POPUP_HEIGHT_SCALE = 1.5
-
-/** The size the widget asks for as a tile, in cells, stretched for the popover, plus the caption. */
+/** The shape the bar item asks for, from the widget's tile size (`popupCells`), plus the caption. */
 const size = computed(() => {
-  const [w, h] = props.manifest?.defaultSize ?? [8, 4]
-  return { width: w * props.cell, height: Math.round(h * props.cell * POPUP_HEIGHT_SCALE) + TITLE_H }
+  const { w, h } = popupCells(props.manifest?.defaultSize ?? [8, 4], props.item.popupSize)
+  return { width: w * props.cell, height: Math.round(h * props.cell) + TITLE_H }
 })
 const box = computed(() => popoverRect(props.anchor, size.value, props.screen))
 const style = computed<Record<string, string>>(() => ({
@@ -74,6 +67,9 @@ const instance = computed<WidgetInstance>(() => ({
 const { state } = useWidgetBridge(iframe, () => instance.value, () => props.manifest, () => props.cell, {
   // The box is clamped to the screen, so the widget is told the pixels it really has.
   pixelSize: () => ({ width: box.value.width, height: box.value.height - TITLE_H }),
+  // Touches and scrolls inside the frame never reach this document; the bridge reports them.
+  onActivity: () => emit('activity'),
+  swipes: false,
 })
 const { t } = useI18n()
 const title = computed(() => pick(props.manifest?.name) || instance.value.widgetId)

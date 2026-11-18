@@ -201,6 +201,17 @@ describe('ClaudeTracker', () => {
       tracker.handle({ hook_event_name: 'StatusLine', session_id: 's1', cwd: '/p/a', model: { id: 'claude-opus-5', display_name: 'Opus' }, session_name: 'Revue du dashboard', fremkit_branch: 'feat/x' })
       expect(tracker.snapshot().sessions[0]).toMatchObject({ model: 'Opus', modelId: 'claude-opus-5', title: 'Revue du dashboard', branch: 'feat/x' })
     })
+    it('stores the repository and the place in it, and clears them outside git', () => {
+      const { tracker } = make()
+      tracker.handle({ hook_event_name: 'StatusLine', session_id: 's1', cwd: '/p/platform/tools/bg-rollup', fremkit_repo: 'platform', fremkit_place: 'tools/bg-rollup' })
+      expect(tracker.snapshot().sessions[0]).toMatchObject({ project: 'bg-rollup', repo: 'platform', place: 'tools/bg-rollup' })
+      // A script from before these fields leaves what is known alone.
+      tracker.handle({ hook_event_name: 'StatusLine', session_id: 's1', cwd: '/p/platform/tools/bg-rollup' })
+      expect(tracker.snapshot().sessions[0]).toMatchObject({ repo: 'platform', place: 'tools/bg-rollup' })
+      tracker.handle({ hook_event_name: 'StatusLine', session_id: 's1', cwd: '/tmp', fremkit_repo: '', fremkit_place: '' })
+      const s = tracker.snapshot().sessions[0]
+      expect(s.repo).toBeUndefined(); expect(s.place).toBeUndefined()
+    })
     it('truncates the title to 80 chars and ignores empty values', () => {
       const { tracker } = make()
       tracker.handle({ hook_event_name: 'StatusLine', session_id: 's1', cwd: '/p/a', session_name: 'x'.repeat(100), fremkit_branch: '' })

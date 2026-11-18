@@ -11,6 +11,7 @@ of fields, configured once in the admin's **Connections** dialog and referenced 
 |---|---|---|
 | [Azure DevOps](#azure-devops) | organisation, project, personal access token | `ado-pipelines` (on the sietch) |
 | [Bambu Lab](#bambu-lab) | IP address, serial number, access code, model | `bambu-job` (on the sietch) |
+| [Giphy](#giphy) | API key | `gif-board` (its search, in the admin) |
 | [GitHub](#github) | API host, personal access token, repositories | `github-inbox`, `github-actions` (on the sietch) |
 | [ICS calendar](#ics-calendars) | calendar address, colour | `calendar` |
 | [Synology](#synology) | address, DSM account, password | `synology-storage`, `synology-system` (on the sietch) |
@@ -217,6 +218,28 @@ not control, in which case a printer on its own VLAN is the answer. Pinning the 
 printer first presented would narrow the window to the first connection; it is not implemented.
 
 Used by [`bambu-job`](widgets.md#bambu-job), on the sietch.
+
+## Giphy
+
+| Field | Secret | What it is |
+|---|---|---|
+| `apiKey` | **yes** | A Giphy API key |
+
+**Why it is coded.** Giphy takes its key as a query parameter, not as an auth header, so a
+widget cannot declare it; and the search is the admin's, not the widget's: you look for a GIF
+while filling the GIF board under its settings, and the server makes the call. The key stays in
+the secret store and never reaches a page, a log or an error message.
+
+**Getting the key.** Sign in at [developers.giphy.com](https://developers.giphy.com), open the
+dashboard and create an app of type **API** (not SDK). The key it gives you is a free beta key,
+limited to 100 calls an hour: plenty for picking a few GIFs, and when it runs out the search
+says so and works again within the hour. The test runs one search for "hello".
+
+**GIFs are never stored.** A Giphy GIF on the board is kept as its id. Touching it downloads it
+to a temporary file for the paste, deleted on the next copy and swept after ten minutes; it
+never reaches the GIF cache, which holds only the GIFs added by their own address.
+
+Only the first Giphy connection is used: one key is all a search needs.
 
 ## GitHub
 

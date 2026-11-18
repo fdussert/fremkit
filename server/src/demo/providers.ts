@@ -7,10 +7,12 @@ import { buildView, findNode, type DiskNode } from '../providers/disk-map-tree.j
 import { codexProviders } from './codex.js'
 import { fremdevEnabled } from '../companion/dev.js'
 import { COMPANION_SERVERS_CHANNEL, SERVERS_INTERVAL_MS, type ServerRow, type ServersSnapshot } from '../companion/servers/provider.js'
+import { tr } from '../i18n.js'
 import {
   DEMO_APPS, DEMO_CLIPBOARD, DEMO_PROCESSES, DEMO_SESSIONS, DEMO_TRACKS,
   clamp, coverArt, round1, wander,
 } from './world.js'
+import { DEMO_GIF_COLOUR_BARS, DEMO_GIF_MANDELBROT, DEMO_GIF_RGB_BARS, DEMO_GIF_TEST_PATTERN } from './gif-samples.js'
 
 /**
  * Every channel the server publishes, answered from the invented machine of `world.ts`.
@@ -65,8 +67,65 @@ export function createDemoProviders(opts: DemoProviderOptions): Provider[] {
     rtkProvider(now),
     serversProvider(now, opts.config),
     { channel: 'shortcuts', commands: { open: ACTED } },
+    gifBoardProvider(),
     serviceStatusProvider(now, opts.instances ?? ((id) => findInstance(opts.config(), id))),
+    recentProjectsProvider(now),
   ]
+}
+
+/** Invented folders under an invented home, touched over the last few days. */
+function recentProjectsProvider(now: () => number): Provider {
+  const HOUR = 3_600_000
+  const rows: { name: string; parent: string; ago: number; sources: string[]; suggested?: string }[] = [
+    { name: 'example-api', parent: '~/Dev', ago: 0.3, sources: ['git', 'claude', 'herdr'], suggested: 'jetbrains-rider' },
+    { name: 'dashboard-web', parent: '~/Dev', ago: 2, sources: ['git', 'vscode'] },
+    { name: 'mobile-app', parent: '~/Dev/clients/acme', ago: 5, sources: ['git', 'claude'], suggested: 'xcode' },
+    { name: 'infra', parent: '~/Dev', ago: 26, sources: ['git', 'herdr'], suggested: 'jetbrains-goland' },
+    { name: 'design-system', parent: '~/Dev/clients/acme', ago: 50, sources: ['git', 'vscode', 'claude'] },
+    { name: 'notes', parent: '~/Documents', ago: 74, sources: ['claude'] },
+    { name: 'blog', parent: '~/Dev/personal', ago: 120, sources: ['git'] },
+  ]
+  const pathOf = (r: { parent: string; name: string }) => `${r.parent.replace('~', '/Users/demo')}/${r.name}`
+  // Openers set during the demo, in memory; the dashboard one starts with one of its own.
+  const openers = new Map<string, string>([[pathOf(rows[1]), 'zed']])
+  return {
+    channel: 'recent-projects',
+    intervalMs: 60_000,
+    poll: async () => {
+      const t = now()
+      const projects = rows.map((r) => {
+        const path = pathOf(r)
+        const opener = openers.get(path)
+        return {
+          path,
+          name: r.name,
+          parent: r.parent,
+          seenAt: Math.round(t - r.ago * HOUR),
+          sources: r.sources,
+          ...(r.sources.includes('git') ? { gitRoots: ['~/Dev'] } : {}),
+          ...(opener ? { opener } : r.suggested ? { suggested: r.suggested } : {}),
+        }
+      })
+      const ids = ['git', 'claude', 'codex', 'vscode', 'cursor', 'jetbrains', 'zoxide', 'tmux', 'herdr']
+      const on = new Set(['git', 'claude', 'vscode', 'herdr'])
+      return {
+        projects,
+        sources: ids.map((id) => ({ id, enabled: on.has(id), available: on.has(id), count: projects.filter((p) => p.sources.includes(id)).length })),
+        apps: ['finder', 'terminal', 'vscode', 'zed', 'xcode', 'herdr', 'herdr-claude', 'herdr-codex', 'jetbrains-rider', 'jetbrains-goland'],
+        updatedAt: t,
+      }
+    },
+    commands: {
+      open: ACTED,
+      setOpener: async (payload: unknown) => {
+        const { path, app } = (payload ?? {}) as { path?: unknown; app?: unknown }
+        if (typeof path !== 'string' || !rows.some((r) => pathOf(r) === path)) return { ok: false, error: 'unknown-project' }
+        if (typeof app === 'string') openers.set(path, app)
+        else openers.delete(path)
+        return { ok: true }
+      },
+    },
+  }
 }
 
 function systemProvider(now: () => number, startedAt: number): Provider {
@@ -324,7 +383,7 @@ function demoTree(): DiskNode {
     folder('Movies', 74, [['Holiday 2025', 38], ['Screen recordings', 21], ['Edits', 12]]),
     folder('Pictures', 58, [['Photos Library.photoslibrary', 51], ['Wallpapers', 4]]),
     folder('Projects', 46, [['website', 14], ['api', 11], ['mobile-app', 9], ['experiments', 6]]),
-    folder('Documents', 31, [['Archive', 12], ['Invoices', 3], ['Books', 6]]),
+    folder('Documents', 31, [['Archive', 12], ['Letters', 3], ['Books', 6]]),
     folder('Music', 22, [['Library', 19]]),
     folder('Downloads', 17, [['installers', 9], ['dataset.csv', 2.4]]),
     folder('Desktop', 4),
@@ -381,7 +440,7 @@ function claudeProviders(now: () => number, config: () => Config): Provider[] {
     const t = now()
     // The working session moves on to another file every twenty seconds.
     const step = Math.floor(t / 20_000)
-    const files = ['src/pages/pricing.vue', 'src/components/PlanCard.vue', 'src/styles/pricing.css', 'test/pricing.spec.ts']
+    const files = ['src/pages/settings.vue', 'src/components/ThemeCard.vue', 'src/styles/settings.css', 'test/settings.spec.ts']
     return DEMO_SESSIONS.map((s, i) => {
       const sessionId = `demo-session-${i + 1}`
       const since = t - s.minutesAgo * 60_000
@@ -390,7 +449,9 @@ function claudeProviders(now: () => number, config: () => Config): Provider[] {
         sessionId,
         project: s.project,
         cwd: `/Users/demo/Projects/${s.project}`,
-        title: s.title,
+        ...('title' in s ? { title: s.title } : {}),
+        ...('repo' in s ? { repo: s.repo } : {}),
+        ...('place' in s ? { place: s.place } : {}),
         branch: s.branch,
         model: s.model,
         state: s.state,
@@ -460,8 +521,9 @@ function claudeProviders(now: () => number, config: () => Config): Provider[] {
           fiveHour: { pct: five, resetsAt: resetIn(t, 2.3) },
           sevenDay: { pct: 61, resetsAt: resetIn(t, 76) },
           limits: [
-            { kind: 'five_hour', name: '5 h', percent: five, resetsAt: resetIn(t, 2.3), active: true },
-            { kind: 'seven_day', name: 'Week', percent: 61, resetsAt: resetIn(t, 76), active: true },
+            // Named as the real provider names them, in the user's language.
+            { kind: 'session', name: tr(undefined, 'claude.limit.session'), percent: five, resetsAt: resetIn(t, 2.3), active: true },
+            { kind: 'weekly_all', name: tr(undefined, 'claude.limit.weeklyAll'), percent: 61, resetsAt: resetIn(t, 76), active: true },
             { kind: 'seven_day_opus', name: 'Opus', percent: 44, resetsAt: resetIn(t, 76), active: true },
           ],
           breakdown: [{ name: 'Opus', percent: 72 }, { name: 'Sonnet', percent: 28 }],
@@ -647,5 +709,28 @@ function serviceStatusProvider(now: () => number, instances: InstanceLookup): Pr
         return { ok: true, results }
       },
     },
+  }
+}
+
+/** Two groups of license-free test-pattern GIFs; a touch answers `ok` and copies nothing. */
+function gifBoardProvider(): Provider {
+  const item = (id: string, src: string, label?: string) => ({ id, kind: 'link' as const, ...(label ? { label } : {}), src, thumb: src })
+  return {
+    channel: 'gif-board',
+    intervalMs: 60_000,
+    poll: async () => ({
+      groups: [
+        { id: 'demo-reactions', name: 'Reactions', items: [
+          item('demo-gif-1', DEMO_GIF_TEST_PATTERN, 'Stand by'),
+          item('demo-gif-2', DEMO_GIF_MANDELBROT, 'Mind blown'),
+          item('demo-gif-3', DEMO_GIF_COLOUR_BARS),
+        ] },
+        { id: 'demo-team', name: 'Team', items: [
+          item('demo-gif-4', DEMO_GIF_RGB_BARS, 'Ship it'),
+          item('demo-gif-5', DEMO_GIF_TEST_PATTERN),
+        ] },
+      ],
+    }),
+    commands: { copy: ACTED },
   }
 }

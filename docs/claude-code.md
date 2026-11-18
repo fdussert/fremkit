@@ -45,6 +45,12 @@ themselves, so keep the two together if you copy them. The hooks are asynchronou
 Claude Code, even when Fremkit is not running. The status line needs `jq` and degrades to one line of text
 without it.
 
+The status line reads `name · model · repository/place · branch · ctx · cost · limits`. The name is
+the session's own, given with `/rename` in Claude Code; it titles the session's card too, and is
+the way to tell twenty chats apart. The repository is named after the repository, not the folder,
+so a session in a worktree or a subfolder of it (`tools/bg-rollup`) shows `platform/tools/bg-rollup`
+rather than `bg-rollup` alone.
+
 ## What is sent
 
 Only the tool name and a short summary reach Fremkit. Tool inputs and outputs are never sent and
@@ -100,7 +106,11 @@ response of a session.
 
 The `claude-account` provider goes one step further: it reads the Claude Code OAuth token from the
 macOS keychain (the item "Claude Code-credentials") every 5 minutes and calls the account usage
-endpoint for per-model weekly limits. The token is never stored or logged and is sent only to
+endpoint for per-model weekly limits. A session started with `CLAUDE_CONFIG_DIR` set, as a terminal
+with profiles does, keeps its token in an item of its own, "Claude Code-credentials-" followed by
+eight characters of a hash of that folder: the server learns the folder from the hooks'
+`transcript_path`, remembers it in `data/claude-config-dirs.json`, tries that item too and uses
+whichever token expires last. Today's token count reads that folder's `projects` beside `~/.claude/projects`. The token is never stored or logged and is sent only to
 `api.anthropic.com`. macOS may ask once to allow keychain access. The endpoint is undocumented and
 may change without notice.
 

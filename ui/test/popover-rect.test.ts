@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { POPOVER_MARGIN, popoverRect } from '../src/shared/popover'
+import { POPOVER_MARGIN, popoverRect, popupCells } from '../src/shared/popover'
 
 /** A 2560×720 Edge panel with an 80 px bar: the widget area ends at 640. */
 const SCREEN = { width: 2560, height: 720 }
@@ -58,5 +58,15 @@ describe('the popover hands the widget its real instanceId', () => {
     expect(source).not.toMatch(/instanceId:/)
     // No suffix built onto the id anywhere in the code (the comment above it may name the old one).
     expect(source).not.toMatch(/instanceId:\s*`/)
+  })
+})
+
+describe('popupCells', () => {
+  it('stretches the tile half again in height by default, and trades height for width or takes more of both', () => {
+    expect(popupCells([16, 8])).toEqual({ w: 16, h: 12 })
+    expect(popupCells([16, 8], 'wide')).toEqual({ w: 32, h: 8 })
+    expect(popupCells([16, 8], 'large')).toEqual({ w: 24, h: 16 })
+    expect(popupCells([5, 3])).toEqual({ w: 5, h: 4.5 })
+    expect(popupCells([5, 3], 'large')).toEqual({ w: 8, h: 6 })
   })
 })

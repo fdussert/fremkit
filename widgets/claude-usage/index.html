@@ -67,6 +67,12 @@
     sevenDay: { fr: '7 jours', en: '7 days' },
     stale: { fr: '· données anciennes', en: '· stale data' },
     staleWithError: { fr: '· données anciennes ({error})', en: '· stale data ({error})' },
+    // What the account provider's error codes mean to the person reading the tile.
+    errors: {
+      unauthorized: { fr: 'connexion expirée, choisis un autre compte dans Confidentialité', en: 'sign-in expired, pick another account in Privacy' },
+      'no-token': { fr: 'pas de compte Claude Code connecté', en: 'no Claude Code account signed in' },
+      'rate-limited': { fr: 'trop de demandes, nouvel essai bientôt', en: 'too many requests, retrying soon' },
+    },
     noSession: { fr: '· lance une session Claude Code', en: '· start a Claude Code session' },
     accountOff: { fr: '· consommation du compte désactivée', en: '· account usage turned off' },
     breakdown: { fr: '{name} {percent} %', en: '{name} {percent}%' },
@@ -78,7 +84,11 @@
     millions: { fr: '{n} M', en: '{n}M' },
     thousands: { fr: '{n} k', en: '{n}k' }
   }
+  function errorText(code) { return Object.prototype.hasOwnProperty.call(L.errors, code) ? Fremkit.t(L.errors[code]) : String(code) }
   var data = null, account = null, accountOff = false, identity = null
+  /** On by default, so an absent setting is not "off": an older instance keeps showing the cost. */
+  var showCost = true
+  function applySettings(s) { showCost = !s || s.showCost !== false }
   function cls(p) { return p < 60 ? 'ok' : p < 85 ? 'warn' : 'hot' }
   /** A decimal separator follows the language: a comma in French, a point in English. */
   function dec(n, digits) { var text = n.toFixed(digits); return Fremkit.locale === 'fr' ? text.replace('.', ',') : text }
@@ -125,7 +135,7 @@
     if (Fremkit.compact) { renderCompact(useAccount); return }
     if (useAccount) {
       gauges.innerHTML = account.limits.map(function (l) { return gaugeHtml(l.name, l.percent, l.resetsAt) }).join('')
-      note.textContent = stale ? (account.error ? Fremkit.t(L.staleWithError, { error: account.error }) : Fremkit.t(L.stale)) : ''
+      note.textContent = stale ? (account.error ? Fremkit.t(L.staleWithError, { error: errorText(account.error) }) : Fremkit.t(L.stale)) : ''
     } else if (data) {
       gauges.innerHTML = gaugeHtml('5 h', data.fiveHour ? data.fiveHour.pct : 0, data.fiveHour ? data.fiveHour.resetsAt : 0)
         + gaugeHtml(Fremkit.t(L.sevenDay), data.sevenDay ? data.sevenDay.pct : 0, data.sevenDay ? data.sevenDay.resetsAt : 0)
@@ -138,7 +148,7 @@
       var t = data.today, total = t.input + t.output + t.cacheRead + t.cacheWrite
       var sessions = t.sessions === 1 ? Fremkit.t(L.sessionOne) : Fremkit.t(L.sessionMany, { n: t.sessions })
       parts.push(Fremkit.t(L.today, { tokens: tokens(total), sessions: sessions })
-        + (t.costUsd ? Fremkit.t(L.cost, { amount: dec(t.costUsd, 2) }) : ''))
+        + (showCost && t.costUsd ? Fremkit.t(L.cost, { amount: dec(t.costUsd, 2) }) : ''))
     }
     footText.innerHTML = parts.map(Fremkit.esc).join('<br>')
     var histrow = document.getElementById('histrow'), hist = document.getElementById('hist'), histlbl = document.getElementById('histlbl')
@@ -152,6 +162,8 @@
     }
   }
   Fremkit.whenReady(function () {
+    applySettings(Fremkit.settings)
+    Fremkit.onSettings(function (s) { applySettings(s); render() })
     Fremkit.subscribe('claude-identity', function (d) { identity = d; render() })
     Fremkit.subscribe('claude-usage', function (d) { if (d.error) return; data = d; render() })
     // A rate-limited poll still carries the last good gauges (flagged stale): keep showing them.

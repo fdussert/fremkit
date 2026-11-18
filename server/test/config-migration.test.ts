@@ -7,7 +7,7 @@ import {
 } from '../src/config/migrate.js'
 import type { SecretStore } from '../src/secrets/types.js'
 import { ConfigStore } from '../src/config/store.js'
-import { DEFAULT_CONFIG, validateLayout, type LayoutManifest } from '../src/config/schema.js'
+import { DEFAULT_CONFIG, PrivacySchema, validateLayout, type LayoutManifest } from '../src/config/schema.js'
 import { V3ConfigSchema } from '../src/config/v3.js'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
@@ -226,6 +226,11 @@ describe('privacy settings on an older config', () => {
     expect(migrateConfig({ version: 2, pages: [page] }).privacy.macmonTemperature).toBe(false)
     expect(migrateConfig({ ...DEFAULT_CONFIG, privacy: { claudeAccountUsage: false } }).privacy.macmonTemperature).toBe(false)
     expect(DEFAULT_CONFIG.privacy.macmonTemperature).toBe(false)
+    // The Claude account picker: an older privacy object follows the last-used profile, as before.
+    expect(migrateConfig({ ...DEFAULT_CONFIG, privacy: { claudeAccountUsage: true } }).privacy.claudeAccountDir).toBe('auto')
+    expect(migrateConfig({ ...DEFAULT_CONFIG, privacy: { claudeAccountUsage: true, claudeAccountDir: '/u/profile' } })
+      .privacy.claudeAccountDir).toBe('/u/profile')
+    expect(PrivacySchema.safeParse({ claudeAccountDir: 'relative/profile' }).success).toBe(false)
   })
 
   it('preserves explicit consent to macmon sampling', () => {

@@ -196,6 +196,8 @@
    */
   var port = null
   var outbox = []
+  /** The finger (or button) down in this document, for the page swipe below; null when none. */
+  var swipeStart = null
   var nonce = makeNonce()
 
   function makeNonce() {
@@ -328,7 +330,7 @@
      * lowest generation it needs, and the server refuses to install one asking for more than it
      * has. Kept in step with `SDK_VERSION` in ./sdk.ts by bridge.test.ts.
      */
-    sdk: 3,
+    sdk: 6,
     instanceId: null,
     /**
      * The id of the screen this frame is drawn on (the Edge, a paired device), or null when the
@@ -379,7 +381,17 @@
      * land on the dashboard, which would otherwise take the end of the slide for a swipe.
      * Generation 3.
      */
-    holdSwipe: function () { post({ type: 'fremkit:hold-swipe' }) },
+    holdSwipe: function () {
+      // The gesture under way is the widget's: it does not turn the page when the finger lifts.
+      if (swipeStart) swipeStart.held = true
+      post({ type: 'fremkit:hold-swipe' })
+    },
+    /**
+     * A few words the host shows after the tile's title, such as a count: `Fremkit.titleNote('18')`.
+     * Plain text on one line, cut by the host; an empty string or null takes it away. Shown only
+     * where the host draws a title, so a widget keeps nothing of its own for it. Generation 5.
+     */
+    titleNote: function (text) { post({ type: 'fremkit:title-note', text: text == null ? '' : String(text) }) },
     /**
      * Fetches through the host.
      *
@@ -431,6 +443,24 @@
      */
     image: function (url) {
       return request({ type: 'fremkit:image', url: url })
+    },
+    /**
+     * An icon from the user's library (the one the tiles' title icons come from), as a `data:`
+     * URL. `value` is what an `icon` setting stores, `file:<name>`; only an icon this widget's own
+     * settings name is answered, and an SVG drawn in an `<img>` runs nothing.
+     */
+    libraryIcon: function (value) {
+      return request({ type: 'fremkit:library-icon', value: value })
+    },
+    /**
+     * A GIF the server already keeps, as a `data:` URL; rejects when it has none for `url`. Only
+     * the GIF board, a built-in, is answered: the host refuses any other widget.
+     *
+     * Asked of the host for the same reason as a favicon: a frame with an opaque origin cannot
+     * load the server's own route, and the host page can.
+     */
+    gif: function (url) {
+      return request({ type: 'fremkit:gif', url: url })
     },
     /**
      * The applications installed on this Mac, as `{ name, bundleId, file }` — enough to name one
@@ -599,6 +629,94 @@
   }
 
   applyKioskBehaviour()
+
+  /**
+   * Tells the host someone is using the widget: a touch, a drag, a wheel or a scroll inside it.
+   * Those never reach the host document (the frame's origin is opaque), and the bar's popover
+   * closes itself after a while with nothing touching it, which used to cut a long browse short.
+   * Only real input counts, at most once a second, and nothing is queued before the handshake:
+   * an old touch says nothing about now.
+   */
+  var ACTIVITY_EVERY_MS = 1000
+  var lastActivity = -Infinity
+  function onActivity(e) {
+    if (!e.isTrusted || !port) return
+    if (e.type === 'pointermove' && !e.buttons) return
+    var now = Date.now()
+    if (now - lastActivity < ACTIVITY_EVERY_MS) return
+    lastActivity = now
+    port.postMessage({ type: 'fremkit:activity' })
+  }
+  ;['pointerdown', 'pointermove', 'wheel', 'scroll'].forEach(function (type) {
+    // Capture, and passive: scroll does not bubble, and this must never slow a gesture down.
+    document.addEventListener(type, onActivity, { capture: true, passive: true })
+  })
+
+  /**
+   * Turns the page when a finger swipes across the widget. A touch inside a frame never reaches
+   * the host document, so the dashboard's own swipe only worked between the tiles; this tells it
+   * the direction instead, the same threshold as the host's (50 px, more across than down).
+   *
+   * Left alone: a gesture that starts on a slider (`input[type=range]`), on something that scrolls
+   * sideways, or on an element with `touch-action: none` or `pan-x` (a canvas, a knob); and one
+   * during which the widget called `holdSwipe()`. Only real input counts.
+   *
+   * Touch goes through touch events, not pointer events: WebKit cancels the pointer as soon as it
+   * starts scrolling something, which is exactly when the finger is still on its way.
+   */
+  var SWIPE_MIN_PX = 50
+  function swipeExempt(target) {
+    var getStyle = window.getComputedStyle
+    for (var n = target; n && n.nodeType === 1; n = n.parentElement) {
+      if (n.tagName === 'INPUT' && String(n.type).toLowerCase() === 'range') return true
+      var cs = getStyle ? getStyle(n) : null
+      if (!cs) continue
+      if (cs.touchAction === 'none' || cs.touchAction.indexOf('pan-x') >= 0) return true
+      if ((cs.overflowX === 'auto' || cs.overflowX === 'scroll') && n.scrollWidth > n.clientWidth) return true
+    }
+    return false
+  }
+  function swipeBegin(x, y, target, kind) {
+    swipeStart = { x: x, y: y, kind: kind, held: swipeExempt(target) }
+  }
+  function swipeEnd(x, y, kind) {
+    var s = swipeStart
+    if (!s || s.kind !== kind) return
+    swipeStart = null
+    if (s.held || !port) return
+    var dx = x - s.x
+    var dy = y - s.y
+    if (Math.abs(dx) < SWIPE_MIN_PX || Math.abs(dx) <= Math.abs(dy)) return
+    port.postMessage({ type: 'fremkit:swipe', delta: dx < 0 ? 1 : -1 })
+  }
+  function swipeCancel() { swipeStart = null }
+  var swipeListeners = {
+    touchstart: function (e) {
+      if (!e.isTrusted) return
+      if (e.touches.length !== 1) { swipeCancel(); return }
+      var t = e.touches[0]
+      swipeBegin(t.clientX, t.clientY, e.target, 'touch')
+    },
+    touchend: function (e) {
+      if (!e.isTrusted || e.touches.length) { swipeCancel(); return }
+      var t = e.changedTouches[0]
+      if (t) swipeEnd(t.clientX, t.clientY, 'touch')
+    },
+    touchcancel: swipeCancel,
+    pointerdown: function (e) {
+      // A touch also raises pointer events; the touch listeners above own those.
+      if (!e.isTrusted || e.pointerType === 'touch' || !e.isPrimary) return
+      swipeBegin(e.clientX, e.clientY, e.target, 'pointer')
+    },
+    pointerup: function (e) {
+      if (!e.isTrusted || e.pointerType === 'touch') return
+      swipeEnd(e.clientX, e.clientY, 'pointer')
+    },
+    pointercancel: function (e) { if (e.pointerType !== 'touch') swipeCancel() },
+  }
+  Object.keys(swipeListeners).forEach(function (type) {
+    document.addEventListener(type, swipeListeners[type], { capture: true, passive: true })
+  })
 
   Object.defineProperty(window, 'Fremkit', { value: F, writable: false, configurable: false, enumerable: true })
   window.parent.postMessage({ type: 'fremkit:hello', nonce: nonce }, '*')

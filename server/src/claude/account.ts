@@ -4,6 +4,7 @@ import type { Provider } from '../providers/types.js'
 import type { UsageWindow } from './usage.js'
 import { tr, type MessageKey } from '../i18n.js'
 import { USER_AGENT } from '../version.js'
+import { keychainServicesFor } from './configDirs.js'
 
 export interface AccountLimit { kind: string; name: string; percent: number; resetsAt: number | null; active: boolean }
 export interface AccountUsage { fiveHour: UsageWindow | null; sevenDay: UsageWindow | null; limits: AccountLimit[]; breakdown: { name: string; percent: number }[] }
@@ -21,7 +22,6 @@ export interface AccountSnapshot extends AccountUsage { available: boolean; stal
  * hand, HTTP 200), and if it ever stops working the answer is to stop asking, not to spoof.
  */
 const USAGE_URL = 'https://api.anthropic.com/api/oauth/usage'
-const KEYCHAIN_SERVICE = 'Claude Code-credentials'
 /**
  * Names for the windows Claude reports without one of its own. Resolved on each poll rather than
  * once, so the language the user picked reaches the widget on the next refresh.
@@ -36,9 +36,13 @@ const NO_TOKEN_STREAK = 3
 const NO_TOKEN_BACKOFF_MS = 60 * 60_000
 /** Normal cadence; the endpoint is shared with every Claude Code session, so keep it slow. */
 const BASE_INTERVAL_MS = 300_000
-/** Cadence after a 429: the Retry-After the server asks for, bounded so a slot is caught soon. */
+/**
+ * Cadence after a 429: the Retry-After the server asks for, never sooner than 30 s and never
+ * later than an hour. It used to be capped at two minutes, which ignored a server asking for fifty:
+ * the provider came back thirty times inside each penalty and never got out of it.
+ */
 const RATE_LIMITED_MIN_MS = 30_000
-const RATE_LIMITED_MAX_MS = 120_000
+const RATE_LIMITED_MAX_MS = 60 * 60_000
 
 interface Persisted { last: AccountUsage; updatedAt: number }
 
@@ -65,18 +69,76 @@ function run(cmd: string, args: string[]): Promise<string> {
   return new Promise((resolve, reject) => execFile(cmd, args, { timeout: 5000 }, (err, stdout) => (err ? reject(err) : resolve(stdout.trim()))))
 }
 
-/** Extracts the Claude Code OAuth access token from the keychain item's JSON payload. */
-export function parseKeychainJson(raw: string): string | null {
+interface KeychainToken { token: string; expiresAt: number | null }
+
+/** Reads one keychain item's JSON payload: the access token and when it expires (ms), if it says. */
+function parseKeychainItem(raw: string): KeychainToken | null {
   try {
-    const j = JSON.parse(raw) as { claudeAiOauth?: { accessToken?: unknown } }
+    const j = JSON.parse(raw) as { claudeAiOauth?: { accessToken?: unknown; expiresAt?: unknown } }
     const t = j?.claudeAiOauth?.accessToken
-    return typeof t === 'string' && t ? t : null
+    if (typeof t !== 'string' || !t) return null
+    const e = j.claudeAiOauth?.expiresAt
+    return { token: t, expiresAt: typeof e === 'number' && Number.isFinite(e) ? e : null }
   } catch { return null }
 }
 
-/** Reads the token from the macOS keychain. Never logs or stores it. */
-export async function readClaudeOAuthToken(): Promise<string | null> {
-  try { return parseKeychainJson(await run('/usr/bin/security', ['find-generic-password', '-s', KEYCHAIN_SERVICE, '-w'])) } catch { return null }
+/** Extracts the Claude Code OAuth access token from the keychain item's JSON payload. */
+export function parseKeychainJson(raw: string): string | null {
+  return parseKeychainItem(raw)?.token ?? null
+}
+
+/**
+ * Of several items, the one to use: the latest expiry wins, and an item that does not say when it
+ * expires comes after every one that does. The token Claude Code is refreshing is the newest one;
+ * an item nobody refreshes any more keeps the expiry it had the day it was abandoned.
+ */
+export function freshestToken(items: (KeychainToken | null)[]): string | null {
+  let best: KeychainToken | null = null
+  for (const item of items) {
+    if (!item) continue
+    if (!best || (item.expiresAt ?? -Infinity) > (best.expiresAt ?? -Infinity)) best = item
+  }
+  return best?.token ?? null
+}
+
+/**
+ * Reads the token from the macOS keychain. Never logs or stores it.
+ *
+ * Tries the default item and the one for each configuration folder sessions were seen running from
+ * (see `configDirs.ts`), or only the folder the user picked (`privacy.claudeAccountDir`); the item
+ * names are computed here, so an event can only ever point this at another
+ * `Claude Code-credentials-<8 hex>` item.
+ */
+/**
+ * When the sign-in of one configuration folder expires (ms), the latest of its items; null when
+ * it has no item or none says. An access token past it means nobody signed in with that folder
+ * recently: Claude Code refreshes the token only while it runs from it. Never returns the token.
+ */
+export async function claudeTokenExpiry(
+  dir: string,
+  read: (service: string) => Promise<string> = (service) => run('/usr/bin/security', ['find-generic-password', '-s', service, '-w']),
+): Promise<number | null> {
+  let latest: number | null = null
+  for (const service of keychainServicesFor([], dir)) {
+    try {
+      const e = parseKeychainItem(await read(service))?.expiresAt ?? null
+      if (e !== null && (latest === null || e > latest)) latest = e
+    } catch { /* no such item */ }
+  }
+  return latest
+}
+
+export async function readClaudeOAuthToken(
+  configDirs: string[] = [],
+  read: (service: string) => Promise<string> = (service) => run('/usr/bin/security', ['find-generic-password', '-s', service, '-w']),
+  pinned = 'auto',
+): Promise<string | null> {
+  const services = keychainServicesFor(configDirs, pinned)
+  const items: (KeychainToken | null)[] = []
+  for (const service of services) {
+    try { items.push(parseKeychainItem(await read(service))) } catch { /* no such item */ }
+  }
+  return freshestToken(items)
 }
 
 function epoch(iso: unknown): number | null {
@@ -116,9 +178,15 @@ export function createClaudeAccountProvider(opts: {
    * the provider's own tests, which are about what it does once it is allowed to run.
    */
   enabled?: () => boolean
+  /** The Claude Code configuration folders seen so far, whose keychain items are tried too. */
+  configDirs?: () => string[]
+  /** `privacy.claudeAccountDir`: `auto`, or the one folder whose account is read. Read on every poll. */
+  accountDir?: () => string
 } = {}): Provider {
   const fetchFn = opts.fetchFn ?? fetch
-  const readToken = opts.readToken ?? readClaudeOAuthToken
+  const configDirs = opts.configDirs ?? (() => [])
+  const accountDir = opts.accountDir ?? (() => 'auto')
+  const readToken = opts.readToken ?? (() => readClaudeOAuthToken(configDirs(), undefined, accountDir()))
   const now = opts.now ?? Date.now
   const filePath = opts.filePath
   const enabled = opts.enabled ?? (() => true)
@@ -126,6 +194,12 @@ export function createClaudeAccountProvider(opts: {
   let updatedAt: number | null = null
   let noTokenStreak = 0
   let nextTokenAttempt = 0
+  // When the last 429 said to come back. A reload or a new subscriber polls at once; this keeps
+  // that poll off the network until the penalty is over.
+  let rateLimitedUntil = 0
+  // The folder the last poll read. Another one is another account: whatever the endpoint or the
+  // keychain said about the old one (a penalty, an empty item) says nothing about it.
+  let lastDir: string | null = null
   // The last good snapshot survives a server restart, so a restart into a rate-limited
   // endpoint still shows the per-model gauges, flagged as stale, instead of nothing.
   const loaded: Promise<void> = filePath
@@ -141,6 +215,14 @@ export function createClaudeAccountProvider(opts: {
       // nothing is sent. The widget shows its last snapshot, if it ever had one, and says why.
       if (!enabled()) return fail('disabled')
       const t = now()
+      const dir = accountDir()
+      if (lastDir !== null && dir !== lastDir) {
+        noTokenStreak = 0
+        nextTokenAttempt = 0
+        rateLimitedUntil = 0
+        provider.intervalMs = BASE_INTERVAL_MS
+      }
+      lastDir = dir
       // Reading the keychain can prompt or simply be pointless when Claude Code
       // is not installed; after a few empty reads, back off to one probe an hour.
       if (noTokenStreak >= NO_TOKEN_STREAK && t < nextTokenAttempt) return fail('no-token')
@@ -151,6 +233,7 @@ export function createClaudeAccountProvider(opts: {
         return fail('no-token')
       }
       noTokenStreak = 0
+      if (t < rateLimitedUntil) return fail('rate-limited')
       let res: Response
       try {
         res = await fetchFn(USAGE_URL, { headers: { Authorization: `Bearer ${token}`, 'anthropic-beta': 'oauth-2025-04-20', 'User-Agent': USER_AGENT, Accept: 'application/json' }, signal: AbortSignal.timeout(10_000) })
@@ -158,12 +241,22 @@ export function createClaudeAccountProvider(opts: {
       if (!res.ok) {
         // Release the socket: nothing reads the error body.
         await res.body?.cancel().catch(() => { /* already closed */ })
-        if (res.status === 401) return fail('unauthorized')
+        if (res.status === 401) {
+          // A 429's long cadence was about a token that worked; this one does not, and the next
+          // sign-in should be seen at the normal pace.
+          provider.intervalMs = BASE_INTERVAL_MS
+          return fail('unauthorized')
+        }
         if (res.status === 429) {
-          // Other clients share this quota (every Claude Code session polls it), so a 429 is
-          // usually a busy minute: come back soon, as the server asks, instead of in five minutes.
-          const retryAfter = Number(res.headers.get('retry-after')) * 1000
-          provider.intervalMs = Math.min(RATE_LIMITED_MAX_MS, Math.max(RATE_LIMITED_MIN_MS, Number.isFinite(retryAfter) ? retryAfter : 0))
+          // Other clients share this quota (every Claude Code session polls it), so a 429 can be a
+          // busy minute or a long penalty: come back when the server says, and no sooner. Without
+          // a usable header, keep the normal cadence rather than guess at a shorter one.
+          const header = res.headers.get('retry-after')
+          const retryAfter = header ? Number(header) * 1000 : NaN
+          provider.intervalMs = Number.isFinite(retryAfter)
+            ? Math.min(RATE_LIMITED_MAX_MS, Math.max(RATE_LIMITED_MIN_MS, retryAfter))
+            : BASE_INTERVAL_MS
+          rateLimitedUntil = t + provider.intervalMs
           return fail('rate-limited')
         }
         return fail(`http-${res.status}`)

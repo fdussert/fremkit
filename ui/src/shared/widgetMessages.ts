@@ -51,6 +51,37 @@ export function imageTarget(message: { url?: unknown }, settings: unknown): stri
   return settingsHold(settings, url) ? url : null
 }
 
+/** How an `icon` setting names an icon of the user's library: `file:` and the file's name. */
+export const LIBRARY_ICON_PREFIX = 'file:'
+/** The library's own rule for a name (`isSafeTileIconName` on the server): one file, never a path. */
+const LIBRARY_ICON_NAME_RE = /^[A-Za-z0-9._-]+\.(png|webp|svg)$/
+
+/**
+ * The library icon a `fremkit:library-icon` message asks for, as its file name, or null. Only one
+ * the widget's own settings name, as `file:<name>`: a widget does not get to browse the library.
+ */
+export function libraryIconTarget(message: { value?: unknown }, settings: unknown): string | null {
+  const value = nonEmptyString(message.value)?.trim()
+  if (!value?.startsWith(LIBRARY_ICON_PREFIX)) return null
+  const name = value.slice(LIBRARY_ICON_PREFIX.length)
+  if (name.length > 200 || name.startsWith('.') || name.includes('..') || !LIBRARY_ICON_NAME_RE.test(name)) return null
+  return settingsHold(settings, value) ? name : null
+}
+
+/**
+ * The address a `fremkit:gif` message asks the host for, or null.
+ *
+ * The server only answers for a GIF it already keeps, so this is shape alone: an `https:` link
+ * of a sane length, which is what every Giphy address and every saved board link is.
+ */
+export function gifTarget(message: { url?: unknown }): string | null {
+  const url = nonEmptyString(message.url)
+  if (!url || url.length > 2048) return null
+  let parsed: URL
+  try { parsed = new URL(url) } catch { return null }
+  return parsed.protocol === 'https:' ? url : null
+}
+
 function settingsHold(value: unknown, wanted: string): boolean {
   if (typeof value === 'string') return value.trim() === wanted
   if (Array.isArray(value)) return value.some((v) => settingsHold(v, wanted))
@@ -233,3 +264,27 @@ export function mayListApps(subscriptions: string[] | undefined): boolean {
 
 /** Dispatched on the host window when a widget asks, through the bridge, to hold swipes off. */
 export const HOLD_SWIPE_EVENT = 'fremkit:hold-swipe'
+
+/**
+ * Dispatched on the host window, as a `CustomEvent` whose detail is the direction, when a widget's
+ * bridge saw a finger swipe across it. The dashboard turns the page; the admin does not listen.
+ */
+export const WIDGET_SWIPE_EVENT = 'fremkit:widget-swipe'
+
+/** The direction a `fremkit:swipe` message asks for: 1 (next page) or -1 (previous); null for anything else. */
+export function swipeDelta(m: unknown): 1 | -1 | null {
+  const d = (m as { delta?: unknown } | null)?.delta
+  return d === 1 || d === -1 ? d : null
+}
+
+/** Longest title note the host shows; the title bar is one line and the note follows the title. */
+export const TITLE_NOTE_MAX = 24
+
+/**
+ * What the host shows of a widget's title note: a string, on one line, cut to `TITLE_NOTE_MAX`.
+ * Anything else clears it. Shown as text by Vue, never as markup.
+ */
+export function cleanTitleNote(text: unknown): string {
+  if (typeof text !== 'string') return ''
+  return text.replace(/[\u0000-\u001f\u007f\s]+/g, ' ').trim().slice(0, TITLE_NOTE_MAX)
+}

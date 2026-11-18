@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { FrameTrust, helloNonce, appIconTarget, faviconTarget, fetchTarget, imageTarget, mayListApps, nonEmptyString, stampInstance } from '../src/shared/widgetMessages'
+import { FrameTrust, helloNonce, appIconTarget, cleanTitleNote, faviconTarget, fetchTarget, gifTarget, imageTarget, libraryIconTarget, mayListApps, nonEmptyString, stampInstance } from '../src/shared/widgetMessages'
 
 describe('nonEmptyString', () => {
   it('accepts a non-empty string and nothing else', () => {
@@ -77,6 +77,19 @@ describe('faviconTarget', () => {
   })
 })
 
+describe('gifTarget', () => {
+  it('keeps an https address whole', () => {
+    expect(gifTarget({ url: 'https://example.com/a.gif' })).toBe('https://example.com/a.gif')
+  })
+  it('refuses anything that is not an https link of a sane length', () => {
+    const long = 'https://example.com/' + 'a'.repeat(2048)
+    for (const url of ['http://example.com/a.gif', 'javascript:alert(1)', 'data:image/gif;base64,R0lG', 'not a url', '', long, 42, null, undefined]) {
+      expect(gifTarget({ url }), JSON.stringify(url)).toBeNull()
+    }
+    expect(gifTarget({})).toBeNull()
+  })
+})
+
 describe('imageTarget', () => {
   const settings = { buttons: [{ label: 'Mail', icon: ' https://cdn.example.com/a/mail.ico ' }], columns: 4 }
   it('keeps the whole address when the widget settings hold it', () => {
@@ -87,6 +100,21 @@ describe('imageTarget', () => {
     expect(imageTarget({ url: 'https://evil.example.net/x.png' }, settings)).toBeNull()
     expect(imageTarget({ url: 'file:///etc/hosts' }, { p: 'file:///etc/hosts' })).toBeNull()
     expect(imageTarget({ url: 42 }, settings)).toBeNull()
+  })
+})
+
+describe('libraryIconTarget', () => {
+  const settings = { buttons: [{ label: 'Prod', items: [{ icon: ' file:12-pipeline.svg ' }] }] }
+  it('gives the file name of a library icon the widget settings name', () => {
+    expect(libraryIconTarget({ value: 'file:12-pipeline.svg' }, settings)).toBe('12-pipeline.svg')
+  })
+  it('refuses an icon the settings do not name, a path, and anything not an icon file', () => {
+    expect(libraryIconTarget({ value: 'file:13-other.svg' }, settings)).toBeNull()
+    expect(libraryIconTarget({ value: '12-pipeline.svg' }, settings)).toBeNull()
+    for (const value of ['file:../secrets.json', 'file:a/b.svg', 'file:.hidden.svg', 'file:x.html', 'file:']) {
+      expect(libraryIconTarget({ value }, { icon: value }), value).toBeNull()
+    }
+    expect(libraryIconTarget({ value: 42 }, settings)).toBeNull()
   })
 })
 
@@ -195,5 +223,16 @@ describe('appIconTarget', () => {
     for (const bundleId of ['', '../config', 'https://evil.example/', '/com.apple.mail', 'a'.repeat(129), 42, null]) {
       expect(appIconTarget({ bundleId })).toBeNull()
     }
+  })
+})
+
+describe('cleanTitleNote', () => {
+  it('keeps a short string on one line and cuts a long one', () => {
+    expect(cleanTitleNote('18')).toBe('18')
+    expect(cleanTitleNote('  a\nb\tc  ')).toBe('a b c')
+    expect(cleanTitleNote('x'.repeat(40))).toBe('x'.repeat(24))
+  })
+  it('clears on anything that is not a string', () => {
+    for (const v of [undefined, null, 18, {}, ['18']]) expect(cleanTitleNote(v)).toBe('')
   })
 })

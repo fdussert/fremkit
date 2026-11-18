@@ -105,6 +105,13 @@ describe('mergeLayout', () => {
     expect(desk.pages[0].items).toHaveLength(2)
   })
 
+  it('keeps a bar widget\'s popover and its shape', () => {
+    const cfg = mine()
+    const f = file('screen', [edgeScreen({ nav: [{ widget: 'w3', slot: 'right', popup: true, popupSize: 'large' }] })])
+    mergeLayout(cfg, f, { screenId: 'edge', pageIndex: 0 }, choices(), MANIFESTS)
+    expect(cfg.screens[2].nav[0]).toMatchObject({ slot: 'right', popup: true, popupSize: 'large' })
+  })
+
   it('replaces the current screen in place: same id, same grid, the file’s pages and bar', () => {
     const cfg = mine()
     mergeLayout(cfg, file('screen'), { screenId: 'edge', pageIndex: 0 }, choices({ mode: 'replace' }), MANIFESTS)

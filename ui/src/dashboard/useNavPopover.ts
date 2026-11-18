@@ -31,12 +31,13 @@ const viewportProject = (rect: DOMRect) => ({
  * The single popover of one screen: opening, closing and its idle timeout. Only one is ever up,
  * so a second bar widget tapped while another is open simply replaces it.
  *
- * It closes on a second tap on the same compact frame, on a tap anywhere outside it, and 15 s
- * after it opened. The window listener is capture-phase so it runs before anything in the page,
- * but it only closes the popover for taps landing outside both the popover and the frame that
- * opened it — a tap on the widget inside still reaches the widget. Taps inside the widget's own
- * iframe never reach this document at all (it is sandboxed into an opaque origin), which is
- * exactly what keeps them from closing the popover; they cannot restart the timer either.
+ * It closes on a second tap on the same compact frame, on a tap anywhere outside it, and after
+ * 15 s with nothing touching it. The window listener is capture-phase so it runs before anything
+ * in the page, but it only closes the popover for taps landing outside both the popover and the
+ * frame that opened it — a tap on the widget inside still reaches the widget. Taps inside the
+ * widget's own iframe never reach this document at all (it is sandboxed into an opaque origin),
+ * which is exactly what keeps them from closing the popover; the bridge reports them instead
+ * (`fremkit:activity`, touches, drags and scrolls), and the popover passes that to `keepAlive`.
  */
 export function useNavPopover(host: PopoverHost = {}) {
   const project = host.project ?? viewportProject

@@ -44,6 +44,11 @@ const MANIFESTS: Record<string, WidgetManifest> = {
     settingsSchema: {
       items: { type: 'list', label: 'Items', itemSchema: { kind: { type: 'enum', label: 'Kind', options: ['app', 'url'] }, target: { type: 'string', label: 'Target' } } },
       flags: { type: 'list', label: 'Flags', itemSchema: { on: { type: 'boolean', label: 'On' } } },
+      folders: { type: 'list', label: 'Folders', itemSchema: {
+        on: { type: 'boolean', label: 'On' },
+        inner: { type: 'list', label: 'Inner', itemSchema: { on: { type: 'boolean', label: 'On' }, target: { type: 'string', label: 'Target' }, icon: { type: 'icon', label: 'Icon' },
+          deep: { type: 'list', label: 'Deep', itemSchema: { on: { type: 'boolean', label: 'On' } } } } },
+      } },
     },
   }),
 }
@@ -115,6 +120,18 @@ describe('classifySetting', () => {
     expect(classifySetting(s.flags, [{ on: true }])).toBe('keep')
     expect(classifySetting(s.flags, [{ on: true, extra: 'x' }])).toBe('invalid')
   })
+  it('reads the list an item holds by its own fields', () => {
+    const s = MANIFESTS.shortcuts.settingsSchema
+    expect(classifySetting(s.folders, [{ on: true, inner: [{ on: false }] }])).toBe('keep')
+    expect(classifySetting(s.folders, [{ on: true, inner: [{ target: 'x' }] }])).toBe('optional')
+    expect(classifySetting(s.folders, [{ inner: [{ extra: 1 }] }])).toBe('invalid')
+    expect(classifySetting(s.folders, [{ inner: 'x' }])).toBe('invalid')
+    expect(classifySetting(s.folders, [{ inner: [{ icon: 'file:1-x.svg' }] }])).toBe('optional')
+    expect(classifySetting(s.folders, [{ inner: [{ icon: 3 }] }])).toBe('invalid')
+    expect(classifySetting(s.folders, [{ inner: [{ deep: [{ on: true }] }] }])).toBe('keep')
+    expect(classifySetting(s.folders, [{ inner: [{ deep: [{ target: 'x' }] }] }])).toBe('invalid')
+    expect(classifySetting(s.folders, [{ constructor: [] }])).toBe('invalid')
+  })
 })
 
 describe('buildLayout', () => {
@@ -158,7 +175,22 @@ describe('buildLayout', () => {
     expect(report.removed).toContainEqual(expect.objectContaining({ instanceId: 'sc-1', key: 'items', reason: 'personal' }))
   })
 
-  it('carries an empty free-text field as is, without asking', async () => {
+  it('leaves the GIF collection home: it travels in backups and history only', async () => {
+  const config = ConfigSchema.parse({
+    ...sampleConfig(),
+    gifs: { groups: [{ id: 'reactions1', name: 'Reactions', items: [
+      { id: 'gifone1', kind: 'giphy', giphyId: 'abc123', label: 'Nope' },
+      { id: 'giftwo2', kind: 'link', url: 'https://example.com/party.gif' },
+    ] }] },
+  })
+  expect(config.gifs?.groups).toHaveLength(1)
+  const { file } = await buildLayout(deps(config), { scope: 'setup' })
+  expect(file).not.toHaveProperty('gifs')
+  const text = JSON.stringify(file)
+  for (const banned of ['Reactions', 'abc123', 'party.gif', 'Nope']) expect(text).not.toContain(banned)
+})
+
+it('carries an empty free-text field as is, without asking', async () => {
     const config = sampleConfig()
     config.widgets['my-clock'].settings.label = ''
     const { file, report } = await buildLayout(deps(config), { scope: 'setup' })
@@ -183,6 +215,16 @@ describe('buildLayout', () => {
     expect(screen.file.screens[0].nav).toEqual([{ widget: 'w3', slot: 'right' }])
     expect(screen.filename).toBe('xeneon-edge.fremkit-layout.json')
     await expect(buildLayout(deps(sampleConfig()), { scope: 'screen', screenId: 'nope' })).rejects.toThrow()
+  })
+
+  it('exports a bar widget\'s popover and its shape, and no shape without the popover', async () => {
+    const config = sampleConfig()
+    config.screens[0].nav = [{ instanceId: 'sc-1', slot: 'right', popup: true, popupSize: 'wide' }]
+    expect((await buildLayout(deps(config), { scope: 'screen', screenId: 'edge' })).file.screens[0].nav)
+      .toEqual([{ widget: 'w3', slot: 'right', popup: true, popupSize: 'wide' }])
+    config.screens[0].nav = [{ instanceId: 'sc-1', slot: 'right', popupSize: 'wide' }]
+    expect((await buildLayout(deps(config), { scope: 'screen', screenId: 'edge' })).file.screens[0].nav)
+      .toEqual([{ widget: 'w3', slot: 'right' }])
   })
 
   it('leaves out images over the size cap', async () => {

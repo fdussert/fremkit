@@ -176,6 +176,13 @@ export const MAX_NAV_WIDGETS = 12
 
 /** Which side of the centred dots a bar widget sits on. */
 export const NavSlotSchema = z.enum(['left', 'right'])
+
+/**
+ * The shape of a bar widget's popover, against the widget's default tile size: `wide` is twice as
+ * wide and no taller than the tile, `large` half again as wide and twice as tall. Absent is the
+ * standard shape, as wide as the tile and half again as tall.
+ */
+export const PopupSizeSchema = z.enum(['wide', 'large'])
 export type NavSlot = z.infer<typeof NavSlotSchema>
 
 /**
@@ -192,6 +199,8 @@ export const NavItemSchema = z.object({
    * no popover, so the touch reaches the compact widget itself, which is the default everywhere.
    */
   popup: z.boolean().optional(),
+  /** Read only while `popup` is on. */
+  popupSize: PopupSizeSchema.optional(),
 })
 
 /**
@@ -371,6 +380,14 @@ export const PrivacySchema = z.object({
    */
   claudeAccountUsage: z.boolean().default(false),
   /**
+   * Whose usage that is when Claude Code runs from several configuration folders (profiles, each
+   * signed in to its own account): `auto` takes the token refreshed last, which follows whichever
+   * profile was used last; an absolute folder reads that folder's token only.
+   */
+  claudeAccountDir: z.string().max(4096)
+    .refine((v) => v === 'auto' || v.startsWith('/'), { message: 'auto or an absolute folder' })
+    .default('auto'),
+  /**
    * Let an account provider (Claude, Codex, …) put the account's e-mail address in what it
    * publishes. Off, the field is never in the snapshot: anything on a channel reaches every
    * widget subscribed to it, a third-party one with network access included, and the Edge sits
@@ -467,6 +484,32 @@ export const LabsSchema = z.object({
 export type Labs = z.infer<typeof LabsSchema>
 
 /**
+ * The GIF board: one collection of GIFs per Mac, sorted into named groups, each item a Giphy GIF
+ * (by its id, never its URL) or an `https:` link to a GIF elsewhere. Absent in every file written
+ * before it existed, which means an empty board; additive, so no version bump.
+ */
+const GifIdSchema = z.string().regex(/^[a-z0-9]{6,24}$/)
+const GifLabelSchema = z.string().max(40).optional()
+const isHttpsUrl = (s: string) => {
+  try { return new URL(s).protocol === 'https:' } catch { return false }
+}
+export const GifItemSchema = z.discriminatedUnion('kind', [
+  z.object({ id: GifIdSchema, kind: z.literal('giphy'), giphyId: z.string().regex(/^[A-Za-z0-9]{1,64}$/), label: GifLabelSchema }),
+  z.object({ id: GifIdSchema, kind: z.literal('link'), url: z.string().max(2048).refine(isHttpsUrl), label: GifLabelSchema }),
+])
+export const GifGroupSchema = z.object({
+  id: GifIdSchema,
+  name: z.string().trim().min(1).max(40),
+  items: z.array(GifItemSchema).max(200),
+})
+export const GifBoardSchema = z.object({
+  groups: z.array(GifGroupSchema).max(30),
+})
+export type GifItem = z.infer<typeof GifItemSchema>
+export type GifGroup = z.infer<typeof GifGroupSchema>
+export type GifBoard = z.infer<typeof GifBoardSchema>
+
+/**
  * The version a config file written today carries.
  *
  * v1 → v2 halved the cell and doubled every coordinate. v2 → v3 moved the Homey connection from
@@ -482,6 +525,8 @@ export const ConfigSchema = z.object({
   theme: ThemeIdSchema.default(BUILTIN_THEME),
   /** A night theme and when it takes over. Absent in every file written before it existed: one theme. */
   themeSchedule: ThemeScheduleSchema.optional(),
+  /** The GIF board's collection; see `GifBoardSchema`. Absent: no GIF saved yet. */
+  gifs: GifBoardSchema.optional(),
   connections: z.array(ConnectionSchema).default([]),
   secrets: SecretsSchema.prefault({}),
   /** Language of the admin and of the screen. Absent in every file written before it existed. */
@@ -510,7 +555,7 @@ export const DEFAULT_CONFIG: Config = {
   connections: [],
   secrets: { backend: defaultSecretsBackend() },
   locale: defaultLocale(),
-  privacy: { claudeAccountUsage: false, showAccountEmail: false, codexAccount: false, codexHistorySources: [], macmonTemperature: false },
+  privacy: { claudeAccountUsage: false, claudeAccountDir: 'auto', showAccountEmail: false, codexAccount: false, codexHistorySources: [], macmonTemperature: false },
   labs: { fremdev: false },
   marketplace: { installed: {} },
   widgets: {

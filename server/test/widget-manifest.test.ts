@@ -144,10 +144,39 @@ describe('ManifestSchema', () => {
       expect(withSetting({ type: 'list', label: 'Villes' }).success).toBe(false)
       expect(withSetting({ type: 'list', label: 'Villes', itemSchema: {} }).success).toBe(false)
     })
-    it('refuses a nested list, and any item type the row cannot render inline', () => {
+    it('accepts an icon item field', () => {
+      expect(withSetting({ type: 'list', label: 'Boutons', itemSchema: { icon: { type: 'icon', label: 'Icône' } } }).success).toBe(true)
+    })
+    it('refuses any item type the row cannot render inline, and a list item with no fields', () => {
       for (const type of ['list', 'color', 'connection', 'apps']) {
         expect(withSetting({ type: 'list', label: 'Villes', itemSchema: { x: { type, label: 'X' } } }).success).toBe(false)
       }
+    })
+    it('accepts one list inside an item, two levels deep at most, with fields shown on some items only', () => {
+      const plain = { label: { type: 'string', label: 'L' } }
+      const list = (itemSchema: Record<string, unknown>) => withSetting({ type: 'list', label: 'Boutons', itemSchema })
+      expect(list({
+        kind: { type: 'enum', label: 'K', options: ['app', 'group'] },
+        target: { type: 'string', label: 'T', showWhen: { kind: ['app', 'url'] } },
+        items: { type: 'list', label: 'I', max: 12, summary: ['label'], showWhen: { kind: 'group' }, itemSchema: plain },
+      }).success).toBe(true)
+      // One more level inside it, and no further.
+      expect(list({ items: { type: 'list', label: 'I', itemSchema: { more: { type: 'list', label: 'M', itemSchema: plain } } } }).success).toBe(true)
+      expect(list({ items: { type: 'list', label: 'I', itemSchema: { more: { type: 'list', label: 'M', itemSchema: { deep: { type: 'list', label: 'D', itemSchema: plain } } } } } }).success).toBe(false)
+      expect(list({ items: { type: 'list', label: 'I', itemSchema: { a: { type: 'list', label: 'A', itemSchema: plain }, b: { type: 'list', label: 'B', itemSchema: plain } } } }).success).toBe(false)
+      // Never two side by side, never without fields.
+      expect(list({ a: { type: 'list', label: 'A', itemSchema: plain }, b: { type: 'list', label: 'B', itemSchema: plain } }).success).toBe(false)
+      expect(list({ items: { type: 'list', label: 'I' } }).success).toBe(false)
+      expect(list({ items: { type: 'list', label: 'I', itemSchema: plain, summary: ['nope'] } }).success).toBe(false)
+      // A plain field takes none of a list's keys.
+      expect(list({ x: { type: 'string', label: 'X', max: 3 } }).success).toBe(false)
+    })
+    it('refuses a showWhen that names no sibling field, or the field itself', () => {
+      const list = (itemSchema: Record<string, unknown>) => withSetting({ type: 'list', label: 'Boutons', itemSchema })
+      expect(list({ x: { type: 'string', label: 'X', showWhen: { kind: 'app' } } }).success).toBe(false)
+      expect(list({ x: { type: 'string', label: 'X', showWhen: { x: 'a' } } }).success).toBe(false)
+      expect(list({ x: { type: 'string', label: 'X', showWhen: {} }, y: { type: 'string', label: 'Y', showWhen: { x: [] } } }).success).toBe(false)
+      expect(list({ g: { type: 'list', label: 'G', itemSchema: { y: { type: 'string', label: 'Y', showWhen: { kind: 'a' } } } } }).success).toBe(false)
     })
     it('accepts suggest on a string item field, with an optional sibling condition', () => {
       const list = (x: unknown) => withSetting({ type: 'list', label: 'Boutons', itemSchema: { x } })
@@ -159,6 +188,18 @@ describe('ManifestSchema', () => {
       expect(list({ type: 'string', label: 'Cible', suggest: 'everything' }).success).toBe(false)
       expect(list({ type: 'number', label: 'Rang', suggest: 'apps' }).success).toBe(false)
       expect(list({ type: 'string', label: 'Cible', suggestWhen: { kind: 'app' } }).success).toBe(false)
+    })
+    it('accepts a summary naming item fields, and a grid by count or by a number setting', () => {
+      const parse = (cities: Record<string, unknown>, more: Record<string, unknown> = {}) =>
+        ManifestSchema.safeParse({ ...base, settingsSchema: { cities: { type: 'list', label: 'Boutons', itemSchema: { label: { type: 'string', label: 'L' } }, ...cities }, ...more } })
+      expect(parse({ summary: ['label'] }).success).toBe(true)
+      expect(parse({ grid: 4 }).success).toBe(true)
+      expect(parse({ grid: 'columns' }, { columns: { type: 'number', label: 'Colonnes', default: 4 } }).success).toBe(true)
+      expect(parse({ summary: ['nope'] }).success).toBe(false)
+      expect(parse({ summary: [] }).success).toBe(false)
+      expect(parse({ grid: 0 }).success).toBe(false)
+      expect(parse({ grid: 'columns' }).success).toBe(false)
+      expect(parse({ grid: 'columns' }, { columns: { type: 'string', label: 'Colonnes' } }).success).toBe(false)
     })
     it('refuses a max that is not a positive whole number', () => {
       for (const max of [0, -1, 1.5, '6']) {

@@ -195,12 +195,12 @@ describe('WidgetCatalog', () => {
     const cat = new WidgetCatalog(SHIPPED)
     await cat.scan()
     expect(cat.errors).toEqual([])
-    expect([...cat.manifests.keys()]).toEqual(expect.arrayContaining(['clock', 'spotify', 'volume', 'shortcuts', 'clipboard', 'service-status', 'weather']))
+    expect([...cat.manifests.keys()]).toEqual(expect.arrayContaining(['clock', 'spotify', 'volume', 'shortcuts', 'clipboard', 'service-status', 'weather', 'gif-board']))
     const shortcuts = cat.get('shortcuts')!
     expect(shortcuts.commands).toEqual(['shortcuts'])
     expect(shortcuts.minSize).toEqual([8, 4])
     expect(shortcuts.defaultSize).toEqual([16, 8])
-    expect(Object.keys(shortcuts.settingsSchema.buttons.itemSchema ?? {})).toEqual(['label', 'kind', 'target', 'icon'])
+    expect(Object.keys(shortcuts.settingsSchema.buttons.itemSchema ?? {})).toEqual(['label', 'kind', 'target', 'profile', 'icon', 'items'])
     const status = cat.get('service-status')!
     expect(status.subscriptions).toEqual([])
     expect(status.commands).toEqual(['service-status'])

@@ -1,4 +1,4 @@
-import type { Config, ConnectionSummary, ExportPreview, ImportPreview, LayoutScope, ConnectionTypeInfo, InstalledAppInfo, MarketplaceResponse, PickOption, WidgetPermissionSet, WidgetsResponse } from './types'
+import type { Config, ConnectionSummary, ExportPreview, ImportPreview, LayoutScope, ConnectionTypeInfo, InstalledAppInfo, BrowserProfileInfo, MarketplaceResponse, PickOption, WidgetPermissionSet, WidgetsResponse } from './types'
 
 /**
  * The install was refused because the package asks for something the dialog did not show.
@@ -137,8 +137,28 @@ async function empty(res: Response): Promise<void> {
   throw Object.assign(new Error(msg), { status: res.status }) satisfies HttpFailure
 }
 
+/** One Giphy search result, as `GET /api/gifs/search` answers it (`server/src/gifs/giphy.ts`). */
+export interface GifSearchResult { giphyId: string; title: string; thumb: string; width: number; height: number }
+export type GifSearchError = 'unconfigured' | 'unauthorized' | 'rateLimited' | 'unreachable'
+export type GifSearchResponse =
+  | { ok: true; results: GifSearchResult[]; total: number }
+  | { ok: false; error: GifSearchError }
+
+/** A Claude Code configuration folder and how its account is named, never by its address. */
+/** `expired`: the folder's sign-in has lapsed (no Claude Code session ran from it lately). */
+export interface ClaudeAccount { dir: string; plan: string | null; org: string | null; expired?: boolean }
+
 export const api = {
   getConfig: () => fetch('/api/config').then((r) => json<Config>(r)),
+  /** The Claude Code configuration folders seen on this Mac, for the account usage's picker. */
+  getClaudeAccounts: () => fetch('/api/claude/accounts').then((r) => json<{ accounts: ClaudeAccount[] }>(r)),
+  /** A Giphy search made by the server with the Giphy connection's key; `q` has 2 characters or more. */
+  searchGifs: (q: string, offset = 0) =>
+    fetch(`/api/gifs/search?${new URLSearchParams({ q, offset: String(offset) }).toString()}`).then((r) => json<GifSearchResponse>(r)),
+  /** Downloads a pasted GIF link into the cache; `error` is the server's translated reason. */
+  checkGif: (url: string) =>
+    fetch('/api/gifs/check', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ url }) })
+      .then((r) => json<{ ok: true } | { ok: false; error: string }>(r)),
   /** The redacted report for a bug issue, as Markdown text (see `server/src/diagnostics`). */
   getDiagnostics: async (): Promise<string> => {
     const res = await fetch('/api/diagnostics', { cache: 'no-store' })
@@ -236,6 +256,7 @@ export const api = {
 
   /** The applications installed on this machine, for the fields a manifest marks `suggest: apps`. */
   getInstalledApps: () => fetch('/api/apps/installed').then((r) => json<InstalledAppInfo[]>(r)),
+  getBrowserProfiles: () => fetch('/api/browsers/profiles').then((r) => json<BrowserProfileInfo[]>(r)),
 
   /**
    * Downloads the whole dashboard as a zip.

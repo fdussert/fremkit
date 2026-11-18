@@ -205,7 +205,10 @@ export async function buildLayout(deps: ShareDeps, req: ExportRequest, locale?: 
     report.pages += pages.length
     const nav = page ? [] : screen.nav
       .filter((x) => Object.hasOwn(config.widgets, x.instanceId))
-      .map((x) => ({ widget: keyOf(x.instanceId), slot: x.slot, ...(x.popup ? { popup: true } : {}) }))
+      .map((x) => ({
+        widget: keyOf(x.instanceId), slot: x.slot,
+        ...(x.popup ? { popup: true, ...(x.popupSize ? { popupSize: x.popupSize } : {}) } : {}),
+      }))
     screens.push({
       name: nameOr(screen.name, 'screen', si + 1),
       kind: screen.kind,

@@ -1,6 +1,6 @@
 { "id": "disk-map",
   "name": { "fr": "Carte du disque", "en": "Disk map" },
-  "version": "1.0.1", "preview": "preview.webp",
+  "version": "1.0.2", "preview": "preview.webp",
   "description": { "fr": "Ce qui occupe le disque : les dossiers en anneaux, touchez pour descendre, appui long pour montrer dans le Finder. Rien n’est jamais supprimé.",
                    "en": "What fills the disk: folders as rings, tap to drill in, long press to show in Finder. Nothing is ever deleted." },
   "category": "system",

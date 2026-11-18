@@ -31,6 +31,11 @@ const persistedSchema = z.object({
 export interface ClaudeUsageOptions {
   filePath: string
   transcriptsDir: string
+  /**
+   * More transcript trees, asked on every refresh: the `projects` folder of each configuration
+   * folder Claude Code sessions were seen running from (`configDirs.ts`).
+   */
+  moreTranscriptsDirs?: () => string[]
   now?: () => number
   staleMs?: number
   /** Debounce window between two persists; 0 writes on every event. */
@@ -44,8 +49,8 @@ export class ClaudeUsage {
   private today: TodayTokens = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, messages: 0, sessions: 0, hourly: new Array(24).fill(0) }
   private readonly now: () => number
   private readonly staleMs: number
-  /** One long-lived scanner: its per-file cache is what makes the 60 s refresh cheap. */
-  private readonly scanner: TranscriptScanner
+  /** One long-lived scanner per tree: its per-file cache is what makes the 60 s refresh cheap. */
+  private readonly scanners = new Map<string, TranscriptScanner>()
   private readonly persistMs: number
   private readonly writeFn: (path: string, data: string) => Promise<void>
   private dirty = false
@@ -58,7 +63,6 @@ export class ClaudeUsage {
     this.staleMs = opts.staleMs ?? STALE_MS
     this.persistMs = opts.persistMs ?? PERSIST_MS
     this.writeFn = opts.writeFn ?? ((path, data) => writeFile(path, data, { encoding: 'utf8', mode: 0o600 }))
-    this.scanner = createTranscriptScanner(opts.transcriptsDir)
   }
 
   async load(): Promise<void> {
@@ -91,7 +95,19 @@ export class ClaudeUsage {
   }
 
   async refreshToday(): Promise<void> {
-    this.today = await this.scanner.scanToday(new Date(this.now()))
+    const roots = new Set([this.opts.transcriptsDir, ...(this.opts.moreTranscriptsDirs?.() ?? [])])
+    for (const root of this.scanners.keys()) if (!roots.has(root)) this.scanners.delete(root)
+    const now = new Date(this.now())
+    const total: TodayTokens = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, messages: 0, sessions: 0, hourly: new Array(24).fill(0) }
+    for (const root of roots) {
+      let scanner = this.scanners.get(root)
+      if (!scanner) { scanner = createTranscriptScanner(root); this.scanners.set(root, scanner) }
+      const t = await scanner.scanToday(now)
+      total.input += t.input; total.output += t.output; total.cacheRead += t.cacheRead; total.cacheWrite += t.cacheWrite
+      total.messages += t.messages; total.sessions += t.sessions
+      t.hourly.forEach((n, h) => { total.hourly[h] += n })
+    }
+    this.today = total
   }
 
   snapshot(): UsageSnapshot {

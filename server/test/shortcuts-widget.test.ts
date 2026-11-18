@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { readFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 
@@ -27,6 +27,9 @@ interface Loaded {
   /** Hands the widget one answer from the dock channel, as the host delivers it. */
   publishDock(data: unknown): void
   iconRequests(): string[]
+  /** Every command the widget sent, as `[channel, command, payload]`. */
+  sent(): unknown[][]
+  libraryRequests(): string[]
 }
 
 async function loadWidget(installed: unknown, settings: Record<string, unknown>): Promise<Loaded> {
@@ -56,6 +59,8 @@ async function loadWidget(installed: unknown, settings: Record<string, unknown>)
   }
   const dockSubscribers: ((data: unknown) => void)[] = []
   const iconRequests: string[] = []
+  const sent: unknown[][] = []
+  const libraryRequests: string[] = []
   const document = {
     documentElement: node('html'),
     getElementById: byId,
@@ -70,7 +75,7 @@ async function loadWidget(installed: unknown, settings: Record<string, unknown>)
       return () => {}
     },
     onLocale: () => {}, onResize: () => {}, onSettings: () => {},
-    sendCommand: () => Promise.resolve({ ok: true }),
+    sendCommand: (...args: unknown[]) => { sent.push(args); return Promise.resolve({ ok: true }) },
     el: (tag: string, className: string, text?: unknown) => {
       const n = node(tag)
       n.className = className ?? ''
@@ -81,6 +86,10 @@ async function loadWidget(installed: unknown, settings: Record<string, unknown>)
     esc: (value: unknown) => String(value ?? ''),
     color: (_value: unknown, fallback: string) => fallback,
     installedApps: () => (installed === REFUSED ? Promise.reject(new Error('unavailable')) : Promise.resolve(installed)),
+    libraryIcon: (value: string) => { libraryRequests.push(value); return Promise.resolve('data:image/svg+xml;base64,PHN2Zy8+') },
+    // A link's site icon never arrives here: the button keeps its glyph.
+    favicon: () => new Promise(() => {}),
+    image: () => new Promise(() => {}),
     appIcon: (bundleId: string) => { iconRequests.push(bundleId); return Promise.resolve('data:image/png;base64,aWNvbg==') },
   }
   // The widget refreshes the list on a timer; a test wants the one call it makes on startup.
@@ -91,6 +100,8 @@ async function loadWidget(installed: unknown, settings: Record<string, unknown>)
     artwork: () => grid().children[0]?.children[0],
     publishDock: (data) => dockSubscribers.forEach((cb) => cb(data)),
     iconRequests: () => iconRequests,
+    sent: () => sent,
+    libraryRequests: () => libraryRequests,
   }
 }
 
@@ -133,5 +144,128 @@ describe('the shortcuts widget application icons', () => {
     await Promise.resolve()
     expect(loaded.artwork()?.src).toBe('data:image/png;base64,aWNvbg==')
     expect(loaded.iconRequests()).toContain('com.apple.Terminal')
+  })
+})
+
+describe('pressing a shortcuts button', () => {
+  it('names the button by its place in the saved list, a half-typed one before it included', async () => {
+    // The host reads the saved list by index; the skipped row must not shift the ones after it.
+    const loaded = await loadWidget([], { buttons: [{ label: 'Unfinished', kind: 'app', target: '' }, terminal] })
+    expect(loaded.buttons()).toHaveLength(1)
+    ;(loaded.buttons()[0] as unknown as { onclick: () => void }).onclick()
+    expect(loaded.sent()[0]).toEqual(['shortcuts', 'open', { instanceId: 'shortcuts-1', index: 1 }])
+  })
+})
+
+describe('a group of shortcuts', () => {
+  afterEach(() => { vi.useRealTimers() })
+  const groups = {
+    buttons: [
+      terminal,
+      { label: 'Prod', kind: 'group', target: '', items: [
+        { label: 'Deploy', kind: 'url', target: 'https://example.com/deploy' },
+        { label: 'Unfinished', kind: 'url', target: '' },
+        { label: 'Logs', kind: 'url', target: 'https://example.com/logs' },
+      ] },
+      { label: '', kind: 'group', target: '', items: [] },
+    ],
+  }
+  const names = (loaded: Loaded) => loaded.buttons().map((b) => b.children[1]?.textContent)
+  const tap = (loaded: Loaded, i: number) => (loaded.buttons()[i] as unknown as { onclick: () => void }).onclick()
+
+  it('opens in place of the grid behind a back button, and presses a button by its place in the group', async () => {
+    vi.useFakeTimers()
+    const loaded = await loadWidget([], groups)
+    // The nameless empty group is an unfinished row, not a button.
+    expect(names(loaded)).toEqual(['Terminal', 'Prod'])
+    tap(loaded, 1)
+    await vi.advanceTimersByTimeAsync(200)
+    expect(names(loaded)).toEqual(['Prod', 'Deploy', 'Logs'])
+    tap(loaded, 2)
+    expect(loaded.sent()[0]).toEqual(['shortcuts', 'open', { instanceId: 'shortcuts-1', index: 1, item: 2 }])
+    // It stays open after a shortcut ran, for the next one.
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(names(loaded)).toEqual(['Prod', 'Deploy', 'Logs'])
+  })
+
+  it('closes on the back button only, never by itself', async () => {
+    vi.useFakeTimers()
+    const loaded = await loadWidget([], groups)
+    tap(loaded, 1)
+    await vi.advanceTimersByTimeAsync(200)
+    tap(loaded, 0)
+    await vi.advanceTimersByTimeAsync(200)
+    expect(names(loaded)).toEqual(['Terminal', 'Prod'])
+    tap(loaded, 1)
+    await vi.advanceTimersByTimeAsync(200)
+    await vi.advanceTimersByTimeAsync(10 * 60_000)
+    expect(names(loaded)).toHaveLength(3)
+  })
+})
+
+describe('an icon from the user\'s library', () => {
+  it('is asked of the host by the value the settings hold, and drawn as an image', async () => {
+    const loaded = await loadWidget([], { buttons: [
+      { label: 'Pipelines', kind: 'group', icon: 'file:3-pipeline.svg', items: [terminal] },
+      { ...terminal, icon: 'file:4-term.png' },
+    ] })
+    expect([...new Set(loaded.libraryRequests())]).toEqual(['file:3-pipeline.svg', 'file:4-term.png'])
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(loaded.buttons()[0].children[0].tag).toBe('img')
+    expect(loaded.buttons()[1].children[0].src).toBe('data:image/svg+xml;base64,PHN2Zy8+')
+  })
+})
+
+describe('a subgroup', () => {
+  afterEach(() => { vi.useRealTimers() })
+  const nested = {
+    buttons: [
+      terminal,
+      { label: 'Prod', kind: 'group', items: [
+        { label: 'Logs', kind: 'url', target: 'https://example.com/logs' },
+        { label: 'Deploy', kind: 'group', items: [
+          { label: 'EU', kind: 'url', target: 'https://example.com/eu' },
+          { label: 'US', kind: 'url', target: 'https://example.com/us' },
+        ] },
+      ] },
+    ],
+  }
+  const names = (loaded: Loaded) => loaded.buttons().map((b) => b.children[1]?.textContent)
+  const tap = (loaded: Loaded, i: number) => (loaded.buttons()[i] as unknown as { onclick: () => void }).onclick()
+
+  it('opens inside its group, presses by its path, and goes back one level at a time', async () => {
+    vi.useFakeTimers()
+    const loaded = await loadWidget([], nested)
+    tap(loaded, 1)
+    await vi.advanceTimersByTimeAsync(200)
+    expect(names(loaded)).toEqual(['Prod', 'Logs', 'Deploy'])
+    tap(loaded, 2)
+    await vi.advanceTimersByTimeAsync(200)
+    expect(names(loaded)).toEqual(['Deploy', 'EU', 'US'])
+    tap(loaded, 2)
+    expect(loaded.sent()[0]).toEqual(['shortcuts', 'open', { instanceId: 'shortcuts-1', index: 1, item: 1, sub: 1 }])
+    tap(loaded, 0)
+    await vi.advanceTimersByTimeAsync(200)
+    expect(names(loaded)).toEqual(['Prod', 'Logs', 'Deploy'])
+    tap(loaded, 0)
+    await vi.advanceTimersByTimeAsync(200)
+    expect(names(loaded)).toEqual(['Terminal', 'Prod'])
+  })
+})
+
+describe('a link opened in a browser profile', () => {
+  const badges = (loaded: Loaded) => loaded.buttons().map((b) => b.children.find((c) => c.className === 'profile')?.textContent ?? null)
+  const buttons = [
+    { label: 'Mail', kind: 'url', target: 'https://example.com/mail', profile: 'Brave — boulot' },
+    { label: 'Site', kind: 'url', target: 'https://example.com' },
+    { label: 'Calc', kind: 'app', target: 'Calculator', profile: 'Brave — Perso' },
+    { label: 'Work', kind: 'url', target: 'https://example.com/work', profile: 'Chrome — Profile 2' },
+  ]
+  it('wears the profile\'s initial, on links only', async () => {
+    expect(badges(await loadWidget([], { buttons }))).toEqual(['B', null, null, '2'])
+  })
+  it('wears none when the badge is turned off', async () => {
+    expect(badges(await loadWidget([], { buttons, profileBadge: false }))).toEqual([null, null, null, null])
   })
 })

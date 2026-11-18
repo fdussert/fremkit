@@ -43,23 +43,34 @@ export const SettingOptionSchema = z.union([
 export type SettingOption = z.infer<typeof SettingOptionSchema>
 
 /**
- * The types a `list` item may be made of. Deliberately the plain ones: no nested list, and
- * nothing that needs the admin's own data (a connection, the Dock apps), because a list row is
- * rendered inline and must stay one compact line.
+ * `icon` is a string the admin offers to fill from the user's icon library, as `file:<name>`
+ * (read back with `Fremkit.libraryIcon`); an emoji or an address stays typeable.
+ *
+ * The types a `list` item may be made of. Deliberately the plain ones, and nothing that needs the
+ * admin's own data (a connection, the Dock apps), because an item's fields are rendered inline.
+ * An item may hold one list of its own (`NESTED_LIST_TYPE`), and that list's items one more,
+ * whose items are plain: two levels, never deeper.
  */
-export const LIST_ITEM_TYPES = ['string', 'boolean', 'enum', 'number', 'timezone'] as const
+export const LIST_ITEM_TYPES = ['string', 'boolean', 'enum', 'number', 'timezone', 'icon'] as const
+export const NESTED_LIST_TYPE = 'list'
 
 /** Where the admin reads the suggestions a list item field offers while the user types. */
-export const SUGGEST_SOURCES = ['apps'] as const
+export const SUGGEST_SOURCES = ['apps', 'browserProfiles'] as const
 
-export const ListItemFieldSchema = z.object({
-  type: z.enum(LIST_ITEM_TYPES),
+/**
+ * Shows an item field only on the items where sibling fields hold given values — one value, or
+ * any of several: `{ "kind": "group" }`, `{ "kind": ["app", "url"] }`. Absent, it always shows.
+ */
+const ShowWhenSchema = z.record(z.string(), z.union([z.string(), z.array(z.string()).min(1)]))
+
+const plainItemField = {
   label: LocalizedTextSchema,
   default: z.unknown().optional(),
   options: z.array(SettingOptionSchema).optional(),
   /**
    * `string` fields only: the admin offers these as a drop-down while typing. `apps` names the
-   * applications installed on this machine. Suggestions never restrict: any value stays typeable.
+   * applications installed on this machine, `browserProfiles` the profiles of its Brave, Chrome
+   * and Edge as `Brave — Perso`. Suggestions never restrict: any value stays typeable.
    */
   suggest: z.enum(SUGGEST_SOURCES).optional(),
   /**
@@ -68,14 +79,59 @@ export const ListItemFieldSchema = z.object({
    * the suggestions are offered on every row.
    */
   suggestWhen: z.record(z.string(), z.string()).optional(),
-})
+  showWhen: ShowWhenSchema.optional(),
+}
+
+/** The field of an item at the deepest level: plain types only. */
+export const PlainItemFieldSchema = z.object({ type: z.enum(LIST_ITEM_TYPES), ...plainItemField })
   .refine((f) => f.suggest === undefined || f.type === 'string', {
     message: 'suggest ne vaut que pour un champ de type string',
   })
   .refine((f) => f.suggestWhen === undefined || f.suggest !== undefined, {
     error: () => tr(undefined, 'manifest.suggestWhenWithoutSuggest'),
   })
+
+/** A field that may be a `list` whose items take `inner` fields, at most one such list per item. */
+function itemFieldSchema<T extends z.ZodType<{ type: string; showWhen?: Record<string, unknown> }>>(inner: T) {
+  return z.object({
+    type: z.enum([...LIST_ITEM_TYPES, NESTED_LIST_TYPE]),
+    ...plainItemField,
+    /** A nested `list` only: the fields of its items, as a list setting's `itemSchema`. */
+    itemSchema: z.record(z.string(), inner).optional(),
+    /** A nested `list` only: how many items it may hold. */
+    max: z.number().int().min(1).optional(),
+    /** A nested `list` only: the item fields that name one of its items in the editor. */
+    summary: z.array(z.string()).min(1).max(4).optional(),
+  })
+    .refine((f) => f.suggest === undefined || f.type === 'string', {
+      message: 'suggest ne vaut que pour un champ de type string',
+    })
+    .refine((f) => f.suggestWhen === undefined || f.suggest !== undefined, {
+      error: () => tr(undefined, 'manifest.suggestWhenWithoutSuggest'),
+    })
+    .refine((f) => f.type !== NESTED_LIST_TYPE || Object.keys(f.itemSchema ?? {}).length > 0, {
+      error: () => tr(undefined, 'manifest.listNeedsItemSchema'),
+    })
+    .refine((f) => f.type === NESTED_LIST_TYPE || (f.itemSchema === undefined && f.max === undefined && f.summary === undefined), {
+      error: () => tr(undefined, 'manifest.itemListOnly'),
+    })
+    .refine((f) => !f.summary || f.summary.every((key) => key in (f.itemSchema ?? {})), {
+      error: () => tr(undefined, 'manifest.listSummaryUnknown'),
+    })
+    .refine((f) => Object.values(f.itemSchema ?? {}).filter((item) => item.type === NESTED_LIST_TYPE).length <= 1, {
+      error: () => tr(undefined, 'manifest.oneNestedList'),
+    })
+}
+
+/**
+ * Two levels of lists inside a list setting, never more: a setting's items may hold a list
+ * (a shortcuts group), whose items may hold one more (a subgroup), whose items are plain.
+ */
+export const NestedItemFieldSchema = itemFieldSchema(PlainItemFieldSchema)
+export const ListItemFieldSchema = itemFieldSchema(NestedItemFieldSchema)
 export type ListItemField = z.infer<typeof ListItemFieldSchema>
+export type NestedItemField = z.infer<typeof NestedItemFieldSchema>
+export type PlainItemField = z.infer<typeof PlainItemFieldSchema>
 
 /**
  * Which rendering of the widget a setting belongs to: the `tile` drawn on a page, or the
@@ -114,6 +170,16 @@ export const SettingFieldSchema = z.object({
   itemSchema: z.record(z.string(), ListItemFieldSchema).optional(),
   /** `list` fields only: how many items the user may add. Absent means no ceiling. */
   max: z.number().int().min(1).optional(),
+  /**
+   * `list` fields only: the item fields that name an item in the editor, first non-empty one
+   * wins. Absent, the first text or choice field with a value names it.
+   */
+  summary: z.array(z.string()).min(1).max(4).optional(),
+  /**
+   * `list` fields only: show the items as a grid of tiles, the way the widget lays them out,
+   * rather than one row each. A number of columns, or the key of the `number` setting that holds it.
+   */
+  grid: z.union([z.number().int().min(1).max(12), z.string().min(1)]).optional(),
 })
   .refine((f) => (f.type !== 'connection' && f.type !== 'connections') || typeof f.connectionType === 'string', {
     error: () => tr(undefined, 'manifest.connectionNeedsType'),
@@ -127,6 +193,23 @@ export const SettingFieldSchema = z.object({
   .refine((f) => f.type !== 'list' || Object.keys(f.itemSchema ?? {}).length > 0, {
     error: () => tr(undefined, 'manifest.listNeedsItemSchema'),
   })
+  .refine((f) => !f.summary || f.summary.every((key) => key in (f.itemSchema ?? {})), {
+    error: () => tr(undefined, 'manifest.listSummaryUnknown'),
+  })
+  .refine((f) => Object.values(f.itemSchema ?? {}).filter((item) => item.type === NESTED_LIST_TYPE).length <= 1, {
+    error: () => tr(undefined, 'manifest.oneNestedList'),
+  })
+  .refine((f) => showWhenNamesSiblings(f.itemSchema ?? {}), {
+    error: () => tr(undefined, 'manifest.showWhenUnknown'),
+  })
+
+/** Every `showWhen` of a set of item fields names other fields of the same set, at every level. */
+type ShowWhenTree = Record<string, { showWhen?: Record<string, unknown>; itemSchema?: ShowWhenTree }>
+function showWhenNamesSiblings(schema: ShowWhenTree): boolean {
+  return Object.entries(schema).every(([key, field]) =>
+    Object.keys(field.showWhen ?? {}).every((other) => other !== key && other in schema)
+    && (!field.itemSchema || showWhenNamesSiblings(field.itemSchema)))
+}
 
 /** v1 manifests described a 32x16 grid with fixed `sizes`; the v2 grid has twice the cells. */
 const LEGACY_SCALE = 2
@@ -176,13 +259,14 @@ const ChannelSchema = z.string().min(1).refine((channel) => {
  * could read those and send them away, and its consent dialog would only have said "controls
  * disk-map". `clipboard` publishes a preview of every entry copied — secrets are masked, the
  * rest is whatever the user copied — and `copy` writes the pasteboard: the same reading, of
- * something more personal still. `companion` carries what a browser tab is playing — its title,
+ * something more personal still. `recent-projects` lists the folders worked in lately, by full
+ * path, and opens them in an application. `companion` carries what a browser tab is playing — its title,
  * its site — and the offers that would let a widget watch it. These are refused in an installed
  * manifest — at install and when the catalogue reads `data/widgets` — and stay open to
  * `widgets/`, which ships with the server and is reviewed with it. Unlike `RESERVED_CHANNELS`, the
  * schema alone cannot say: it does not know where a manifest came from.
  */
-export const BUILTIN_ONLY_CHANNELS: ReadonlySet<string> = new Set(['disk-map', 'clipboard', 'companion'])
+export const BUILTIN_ONLY_CHANNELS: ReadonlySet<string> = new Set(['disk-map', 'clipboard', 'recent-projects', 'companion', 'gif-board'])
 
 /**
  * Channels any widget may read but only a built-in one may command. `brightness` changes the
@@ -521,6 +605,11 @@ export const ManifestSchema = RawManifestSchema.transform((m, ctx) => {
   for (const [key, field] of Object.entries(m.settingsSchema)) {
     if (field.preview && !commandCovers(m.commands, field.preview.channel)) {
       ctx.addIssue({ code: 'custom', message: tr(undefined, 'manifest.previewNotACommand'), path: ['settingsSchema', key, 'preview', 'channel'] })
+      return z.NEVER
+    }
+    // A grid whose columns follow a setting needs that setting to be a number.
+    if (typeof field.grid === 'string' && m.settingsSchema[field.grid]?.type !== 'number') {
+      ctx.addIssue({ code: 'custom', message: tr(undefined, 'manifest.listGridNotANumber'), path: ['settingsSchema', key, 'grid'] })
       return z.NEVER
     }
   }

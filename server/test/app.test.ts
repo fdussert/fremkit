@@ -47,6 +47,8 @@ describe('the host pages', () => {
         expect(csp, url).toContain("connect-src 'self' ws://127.0.0.1:4301")
         expect(csp, url).toContain("script-src 'self'")
         expect(csp, url).not.toContain("script-src 'self' 'unsafe-inline'")
+        // The GIF board's editor panel shows Giphy's search results and thumbnails.
+        expect(csp.split('; ').find((d) => d.startsWith('img-src')), url).toBe("img-src 'self' data: blob: https://i.giphy.com https://media.giphy.com")
         for (const d of ["frame-ancestors 'none'", "object-src 'none'", "base-uri 'none'"]) expect(csp, url).toContain(d)
       }
       // Under localhost the page's origin is localhost, and so are its frames.
@@ -242,6 +244,27 @@ describe('widget routes', () => {
     expect(res.headers['content-security-policy']).toContain("script-src 'self' http://127.0.0.1:4242")
     expect((await app.inject({ url: '/fremkit.js' })).statusCode).toBe(200)
     expect((await app.inject({ url: '/widgets/clock/app.js' })).body).toBe('window.widgetLoaded = true')
+  })
+  it('lets the GIF board alone show images from Giphy', () => {
+    const img = (csp: string) => csp.split('; ').find((d) => d.startsWith('img-src'))
+    expect(img(widgetCsp(4242, false, undefined, 'gif-board', 'builtin'))).toContain('https://i.giphy.com https://media.giphy.com')
+    // Any other widget, and a non-built-in folder claiming the id, gets today's policy, byte for byte.
+    expect(widgetCsp(4242, false, undefined, 'clock', 'builtin')).toBe(widgetCsp(4242))
+    expect(widgetCsp(4242, false, undefined, 'gif-board', 'installed')).toBe(widgetCsp(4242))
+    expect(widgetCsp(4242, false, undefined, 'gif-board', 'dev')).toBe(widgetCsp(4242))
+    expect(widgetCsp(4242)).not.toContain('giphy')
+  })
+  it('serves the built-in GIF board with Giphy in its img-src, and nothing else with it', async () => {
+    await mkdir(join(dir, 'widgets', 'gif-board'))
+    await writeFile(join(dir, 'widgets', 'gif-board', 'manifest.json'), JSON.stringify({ id: 'gif-board', name: 'GIFs', version: '1.0.0', minSize: [8, 4], defaultSize: [16, 8] }))
+    await writeFile(join(dir, 'widgets', 'gif-board', 'index.html'), '<html></html>')
+    await app.inject({ method: 'POST', url: '/api/widgets/rescan' })
+    const img = (res: { headers: Record<string, unknown> }) => String(res.headers['content-security-policy']).split('; ').find((d) => d.startsWith('img-src'))
+    const board = await app.inject({ url: '/widgets/gif-board/index.html' })
+    expect(board.statusCode).toBe(200)
+    expect(img(board)).toContain('https://i.giphy.com https://media.giphy.com')
+    const clock = await app.inject({ url: '/widgets/clock/index.html' })
+    expect(img(clock)).not.toContain('giphy')
   })
   it('scopes explicit subresource origins to the server port and development proxy', () => {
     const csp = widgetCsp(4301, true)

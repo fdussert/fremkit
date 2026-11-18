@@ -159,7 +159,7 @@ a `default` and a `scope`.
 | `connections` | an array of connection ids | `connectionType` (required) |
 | `pick` | an array of ids read live from a connection | `connection`, `source` (both required) |
 | `apps` | an array of app names the Dock currently shows | — |
-| `list` | an array of objects | `itemSchema` (required), `max` |
+| `list` | an array of objects | `itemSchema` (required), `max`, `summary`, `grid`; item fields may take `showWhen`, and one may be a `list` |
 
 **`enum`** — an option is either a bare string (its own value and label) or
 `{ "value": …, "label": … }`. The `value` lands in the user's config, so it must not move when the
@@ -219,12 +219,33 @@ switch with a filter. `homey-devices` does both.
 ```
 
 The widget reads it as an array of objects keyed by `itemSchema`. An item field may be `string`,
-`boolean`, `enum`, `number` or `timezone` — never another list, and nothing that needs the admin's
-own data, because a row is rendered inline. `max` caps how many items the user may add.
+`boolean`, `enum`, `number`, `timezone` or `icon`, and nothing that needs the admin's own data,
+because a row is rendered inline. An `icon` field is a string with a button beside it that picks
+from, or imports into, the user's icon library (PNG, WebP, SVG); a picked icon is stored as
+`file:<name>` and drawn with `Fremkit.libraryIcon(value)`, while an emoji or an address can still
+be typed. `max` caps how many items the user may add.
+
+An item may also hold **one list of its own**: a field of type `list` with its own `itemSchema`,
+`max` and `summary`. That list's items may hold one more, whose items take plain fields only: two
+levels, never deeper. The shortcuts widget's groups and their subgroups are built this way. In the editor, an item dropped onto the middle of an item that holds such a list
+goes into it, and a button takes it back out.
+
+`showWhen` shows an item field only on the items where sibling fields hold given values, one value
+or any of several: `"showWhen": { "kind": "group" }`, `"showWhen": { "kind": ["app", "url"] }`.
+A hidden field keeps its value; the widget decides what it means on that item.
+
+The admin shows the items folded, one line each, dragged into place and opened one at a time to
+edit their fields. `summary` lists the item fields that name an item there, the first non-empty one
+winning (`["label", "target"]`); absent, the first text or choice field with a value names it.
+`grid` draws the items as tiles laid out like the widget's own, a number of columns or the key of
+the `number` setting that holds them (`"grid": "columns"`); the editor caps it at six.
 
 A `string` item field may also declare `suggest`, which gives it a drop-down of suggestions while
-the user types. The only source today is `"apps"`, the applications installed on this machine, read
-once per admin session from `GET /api/apps/installed` and offered by name. `suggestWhen` narrows
+the user types. `"apps"` offers the applications installed on this machine, read once per admin
+session from `GET /api/apps/installed` and offered by name. `"browserProfiles"` offers the profiles
+of the Brave, Chrome and Edge installed here as `Brave — Perso`, read from
+`GET /api/browsers/profiles`; the shortcuts widget is the only one whose host command knows what to
+do with that value. `suggestWhen` narrows
 the suggestions to the rows where sibling fields of the same item hold given values.
 
 ```json
@@ -266,6 +287,9 @@ installing it and leaving the call to fail.
 | `1` | 0.2.0 | Everything not listed below |
 | `2` | 0.3.0 | `favicon(url)`, `image(url)`, `installedApps()`, `appIcon(bundleId)` |
 | `3` | next release | `screen`, `holdSwipe` |
+| `4` | next release | `gif(url)` (answered for the built-in GIF board only) |
+| `5` | next release | `titleNote(text)` |
+| `6` | next release | `libraryIcon(value)` |
 
 A widget calling `installedApps()` with `"sdk": 1` would install on 0.2.0 and find the method
 missing. Data channels are not generations: a channel the running Fremkit has no provider for
@@ -279,7 +303,8 @@ than wait.
 | `Fremkit.sdk` | The bridge generation this Fremkit speaks, as a number |
 | `Fremkit.instanceId` | This instance's id |
 | `Fremkit.screen` | The id of the screen the widget is drawn on (the Edge, a paired device), or `null` when the host does not say. For data that is per screen, like brightness. Generation 3 |
-| `Fremkit.holdSwipe()` | Keeps the page from swiping for half a second. Call it on every move of a slider or a knob: a quick slide arrives as wheel events at the finger, and once the finger leaves the widget they would land on the dashboard and turn the page. Generation 3 |
+| `Fremkit.holdSwipe()` | Keeps the page from swiping for half a second. Call it on every move of a slider or a knob: a quick slide arrives as wheel events at the finger, and once the finger leaves the widget they would land on the dashboard and turn the page. A swipe across the widget turns the page too (more than 50 px, more across than down), except one that starts on an `input[type=range]`, on an element that scrolls sideways or has `touch-action: none` or `pan-x`, or one during which the widget called `holdSwipe()`: anything else that drags sideways calls it on its first move. Generation 3 |
+| `Fremkit.titleNote(text)` | A few words the host shows after the tile's title, such as a count (`titleNote('18')` reads "Claude sessions · 18"). Plain text on one line, cut to 24 characters; `''` or `null` takes it away. Shown only where the host draws a title: nothing in the bar, nothing when the title is hidden. Generation 5 |
 | `Fremkit.settings` | The settings object, manifest defaults merged in |
 | `Fremkit.locale` | `'fr'` or `'en'` |
 | `Fremkit.showTitle` | Whether the frame drew the title — a widget must never draw its own |
@@ -300,6 +325,8 @@ than wait.
 | `fetch(url, init)` | GET through the server's proxy. Only the host in `permissions.network` is reachable; `body` and `credentials` are ignored |
 | `favicon(url)` | The icon of the site `url` is on, as a `data:` URL for an `<img>`; rejects when there is none. Ask this rather than loading `/api/favicon` in an `<img>`: a widget's frame has an opaque origin, so the server sees that request as cross-site and refuses it |
 | `image(url)` | The image at exactly `url`, as a `data:` URL, under the rules of `favicon` (no SVG, no private address). Fetched only when `url` is a value the user typed into this widget's settings — a manifest `default` does not count; rejects otherwise — the whole address leaves the machine, so a widget cannot pick it |
+| `libraryIcon(value)` | An icon from the user's library (the one the tiles' title icons come from: PNG, WebP or SVG), as a `data:` URL for an `<img>`. `value` is what an `icon` item field stores for it, `file:<name>`, and must be a value of this widget's own settings; rejects otherwise, or when the file is gone. Generation 6 |
+| `gif(url)` | A GIF the server keeps, as a `data:` URL; rejects when it has none for `url`. Answered for the built-in GIF board only: any other widget is refused. Generation 4 |
 | `installedApps()` | The applications installed on this Mac, as `{ name, bundleId, file }` — enough to match a name the user typed and ask for its icon with `appIcon(bundleId)`, and no filesystem path. Ask this rather than `fetch('/api/apps/installed')`: a widget's frame is served with `connect-src 'none'`, so its own request never leaves the page. Answered only to a widget that subscribes to `dock`, which the consent dialog shows; anything else is refused |
 | `appIcon(bundleId)` | A local application icon as a `data:` URL for an `<img>`. Requires a `dock` subscription, like `installedApps()`. The host fetches it because the opaque widget frame cannot load `/api/apps/icon/<bundleId>` directly |
 | `t(dict, params)` | Resolves a `{ fr, en }` table entry and interpolates `{name}` placeholders |
@@ -355,13 +382,14 @@ document.documentElement.style.setProperty('--h', Fremkit.size.px.height + 'px')
 `system`, `processes`, `volume`, `spotify`, `mutedeck`, `clipboard`, `shortcuts`, `cleanshot`,
 `network`, `battery`, `service-status`, `config`, `claude-sessions`, `claude-usage`,
 `claude-account`, `claude-identity`, `codex`, `codex-live`, `dock`, `docker-local`,
-`local-models`, `rtk`, `disk-map`, plus one per connection: `azure-devops:<connectionId>`,
+`local-models`, `rtk`, `disk-map`, `gif-board`, plus one per connection: `azure-devops:<connectionId>`,
 `bambu:<connectionId>`, `github:<connectionId>`, `synology:<connectionId>`,
 and `calendar:<connectionId>` for an ICS connection.
 
 `disk-map` and `clipboard` are reserved for their built-in widgets and refused in a third-party
 manifest — at install and when the catalogue reads `data/widgets` — because the first carries the
-names of your folders and files and the second a preview of everything you copy. `brightness`
+names of your folders and files and the second a preview of everything you copy. `gif-board`
+is reserved the same way: its `copy` command writes your clipboard. `brightness`
 may be subscribed to, but listing it in `commands` is refused the same way: setting the screen's
 level is for the built-in widget, the admin and the helper. `config` is refused in every manifest.
 
@@ -576,8 +604,11 @@ A widget cannot resize its own iframe, so a setting that needs more room is decl
 `compactCities`, which widen it to eight cells.
 
 A bar widget may also be marked **Full widget on touch** in the admin. Touching it then opens the
-same widget, at its manifest's `defaultSize`, in a popover above the bar — so a widget with a
-compact rendering should still be worth looking at as a tile.
+same widget, sized from its manifest's `defaultSize`, in a popover above the bar — so a widget with a
+compact rendering should still be worth looking at as a tile. The user picks the popover's shape
+(`popupCells` in `ui/src/shared/popover.ts`): *Standard* is as wide as the tile and half again as
+tall, *Low and wide* twice as wide and as tall as the tile, *Large* half again as wide and twice
+as tall, each clamped to the screen. A widget that reads `Fremkit.size` lays out for all three.
 
 ## Examples
 

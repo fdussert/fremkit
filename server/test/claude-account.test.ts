@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
-import { normalizeAccountUsage, createClaudeAccountProvider, parseKeychainJson } from '../src/claude/account.js'
+import { normalizeAccountUsage, createClaudeAccountProvider, parseKeychainJson, claudeTokenExpiry } from '../src/claude/account.js'
+import { keychainServiceFor } from '../src/claude/configDirs.js'
 import { USER_AGENT } from '../src/version.js'
 
 const sample = {
@@ -109,7 +110,9 @@ describe('createClaudeAccountProvider', () => {
   it('keeps the last good value with stale on 401 / 429 / network error', async () => {
     let status = 200
     const fetchFn = vi.fn(async () => { if (status === 0) throw new Error('ECONNRESET'); return new Response(status === 200 ? JSON.stringify(sample) : '{}', { status }) })
-    const p = createClaudeAccountProvider({ fetchFn: fetchFn as any, readToken: async () => 'tok' })
+    // Each poll comes after the last one's penalty, so every one reaches the endpoint.
+    let t = 0
+    const p = createClaudeAccountProvider({ fetchFn: fetchFn as any, readToken: async () => 'tok', now: () => (t += 3_600_000) })
     await p.poll!()
     status = 401
     expect(await p.poll!()).toMatchObject({ available: true, stale: true, error: 'unauthorized', limits: expect.any(Array) })
@@ -118,21 +121,65 @@ describe('createClaudeAccountProvider', () => {
     status = 0
     expect(await p.poll!()).toMatchObject({ available: true, stale: true, error: 'ECONNRESET' })
   })
-  it('polls again after Retry-After on 429, bounded to 30–120 s, and slows back down on success', async () => {
+  it('polls again after Retry-After on 429, bounded to 30 s – 1 h, and slows back down on success', async () => {
     let status = 200
     let retryAfter = '30'
     const fetchFn = vi.fn(async () => new Response(status === 200 ? JSON.stringify(sample) : '{}', { status, headers: status === 429 ? { 'retry-after': retryAfter } : {} }))
-    const p = createClaudeAccountProvider({ fetchFn: fetchFn as any, readToken: async () => 'tok' })
+    let t = 0
+    const p = createClaudeAccountProvider({ fetchFn: fetchFn as any, readToken: async () => 'tok', now: () => (t += 3_600_000) })
     status = 429
     await p.poll!(); expect(p.intervalMs).toBe(30_000)
     retryAfter = '5'
     await p.poll!(); expect(p.intervalMs).toBe(30_000)
-    retryAfter = '600'
-    await p.poll!(); expect(p.intervalMs).toBe(120_000)
+    // A long penalty is honoured: polling inside it is what kept the widget stale for days.
+    retryAfter = '3029'
+    await p.poll!(); expect(p.intervalMs).toBe(3_029_000)
+    retryAfter = '86400'
+    await p.poll!(); expect(p.intervalMs).toBe(3_600_000)
     retryAfter = ''
-    await p.poll!(); expect(p.intervalMs).toBe(30_000)
+    await p.poll!(); expect(p.intervalMs).toBe(300_000)
+    retryAfter = 'Wed, 21 Oct 2026 07:28:00 GMT'
+    await p.poll!(); expect(p.intervalMs).toBe(300_000)
     status = 200
     await p.poll!(); expect(p.intervalMs).toBe(300_000)
+  })
+  it('does not call the endpoint again before the Retry-After is over, whoever polls', async () => {
+    let t = 0
+    const fetchFn = vi.fn(async () => new Response('{}', { status: 429, headers: { 'retry-after': '600' } }))
+    const p = createClaudeAccountProvider({ fetchFn: fetchFn as any, readToken: async () => 'tok', now: () => t })
+    await p.poll!()
+    t = 599_999
+    expect(await p.poll!()).toMatchObject({ stale: true, error: 'rate-limited' })
+    expect(fetchFn).toHaveBeenCalledTimes(1)
+    t = 600_000
+    await p.poll!()
+    expect(fetchFn).toHaveBeenCalledTimes(2)
+  })
+  it('forgets the old account\'s penalty when another account is picked, and reads it at once', async () => {
+    let t = 0
+    let dir = '/u/work'
+    const fetchFn = vi.fn(async () => dir === '/u/work'
+      ? new Response('{}', { status: 429, headers: { 'retry-after': '3000' } })
+      : new Response(JSON.stringify(sample), { status: 200 }))
+    const p = createClaudeAccountProvider({ fetchFn: fetchFn as any, readToken: async () => 'tok', now: () => t, accountDir: () => dir })
+    await p.poll!()
+    expect(p.intervalMs).toBe(3_000_000)
+    t = 1000
+    dir = '/u/personal'
+    expect(await p.poll!()).toMatchObject({ available: true, stale: false })
+    expect(fetchFn).toHaveBeenCalledTimes(2)
+    expect(p.intervalMs).toBe(300_000)
+  })
+  it('comes back to the normal pace on a 401 after a long 429', async () => {
+    let status = 429
+    const fetchFn = vi.fn(async () => new Response('{}', { status, headers: status === 429 ? { 'retry-after': '3000' } : {} }))
+    let t = 0
+    const p = createClaudeAccountProvider({ fetchFn: fetchFn as any, readToken: async () => 'tok', now: () => t })
+    await p.poll!()
+    t = 3_000_000
+    status = 401
+    expect(await p.poll!()).toMatchObject({ error: 'unauthorized' })
+    expect(p.intervalMs).toBe(300_000)
   })
   it('persists the last good snapshot and reloads it, stale, on the next start', async () => {
     const { mkdtemp, readFile } = await import('node:fs/promises')
@@ -160,5 +207,17 @@ describe('createClaudeAccountProvider', () => {
     await writeFile(join(dir, 'bad.json'), '{"last": 3', 'utf8')
     expect(await createClaudeAccountProvider({ fetchFn: limited as any, readToken: async () => 'tok', filePath: join(dir, 'bad.json') }).poll!())
       .toMatchObject({ available: false, stale: true, limits: [] })
+  })
+})
+
+describe('claudeTokenExpiry', () => {
+  const item = (expiresAt?: number) => JSON.stringify({ claudeAiOauth: { accessToken: 'secret-token', ...(expiresAt === undefined ? {} : { expiresAt }) } })
+  it('says when a folder\'s sign-in expires, never the token', async () => {
+    const read = async (service: string) => { if (service === keychainServiceFor('/u/p')) return item(5000); throw new Error('none') }
+    expect(await claudeTokenExpiry('/u/p', read)).toBe(5000)
+  })
+  it('answers null with no item, or one that does not say', async () => {
+    expect(await claudeTokenExpiry('/u/p', async () => { throw new Error('none') })).toBeNull()
+    expect(await claudeTokenExpiry('/u/p', async () => item())).toBeNull()
   })
 })

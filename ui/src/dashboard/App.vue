@@ -13,6 +13,7 @@ import PageView from './PageView.vue'
 import NavBar from './NavBar.vue'
 import NavPopover from './NavPopover.vue'
 import { useSwipe } from './useSwipe'
+import { WIDGET_SWIPE_EVENT } from '../shared/widgetMessages'
 import CompanionPrompt from './CompanionPrompt.vue'
 import { createRevealTracker, LANDING_WINDOW_MS, landingPage, type CompanionReveal } from './companionReveal'
 import { useNavPopover } from './useNavPopover'
@@ -139,6 +140,13 @@ function select(i: number) { direction.value = i >= pageIndex.value ? 1 : -1; pa
 // the edge listeners stop propagation so a gesture starting/ending over an
 // edge isn't also processed by the bubbled stage listener.
 const stageSwipe = useSwipe(go)
+// A swipe across a widget: its bridge saw it, since the frame keeps its touches to itself.
+function onWidgetSwipe(e: Event) {
+  const d = (e as CustomEvent<unknown>).detail
+  if (d === 1 || d === -1) stageSwipe.fling(d)
+}
+onMounted(() => window.addEventListener(WIDGET_SWIPE_EVENT, onWidgetSwipe))
+onUnmounted(() => window.removeEventListener(WIDGET_SWIPE_EVENT, onWidgetSwipe))
 const stageEl = ref<HTMLElement>()
 // Whatever this screen shows when the call comes: the tiles of the page and the bar's widgets.
 const thumper = useThumper({
@@ -293,7 +301,7 @@ watch(() => config.value?.locale, (l) => setLocale(l))
       :cell="display.cell"
       :anchor="popover.open.value.anchor"
       :screen="popover.open.value.screen"
-      @root="popover.setPopoverEl" />
+      @root="popover.setPopoverEl" @activity="popover.keepAlive" />
     <AppSettingsMenu v-if="onAndroid && appMenuOpen" :bar-height="navHeightOf(display)"
       @settings="openAppSettings" @close="appMenuOpen = false" />
     <CompanionPrompt v-if="companionPairing && socket.status.value === 'open'" :pairing="companionPairing" />

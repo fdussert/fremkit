@@ -5,7 +5,8 @@ import { isHexColor, tileText } from './color'
 import { useAppliedTheme, useThemeColors } from './theme'
 import { channelAllowed, mergeSettings, type AccentMode, type NavSlot, type WidgetInstance, type WidgetManifest, type WidgetSize } from './types'
 import { onWidgetReload } from './widgetDev'
-import { FrameTrust, HOLD_SWIPE_EVENT, appIconTarget, connRequest, faviconTarget, fetchTarget, helloNonce, imageTarget, mayListApps, nonEmptyString, stampInstance } from './widgetMessages'
+import { tileIconUrl } from './tileIcon'
+import { FrameTrust, HOLD_SWIPE_EVENT, WIDGET_SWIPE_EVENT, appIconTarget, cleanTitleNote, connRequest, faviconTarget, fetchTarget, gifTarget, helloNonce, imageTarget, libraryIconTarget, mayListApps, nonEmptyString, stampInstance, swipeDelta } from './widgetMessages'
 
 export type BridgeState = 'loading' | 'ready' | 'error'
 
@@ -43,6 +44,16 @@ export interface BridgeOptions {
    * align its own content — it needs to know which side it is on to do that.
    */
   slot?: () => NavSlot
+  /**
+   * Someone touched, dragged or scrolled inside the widget (reported at most once a second). The
+   * bar's popover restarts its idle countdown on it.
+   */
+  onActivity?: () => void
+  /**
+   * False where a swipe across the widget must not turn the page: the bar's popover, which a
+   * page change would close under the finger.
+   */
+  swipes?: boolean
 }
 
 /**
@@ -56,7 +67,7 @@ export function useWidgetBridge(
   manifest: () => WidgetManifest | undefined,
   cell: () => number,
   options: BridgeOptions = {},
-): { state: Ref<BridgeState> } {
+): { state: Ref<BridgeState>; titleNote: Ref<string> } {
   const socket = useSocket()
   const screenId = inject(SCREEN_ID, () => undefined)
   // The tokens the host is painting, handed on so a widget wears the same theme as its frame.
@@ -64,6 +75,8 @@ export function useWidgetBridge(
   const themeColors = useThemeColors()
   const { locale } = useI18n()
   const state = ref<BridgeState>('loading')
+  /** A few words the widget asked to show after its title (`Fremkit.titleNote`); '' for none. */
+  const titleNote = ref('')
   /** channel -> how to stop relaying it. One entry per channel, so a re-subscribe is a no-op. */
   const unsubs = new Map<string, () => void>()
   let timer: number | undefined
@@ -122,6 +135,8 @@ export function useWidgetBridge(
     expectedNonce = null
     unsubs.forEach((f) => f())
     unsubs.clear()
+    // The note belonged to that document; the next one says its own, or nothing.
+    titleNote.value = ''
   }
 
   function disown() {
@@ -187,6 +202,19 @@ export function useWidgetBridge(
         // useSwipe listens on the host window; the admin has no swipe and ignores it.
         window.dispatchEvent(new Event(HOLD_SWIPE_EVENT))
         break
+      case 'fremkit:swipe': {
+        // Heard by the dashboard (App.vue), which turns the page under the same lock as its own
+        // swipes; the admin has no listener.
+        const delta = swipeDelta(m)
+        if (delta && options.swipes !== false) window.dispatchEvent(new CustomEvent(WIDGET_SWIPE_EVENT, { detail: delta }))
+        break
+      }
+      case 'fremkit:title-note':
+        titleNote.value = cleanTitleNote(m.text)
+        break
+      case 'fremkit:activity':
+        options.onActivity?.()
+        break
       case 'fremkit:unsubscribe': {
         // A widget whose settings now point at another connection drops the old channel.
         const channel = str(m.channel)
@@ -248,6 +276,22 @@ export function useWidgetBridge(
           .catch((e: Error) => reply(id, undefined, e.message))
         break
       }
+      case 'fremkit:gif': {
+        // A GIF the server keeps, fetched from this page's origin for the reason a favicon is
+        // (see above). Only for the GIF board: the catalogue never lets an installed or dev
+        // folder take a built-in's id, so the id alone says this is the built-in.
+        const id = str(m.id)
+        if (!id) break
+        const url = gifTarget(m)
+        if (instance().widgetId !== 'gif-board' || !url) { reply(id, undefined, t('bridge.badRequest')); break }
+        fetch(`/api/gifs/cached?url=${encodeURIComponent(url)}`)
+          .then(async (r) => {
+            if (!r.ok) { reply(id, undefined, t('bridge.noGif')); return }
+            reply(id, await dataUrl(await r.blob()))
+          })
+          .catch((e: Error) => reply(id, undefined, e.message))
+        break
+      }
       case 'fremkit:image': {
         // An icon the user picked by its exact address, fetched like a favicon (see above) — but
         // only an address found in this widget's own settings: the whole URL leaves the machine.
@@ -258,6 +302,22 @@ export function useWidgetBridge(
         const url = imageTarget(m, instance().settings)
         if (!url) { reply(id, undefined, t('bridge.badRequest')); break }
         fetch(`/api/favicon?image=${encodeURIComponent(url)}`)
+          .then(async (r) => {
+            if (!r.ok) { reply(id, undefined, t('bridge.noIcon')); return }
+            reply(id, await dataUrl(await r.blob()))
+          })
+          .catch((e: Error) => reply(id, undefined, e.message))
+        break
+      }
+      case 'fremkit:library-icon': {
+        // An icon the user imported, named in this instance's own settings (not the manifest's
+        // defaults, which are the author's words). The server serves it under a sandbox CSP and
+        // the widget gets bytes for an `<img>`, so an SVG draws and runs nothing.
+        const id = str(m.id)
+        if (!id) break
+        const name = libraryIconTarget(m, instance().settings)
+        if (!name) { reply(id, undefined, t('bridge.badRequest')); break }
+        fetch(tileIconUrl(name))
           .then(async (r) => {
             if (!r.ok) { reply(id, undefined, t('bridge.noIcon')); return }
             reply(id, await dataUrl(await r.blob()))
@@ -386,5 +446,6 @@ export function useWidgetBridge(
   watch(locale, (value) => { if (state.value === 'ready') post({ type: 'fremkit:locale', locale: value }) })
   watch(manifest, (m) => { if (m && state.value === 'error') { state.value = 'loading'; armTimeout() } })
 
-  return { state }
+  return { state, titleNote }
 }
+

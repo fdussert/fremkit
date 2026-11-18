@@ -77,6 +77,13 @@ export interface ClaudeSession {
   title?: string
   /** Git branch forwarded by the statusline script as `fremkit_branch`. */
   branch?: string
+  /**
+   * The repository's name (`fremkit_repo`), the same for every worktree and subfolder of it:
+   * `project` is only the folder's own name, which a session in `tools/bg-rollup` shows as `bg-rollup`.
+   */
+  repo?: string
+  /** Where in the repository the session sits (`fremkit_place`): the worktree, then the subfolder. */
+  place?: string
   state: ClaudeState
   since: number
   lastEventAt: number
@@ -114,6 +121,8 @@ export interface HookEvent {
   /** SubagentStart / SubagentStop: the subagent's own id (the session id stays the parent's). */
   agent_id?: string
   cwd?: string
+  /** Where Claude Code writes the session's transcript; read by `ClaudeConfigDirs`. */
+  transcript_path?: string
   tool_name?: string
   tool_input?: unknown
   notification_type?: string
@@ -125,6 +134,9 @@ export interface HookEvent {
   session_name?: string
   /** Git branch of the session's cwd, forwarded by the statusline script. */
   fremkit_branch?: string
+  /** Repository name and place in it, forwarded by the statusline script; empty outside git. */
+  fremkit_repo?: string
+  fremkit_place?: string
   workspace?: { current_dir?: string; project_dir?: string }
   cost?: { total_cost_usd?: number }
   context_window?: { context_window_size?: number; used_percentage?: number; current_usage?: { input_tokens?: number; output_tokens?: number; cache_creation_input_tokens?: number; cache_read_input_tokens?: number } }
@@ -161,6 +173,8 @@ const claudeSessionSchema = z.object({
   modelId: z.string().optional(),
   title: z.string().optional(),
   branch: z.string().optional(),
+  repo: z.string().optional(),
+  place: z.string().optional(),
   state: z.enum(['idle', 'working', 'permission', 'done', 'error']),
   since: z.number(),
   lastEventAt: z.number(),
@@ -539,6 +553,9 @@ export class ClaudeTracker {
     if (typeof e.model !== 'string' && e.model?.id) s.modelId = e.model.id
     if (typeof e.session_name === 'string' && e.session_name.trim()) s.title = e.session_name.trim().slice(0, TITLE_MAX)
     if (typeof e.fremkit_branch === 'string' && e.fremkit_branch.trim()) s.branch = e.fremkit_branch.trim()
+    // An older script sends neither field and leaves them alone; an empty one means "not in git".
+    if (typeof e.fremkit_repo === 'string') s.repo = e.fremkit_repo.trim() || undefined
+    if (typeof e.fremkit_place === 'string') s.place = e.fremkit_place.trim() || undefined
     if (typeof e.cost?.total_cost_usd === 'number') s.costUsd = e.cost.total_cost_usd
     if (e.permission_mode) s.permissionMode = e.permission_mode
     const cw = e.context_window

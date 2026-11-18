@@ -20,7 +20,7 @@ interface Loaded {
   publish(channel: string, data: Record<string, unknown>): void
 }
 
-async function loadWidget(): Promise<Loaded> {
+async function loadWidget(settings: Record<string, unknown> = {}): Promise<Loaded> {
   const html = await readFile(fileURLToPath(new URL('../../widgets/claude-usage/index.html', import.meta.url)), 'utf8')
   const script = [...html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)].map((m) => m[1]).join('\n')
 
@@ -49,6 +49,8 @@ async function loadWidget(): Promise<Loaded> {
       subscribers.set(channel, [...(subscribers.get(channel) ?? []), cb])
       return () => {}
     },
+    settings,
+    onSettings: () => () => {},
     onLocale: () => {},
     onResize: () => {},
     t: (dict: Record<string, string>, params?: Record<string, unknown>) =>
@@ -77,6 +79,14 @@ describe('the claude-usage widget', () => {
     loaded.publish('claude-usage', { fiveHour: { pct: 10, resetsAt: 0 }, sevenDay: { pct: 20, resetsAt: 0 }, today, updatedAt: Date.now() })
     expect(loaded.nodes.get('foot-text')?.innerHTML).toContain('aujourd’hui')
     expect(loaded.nodes.get('foot-text')?.innerHTML).toContain('4 k tokens')
+    expect(loaded.nodes.get('foot-text')?.innerHTML).toContain('≈ 1,25 $')
+  })
+
+  it('leaves the cost out when Show cost is off', async () => {
+    const loaded = await loadWidget({ showCost: false })
+    loaded.publish('claude-usage', { fiveHour: { pct: 10, resetsAt: 0 }, sevenDay: { pct: 20, resetsAt: 0 }, today, updatedAt: Date.now() })
+    expect(loaded.nodes.get('foot-text')?.innerHTML).toContain('4 k tokens')
+    expect(loaded.nodes.get('foot-text')?.innerHTML).not.toContain('$')
   })
 
   it('escapes what the account names, since a limit name is not ours', async () => {
@@ -87,6 +97,17 @@ describe('the claude-usage widget', () => {
       breakdown: [{ name: '<img src=x>', percent: 30 }],
     })
     expect(loaded.nodes.get('foot-text')?.innerHTML).toContain('&lt;img src=x&gt;')
+  })
+
+  it('says in words why the gauges are old', async () => {
+    const loaded = await loadWidget()
+    const last = { available: true, stale: true, limits: [{ name: 'Opus', percent: 40, resetsAt: 0 }], breakdown: [] }
+    loaded.publish('claude-account', { ...last, error: 'unauthorized' })
+    expect(loaded.nodes.get('note')?.textContent).toContain('connexion expirée')
+    loaded.publish('claude-account', { ...last, error: 'http-500' })
+    expect(loaded.nodes.get('note')?.textContent).toContain('http-500')
+    loaded.publish('claude-account', { ...last, error: 'constructor' })
+    expect(loaded.nodes.get('note')?.textContent).toContain('constructor')
   })
 
   it('draws the histogram that follows the footer', async () => {

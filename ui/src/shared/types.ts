@@ -63,7 +63,12 @@ export interface NavItem {
   instanceId: string; slot: NavSlot
   /** Touching it opens a popover with the same widget in full; absent means the touch reaches the widget. */
   popup?: boolean
+  /** The popover's shape while `popup` is on; absent is the standard one (`popupCells`). */
+  popupSize?: PopupSize
 }
+/** Mirrors the server schema: the popover shapes besides the standard one. */
+export type PopupSize = 'wide' | 'large'
+export const POPUP_SIZES: PopupSize[] = ['wide', 'large']
 /** Mirrors the server schema; absent means the plain theme background. */
 export interface Background { color?: string; image?: string; fit?: BackgroundFit }
 /** Mirrors the server schema: the two heights the navigation bar may take. */
@@ -139,6 +144,8 @@ export interface Privacy {
    * usage — the gauges of the claude-usage widget.
    */
   claudeAccountUsage: boolean
+  /** Whose usage: `auto` (the token refreshed last) or one Claude Code configuration folder. */
+  claudeAccountDir?: string
   /**
    * Let account providers publish the account's e-mail address. Off, the server leaves it out
    * of every snapshot, so no widget and no screen ever sees it.
@@ -166,6 +173,8 @@ export interface Config {
   theme?: string
   /** A night theme and when it takes over; absent means one theme, day and night. A paired device gets only `night`. */
   themeSchedule?: ThemeSchedule
+  /** The GIF board's collection, one per Mac; absent means no GIF saved yet. */
+  gifs?: GifBoard
   connections: Connection[]
   secrets: { backend: SecretsBackend }
   locale?: Locale
@@ -192,21 +201,37 @@ export const optionLabel = (option: SettingOption): LocalizedText => (typeof opt
  * nothing that needs the admin's own data, so a row stays one compact inline line.
  */
 export interface ListItemField {
-  type: 'string' | 'boolean' | 'enum' | 'number' | 'timezone'
+  /** `list`: the one list an item may hold, whose own items take plain fields only. */
+  /** `icon`: a string the admin can fill from the user's icon library, as `file:<name>`. */
+  type: 'string' | 'boolean' | 'enum' | 'number' | 'timezone' | 'icon' | 'list'
   label: LocalizedText
   default?: unknown
   options?: SettingOption[]
   /**
    * `string` fields only: where the admin reads the suggestions it offers while typing.
-   * `apps` lists the applications installed on this machine. A suggestion is only that — any
-   * value stays typeable.
+   * `apps` lists the applications installed on this machine, `browserProfiles` the profiles of its
+   * Brave, Chrome and Edge. A suggestion is only that — any value stays typeable.
    */
-  suggest?: 'apps'
+  suggest?: SuggestSource
   /**
    * Narrows `suggest` to the rows where a sibling field of the same item holds a given value —
    * `{ kind: 'app' }` offers the applications only while the row's kind is "app".
    */
   suggestWhen?: Record<string, string>
+  /** Shows the field only on the items whose sibling fields hold one of these values. */
+  showWhen?: Record<string, string | string[]>
+  /** A nested `list` only: the fields of its items, how many it holds, what names one. */
+  itemSchema?: Record<string, ListItemField>
+  max?: number
+  summary?: string[]
+}
+
+/** True when a list item field shows on this item: every sibling `showWhen` names holds a value it allows. */
+export function fieldShown(field: ListItemField, item: Record<string, unknown>): boolean {
+  return Object.entries(field.showWhen ?? {}).every(([key, allowed]) => {
+    const value = String(item[key] ?? '')
+    return Array.isArray(allowed) ? allowed.includes(value) : value === allowed
+  })
 }
 
 /**
@@ -218,6 +243,17 @@ export interface ListItemField {
 export function suggestApplies(field: ListItemField, item: Record<string, unknown>): boolean {
   if (!field.suggest) return false
   return Object.entries(field.suggestWhen ?? {}).every(([key, value]) => String(item[key] ?? '') === value)
+}
+
+/** Where a list item field's suggestions come from. */
+export type SuggestSource = 'apps' | 'browserProfiles'
+
+/** One profile of an installed browser, as `GET /api/browsers/profiles` returns it. */
+export interface BrowserProfileInfo {
+  browser: string
+  name: string
+  /** What a shortcut saves: `Brave — Perso`. */
+  value: string
 }
 
 /** One installed application, as `GET /api/apps/installed` returns it. */
@@ -259,6 +295,10 @@ export interface SettingField {
   itemSchema?: Record<string, ListItemField>
   /** For `list` fields: how many items may be added. Absent means no ceiling. */
   max?: number
+  /** For `list` fields: the item fields that name an item, first non-empty one wins. */
+  summary?: string[]
+  /** For `list` fields: a grid of this many columns, or the key of the number setting holding it. */
+  grid?: number | string
 }
 
 /**
@@ -670,6 +710,20 @@ export interface ThemeSchedule {
   dayAt: string
   nightAt: string
 }
+/** Mirrors `GifItemSchema`: a Giphy GIF by its id, or an `https:` link to a GIF elsewhere. */
+export type GifItem =
+  | { id: string; kind: 'giphy'; giphyId: string; label?: string }
+  | { id: string; kind: 'link'; url: string; label?: string }
+/** Mirrors `GifGroupSchema`. */
+export interface GifGroup {
+  id: string
+  name: string
+  items: GifItem[]
+}
+/** Mirrors `GifBoardSchema`. */
+export interface GifBoard {
+  groups: GifGroup[]
+}
 /** Mirrors `ThemeInForce` in `server/src/themes/schedule.ts`: what the `theme` channel publishes. */
 export interface ThemeInForce {
   id: string
@@ -708,7 +762,7 @@ export interface SharedWidget {
 }
 export interface SharedPlacement { widget: string; x: number; y: number; w: number; h: number; locked?: boolean }
 export interface SharedPage { name: string; items: SharedPlacement[]; background?: SharedBackground }
-export interface SharedNavItem { widget: string; slot: NavSlot; popup?: boolean }
+export interface SharedNavItem { widget: string; slot: NavSlot; popup?: boolean; popupSize?: PopupSize }
 export type SharedDisplay = Omit<ScreenDisplay, 'background'> & { background?: SharedBackground }
 export interface SharedScreen { name: string; kind: 'edge' | 'device'; display: SharedDisplay; nav: SharedNavItem[]; pages: SharedPage[] }
 export interface LayoutFile {
