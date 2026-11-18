@@ -464,6 +464,7 @@ export const fr: Record<string, string> = {
   'admin.inspector.screen.claudeAccount.hint': 'Quand Claude Code tourne depuis plusieurs profils connectés à des comptes différents, le compte dont les widgets Claude montrent la consommation. Automatique suit le dernier profil utilisé.',
   'admin.inspector.screen.claudeAccount.auto': 'Automatique (le dernier utilisé)',
   'admin.inspector.screen.claudeAccount.plan': 'forfait {plan}',
+  'admin.inspector.screen.claudeAccount.expired': 'connexion expirée',
   'admin.inspector.screen.accountEmail': 'Afficher l’adresse e-mail du compte',
   'admin.inspector.screen.accountEmail.hint': 'Désactivé par défaut. Les widgets qui affichent un compte reçoivent alors le forfait et le mode de connexion, jamais l’adresse e-mail : le serveur la retire de ce qu’il envoie. Une fois activé, l’adresse est envoyée à chaque widget qui lit un canal de compte — y compris un widget installé depuis la marketplace — et apparaît à l’écran.',
   'admin.inspector.screen.macmonTemperature': 'Lire la température du CPU avec macmon',

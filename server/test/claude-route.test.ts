@@ -30,11 +30,15 @@ describe('GET /api/claude/accounts', () => {
     const dirs = new ClaudeConfigDirs()
     dirs.note('/u/profile/projects/-p/1.jsonl')
     const local = Fastify()
-    await local.register(claudeRoutes, { tracker, usage, configDirs: dirs, describe: async (d) => ({ dir: d, plan: 'max', org: null }) })
+    await local.register(claudeRoutes, {
+      tracker, usage, configDirs: dirs, describe: async (d) => ({ dir: d, plan: 'max', org: null }),
+      // The learnt profile's sign-in lapsed; the default one says nothing about its expiry.
+      expiry: async (d) => (d === '/u/profile' ? 1000 : null), now: () => 2000,
+    })
     const res = await local.inject({ method: 'GET', url: '/api/claude/accounts' })
     expect(res.json()).toEqual({ accounts: [
-      { dir: '/u/profile', plan: 'max', org: null },
-      { dir: defaultConfigDir(), plan: 'max', org: null },
+      { dir: '/u/profile', plan: 'max', org: null, expired: true },
+      { dir: defaultConfigDir(), plan: 'max', org: null, expired: false },
     ] })
     await local.close()
   })

@@ -109,6 +109,25 @@ export function freshestToken(items: (KeychainToken | null)[]): string | null {
  * names are computed here, so an event can only ever point this at another
  * `Claude Code-credentials-<8 hex>` item.
  */
+/**
+ * When the sign-in of one configuration folder expires (ms), the latest of its items; null when
+ * it has no item or none says. An access token past it means nobody signed in with that folder
+ * recently: Claude Code refreshes the token only while it runs from it. Never returns the token.
+ */
+export async function claudeTokenExpiry(
+  dir: string,
+  read: (service: string) => Promise<string> = (service) => run('/usr/bin/security', ['find-generic-password', '-s', service, '-w']),
+): Promise<number | null> {
+  let latest: number | null = null
+  for (const service of keychainServicesFor([], dir)) {
+    try {
+      const e = parseKeychainItem(await read(service))?.expiresAt ?? null
+      if (e !== null && (latest === null || e > latest)) latest = e
+    } catch { /* no such item */ }
+  }
+  return latest
+}
+
 export async function readClaudeOAuthToken(
   configDirs: string[] = [],
   read: (service: string) => Promise<string> = (service) => run('/usr/bin/security', ['find-generic-password', '-s', service, '-w']),
@@ -178,6 +197,9 @@ export function createClaudeAccountProvider(opts: {
   // When the last 429 said to come back. A reload or a new subscriber polls at once; this keeps
   // that poll off the network until the penalty is over.
   let rateLimitedUntil = 0
+  // The folder the last poll read. Another one is another account: whatever the endpoint or the
+  // keychain said about the old one (a penalty, an empty item) says nothing about it.
+  let lastDir: string | null = null
   // The last good snapshot survives a server restart, so a restart into a rate-limited
   // endpoint still shows the per-model gauges, flagged as stale, instead of nothing.
   const loaded: Promise<void> = filePath
@@ -193,6 +215,14 @@ export function createClaudeAccountProvider(opts: {
       // nothing is sent. The widget shows its last snapshot, if it ever had one, and says why.
       if (!enabled()) return fail('disabled')
       const t = now()
+      const dir = accountDir()
+      if (lastDir !== null && dir !== lastDir) {
+        noTokenStreak = 0
+        nextTokenAttempt = 0
+        rateLimitedUntil = 0
+        provider.intervalMs = BASE_INTERVAL_MS
+      }
+      lastDir = dir
       // Reading the keychain can prompt or simply be pointless when Claude Code
       // is not installed; after a few empty reads, back off to one probe an hour.
       if (noTokenStreak >= NO_TOKEN_STREAK && t < nextTokenAttempt) return fail('no-token')
@@ -211,7 +241,12 @@ export function createClaudeAccountProvider(opts: {
       if (!res.ok) {
         // Release the socket: nothing reads the error body.
         await res.body?.cancel().catch(() => { /* already closed */ })
-        if (res.status === 401) return fail('unauthorized')
+        if (res.status === 401) {
+          // A 429's long cadence was about a token that worked; this one does not, and the next
+          // sign-in should be seen at the normal pace.
+          provider.intervalMs = BASE_INTERVAL_MS
+          return fail('unauthorized')
+        }
         if (res.status === 429) {
           // Other clients share this quota (every Claude Code session polls it), so a 429 can be a
           // busy minute or a long penalty: come back when the server says, and no sooner. Without

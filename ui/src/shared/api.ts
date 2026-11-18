@@ -145,7 +145,8 @@ export type GifSearchResponse =
   | { ok: false; error: GifSearchError }
 
 /** A Claude Code configuration folder and how its account is named, never by its address. */
-export interface ClaudeAccount { dir: string; plan: string | null; org: string | null }
+/** `expired`: the folder's sign-in has lapsed (no Claude Code session ran from it lately). */
+export interface ClaudeAccount { dir: string; plan: string | null; org: string | null; expired?: boolean }
 
 export const api = {
   getConfig: () => fetch('/api/config').then((r) => json<Config>(r)),

@@ -464,6 +464,7 @@ export const en: Record<string, string> = {
   'admin.inspector.screen.claudeAccount.hint': 'When Claude Code runs from several profiles signed in to different accounts, the account whose usage the Claude widgets show. Automatic follows the profile used last.',
   'admin.inspector.screen.claudeAccount.auto': 'Automatic (the one used last)',
   'admin.inspector.screen.claudeAccount.plan': '{plan} plan',
+  'admin.inspector.screen.claudeAccount.expired': 'sign-in expired',
   'admin.inspector.screen.accountEmail': 'Show the account e-mail address',
   'admin.inspector.screen.accountEmail.hint': 'Off by default. Widgets that show an account then get the plan and the sign-in method, never the e-mail address: the server leaves it out of what it sends. Once on, the address is sent to every widget that reads an account channel — a widget installed from the marketplace included — and appears on the screen.',
   'admin.inspector.screen.macmonTemperature': 'Read the CPU temperature with macmon',

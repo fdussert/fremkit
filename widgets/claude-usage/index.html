@@ -67,6 +67,12 @@
     sevenDay: { fr: '7 jours', en: '7 days' },
     stale: { fr: '· données anciennes', en: '· stale data' },
     staleWithError: { fr: '· données anciennes ({error})', en: '· stale data ({error})' },
+    // What the account provider's error codes mean to the person reading the tile.
+    errors: {
+      unauthorized: { fr: 'connexion expirée, choisis un autre compte dans Confidentialité', en: 'sign-in expired, pick another account in Privacy' },
+      'no-token': { fr: 'pas de compte Claude Code connecté', en: 'no Claude Code account signed in' },
+      'rate-limited': { fr: 'trop de demandes, nouvel essai bientôt', en: 'too many requests, retrying soon' },
+    },
     noSession: { fr: '· lance une session Claude Code', en: '· start a Claude Code session' },
     accountOff: { fr: '· consommation du compte désactivée', en: '· account usage turned off' },
     breakdown: { fr: '{name} {percent} %', en: '{name} {percent}%' },
@@ -78,6 +84,7 @@
     millions: { fr: '{n} M', en: '{n}M' },
     thousands: { fr: '{n} k', en: '{n}k' }
   }
+  function errorText(code) { return Object.prototype.hasOwnProperty.call(L.errors, code) ? Fremkit.t(L.errors[code]) : String(code) }
   var data = null, account = null, accountOff = false, identity = null
   function cls(p) { return p < 60 ? 'ok' : p < 85 ? 'warn' : 'hot' }
   /** A decimal separator follows the language: a comma in French, a point in English. */
@@ -125,7 +132,7 @@
     if (Fremkit.compact) { renderCompact(useAccount); return }
     if (useAccount) {
       gauges.innerHTML = account.limits.map(function (l) { return gaugeHtml(l.name, l.percent, l.resetsAt) }).join('')
-      note.textContent = stale ? (account.error ? Fremkit.t(L.staleWithError, { error: account.error }) : Fremkit.t(L.stale)) : ''
+      note.textContent = stale ? (account.error ? Fremkit.t(L.staleWithError, { error: errorText(account.error) }) : Fremkit.t(L.stale)) : ''
     } else if (data) {
       gauges.innerHTML = gaugeHtml('5 h', data.fiveHour ? data.fiveHour.pct : 0, data.fiveHour ? data.fiveHour.resetsAt : 0)
         + gaugeHtml(Fremkit.t(L.sevenDay), data.sevenDay ? data.sevenDay.pct : 0, data.sevenDay ? data.sevenDay.resetsAt : 0)

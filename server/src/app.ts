@@ -399,7 +399,16 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   // How each provider's last poll went, for the editor's widget health (providers/health.ts).
   const stopHealth = publishHealth(registry, (channel, data) => hub.broadcast(channel, data))
   let showAccountEmail = store.get().privacy.showAccountEmail
+  let claudeAccount = `${store.get().privacy.claudeAccountUsage}:${store.get().privacy.claudeAccountDir}`
   store.onChange((cfg) => {
+    // Another Claude account, or the reading turned on: read it now rather than at the next poll,
+    // which can be minutes away and would keep showing the old account's state until then.
+    const account = `${cfg.privacy.claudeAccountUsage}:${cfg.privacy.claudeAccountDir}`
+    if (account !== claudeAccount) {
+      claudeAccount = account
+      registry.refresh('claude-account')
+      registry.refresh('claude-identity')
+    }
     setServerLocale(cfg.locale)
     if (cfg.privacy.showAccountEmail !== showAccountEmail) {
       showAccountEmail = cfg.privacy.showAccountEmail
@@ -532,7 +541,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   await app.register(claudeRoutes, {
     tracker, usage, configDirs: claudeConfigDirs,
     // A demo never runs the Claude CLI: its one account is the folder Claude Code uses by default.
-    ...(demo ? { describe: async (dir: string) => ({ dir, plan: 'max', org: null }) } : {}),
+    ...(demo ? { describe: async (dir: string) => ({ dir, plan: 'max', org: null }), expiry: async () => null } : {}),
   })
   await app.register(dockRoutes, {
     state: dock,

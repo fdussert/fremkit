@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
-import { normalizeAccountUsage, createClaudeAccountProvider, parseKeychainJson } from '../src/claude/account.js'
+import { normalizeAccountUsage, createClaudeAccountProvider, parseKeychainJson, claudeTokenExpiry } from '../src/claude/account.js'
+import { keychainServiceFor } from '../src/claude/configDirs.js'
 import { USER_AGENT } from '../src/version.js'
 
 const sample = {
@@ -154,6 +155,32 @@ describe('createClaudeAccountProvider', () => {
     await p.poll!()
     expect(fetchFn).toHaveBeenCalledTimes(2)
   })
+  it('forgets the old account\'s penalty when another account is picked, and reads it at once', async () => {
+    let t = 0
+    let dir = '/u/work'
+    const fetchFn = vi.fn(async () => dir === '/u/work'
+      ? new Response('{}', { status: 429, headers: { 'retry-after': '3000' } })
+      : new Response(JSON.stringify(sample), { status: 200 }))
+    const p = createClaudeAccountProvider({ fetchFn: fetchFn as any, readToken: async () => 'tok', now: () => t, accountDir: () => dir })
+    await p.poll!()
+    expect(p.intervalMs).toBe(3_000_000)
+    t = 1000
+    dir = '/u/personal'
+    expect(await p.poll!()).toMatchObject({ available: true, stale: false })
+    expect(fetchFn).toHaveBeenCalledTimes(2)
+    expect(p.intervalMs).toBe(300_000)
+  })
+  it('comes back to the normal pace on a 401 after a long 429', async () => {
+    let status = 429
+    const fetchFn = vi.fn(async () => new Response('{}', { status, headers: status === 429 ? { 'retry-after': '3000' } : {} }))
+    let t = 0
+    const p = createClaudeAccountProvider({ fetchFn: fetchFn as any, readToken: async () => 'tok', now: () => t })
+    await p.poll!()
+    t = 3_000_000
+    status = 401
+    expect(await p.poll!()).toMatchObject({ error: 'unauthorized' })
+    expect(p.intervalMs).toBe(300_000)
+  })
   it('persists the last good snapshot and reloads it, stale, on the next start', async () => {
     const { mkdtemp, readFile } = await import('node:fs/promises')
     const { join } = await import('node:path')
@@ -180,5 +207,17 @@ describe('createClaudeAccountProvider', () => {
     await writeFile(join(dir, 'bad.json'), '{"last": 3', 'utf8')
     expect(await createClaudeAccountProvider({ fetchFn: limited as any, readToken: async () => 'tok', filePath: join(dir, 'bad.json') }).poll!())
       .toMatchObject({ available: false, stale: true, limits: [] })
+  })
+})
+
+describe('claudeTokenExpiry', () => {
+  const item = (expiresAt?: number) => JSON.stringify({ claudeAiOauth: { accessToken: 'secret-token', ...(expiresAt === undefined ? {} : { expiresAt }) } })
+  it('says when a folder\'s sign-in expires, never the token', async () => {
+    const read = async (service: string) => { if (service === keychainServiceFor('/u/p')) return item(5000); throw new Error('none') }
+    expect(await claudeTokenExpiry('/u/p', read)).toBe(5000)
+  })
+  it('answers null with no item, or one that does not say', async () => {
+    expect(await claudeTokenExpiry('/u/p', async () => { throw new Error('none') })).toBeNull()
+    expect(await claudeTokenExpiry('/u/p', async () => item())).toBeNull()
   })
 })

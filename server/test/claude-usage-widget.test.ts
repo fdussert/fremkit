@@ -89,6 +89,17 @@ describe('the claude-usage widget', () => {
     expect(loaded.nodes.get('foot-text')?.innerHTML).toContain('&lt;img src=x&gt;')
   })
 
+  it('says in words why the gauges are old', async () => {
+    const loaded = await loadWidget()
+    const last = { available: true, stale: true, limits: [{ name: 'Opus', percent: 40, resetsAt: 0 }], breakdown: [] }
+    loaded.publish('claude-account', { ...last, error: 'unauthorized' })
+    expect(loaded.nodes.get('note')?.textContent).toContain('connexion expirée')
+    loaded.publish('claude-account', { ...last, error: 'http-500' })
+    expect(loaded.nodes.get('note')?.textContent).toContain('http-500')
+    loaded.publish('claude-account', { ...last, error: 'constructor' })
+    expect(loaded.nodes.get('note')?.textContent).toContain('constructor')
+  })
+
   it('draws the histogram that follows the footer', async () => {
     const loaded = await loadWidget()
     loaded.publish('claude-usage', { fiveHour: null, sevenDay: null, today: { ...today, hourly: new Array(24).fill(1) }, updatedAt: Date.now() })

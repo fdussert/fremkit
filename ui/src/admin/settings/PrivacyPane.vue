@@ -42,7 +42,8 @@ function shortDir(dir: string): string {
 }
 function accountLabel(a: ClaudeAccount): string {
   const who = [a.org, a.plan ? t('admin.inspector.screen.claudeAccount.plan', { plan: a.plan[0].toUpperCase() + a.plan.slice(1) }) : null].filter(Boolean).join(' · ')
-  return who ? `${who} — ${shortDir(a.dir)}` : shortDir(a.dir)
+  const label = who ? `${who} — ${shortDir(a.dir)}` : shortDir(a.dir)
+  return a.expired ? `${label} (${t('admin.inspector.screen.claudeAccount.expired')})` : label
 }
 /** The saved folder stays listed even when this Mac has not seen it lately, so the select shows it. */
 const claudeAccountOptions = computed(() => {
