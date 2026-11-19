@@ -82,6 +82,7 @@ let suites: [(String, () -> XCTestCase, [TestMethod])] = [
         ("testTakesAWindowThatMerelyStraddlesTheBoundary", { ($0 as! WindowSweepTests).testTakesAWindowThatMerelyStraddlesTheBoundary() }),
         ("testIgnoresTheHelpersOwnKioskWindow", { ($0 as! WindowSweepTests).testIgnoresTheHelpersOwnKioskWindow() }),
         ("testIgnoresEverythingThatIsNotAnOrdinaryWindow", { ($0 as! WindowSweepTests).testIgnoresEverythingThatIsNotAnOrdinaryWindow() }),
+        ("testIgnoresAWindowThatIsFullyTransparent", { ($0 as! WindowSweepTests).testIgnoresAWindowThatIsFullyTransparent() }),
         ("testSkipsAnEntryMissingWhatItNeeds", { ($0 as! WindowSweepTests).testSkipsAnEntryMissingWhatItNeeds() }),
         ("testKeepsTheOrderOfTheList", { ($0 as! WindowSweepTests).testKeepsTheOrderOfTheList() }),
         ("testPresentListsEveryWindowWhateverItIs", { ($0 as! WindowSweepTests).testPresentListsEveryWindowWhateverItIs() }),

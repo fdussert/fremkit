@@ -12,12 +12,14 @@ private func info(
     id: CGWindowID,
     pid: pid_t,
     frame: CGRect,
-    layer: Int = 0
+    layer: Int = 0,
+    alpha: Double = 1
 ) -> [String: Any] {
     [
         kCGWindowNumber as String: id,
         kCGWindowOwnerPID as String: pid,
         kCGWindowLayer as String: layer,
+        kCGWindowAlpha as String: NSNumber(value: alpha),
         kCGWindowBounds as String: frame.dictionaryRepresentation as NSDictionary,
     ]
 }
@@ -52,6 +54,17 @@ final class WindowSweepTests: XCTestCase {
             let strays = WindowSweep.strays(in: [info(id: 4, pid: 900, frame: furniture, layer: layer)], edge: edge, ownPid: ownPid)
             XCTAssertTrue(strays.isEmpty, "layer \(layer)")
         }
+    }
+
+    func testIgnoresAWindowThatIsFullyTransparent() {
+        // Applications park invisible helper windows anywhere; moving one is noise, and spends an
+        // Accessibility round trip on something nobody can see. A faint one is still a window.
+        let frame = CGRect(x: -1000, y: 400, width: 400, height: 300)
+        XCTAssertTrue(WindowSweep.strays(in: [info(id: 9, pid: 900, frame: frame, alpha: 0)], edge: edge, ownPid: ownPid).isEmpty)
+        XCTAssertEqual(WindowSweep.strays(in: [info(id: 9, pid: 900, frame: frame, alpha: 0.2)], edge: edge, ownPid: ownPid).count, 1)
+        var noAlpha = info(id: 9, pid: 900, frame: frame)
+        noAlpha.removeValue(forKey: kCGWindowAlpha as String)
+        XCTAssertEqual(WindowSweep.strays(in: [noAlpha], edge: edge, ownPid: ownPid).count, 1)
     }
 
     func testSkipsAnEntryMissingWhatItNeeds() {

@@ -36,6 +36,9 @@ public enum WindowSweep {
             // Layer 0 is an ordinary window. Everything else (the Dock, the menu bar extras, a
             // screen saver, the kiosk itself) is furniture that is meant to be above or below.
             guard let layer = info[kCGWindowLayer as String] as? Int, layer == 0 else { return nil }
+            // A fully transparent window is one nobody can see or lose: applications keep such
+            // helper windows anywhere, and moving one would spend an attempt on nothing.
+            if let alpha = info[kCGWindowAlpha as String] as? Double, alpha <= 0 { return nil }
             guard let pid = info[kCGWindowOwnerPID as String] as? pid_t, pid != ownPid else { return nil }
             guard let id = info[kCGWindowNumber as String] as? CGWindowID else { return nil }
             guard let bounds = info[kCGWindowBounds as String] as? NSDictionary,
