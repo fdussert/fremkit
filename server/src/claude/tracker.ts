@@ -243,6 +243,24 @@ export interface ClaudeTrackerOptions {
    * tracker knows when, and nothing about sounds.
    */
   onAttention?: (event: AttentionEvent) => void
+  /**
+   * Called whenever a pin is set, cleared, moved or lost, with why.
+   *
+   * A pin that "changed by itself" is otherwise impossible to explain afterwards: the board
+   * shows where pins are, never how they got there. The session is named by the start of its
+   * id, which says which line belongs with which and nothing about the session.
+   */
+  onPin?: (event: PinEvent) => void
+}
+
+/** One line of a pin's history, for the log. */
+export interface PinEvent {
+  what: 'pinned' | 'unpinned' | 'handed' | 'waiting' | 'adopted' | 'dropped'
+  /** The first characters of the session id. */
+  session: string
+  /** The session the pin went to, for `handed`. */
+  to?: string
+  why?: string
 }
 
 export class ClaudeTracker {
@@ -255,6 +273,7 @@ export class ClaudeTracker {
   private readonly persistMs: number
   private readonly writeFn: (path: string, data: string) => Promise<void>
   private readonly onAttention?: (event: AttentionEvent) => void
+  private readonly onPin?: (event: PinEvent) => void
   private dirty = false
   private timer: ReturnType<typeof setTimeout> | null = null
   /** Serialises persists: every write chains onto the previous one. */
@@ -271,6 +290,7 @@ export class ClaudeTracker {
     this.persistMs = opts.persistMs ?? PERSIST_MS
     this.writeFn = opts.writeFn ?? ((path, data) => writeFile(path, data, { encoding: 'utf8', mode: 0o600 }))
     this.onAttention = opts.onAttention
+    this.onPin = opts.onPin
   }
 
   handle(event: HookEvent): void {
@@ -342,6 +362,7 @@ export class ClaudeTracker {
     if (s.discovered) return false
     if (s.state === 'working' || s.state === 'permission') throw new Error('session en cours')
     this.sessions.delete(sessionId)
+    if (s.pinnedAt !== undefined) this.notePin('dropped', sessionId, { why: 'dismissed' })
     this.schedulePersist()
     return true
   }
@@ -365,8 +386,13 @@ export class ClaudeTracker {
     } else {
       s.pinnedAt = undefined
     }
+    this.notePin(pinned ? 'pinned' : 'unpinned', sessionId)
     this.schedulePersist()
     return 'ok'
+  }
+
+  private notePin(what: PinEvent['what'], sessionId: string, more: { to?: string; why?: string } = {}): void {
+    this.onPin?.({ what, session: sessionId.slice(0, 8), ...(more.to ? { to: more.to.slice(0, 8) } : {}), ...(more.why ? { why: more.why } : {}) })
   }
 
   /** Reconciles known sessions with the live Claude Code processes (null = discovery failed, no change). */
@@ -386,7 +412,11 @@ export class ClaudeTracker {
     for (const [id, s] of this.sessions) {
       if (s.discovered) continue
       const p = take(s.cwd, s.pid)
-      if (!p) { this.sessions.delete(id); changed = true; continue }
+      if (!p) {
+        this.sessions.delete(id); changed = true
+        if (s.pinnedAt !== undefined) this.notePin('dropped', id, { why: 'no process left in its folder' })
+        continue
+      }
       if (s.pid !== p.pid) { s.pid = p.pid; changed = true }
     }
     // Placeholders: drop the dead or claimed ones, add one per unclaimed process.
@@ -523,9 +553,11 @@ export class ClaudeTracker {
     for (const other of this.sessions.values()) {
       if (other.discovered || other.client?.pid !== pid) continue
       if (other.pinnedAt === undefined) other.pinnedAt = ended.pinnedAt
+      this.notePin('handed', ended.sessionId, { to: other.sessionId, why: 'same process' })
       return
     }
     this.orphanPins.set(pid, { pinnedAt: ended.pinnedAt, from: ended.sessionId, until: t + PIN_HANDOFF_MS })
+    this.notePin('waiting', ended.sessionId, { why: 'session ended' })
   }
 
   /** The other half of {@link handOffPin}: a session heard from the pid a pin is waiting on. */
@@ -537,6 +569,7 @@ export class ClaudeTracker {
     if (!pin || pin.from === s.sessionId || t > pin.until) return
     this.orphanPins.delete(pid)
     if (s.pinnedAt === undefined) s.pinnedAt = pin.pinnedAt
+    this.notePin('adopted', s.sessionId, { why: `from ${pin.from.slice(0, 8)}` })
   }
 
   /** Counters for the local day: sessions seen, sessions that reached "done", git commits observed. */

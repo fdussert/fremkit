@@ -267,7 +267,11 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   // clicked on, and the moment worth hearing about is the one where the dashboard is not in
   // front of you. The first placed tile that chose a sound is the one that gets it.
   const attention = createAttention({ instances: () => findInstances(store.get(), 'claude-sessions') })
-  const tracker = new ClaudeTracker({ filePath: join(opts.dataDir, 'claude-sessions.json'), onAttention: attention })
+  const tracker = new ClaudeTracker({
+    filePath: join(opts.dataDir, 'claude-sessions.json'),
+    onAttention: attention,
+    onPin: (event) => app.log.info(event, 'claude pin'),
+  })
   await tracker.load()
   // Demo mode learns nothing from real hooks and reads no keychain, so it keeps no file either.
   const claudeConfigDirs = new ClaudeConfigDirs({ filePath: demo ? undefined : join(opts.dataDir, 'claude-config-dirs.json') })
