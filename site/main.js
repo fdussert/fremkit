@@ -12,6 +12,7 @@
     'hero.lede': 'Fremkit fait du Xeneon Edge, un bandeau tactile de 2560 × 720, le tableau de bord de votre Mac : builds, agenda, imprimante 3D, maison connectée, Claude Code. <strong>Sans iCUE, sans pilote, sans compte.</strong>',
     'copy': 'Copier', 'copied': 'Copié', 'hero.install': 'Guide d’installation', 'hero.how': 'Voir le fonctionnement',
     'hero.fine': 'Libre et open source · MIT · macOS 13+ sur Apple silicon',
+    'hero.also': 'Au-delà du bandeau :', 'hero.alsoTab': 'App iPad et Android', 'hero.alsoComp': 'Extension de navigateur',
     'hero.page0': 'En direct', 'hero.page0s': 'toucher & glisser', 'hero.caption': 'Enregistré sur le dashboard lui-même, au 2560 × 720 de l’Edge, avec des données d’exemple. L’anneau marque où le doigt se pose.',
     'w.sub2': 'Chaque fiche dit qui l’a écrit, ce qu’il lit et ce qui a changé dans la dernière version, avant que vous appuyiez sur Installer.',
     'hero.page1': 'Accueil', 'hero.page1s': 'dev & IA', 'hero.page2': 'Atelier', 'hero.page2s': 'imprimante & maison', 'hero.page3': 'Mesures', 'hero.page3s': 'disques & système', 'hero.shows': 'Affiche',
