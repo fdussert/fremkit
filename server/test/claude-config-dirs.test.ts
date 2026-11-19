@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { mkdir, mkdtemp, stat, utimes, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, stat, utimes, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import Fastify from 'fastify'
@@ -57,6 +57,39 @@ describe('ClaudeConfigDirs', () => {
     const dirs = new ClaudeConfigDirs({ filePath })
     await dirs.load()
     expect(dirs.list()).toEqual(['/u/a'])
+  })
+  it('remembers when each folder last sent an event, across restarts, without a write per event', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'claude-dirs-'))
+    const filePath = join(dir, 'claude-config-dirs.json')
+    let t = 1_000_000
+    const dirs = new ClaudeConfigDirs({ filePath, now: () => t })
+    await dirs.load()
+    dirs.note('/u/a/projects/p/1.jsonl')
+    dirs.note('/u/b/projects/p/1.jsonl')
+    expect(dirs.lastSeen('/u/a')).toBe(1_000_000)
+    expect(dirs.lastSeen('/u/never')).toBeNull()
+    t += 60_000
+    dirs.note('/u/b/projects/p/2.jsonl')
+    // Seen in memory at once; the file catches up within the hour, not on every event.
+    expect(dirs.lastSeen('/u/b')).toBe(1_060_000)
+    await dirs.flush()
+    expect(JSON.parse(await readFile(filePath, 'utf8')).seen['/u/b']).toBe(1_000_000)
+    t += 60 * 60_000
+    dirs.note('/u/b/projects/p/3.jsonl')
+    await dirs.flush()
+    const again = new ClaudeConfigDirs({ filePath })
+    await again.load()
+    expect(again.lastSeen('/u/b')).toBe(t)
+    expect(again.lastSeen('/u/a')).toBe(1_000_000)
+  })
+  it('reads a file written before folders had a last-seen time as never seen', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'claude-dirs-'))
+    const filePath = join(dir, 'claude-config-dirs.json')
+    await writeFile(filePath, JSON.stringify({ dirs: ['/u/a'] }))
+    const dirs = new ClaudeConfigDirs({ filePath })
+    await dirs.load()
+    expect(dirs.list()).toEqual(['/u/a'])
+    expect(dirs.lastSeen('/u/a')).toBeNull()
   })
   it('is fed by the hook route', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'claude-dirs-'))

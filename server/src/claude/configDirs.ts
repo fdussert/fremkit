@@ -20,7 +20,14 @@ import { z } from 'zod'
 export const MAX_CONFIG_DIRS = 8
 export const DEFAULT_KEYCHAIN_SERVICE = 'Claude Code-credentials'
 
-const persistedSchema = z.object({ dirs: z.array(z.string()).max(MAX_CONFIG_DIRS) })
+/** How stale a folder's persisted last-seen time may get before an event writes the file again. */
+const SEEN_PERSIST_MS = 60 * 60_000
+
+const persistedSchema = z.object({
+  dirs: z.array(z.string()).max(MAX_CONFIG_DIRS),
+  /** When each folder last sent an event (ms), to the hour. Absent from files written before. */
+  seen: z.record(z.string(), z.number()).optional(),
+})
 
 /**
  * The configuration folder a transcript lives under, or null when the path does not look like one.
@@ -60,34 +67,62 @@ export function keychainServicesFor(known: string[], pinned: string): string[] {
 export class ClaudeConfigDirs {
   /** Most recently seen first. */
   private dirs: string[] = []
+  /**
+   * When each folder last sent an event: what tells an account in use from the keychain items of
+   * folders nobody opens any more. In memory to the event; on disk to the hour (`SEEN_PERSIST_MS`).
+   */
+  private seen = new Map<string, number>()
+  private persistedSeen = new Map<string, number>()
   private queue: Promise<void> = Promise.resolve()
+  private readonly now: () => number
 
-  constructor(private readonly opts: { filePath?: string } = {}) {}
+  constructor(private readonly opts: { filePath?: string; now?: () => number } = {}) {
+    this.now = opts.now ?? Date.now
+  }
 
   async load(): Promise<void> {
     if (!this.opts.filePath) return
     try {
       const parsed = persistedSchema.safeParse(JSON.parse(await readFile(this.opts.filePath, 'utf8')))
-      if (parsed.success) this.dirs = parsed.data.dirs.filter((d) => configDirOf(`${d}/projects/x/x.jsonl`) === d)
+      if (!parsed.success) return
+      this.dirs = parsed.data.dirs.filter((d) => configDirOf(`${d}/projects/x/x.jsonl`) === d)
+      for (const d of this.dirs) {
+        const t = parsed.data.seen?.[d]
+        if (typeof t === 'number' && Number.isFinite(t)) { this.seen.set(d, t); this.persistedSeen.set(d, t) }
+      }
     } catch { /* first run or unreadable */ }
   }
 
-  /** Records the folder a transcript lives under. Writes only when the list actually changes. */
+  /**
+   * Records the folder a transcript lives under, and that it was seen now. Writes only when the
+   * list changes or the folder's time on disk is an hour old: events come several a second.
+   */
   note(transcriptPath: unknown): void {
     const dir = configDirOf(transcriptPath)
-    if (!dir || this.dirs[0] === dir) return
-    this.dirs = [dir, ...this.dirs.filter((d) => d !== dir)].slice(0, MAX_CONFIG_DIRS)
-    this.persist()
+    if (!dir) return
+    const t = this.now()
+    this.seen.set(dir, t)
+    const moved = this.dirs[0] !== dir
+    if (moved) this.dirs = [dir, ...this.dirs.filter((d) => d !== dir)].slice(0, MAX_CONFIG_DIRS)
+    const onDisk = this.persistedSeen.get(dir)
+    if (moved || onDisk === undefined || t - onDisk >= SEEN_PERSIST_MS) this.persist()
   }
 
   list(): string[] {
     return [...this.dirs]
   }
 
+  /** When `dir` last sent an event (ms), or null when it never did since this file was kept. */
+  lastSeen(dir: string): number | null {
+    return this.seen.get(dir) ?? null
+  }
+
   private persist(): void {
+    for (const d of [...this.seen.keys()]) if (!this.dirs.includes(d)) this.seen.delete(d)
+    this.persistedSeen = new Map(this.seen)
     const filePath = this.opts.filePath
     if (!filePath) return
-    const data = JSON.stringify({ dirs: this.dirs })
+    const data = JSON.stringify({ dirs: this.dirs, seen: Object.fromEntries(this.seen) })
     this.queue = this.queue.then(async () => {
       const tmp = `${filePath}.${process.pid}.tmp`
       await writeFile(tmp, data, { encoding: 'utf8', mode: 0o600 })
