@@ -70,6 +70,7 @@ export const en: Record<string, string> = {
   'admin.health.reason.unavailable': 'Its data source is not available on this Mac.',
   'admin.health.reason.invalid': 'Its data source sent something it could not read.',
   'admin.health.reason.failing': 'Its data source is failing ({error}).',
+  'admin.health.reason.partial': 'Some of its accounts cannot be read right now ({detail}).',
   'admin.health.update.available': 'Version {version} available',
   'admin.health.update.availableAny': 'A new version is available',
   'admin.health.update.to': 'Update to v{version}',

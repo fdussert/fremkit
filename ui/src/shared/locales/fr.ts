@@ -70,6 +70,7 @@ export const fr: Record<string, string> = {
   'admin.health.reason.unavailable': 'Sa source de données n’est pas disponible sur ce Mac.',
   'admin.health.reason.invalid': 'Sa source de données a envoyé une réponse illisible.',
   'admin.health.reason.failing': 'Sa source de données est en échec ({error}).',
+  'admin.health.reason.partial': 'Certains de ses comptes ne peuvent pas être lus pour l’instant ({detail}).',
   'admin.health.update.available': 'Version {version} disponible',
   'admin.health.update.availableAny': 'Une nouvelle version est disponible',
   'admin.health.update.to': 'Mettre à jour en v{version}',
