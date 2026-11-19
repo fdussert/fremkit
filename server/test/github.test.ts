@@ -162,6 +162,7 @@ function responder(options: {
     if (url.includes('/user/repos')) return []
     if (url.endsWith('/user')) return { login: 'example-user' }
     if (url.includes('/notifications')) return NOTIFICATIONS
+    if (url.includes('/users/') && url.includes('/events')) return []
     if (url.includes('review-requested')) return REVIEWS
     if (url.includes('/search/issues')) return MINE
     if (url.includes('/actions/runs')) return RUNS
@@ -190,6 +191,30 @@ const context = (fields: Record<string, string> = {}) => ({
 })
 
 describe('createGithubProvider', () => {
+  it('orders repositories from the authenticated account activity endpoint', async () => {
+    const calls: string[] = []
+    const fetchFn = (async (url: string) => {
+      const target = String(url)
+      calls.push(target)
+      if (target.endsWith('/user')) return new Response(JSON.stringify({ login: 'example-user' }))
+      if (target.includes('/users/example-user/events')) return new Response(JSON.stringify([
+        { type: 'PushEvent', actor: { login: 'example-user' }, repo: { name: 'example-org/active' }, created_at: '2026-10-19T02:00:00Z' },
+        { type: 'PullRequestReviewEvent', actor: { login: 'example-user' }, repo: { name: 'example-org/reviewed' }, created_at: '2026-10-19T01:00:00Z' },
+        { type: 'PushEvent', actor: { login: 'someone-else' }, repo: { name: 'example-org/other' }, created_at: '2026-10-19T03:00:00Z' },
+        { type: 'WatchEvent', actor: { login: 'example-user' }, repo: { name: 'example-org/watched' }, created_at: '2026-10-19T04:00:00Z' },
+        { type: 'IssuesEvent', actor: { login: 'example-user' }, repo: { name: '../unsafe' }, created_at: '2026-10-19T05:00:00Z' },
+      ]))
+      return new Response('[]')
+    }) as unknown as typeof fetch
+    const snapshot = await createGithubProvider(context({ repos: '' }), { fetchFn, now: () => 0 }).poll!() as GhSnapshot
+
+    expect(calls).toContain('https://api.github.com/users/example-user/events?per_page=100')
+    expect(snapshot.repoActivity).toEqual([
+      { repo: 'example-org/active', updatedAt: Date.parse('2026-10-19T02:00:00Z') },
+      { repo: 'example-org/reviewed', updatedAt: Date.parse('2026-10-19T01:00:00Z') },
+    ])
+  })
+
   it('reads the login, the inbox, both searches and one run list per repo', async () => {
     const { calls, fetchFn } = responder()
     const provider = createGithubProvider(context(), { fetchFn, now: () => 1_000_000 })
@@ -199,6 +224,7 @@ describe('createGithubProvider', () => {
     expect(calls.map((c) => c.url)).toEqual([
       'https://api.github.com/user',
       'https://api.github.com/notifications?all=false&per_page=50',
+      'https://api.github.com/users/example-user/events?per_page=100',
       'https://api.github.com/search/issues?q=is%3Apr%20is%3Aopen%20archived%3Afalse%20review-requested%3Aexample-user&per_page=25&sort=updated&order=desc&advanced_search=true',
       'https://api.github.com/search/issues?q=is%3Apr%20is%3Aopen%20archived%3Afalse%20author%3Aexample-user&per_page=25&sort=updated&order=desc&advanced_search=true',
       'https://api.github.com/repos/example-org/example-repo/actions/runs?per_page=10',
@@ -230,7 +256,7 @@ describe('createGithubProvider', () => {
     const { calls, fetchFn } = responder()
     const ctx = { ...context(), secrets: {} }
     expect(await createGithubProvider(ctx, { fetchFn, now: () => 0 }).poll!())
-      .toEqual({ notifications: [], reviewRequests: [], myPrs: [], runs: [], error: 'unconfigured' })
+      .toEqual({ repoActivity: [], notifications: [], reviewRequests: [], myPrs: [], runs: [], error: 'unconfigured' })
     expect(calls).toHaveLength(0)
   })
 
@@ -335,7 +361,7 @@ describe('createGithubProvider', () => {
     const second = (await provider.poll!()) as GhSnapshot
     expect(second.error).toBe('offline')
     expect(second.errors)
-      .toEqual({ notifications: 'offline', reviews: 'offline', myPrs: 'offline', runs: 'offline' })
+      .toEqual({ notifications: 'offline', activity: 'offline', reviews: 'offline', myPrs: 'offline', runs: 'offline' })
     // Every section keeps the rows it last had.
     expect(second.notifications.map((n) => n.id)).toEqual(first.notifications.map((n) => n.id))
     expect(second.runs).toHaveLength(3)
@@ -569,5 +595,53 @@ describe('opening GitHub rows', () => {
     const snapshot = await provider.poll!() as GhSnapshot
     expect(await provider.commands!.open({ kind: 'run', id: snapshot.runs[0].id, url: 'https://evil.test', futureHostField: true }, { loopback: true, paired: false })).toEqual({ ok: true })
     expect(opened).toEqual([['/usr/bin/open', snapshot.runs[0].url]])
+  })
+
+  it('opens only a repository already present in this connection snapshot', async () => {
+    const { fetchFn, calls } = responder()
+    const opened: string[][] = []
+    const provider = createGithubProvider(context(), { fetchFn, openRunner: async (cmd, args) => { opened.push([cmd, ...args]) } })
+    const snapshot = await provider.poll!() as GhSnapshot
+    const commands = provider.commands as unknown as { openRepo: (payload: unknown, context: { loopback: boolean }) => Promise<unknown> }
+
+    expect(await commands.openRepo({ repo: snapshot.reviewRequests[0].repo }, { loopback: true })).toEqual({ ok: true })
+    expect(opened).toEqual([['/usr/bin/open', `https://github.com/${snapshot.reviewRequests[0].repo}`]])
+    expect(calls.every((call) => call.method === 'GET')).toBe(true)
+  })
+
+  it('opens a repository that is present only in the authenticated activity snapshot', async () => {
+    const opened: string[][] = []
+    const provider = createGithubProvider(context({ repos: '' }), {
+      fetchFn: (async (url: string) => {
+        if (url.endsWith('/user')) return new Response(JSON.stringify({ login: 'example-user' }))
+        if (url.includes('/users/example-user/events')) return new Response(JSON.stringify([
+          { type: 'PushEvent', actor: { login: 'example-user' }, repo: { name: 'example-org/activity-only' }, created_at: '2026-10-19T02:00:00Z' },
+        ]))
+        return new Response('[]')
+      }) as unknown as typeof fetch,
+      openRunner: async (cmd, args) => { opened.push([cmd, ...args]) },
+    })
+    const commands = provider.commands as unknown as { openRepo: (payload: unknown, context: { loopback: boolean }) => Promise<unknown> }
+    const snapshot = await provider.poll!() as GhSnapshot
+
+    expect(snapshot.repoActivity).toEqual([{ repo: 'example-org/activity-only', updatedAt: Date.parse('2026-10-19T02:00:00Z') }])
+    expect(await commands.openRepo({ repo: 'example-org/activity-only' }, { loopback: true })).toEqual({ ok: true })
+    expect(opened).toEqual([['/usr/bin/open', 'https://github.com/example-org/activity-only']])
+  })
+
+  it('refuses non-loopback, unknown, or malformed repository targets', async () => {
+    const { fetchFn } = responder()
+    const opened: string[][] = []
+    const provider = createGithubProvider(context(), { fetchFn, openRunner: async (cmd, args) => { opened.push([cmd, ...args]) } })
+    const snapshot = await provider.poll!() as GhSnapshot
+    const commands = provider.commands as unknown as { openRepo: (payload: unknown, context: { loopback: boolean }) => Promise<unknown> }
+    const repo = snapshot.reviewRequests[0].repo
+
+    expect(await commands.openRepo({ repo }, { loopback: false })).toEqual({ ok: false, error: tr(undefined, 'provider.localOnly') })
+    expect(await commands.openRepo({ repo: 'other/repo' }, { loopback: true })).toEqual({ ok: false })
+    for (const unsafe of ['../etc/passwd', 'example-org/repo/extra', 'https://evil.test/a/b', '']) {
+      await expect(commands.openRepo({ repo: unsafe }, { loopback: true })).rejects.toThrow()
+    }
+    expect(opened).toEqual([])
   })
 })
