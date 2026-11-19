@@ -10,7 +10,7 @@ Anything that changes what the dashboard, the admin or a widget can do gets a li
 (`package.json`, `server/package.json`, `ui/package.json`, `server/src/version.ts`) and is
 tagged `vX.Y.Z`.
 
-## Unreleased
+## 0.5.2 — 2026-11-19
 
 ### Added
 
@@ -25,9 +25,9 @@ tagged `vX.Y.Z`.
   Edge display, where the kiosk covers it: the window was focused, it took the keyboard, and it
   was invisible, with nothing to click to get it back. Safari or the Finder restoring a frame
   saved before the Edge was plugged in is enough to fall into it. The helper now moves any such
-  window back to the middle of the display you work on within about two seconds, under the same
-  switch that keeps the mouse out; several windows brought back together are staggered rather than
-  stacked. A window you are dragging is left alone until you let go, and one that its application
+  window (a reminder or an alert that floats above the others included) back to the middle of
+  the display you work on within about two seconds, under the same switch that keeps the mouse
+  out; several windows brought back together are staggered rather than stacked. A window you are dragging is left alone until you let go, and one that its application
   keeps putting back on the Edge is moved three times and then left there, until it has stayed
   away for half a minute. The switch is called *Edge fence* now, since it fences more than the
   pointer. It needs the Accessibility permission (@mcouzinet, #7).
