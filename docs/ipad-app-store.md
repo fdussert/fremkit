@@ -93,6 +93,24 @@ keywords. No Apple product name either (see the subtitle).
 - EN: First release.
 - FR: Première version.
 
+**What's New** (1.0.1)
+
+- EN:
+
+  ```
+  - Pair by typing your Mac's address when it does not show up in the list.
+  - Forget this Mac, on the "Can't reach the Mac" screen, to pair with another Mac.
+  - Deleting the app now removes its pairing too.
+  ```
+
+- FR:
+
+  ```
+  - Appairage en tapant l'adresse du Mac quand il n'apparaît pas dans la liste.
+  - Oublier ce Mac, sur l'écran « Le Mac n'est pas joignable », pour appairer un autre Mac.
+  - Supprimer l'app efface maintenant aussi son appairage.
+  ```
+
 ## Screenshots
 
 iPad 13" is required (2064 × 2752 portrait or 2752 × 2064 landscape); App Store Connect scales it

@@ -273,6 +273,16 @@ public final class PairingFlow {
         pendingLink = nil
     }
 
+    /// The user forgot the paired Mac from the unreachable screen. A link that was waiting for
+    /// "replace the pairing?" has nothing left to replace: it pairs, which is what opening it
+    /// asked for, rather than ask about a Mac that is gone.
+    public func forgetMac() {
+        model.forget()
+        guard let link = pendingLink else { return }
+        pendingLink = nil
+        start(link)
+    }
+
     /// Pairs with the link on screen again, after a failure.
     @discardableResult
     public func retry() -> Task<Void, Never>? {
