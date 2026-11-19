@@ -100,9 +100,18 @@ public struct KeychainError: Error, Equatable {
     public let status: OSStatus
 }
 
-/// The pairing in the keychain, as one generic password holding the record's JSON, readable after
-/// the first unlock and never leaving this device (no iCloud keychain, no backup restore elsewhere).
-public struct KeychainCredentialStore: CredentialStore {
+/// The stored pairing's bytes, wherever they are kept.
+public protocol PairingVault: Sendable {
+    /// nil when nothing is stored. Throws when something is stored but cannot be read.
+    func read() throws -> Data?
+    func write(_ data: Data) throws
+    func remove()
+}
+
+/// The keychain, as one generic password holding the record's JSON, readable after the first
+/// unlock and never leaving this device (no iCloud keychain, no backup restore elsewhere). iOS
+/// keeps the item when the app is deleted, which is what `InstallBoundCredentialStore` is for.
+public struct KeychainVault: PairingVault {
     private let service: String
     private let account = "paired-mac"
 
@@ -117,7 +126,7 @@ public struct KeychainCredentialStore: CredentialStore {
          kSecUseDataProtectionKeychain: true]
     }
 
-    public func load() throws -> PairedMac? {
+    public func read() throws -> Data? {
         var lookup = query
         lookup[kSecReturnData] = true
         lookup[kSecMatchLimit] = kSecMatchLimitOne
@@ -126,13 +135,12 @@ public struct KeychainCredentialStore: CredentialStore {
         if status == errSecItemNotFound { return nil }
         guard status == errSecSuccess else { throw KeychainError(status: status) }
         guard let data = item as? Data else { throw KeychainError(status: errSecDecode) }
-        return try JSONDecoder().decode(PairedMac.self, from: data)
+        return data
     }
 
     /// Updates the stored item in place, adding it only when there is none: a failure between a
     /// delete and an add would lose the pairing.
-    public func save(_ mac: PairedMac) throws {
-        let data = try JSONEncoder().encode(mac)
+    public func write(_ data: Data) throws {
         let changes: [CFString: Any] = [kSecValueData: data, kSecAttrAccessible: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly]
         var status = SecItemUpdate(query as CFDictionary, changes as CFDictionary)
         if status == errSecItemNotFound {
@@ -143,8 +151,131 @@ public struct KeychainCredentialStore: CredentialStore {
         guard status == errSecSuccess else { throw KeychainError(status: status) }
     }
 
-    public func clear() {
+    public func remove() {
         SecItemDelete(query as CFDictionary)
+    }
+}
+
+/// The id of this installation of the app, kept where deleting the app deletes it.
+public protocol InstallMarker: Sendable {
+    /// nil when there is none: the first launch, or the first one after the app was deleted and
+    /// installed again. Throws when there is one that cannot be read.
+    func read() throws -> String?
+    func write(_ id: String) throws
+}
+
+/// The installation id as a file in the app's container.
+public struct FileInstallMarker: InstallMarker {
+    private let file: URL
+
+    public init(file: URL) {
+        self.file = file
+    }
+
+    /// `Application Support/install-id` in the app's container: deleted with the app, and restored
+    /// with it from a backup of this device, like the keychain item it is compared with.
+    public static func inApplicationSupport() -> FileInstallMarker {
+        let folder = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        return FileInstallMarker(file: folder.appendingPathComponent("install-id"))
+    }
+
+    public func read() throws -> String? {
+        let data: Data
+        do {
+            data = try Data(contentsOf: file)
+        } catch let error as CocoaError where error.code == .fileReadNoSuchFile {
+            return nil
+        }
+        let id = String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+        return id.isEmpty ? nil : id
+    }
+
+    /// Readable from the first unlock on, as the keychain item is: the two are read together.
+    public func write(_ id: String) throws {
+        try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data(id.utf8).write(to: file, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+    }
+}
+
+/// What the vault holds: the pairing's own JSON keys and, beside them, the installation that wrote
+/// it. A record written by version 1.0 of the app has no `install`.
+struct StoredPairing: Codable {
+    var mac: PairedMac
+    var install: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case install
+    }
+
+    init(mac: PairedMac, install: String?) {
+        self.mac = mac
+        self.install = install
+    }
+
+    init(from decoder: any Decoder) throws {
+        mac = try PairedMac(from: decoder)
+        install = try decoder.container(keyedBy: CodingKeys.self).decodeIfPresent(String.self, forKey: .install)
+    }
+
+    func encode(to encoder: any Encoder) throws {
+        try mac.encode(to: encoder)
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(install, forKey: .install)
+    }
+}
+
+/// The pairing, kept only for the installation that saved it. The keychain outlives the app: with
+/// the keychain alone, deleting the app and installing it again brought back the old pairing, and
+/// an iPad whose Mac was gone could not be reset by reinstalling. Each record carries the id of
+/// the installation that wrote it, and one whose installation is not this one is removed.
+public struct InstallBoundCredentialStore: CredentialStore {
+    private let vault: any PairingVault
+    private let marker: any InstallMarker
+
+    public init(vault: any PairingVault, marker: any InstallMarker) {
+        self.vault = vault
+        self.marker = marker
+    }
+
+    public func load() throws -> PairedMac? {
+        guard let data = try vault.read() else { return nil }
+        let record = try JSONDecoder().decode(StoredPairing.self, from: data)
+        // An id that cannot be read throws: that is not "the app was installed again".
+        let here = try marker.read()
+        guard let wrote = record.install else {
+            // Written by 1.0, which recorded no installation. Nothing tells an update from a
+            // reinstall here, and an update must keep its pairing: it is kept and bound to this
+            // installation from now on, at the next load if it cannot be written now.
+            try? write(record.mac, installation: here)
+            return record.mac
+        }
+        guard wrote == here else {
+            vault.remove()
+            return nil
+        }
+        return record.mac
+    }
+
+    /// Throws when the installation id cannot be recorded either: the next launch would take the
+    /// pairing for a stale one and remove it.
+    public func save(_ mac: PairedMac) throws {
+        try write(mac, installation: try marker.read())
+    }
+
+    public func clear() {
+        vault.remove()
+    }
+
+    /// The marker first: a record must never name an installation the container does not hold.
+    private func write(_ mac: PairedMac, installation: String?) throws {
+        let id: String
+        if let installation {
+            id = installation
+        } else {
+            id = UUID().uuidString
+            try marker.write(id)
+        }
+        try vault.write(JSONEncoder().encode(StoredPairing(mac: mac, install: id)))
     }
 }
 

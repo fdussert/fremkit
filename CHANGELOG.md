@@ -20,6 +20,12 @@ tagged `vX.Y.Z`.
   button, which asks first. An iPad paired with a Mac that is not coming back no longer stays on
   that screen for good: forget it, then pair with another.
 
+### Fixed
+
+- **iPad app 1.0.1: deleting the app forgets its Mac.** iOS keeps an app's keychain after the app
+  is deleted, so a reinstalled app found its old pairing again and could not be reset that way.
+  The pairing now goes with the installation; updating the app keeps it.
+
 ## 0.5.2 — 2026-11-19
 
 ### Added
