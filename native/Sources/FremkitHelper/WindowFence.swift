@@ -81,7 +81,13 @@ final class WindowFence {
     /// Moves every window of another application that overlaps the Edge back onto a display the
     /// user can see. Safe to call at any time; it does nothing when there is nothing to do.
     func sweep() {
-        dispatchPrecondition(condition: .onQueue(.main))
+        // Everything below belongs to the main thread. A caller on another one is sent there
+        // rather than trapped: this process also keeps the server alive, and a crash here would
+        // cost the user their dashboard over a window that can wait two seconds.
+        guard Thread.isMainThread else {
+            DispatchQueue.main.async { [weak self] in self?.sweep() }
+            return
+        }
         guard let edge else { return }
         guard let infos = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID)
             as? [[String: Any]] else { return }
