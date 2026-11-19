@@ -20,6 +20,19 @@ tagged `vX.Y.Z`.
   board however long it has been quiet and whatever the tile's filters say, turns orange when it
   waits for you, and keeps its pin through `/clear`. A long press on it lets it go.
 
+### Changed
+
+- **Claude limits: one row per account.** When Claude Code runs on several claude.ai accounts at
+  once (one per profile folder, as a terminal with profiles does), the tile shows each account on
+  its own row: its name, then its 5-hour and 7-day gauges side by side with their reset times, so
+  you can see which account still has room. In the navigation bar, two stacked mini-rows. Each
+  account's numbers are read with that account's own sign-in, so they never swap between rows. An
+  account with no session running keeps its last numbers, dimmed, with the time they were read;
+  Fremkit never renews its sign-in. Name each account in **Settings → Privacy**; without a name a
+  row shows the plan (Max, Team…), never an e-mail address. The per-model limits and the weekly
+  breakdown line are no longer drawn, and the account picker is gone: every account is shown.
+  With a single account the tile reads as before.
+
 ### Fixed
 
 - **Claude sessions: "cannot find its window" stays readable.** The message a card shows when
