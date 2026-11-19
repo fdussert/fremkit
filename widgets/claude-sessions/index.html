@@ -71,6 +71,17 @@
   .card.pin.idle{opacity:1}
   .card.pin .title{font-size:calc(15px * var(--text-scale, 1))}
   .card.pin .foot{margin-top:0;padding:3px 8px;font-size:calc(12px * var(--text-scale, 1))}
+  /* A pinned session that is working says so with three dots breathing in its corner: no room
+     for what it is doing, and no need — a touch opens it. */
+  .card.pin .busy{display:none;position:absolute;top:12px;right:10px;gap:4px;pointer-events:none}
+  .card.pin.working .busy{display:flex}
+  .card.pin.working .title{padding-right:38px}
+  .card.pin .busy>i{width:7px;height:7px;border-radius:50%;background:var(--accent, #d9b36a);animation:busy 1.2s ease-in-out infinite both}
+  .card.pin .busy>i:nth-child(2){animation-delay:.16s}
+  .card.pin .busy>i:nth-child(3){animation-delay:.32s}
+  html.accent-fill .card.pin .busy>i{background:var(--on-surface,#0b0d10)}
+  @keyframes busy{0%,70%,100%{opacity:.25;transform:translateY(0)}35%{opacity:1;transform:translateY(-3px)}}
+  @media (prefers-reduced-motion: reduce){.card.pin .busy>i{animation:none}}
   /* A long press pins: the card gives under the finger while it is being held, and the text
      must not get selected or call up the system's menu instead. */
   .card{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;transition:transform .15s}
@@ -194,7 +205,7 @@
   function buildPin(s) {
     var card = document.createElement('div')
     card.setAttribute('data-id', s.sessionId)
-    card.innerHTML = '<span class="title"></span><div class="line" hidden></div><div class="foot"></div>'
+    card.innerHTML = '<span class="title"></span><span class="busy" aria-hidden="true"><i></i><i></i><i></i></span><div class="line" hidden></div><div class="foot"></div>'
     return card
   }
   function updatePin(card, s, now) {

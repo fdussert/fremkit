@@ -17,6 +17,9 @@ tagged `vX.Y.Z`.
 - **Claude sessions: pinned sessions in two sizes.** A new setting, *Size of pinned sessions*,
   makes them narrower than a card, so that more of them fit on a row.
 
+- **Claude sessions: a pinned session shows that it is working.** Three dots move in the corner
+  of its card for as long as it does, so a glance at the pins says which ones are busy.
+
 ## 0.5.2 — 2026-11-19
 
 ### Added
