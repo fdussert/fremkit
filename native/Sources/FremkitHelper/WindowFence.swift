@@ -61,6 +61,8 @@ final class WindowFence {
         guard !isRunning else { return }
         // `.common` so the sweep keeps ticking while a menu is being tracked.
         let timer = Timer(timeInterval: Self.interval, repeats: true) { [weak self] _ in self?.sweep() }
+        // Nothing depends on the exact beat; the slack lets the system batch the wake-ups.
+        timer.tolerance = Self.interval / 4
         RunLoop.main.add(timer, forMode: .common)
         self.timer = timer
         isRunning = true
