@@ -19,12 +19,6 @@ final class WindowFence {
     /// landing there is gone before the user has finished wondering where it went.
     private static let interval: TimeInterval = 2
 
-    /// How many times one window is moved before it is left alone.
-    ///
-    /// An application that puts its window straight back would otherwise be fought forever, at
-    /// two rounds a second between the two of us, with the window flickering across two displays.
-    private static let maxAttempts = 3
-
     /// How long an application is given to answer the Accessibility API, so a hung one cannot
     /// stall the helper's main thread.
     private static let messagingTimeout: Float = 1
@@ -33,7 +27,8 @@ final class WindowFence {
     var edge: CGRect?
 
     private var timer: Timer?
-    private var attempts: [CGWindowID: Int] = [:]
+    /// Three moves per window and per episode; see `RescueLedger`.
+    private var ledger = RescueLedger()
     /// Logged once, rather than every two seconds, while Accessibility is missing.
     private var warnedAboutPermission = false
 
@@ -60,7 +55,7 @@ final class WindowFence {
     func stop() {
         timer?.invalidate()
         timer = nil
-        attempts = [:]
+        ledger.reset()
         isRunning = false
     }
 
@@ -73,12 +68,9 @@ final class WindowFence {
         guard let infos = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID)
             as? [[String: Any]] else { return }
 
-        // A window that closed takes its attempt count with it, so the same number handed to a
-        // new window starts from zero.
-        let present = WindowSweep.present(in: infos)
-        attempts = attempts.filter { present.contains($0.key) }
-
+        let now = ProcessInfo.processInfo.systemUptime
         let strays = WindowSweep.strays(in: infos, edge: edge, ownPid: getpid())
+        ledger.observe(onEdge: Set(strays.map(\.id)), present: WindowSweep.present(in: infos), now: now)
         guard !strays.isEmpty else { return }
 
         guard AXIsProcessTrusted() else {
@@ -92,11 +84,9 @@ final class WindowFence {
 
         let screens = Self.screenBounds()
         for stray in strays {
-            let count = attempts[stray.id] ?? 0
-            guard count < Self.maxAttempts else { continue }
             guard let target = AdminPlacement.rescue(frame: stray.frame, size: stray.frame.size,
-                                                     screens: screens, kiosk: edge) else { continue }
-            attempts[stray.id] = count + 1
+                                                     screens: screens, kiosk: edge),
+                  ledger.takeAttempt(stray.id, now: now) else { continue }
             move(stray, to: target, edge: edge)
         }
     }

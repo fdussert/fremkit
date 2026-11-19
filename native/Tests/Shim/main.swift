@@ -88,6 +88,14 @@ let suites: [(String, () -> XCTestCase, [TestMethod])] = [
         ("testPresentListsEveryWindowWhateverItIs", { ($0 as! WindowSweepTests).testPresentListsEveryWindowWhateverItIs() }),
         ("testARescuedWindowKeepsItsSizeAndLandsOnTheMainDisplay", { ($0 as! WindowSweepTests).testARescuedWindowKeepsItsSizeAndLandsOnTheMainDisplay() }),
     ]),
+    ("RescueLedgerTests", { RescueLedgerTests() }, [
+        ("testAWindowPutStraightBackIsMovedThreeTimesThenLeftAlone", { ($0 as! RescueLedgerTests).testAWindowPutStraightBackIsMovedThreeTimesThenLeftAlone() }),
+        ("testTheCountIsForgottenOnceTheWindowStaysOffTheEdgeForThirtySeconds", { ($0 as! RescueLedgerTests).testTheCountIsForgottenOnceTheWindowStaysOffTheEdgeForThirtySeconds() }),
+        ("testNoResetWhileTheWindowKeepsComingBackWithinThirtySeconds", { ($0 as! RescueLedgerTests).testNoResetWhileTheWindowKeepsComingBackWithinThirtySeconds() }),
+        ("testAClosedWindowTakesItsCountWithIt", { ($0 as! RescueLedgerTests).testAClosedWindowTakesItsCountWithIt() }),
+        ("testWindowsAreCountedSeparately", { ($0 as! RescueLedgerTests).testWindowsAreCountedSeparately() }),
+        ("testResetForgetsEverything", { ($0 as! RescueLedgerTests).testResetForgetsEverything() }),
+    ]),
     ("AdminPlacementTests", { AdminPlacementTests() }, [
         ("testAFrameOnTheLaptopIsLeftAlone", { ($0 as! AdminPlacementTests).testAFrameOnTheLaptopIsLeftAlone() }),
         ("testAFrameOnTheKioskDisplayIsMovedToTheLaptop", { ($0 as! AdminPlacementTests).testAFrameOnTheKioskDisplayIsMovedToTheLaptop() }),
