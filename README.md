@@ -43,8 +43,7 @@ The name is the Fremen survival kit from *Dune*.
   keychain rather than in the config file.
 - **A native helper** — a menu bar app that drives the Edge's touch panel with its own HID
   driver, keeps the mouse and other applications' windows off the display, shows the dashboard
-  in a kiosk window and
-  supervises the server.
+  in a kiosk window and supervises the server.
 - **An Android app** for a spare tablet, the iPad app's counterpart: the same pairing by QR code
   or typed code, the same pinned key, a screen of its own. An APK attached to each release (no
   Play Store, nothing from Google Play inside), its signing fingerprint published. See
@@ -344,12 +343,13 @@ the widget library and the widgets themselves, live, without a reload.
 
 **The helper, or a browser.** The dashboard is a web page: any browser can show it. The native
 helper adds what a browser cannot — its own HID driver for the Edge's touch panel, a fence that
-keeps the mouse cursor and other applications' windows on your other displays, a kiosk window with no chrome and no cursor, the
-Dock's notification badges, the brightness of the Edge (DDC/CI), and supervision of the server. Its menu bar **F** shows what is
-running: *Open the admin*, *Admin in the browser*, *Hide the dashboard* / *Show the dashboard*,
-*Reload the dashboard*, a brightness slider for the kiosk's display, the *Touch* / *Edge fence* / *Notifications* / *Manage the server* /
-*Launch at login* toggles, *Log…* and *Quit*,
-above state lines such as "Server: running" and "Touch: active".
+keeps the mouse cursor and other applications' windows on your other displays, a kiosk window
+with no chrome and no cursor, the Dock's notification badges, the brightness of the Edge
+(DDC/CI), and supervision of the server. Its menu bar **F** shows what is running: *Open the
+admin*, *Admin in the browser*, *Hide the dashboard* / *Show the dashboard*, *Reload the
+dashboard*, a brightness slider for the kiosk's display, the *Touch* / *Edge fence* /
+*Notifications* / *Manage the server* / *Launch at login* toggles, *Log…* and *Quit*, above state
+lines such as "Server: running" and "Touch: active".
 
 ## Widgets
 
