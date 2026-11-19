@@ -97,6 +97,13 @@ let suites: [(String, () -> XCTestCase, [TestMethod])] = [
         ("testGivingUpIsReportedOncePerEpisode", { ($0 as! RescueLedgerTests).testGivingUpIsReportedOncePerEpisode() }),
         ("testResetForgetsEverything", { ($0 as! RescueLedgerTests).testResetForgetsEverything() }),
     ]),
+    ("WindowCascadeTests", { WindowCascadeTests() }, [
+        ("testTheFirstWindowStaysWhereTheRescuePutIt", { ($0 as! WindowCascadeTests).testTheFirstWindowStaysWhereTheRescuePutIt() }),
+        ("testEachFurtherWindowIsSteppedDownAndRight", { ($0 as! WindowCascadeTests).testEachFurtherWindowIsSteppedDownAndRight() }),
+        ("testTheCascadeWrapsSoEveryWindowStaysOnTheDisplay", { ($0 as! WindowCascadeTests).testTheCascadeWrapsSoEveryWindowStaysOnTheDisplay() }),
+        ("testAWindowAsLargeAsTheDisplayIsNotOffset", { ($0 as! WindowCascadeTests).testAWindowAsLargeAsTheDisplayIsNotOffset() }),
+        ("testWorksOnADisplayAwayFromTheOrigin", { ($0 as! WindowCascadeTests).testWorksOnADisplayAwayFromTheOrigin() }),
+    ]),
     ("AdminPlacementTests", { AdminPlacementTests() }, [
         ("testAFrameOnTheLaptopIsLeftAlone", { ($0 as! AdminPlacementTests).testAFrameOnTheLaptopIsLeftAlone() }),
         ("testAFrameOnTheKioskDisplayIsMovedToTheLaptop", { ($0 as! AdminPlacementTests).testAFrameOnTheKioskDisplayIsMovedToTheLaptop() }),

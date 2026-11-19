@@ -83,12 +83,16 @@ final class WindowFence {
         warnedAboutPermission = false
 
         let screens = Self.screenBounds()
+        guard let screen = AdminPlacement.target(screens: screens, kiosk: edge) else { return }
+        var moved = 0
         for stray in strays {
             guard let target = AdminPlacement.rescue(frame: stray.frame, size: stray.frame.size,
                                                      screens: screens, kiosk: edge) else { continue }
             switch ledger.decide(stray.id, now: now) {
             case .move:
-                move(stray, to: target, edge: edge)
+                // Several windows rescued together would all be centred on the same point.
+                move(stray, to: WindowCascade.place(target, index: moved, in: screen), edge: edge)
+                moved += 1
             case .giveUp:
                 NSLog("fremkit: a window keeps returning to the Edge after %d moves; leaving it there", ledger.maxAttempts)
             case .leaveAlone:
