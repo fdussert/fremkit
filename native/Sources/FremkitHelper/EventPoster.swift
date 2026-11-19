@@ -68,6 +68,18 @@ final class EventPoster: PointerPoster {
      */
     private var gesture: UInt64 = 0
 
+    /**
+     True while a gesture owns the cursor: warped onto the panel and not yet put back.
+
+     The fence's patrol asks before pushing a resting pointer off the Edge, so that the finger on
+     the panel is not fought by the very thing that keeps the mouse away from it.
+     */
+    var isDrivingCursor: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return cursorHidden || pendingRestore != nil
+    }
+
     init() {
         source = CGEventSource(stateID: .hidSystemState)
         source?.userData = Self.userData

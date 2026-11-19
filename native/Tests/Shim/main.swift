@@ -47,6 +47,10 @@ let suites: [(String, () -> XCTestCase, [TestMethod])] = [
         ("testProjectionOnNearestEdgeWithoutLastPosition", { ($0 as! FenceMathTests).testProjectionOnNearestEdgeWithoutLastPosition() }),
         ("testFallbackLandsInsideTheSafeRectangleWithTheRealLayout", { ($0 as! FenceMathTests).testFallbackLandsInsideTheSafeRectangleWithTheRealLayout() }),
         ("testCornerTieBreakPrefersTheLeftSide", { ($0 as! FenceMathTests).testCornerTieBreakPrefersTheLeftSide() }),
+        ("testPatrolPushesAPointerThatIsSimplyResting", { ($0 as! FenceMathTests).testPatrolPushesAPointerThatIsSimplyResting() }),
+        ("testPatrolLeavesAPointerOnAnotherDisplayAlone", { ($0 as! FenceMathTests).testPatrolLeavesAPointerOnAnotherDisplayAlone() }),
+        ("testPatrolStandsBackWhileAGestureOwnsTheCursor", { ($0 as! FenceMathTests).testPatrolStandsBackWhileAGestureOwnsTheCursor() }),
+        ("testPatrolDoesNothingWithoutAnEdgeOrAPosition", { ($0 as! FenceMathTests).testPatrolDoesNothingWithoutAnEdgeOrAPosition() }),
     ]),
     ("HelperConfigTests", { HelperConfigTests() }, [
         ("testDefaults", { ($0 as! HelperConfigTests).testDefaults() }),

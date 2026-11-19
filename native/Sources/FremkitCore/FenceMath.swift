@@ -19,6 +19,27 @@ public enum FenceMath {
         return projectOutside(p, edge: edge, safe: safe)
     }
 
+    /**
+     Where a resting cursor should be pushed back to, or nil when there is nothing to do.
+
+     The event tap only ever sees movement, and a cursor can arrive on the Edge without any: an
+     application warping it there (`CGWarpMouseCursorPosition` posts no event), a tap the system
+     disabled for a moment, a display rearranged under a pointer that was not moving. Once it is
+     there, a click or a scroll that moves nothing lands on the dashboard, and the user is left
+     pressing buttons they cannot see.
+
+     - Parameters:
+       - cursor: the pointer's real position, or nil when it could not be read.
+       - edge: the Edge display's bounds, or nil when there is no Edge display.
+       - driven: true while a touch gesture owns the cursor on purpose. The driver warps the
+         pointer onto the panel for the duration of a gesture and puts it back itself; pushing it
+         away in the meantime would fight the finger.
+     */
+    public static func patrol(cursor: CGPoint?, edge: CGRect?, last: CGPoint?, safe: CGRect, driven: Bool) -> CGPoint? {
+        guard !driven, let cursor, let edge else { return nil }
+        return clamp(cursor, edge: edge, last: last, safe: safe)
+    }
+
     /// Projects a point one point outside the nearest side of `edge`, or onto the centre of
     /// `safe` when that projection would land on no display.
     private static func projectOutside(_ p: CGPoint, edge: CGRect, safe: CGRect) -> CGPoint {
