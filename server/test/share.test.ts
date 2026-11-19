@@ -61,7 +61,7 @@ function sampleConfig(): Config {
     themeSchedule: { night: 'fremkit', latitude: 48.85, longitude: 2.35 },
     locale: 'en',
     connections: [{ id: 'cal-home', type: 'ics', name: 'Family agenda', fields: { url: `http://${HOST}/cal.ics` } }],
-    privacy: { showAccountEmail: true },
+    privacy: { showAccountEmail: true, claudeAccountNames: { '00000000-0000-4000-8000-00000000000a': 'Side project' } },
     marketplace: { installed: { shortcuts: { version: '1.0.0', registry: 'sietch', consentedPermissions: {}, installedAt: '2026-01-01' } } },
     widgets: {
       'my-clock': { widgetId: 'clock', title: 'jane.doe@example.com', bgColor: '#112233', background: { image: 'upload-photo.png', dim: 0.4 }, settings: { format: '24h', seconds: true, zone: 'Europe/Paris', color: '#abcdef', label: 'Kitchen', unknown: 1 } },
@@ -138,7 +138,7 @@ describe('buildLayout', () => {
   it('shares the layout and nothing that identifies anyone', async () => {
     const { file, report } = await buildLayout(deps(sampleConfig()), { scope: 'setup' })
     const text = JSON.stringify(file)
-    for (const banned of [SECRET, HOST, 'example.com', 'cal-home', 'Family agenda', 'Jane iPad', 'my-clock', 'upload-photo', 'latitude', 'privacy', 'marketplace', 'connections', 'brightness', 'Kitchen']) {
+    for (const banned of [SECRET, HOST, 'example.com', 'cal-home', 'Family agenda', 'Jane iPad', 'my-clock', 'upload-photo', 'latitude', 'privacy', '00000000-0000-4000-8000-00000000000a', 'Side project', 'claudeAccountNames', 'marketplace', 'connections', 'brightness', 'Kitchen']) {
       expect(text).not.toContain(banned)
     }
     expect(file.format).toBe(LAYOUT_FORMAT)

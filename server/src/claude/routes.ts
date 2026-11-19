@@ -2,9 +2,8 @@ import type { FastifyInstance } from 'fastify'
 import type { ClaudeTracker } from './tracker.js'
 import { parseHookEvent } from './hook-schema.js'
 import type { ClaudeUsage } from './usage.js'
-import { defaultConfigDir, type ClaudeConfigDirs } from './configDirs.js'
-import { describeConfigDir, type ConfigDirAccount } from './identity.js'
-import { claudeTokenExpiry } from './account.js'
+import type { ClaudeConfigDirs } from './configDirs.js'
+import type { AccountSummary } from './account.js'
 
 const BODY_LIMIT = 1_000_000
 
@@ -13,31 +12,16 @@ export async function claudeRoutes(app: FastifyInstance, opts: {
   tracker: ClaudeTracker
   usage: ClaudeUsage
   configDirs?: ClaudeConfigDirs
-  /** Test seam for `describeConfigDir`. */
-  describe?: (dir: string) => Promise<ConfigDirAccount>
-  /** Test seam for `claudeTokenExpiry`. */
-  expiry?: (dir: string) => Promise<number | null>
-  now?: () => number
+  /** The accounts the Claude limits widget lists (`ClaudeAccountProvider.accounts`). */
+  accounts?: () => Promise<AccountSummary[]>
 }): Promise<void> {
-  const describe = opts.describe ?? ((dir: string) => describeConfigDir(dir))
-  const expiry = opts.expiry ?? ((dir: string) => claudeTokenExpiry(dir))
-  const now = opts.now ?? Date.now
   /**
-   * The Claude Code configuration folders the privacy pane offers for the account usage, each with
-   * its plan and organisation so the user can tell the accounts apart. Admin only (not on the
-   * devices' allow-list); never an e-mail address, never a token. `expired`: the folder's sign-in
-   * has lapsed (no Claude Code session ran from it lately), so its usage cannot be read.
+   * The Claude accounts in use on this Mac, for the settings window, where the user names each.
+   * Each comes with its uuid (the key the names are saved under), its plan, its organisation
+   * unless that is an address, and when it was last seen. Admin only: not on the devices'
+   * allow-list. Never an e-mail address, never a token, no keychain read.
    */
-  app.get('/api/claude/accounts', async () => {
-    const dirs = [...new Set([...(opts.configDirs?.list() ?? []), defaultConfigDir()])]
-    const t = now()
-    return {
-      accounts: await Promise.all(dirs.map(async (dir) => {
-        const [account, expiresAt] = await Promise.all([describe(dir), expiry(dir)])
-        return { ...account, expired: expiresAt !== null && expiresAt <= t }
-      })),
-    }
-  })
+  app.get('/api/claude/accounts', async () => ({ accounts: (await opts.accounts?.()) ?? [] }))
 
   // Dedicated content-type parser for this plugin only: invalid JSON must not
   // become a 400 (Claude Code hooks ignore the response body but a non-2xx

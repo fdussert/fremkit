@@ -104,22 +104,45 @@ seconds, so five subagents stopping together do not chime five times.
 Rate limits appear only for claude.ai Pro and Max subscribers, and only after the first API
 response of a session.
 
-The `claude-account` provider goes one step further: it reads the Claude Code OAuth token from the
-macOS keychain (the item "Claude Code-credentials") every 5 minutes and calls the account usage
-endpoint for per-model weekly limits. A session started with `CLAUDE_CONFIG_DIR` set, as a terminal
-with profiles does, keeps its token in an item of its own, "Claude Code-credentials-" followed by
-eight characters of a hash of that folder: the server learns the folder from the hooks'
-`transcript_path`, remembers it in `data/claude-config-dirs.json`, tries that item too and uses
-whichever token expires last. Today's token count reads that folder's `projects` beside `~/.claude/projects`. The token is never stored or logged and is sent only to
-`api.anthropic.com`. macOS may ask once to allow keychain access. The endpoint is undocumented and
-may change without notice.
+The `claude-account` provider goes one step further, once **/admin → Settings → Privacy → Read the
+Claude account usage** is ticked: it calls the account usage endpoint for each claude.ai account
+in use on this Mac, every 5 minutes per account.
+
+Claude Code runs from a configuration folder: `~/.claude` by default, another one when
+`CLAUDE_CONFIG_DIR` is set, as a terminal with profiles does. The server learns the folders from
+the hooks' `transcript_path`, remembers them and when each last sent an event in
+`data/claude-config-dirs.json`, and reads each folder's `.claude.json` (`~/.claude.json` for the
+default one) for the account it is signed in to: its uuid and its organisation's type, which names
+the plan. Two folders on the same account are one account. An account is listed while one of its
+folders sent an event, or its usage was read, within seven days.
+
+Each account's token is read from the keychain items of its own folders: "Claude Code-credentials"
+for the default folder, "Claude Code-credentials-" followed by eight characters of a hash of the
+folder for any other; the one expiring last wins. The token is never stored or logged, is read
+with `security … -w` (never on a command line), and is sent only to `api.anthropic.com`. Fremkit
+never refreshes a token and never writes to these items: Claude Code refreshes an account's token
+only while a session runs on it, so an account with no session running keeps its last numbers,
+shown as stale, until one starts. Each account has its own back-off after a 429 or empty keychain
+reads, and its own last good snapshot in `data/claude-account.json`; at most one account is asked
+every 20 seconds, so the polls are spread out. macOS may ask once to allow keychain access. The
+endpoint is undocumented and may change without notice.
+
+With the usage reading off, nothing is read from the keychain: each account's row shows what the
+status lines of the sessions in its folders last reported. That attribution is by folder, which is
+wrong for a session billed to another account than its folder's (through a local auth proxy, say);
+the usage reading is the path that stays right.
+
+The channel carries one row per account: an opaque key (a hash of the uuid, never the uuid), the
+name given in **Settings → Privacy** or else the plan, the plan, the 5-hour and 7-day windows,
+`stale`, `error` and `updatedAt`. Today's token count reads every folder's `projects` and stays
+the Mac's total.
 
 Nothing the Claude providers publish carries the account's e-mail address. Should one ever do so,
 it is held to the rule every account provider is: the address is left out unless **/admin →
 Settings → Privacy → Show the account e-mail address** is ticked (see
 [connections.md](connections.md#the-accounts-e-mail-address)).
 
-The usage tile also shows a plan badge when the local Claude CLI reports a known subscription.
-Fremkit reads `claude auth status --json` from a fixed local binary path. It publishes only login
-state, authentication method and the known plan, never the account email or authentication data.
-The plan badge is independent of the optional account-usage read.
+The `claude-identity` channel reads `claude auth status --json` from a fixed local binary path. It
+publishes only login state, authentication method and the known plan, never the account email or
+authentication data. The Claude limits widget no longer reads it: each of its rows carries its own
+account's plan.

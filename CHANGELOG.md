@@ -18,7 +18,21 @@ tagged `vX.Y.Z`.
   the top of the tile as a small card, its name and the model's context bar, so that half a dozen
   pinned sessions still leave room for the ones that are moving. A pinned session stays on the
   board however long it has been quiet and whatever the tile's filters say, turns orange when it
-  waits for you, and keeps its pin through `/clear`. A long press on it lets it go.
+  waits for you, and keeps its pin through `/clear`. A long press on it lets it go. On the Edge,
+  hold for a second and lift.
+
+### Changed
+
+- **Claude limits: one row per account.** When Claude Code runs on several claude.ai accounts at
+  once (one per profile folder, as a terminal with profiles does), the tile shows each account on
+  its own row: its name, then its 5-hour and 7-day gauges side by side with their reset times, so
+  you can see which account still has room. In the navigation bar, two stacked mini-rows. Each
+  account's numbers are read with that account's own sign-in, so they never swap between rows. An
+  account with no session running keeps its last numbers, dimmed, with the time they were read;
+  Fremkit never renews its sign-in. Name each account in **Settings → Privacy**; without a name a
+  row shows the plan (Max, Team…), never an e-mail address. The per-model limits and the weekly
+  breakdown line are no longer drawn, and the account picker is gone: every account is shown.
+  With a single account the tile reads as before.
 
 - **A window that lands on the Edge comes back.** Another application could place a window on the
   Edge display, where the kiosk covers it: the window was focused, it took the keyboard, and it

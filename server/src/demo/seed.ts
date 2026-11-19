@@ -6,7 +6,7 @@ import { CONFIG_VERSION, type Config, type Placement } from '../config/schema.js
 import { BUILTIN_THEME } from '../themes/theme.js'
 import { DEFAULT_BACKGROUND } from '../backgrounds/seed.js'
 import { FileSecretStore } from '../secrets/file.js'
-import { DEMO_APPS, DEMO_CALENDARS, DEMO_NAS } from './world.js'
+import { DEMO_APPS, DEMO_CALENDARS, DEMO_CLAUDE_ACCOUNTS, DEMO_NAS } from './world.js'
 
 /**
  * The settings each built-in widget is shown with in demo mode and in its preview image.
@@ -129,7 +129,7 @@ export function demoConfig(locale: 'fr' | 'en' = 'en'): Config {
     // A file next to the config, never the keychain: a demo has nothing to keep secret.
     secrets: { backend: 'file' },
     locale,
-    privacy: { claudeAccountUsage: true, claudeAccountDir: 'auto', showAccountEmail: false, codexAccount: true, codexHistorySources: ['cli', 'vscode', 'appServer'], macmonTemperature: false },
+    privacy: { claudeAccountUsage: true, claudeAccountDir: 'auto', claudeAccountNames: Object.fromEntries(DEMO_CLAUDE_ACCOUNTS.map((a) => [a.uuid, a.name[locale]])), showAccountEmail: false, codexAccount: true, codexHistorySources: ['cli', 'vscode', 'appServer'], macmonTemperature: false },
     marketplace: { installed: {} },
     labs: {},
     widgets,
