@@ -31,13 +31,30 @@ public enum FenceMath {
      - Parameters:
        - cursor: the pointer's real position, or nil when it could not be read.
        - edge: the Edge display's bounds, or nil when there is no Edge display.
+       - last: the last position seen outside `edge`, which may be stale; see `usableLast`.
+       - displays: the bounds of every active display, the Edge included.
        - driven: true while a touch gesture owns the cursor on purpose. The driver warps the
          pointer onto the panel for the duration of a gesture and puts it back itself; pushing it
          away in the meantime would fight the finger.
      */
-    public static func patrol(cursor: CGPoint?, edge: CGRect?, last: CGPoint?, safe: CGRect, driven: Bool) -> CGPoint? {
+    public static func patrol(cursor: CGPoint?, edge: CGRect?, last: CGPoint?, displays: [CGRect],
+                              safe: CGRect, driven: Bool) -> CGPoint? {
         guard !driven, let cursor, let edge else { return nil }
-        return clamp(cursor, edge: edge, last: last, safe: safe)
+        return clamp(cursor, edge: edge, last: usableLast(last, edge: edge, displays: displays), safe: safe)
+    }
+
+    /**
+     `last`, if the pointer can still be sent there, or nil.
+
+     The last position outside the Edge outlives a display rearrangement: the display it was on
+     may be gone or elsewhere. Warping the cursor to a point on no display makes the system clamp
+     it to the nearest one, which can be the Edge itself, and the patrol would then push it back
+     to the same point five times a second for ever. A point counts only when it lies on an active
+     display other than the Edge; with no display list at all, it does not.
+     */
+    public static func usableLast(_ last: CGPoint?, edge: CGRect, displays: [CGRect]) -> CGPoint? {
+        guard let last, !edge.contains(last), displays.contains(where: { $0.contains(last) }) else { return nil }
+        return last
     }
 
     /// Projects a point one point outside the nearest side of `edge`, or onto the centre of

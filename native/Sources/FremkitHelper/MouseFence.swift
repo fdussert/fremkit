@@ -32,7 +32,11 @@ final class MouseFence {
     private static let patrolInterval: TimeInterval = 0.2
 
     /// Bounds of the Edge display; the fence does nothing while this is nil.
-    var edge: CGRect?
+    var edge: CGRect? {
+        // The displays moved: the last position outside the old Edge may now be on no display,
+        // or on the Edge itself.
+        didSet { if edge != oldValue { last = nil } }
+    }
 
     /// Called on the main thread whenever the effective state changes.
     var onStateChange: ((FenceState) -> Void)?
@@ -96,6 +100,8 @@ final class MouseFence {
         wantsRunning = false
         stopRetrying()
         stopPatrol()
+        // Whether or not the tap ever came up: the patrol writes `last` too.
+        last = nil
 
         guard isRunning else {
             state = .off
@@ -105,7 +111,6 @@ final class MouseFence {
         if let source { CFRunLoopRemoveSource(CFRunLoopGetMain(), source, .commonModes) }
         source = nil
         tap = nil
-        last = nil
         isRunning = false
         state = .off
     }
@@ -197,13 +202,27 @@ final class MouseFence {
         guard wantsRunning else { return }
         // The main display is the one rectangle guaranteed to exist and to hold a cursor.
         let safe = CGDisplayBounds(CGMainDisplayID())
+        let displays = Self.activeDisplayBounds()
+        // A `last` left on no display by a rearrangement is dropped here, so neither the patrol
+        // nor the tap sends the pointer there again.
+        if let edge { last = FenceMath.usableLast(last, edge: edge, displays: displays) }
         guard let clamped = FenceMath.patrol(cursor: CGEvent(source: nil)?.location,
                                              edge: edge,
                                              last: last,
+                                             displays: displays,
                                              safe: safe,
                                              driven: cursorIsDriven()) else { return }
         last = clamped
         warpCursor(to: clamped)
+    }
+
+    /// The bounds of every active display, the Edge included, in global coordinates.
+    private static func activeDisplayBounds() -> [CGRect] {
+        var count: UInt32 = 0
+        guard CGGetActiveDisplayList(0, nil, &count) == .success, count > 0 else { return [] }
+        var ids = [CGDirectDisplayID](repeating: 0, count: Int(count))
+        guard CGGetActiveDisplayList(count, &ids, &count) == .success else { return [] }
+        return ids.prefix(Int(count)).map(CGDisplayBounds)
     }
 
     // MARK: - Tap callback

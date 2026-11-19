@@ -69,23 +69,48 @@ final class FenceMathTests: XCTestCase {
         // No event brought it here: an application warped it, or a display moved under it.
         let last = CGPoint(x: 800, y: 400)
         XCTAssertEqual(FenceMath.patrol(cursor: CGPoint(x: 3000, y: -900), edge: edge,
-                                        last: last, safe: primary, driven: false), last)
+                                        last: last, displays: [primary, edge], safe: primary, driven: false), last)
     }
 
     func testPatrolLeavesAPointerOnAnotherDisplayAlone() {
         XCTAssertNil(FenceMath.patrol(cursor: CGPoint(x: 100, y: 100), edge: edge,
-                                      last: nil, safe: primary, driven: false))
+                                      last: nil, displays: [primary, edge], safe: primary, driven: false))
     }
 
     func testPatrolStandsBackWhileAGestureOwnsTheCursor() {
         // The driver puts the cursor on the panel on purpose and restores it afterwards.
         XCTAssertNil(FenceMath.patrol(cursor: CGPoint(x: 3000, y: -900), edge: edge,
-                                      last: nil, safe: primary, driven: true))
+                                      last: nil, displays: [primary, edge], safe: primary, driven: true))
     }
 
     func testPatrolDoesNothingWithoutAnEdgeOrAPosition() {
         XCTAssertNil(FenceMath.patrol(cursor: CGPoint(x: 3000, y: -900), edge: nil,
-                                      last: nil, safe: primary, driven: false))
-        XCTAssertNil(FenceMath.patrol(cursor: nil, edge: edge, last: nil, safe: primary, driven: false))
+                                      last: nil, displays: [primary, edge], safe: primary, driven: false))
+        XCTAssertNil(FenceMath.patrol(cursor: nil, edge: edge, last: nil, displays: [primary, edge],
+                                      safe: primary, driven: false))
+    }
+
+    func testPatrolIgnoresALastPositionThatIsOnNoDisplayAnyMore() {
+        // A display the pointer was on was unplugged or moved: pushing it back to where it was
+        // would land on no display, the system would clamp it onto the Edge again, and the patrol
+        // would push it there every 200 ms for ever.
+        let stale = CGPoint(x: -800, y: 400)
+        XCTAssertEqual(FenceMath.patrol(cursor: CGPoint(x: 3000, y: -900), edge: edge, last: stale,
+                                        displays: [primary, edge], safe: primary, driven: false),
+                       CGPoint(x: primary.midX, y: primary.midY))
+        XCTAssertTrue(primary.contains(FenceMath.patrol(cursor: CGPoint(x: 3000, y: -900), edge: edge, last: stale,
+                                                        displays: [primary, edge], safe: primary,
+                                                        driven: false) ?? .zero))
+    }
+
+    func testUsableLastKeepsOnlyAPointOnADisplayOutsideTheEdge() {
+        let displays = [primary, edge]
+        XCTAssertEqual(FenceMath.usableLast(CGPoint(x: 800, y: 400), edge: edge, displays: displays),
+                       CGPoint(x: 800, y: 400))
+        XCTAssertNil(FenceMath.usableLast(CGPoint(x: -800, y: 400), edge: edge, displays: displays))
+        XCTAssertNil(FenceMath.usableLast(CGPoint(x: 3000, y: -900), edge: edge, displays: displays))
+        XCTAssertNil(FenceMath.usableLast(nil, edge: edge, displays: displays))
+        // No display list at all is no proof of anything: the point is not trusted.
+        XCTAssertNil(FenceMath.usableLast(CGPoint(x: 800, y: 400), edge: edge, displays: []))
     }
 }

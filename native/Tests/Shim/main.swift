@@ -50,6 +50,8 @@ let suites: [(String, () -> XCTestCase, [TestMethod])] = [
         ("testPatrolPushesAPointerThatIsSimplyResting", { ($0 as! FenceMathTests).testPatrolPushesAPointerThatIsSimplyResting() }),
         ("testPatrolLeavesAPointerOnAnotherDisplayAlone", { ($0 as! FenceMathTests).testPatrolLeavesAPointerOnAnotherDisplayAlone() }),
         ("testPatrolStandsBackWhileAGestureOwnsTheCursor", { ($0 as! FenceMathTests).testPatrolStandsBackWhileAGestureOwnsTheCursor() }),
+        ("testPatrolIgnoresALastPositionThatIsOnNoDisplayAnyMore", { ($0 as! FenceMathTests).testPatrolIgnoresALastPositionThatIsOnNoDisplayAnyMore() }),
+        ("testUsableLastKeepsOnlyAPointOnADisplayOutsideTheEdge", { ($0 as! FenceMathTests).testUsableLastKeepsOnlyAPointOnADisplayOutsideTheEdge() }),
         ("testPatrolDoesNothingWithoutAnEdgeOrAPosition", { ($0 as! FenceMathTests).testPatrolDoesNothingWithoutAnEdgeOrAPosition() }),
     ]),
     ("HelperConfigTests", { HelperConfigTests() }, [
