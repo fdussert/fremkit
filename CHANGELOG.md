@@ -14,8 +14,6 @@ tagged `vX.Y.Z`.
 
 ### Added
 
-- **Claude sessions: pinned sessions in two sizes.** A new setting, *Size of pinned sessions*,
-  makes them narrower than a card, so that more of them fit on a row.
 - **iPad app 1.0.1: Forget this Mac.** The "Can't reach the Mac" screen has a **Forget this Mac**
   button, which asks first. An iPad paired with a Mac that is not coming back no longer stays on
   that screen for good: forget it, then pair with another.
@@ -37,7 +35,11 @@ tagged `vX.Y.Z`.
   pinned sessions still leave room for the ones that are moving. A pinned session stays on the
   board however long it has been quiet and whatever the tile's filters say, turns orange when it
   waits for you, and keeps its pin through `/clear`. A long press on it lets it go. On the Edge,
-  hold for a second and lift.
+  hold for a second and lift. Three dots move in the corner of a pinned session for as long as it
+  is working. Drag a pin onto another to put it in that place, the others closing up (on the
+  Edge, hold the pin for a moment before sliding, as for anything dragged there). And a new
+  setting, *Size of pinned sessions*, makes pins narrower than a card, so that more of them fit
+  on a row.
 
 - **A window that lands on the Edge comes back.** Another application could place a window on the
   Edge display, where the kiosk covers it: the window was focused, it took the keyboard, and it

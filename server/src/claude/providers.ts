@@ -1,5 +1,5 @@
 import { isTrusted, type Provider } from '../providers/types.js'
-import type { ClaudeTracker } from './tracker.js'
+import { MAX_PINS, type ClaudeTracker } from './tracker.js'
 import type { ClaudeUsage } from './usage.js'
 import { listClaudeProcesses, type ClaudeProcess } from './processes.js'
 import { z } from 'zod'
@@ -32,6 +32,12 @@ export const FocusPayloadSchema = DismissPayloadSchema
  * (`stampInstance`), and a schema that refused the extra key refused every pin a tile sent.
  */
 export const PinPayloadSchema = z.object({ sessionId: z.string().min(1).max(200), pinned: z.boolean() })
+
+/**
+ * `reorder`: the pinned sessions, in the order they should be drawn. Not strict either, and for
+ * the same reason; bounded by the number of pins there can be.
+ */
+export const ReorderPayloadSchema = z.object({ order: z.array(z.string().min(1).max(200)).max(MAX_PINS) })
 
 export function createClaudeSessionsProvider(tracker: ClaudeTracker, opts: ClaudeSessionsProviderOptions = {}): Provider {
   const list = opts.listProcesses ?? listClaudeProcesses
@@ -91,6 +97,17 @@ export function createClaudeSessionsProvider(tracker: ClaudeTracker, opts: Claud
         if (!parsed.success) throw new Error(tr(undefined, 'claude.invalidDismiss'))
         const result = tracker.pin(parsed.data.sessionId, parsed.data.pinned)
         return result === 'ok' ? { ok: true } : { ok: false, reason: result }
+      },
+      /**
+       * Put the pins in a new order, after one was dragged. Like `pin`, it only moves cards.
+       * An id that is not a pinned session is skipped rather than refused: the list was drawn
+       * a moment ago, and a session may have closed since.
+       */
+      reorder: async (payload) => {
+        const parsed = ReorderPayloadSchema.safeParse(payload)
+        if (!parsed.success) throw new Error(tr(undefined, 'claude.invalidDismiss'))
+        tracker.reorderPins(parsed.data.order)
+        return { ok: true }
       },
       dismiss: async (payload) => {
         const parsed = DismissPayloadSchema.safeParse(payload)

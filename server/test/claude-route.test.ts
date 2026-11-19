@@ -60,6 +60,23 @@ describe('POST /api/hooks/claude', () => {
 })
 
 describe('providers', () => {
+  it('reorders the pins as a tile really asks, and refuses what is not a list of ids', async () => {
+    const tracker = new ClaudeTracker()
+    for (const id of ['x', 'y']) tracker.handle({ hook_event_name: 'SessionStart', session_id: id, cwd: '/p/a' })
+    const p = createClaudeSessionsProvider(tracker, { listProcesses: async () => null })
+    await p.commands!.pin({ sessionId: 'x', pinned: true })
+    await new Promise((r) => setTimeout(r, 3))
+    await p.commands!.pin({ sessionId: 'y', pinned: true })
+    // With the host's stamp, as every command a tile sends carries it.
+    await expect(p.commands!.reorder({ order: ['y', 'x'], instanceId: 'claude-sessions-1' })).resolves.toEqual({ ok: true })
+    const polled = (await p.poll!()) as { sessions: { sessionId: string; pinnedAt?: number }[] }
+    const at = (id: string) => polled.sessions.find((s) => s.sessionId === id)!.pinnedAt!
+    expect(at('y')).toBeLessThan(at('x'))
+    for (const bad of [{}, { order: 'y,x' }, { order: [1, 2] }, { order: [''] }, { order: Array.from({ length: 25 }, (_, i) => `s${i}`) }, null]) {
+      await expect(p.commands!.reorder(bad), JSON.stringify(bad)).rejects.toThrow(/session/)
+    }
+  })
+
   it('pins a session on a card\'s word, and answers a refusal instead of throwing it', async () => {
     const p = createClaudeSessionsProvider(tracker, { listProcesses: async () => null })
     tracker.handle({ hook_event_name: 'Stop', session_id: 'z', cwd: '/p/z' })
