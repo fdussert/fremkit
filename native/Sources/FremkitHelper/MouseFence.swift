@@ -23,14 +23,31 @@ final class MouseFence {
     /// Delay between two attempts to create the tap while Accessibility is missing.
     private static let retryInterval: TimeInterval = 5
 
+    /**
+     How often the pointer's real position is looked at, over and above the events the tap sees.
+
+     Short enough that a cursor that lands on the panel is gone before a hand reaches the mouse,
+     long enough for the cost to be negligible: each tick allocates one empty `CGEvent` to read
+     the cursor position and lists the active displays, and posts nothing.
+     */
+    private static let patrolInterval: TimeInterval = 0.2
+
     /// Bounds of the Edge display; the fence does nothing while this is nil.
-    var edge: CGRect?
+    var edge: CGRect? {
+        // The displays moved: the last position outside the old Edge may now be on no display,
+        // or on the Edge itself.
+        didSet { if edge != oldValue { last = nil } }
+    }
 
     /// Called on the main thread whenever the effective state changes.
     var onStateChange: ((FenceState) -> Void)?
 
+    /// Asked before the patrol pushes: true while a touch gesture owns the cursor on purpose.
+    var cursorIsDriven: () -> Bool = { false }
+
     private var tap: CFMachPort?
     private var source: CFRunLoopSource?
+    private var patrolTimer: Timer?
     /// Latest pointer position seen outside `edge`, where the cursor is pushed back to.
     private var last: CGPoint?
     /// True between `start()` and `stop()`, even while the tap itself is missing.
@@ -62,6 +79,9 @@ final class MouseFence {
     @discardableResult
     func start() -> Bool {
         wantsRunning = true
+        // Before the tap, and whatever becomes of it: warping the cursor needs no permission, so
+        // the patrol is the half of the fence that works on a Mac that granted nothing.
+        startPatrol()
         guard !isRunning else { return true }
 
         if createTap() {
@@ -70,7 +90,8 @@ final class MouseFence {
             return true
         }
 
-        FileHandle.standardError.write(Data("fremkit: mouse fence needs Accessibility access\n".utf8))
+        FileHandle.standardError.write(Data(
+            "fremkit: mouse fence needs Accessibility access; until then the patrol pushes the pointer back, but a move across the panel is not filtered\n".utf8))
         state = .missingPermission
         startRetrying()
         return false
@@ -79,6 +100,9 @@ final class MouseFence {
     func stop() {
         wantsRunning = false
         stopRetrying()
+        stopPatrol()
+        // Whether or not the tap ever came up: the patrol writes `last` too.
+        last = nil
 
         guard isRunning else {
             state = .off
@@ -88,7 +112,6 @@ final class MouseFence {
         if let source { CFRunLoopRemoveSource(CFRunLoopGetMain(), source, .commonModes) }
         source = nil
         tap = nil
-        last = nil
         isRunning = false
         state = .off
     }
@@ -155,6 +178,55 @@ final class MouseFence {
             NSLog("fremkit: mouse fence tap still fails although Accessibility is granted; giving up")
             stopRetrying()
         }
+    }
+
+    // MARK: - Patrol
+
+    private func startPatrol() {
+        guard patrolTimer == nil else { return }
+        // `.common` so the patrol keeps ticking while a menu is being tracked, which is exactly
+        // when a stray pointer is most in the way.
+        let timer = Timer(timeInterval: Self.patrolInterval, repeats: true) { [weak self] _ in
+            self?.patrolTick()
+        }
+        // A quarter of the interval: the push stays well under a glance, and the system may
+        // coalesce the wake-ups.
+        timer.tolerance = 0.05
+        RunLoop.main.add(timer, forMode: .common)
+        patrolTimer = timer
+    }
+
+    private func stopPatrol() {
+        patrolTimer?.invalidate()
+        patrolTimer = nil
+    }
+
+    /// One look at where the pointer actually is, and a push back when it is on the Edge.
+    private func patrolTick() {
+        guard wantsRunning else { return }
+        // The main display is the one rectangle guaranteed to exist and to hold a cursor.
+        let safe = CGDisplayBounds(CGMainDisplayID())
+        let displays = Self.activeDisplayBounds()
+        // A `last` left on no display by a rearrangement is dropped here, so neither the patrol
+        // nor the tap sends the pointer there again.
+        if let edge { last = FenceMath.usableLast(last, edge: edge, displays: displays) }
+        guard let clamped = FenceMath.patrol(cursor: CGEvent(source: nil)?.location,
+                                             edge: edge,
+                                             last: last,
+                                             displays: displays,
+                                             safe: safe,
+                                             driven: cursorIsDriven()) else { return }
+        last = clamped
+        warpCursor(to: clamped)
+    }
+
+    /// The bounds of every active display, the Edge included, in global coordinates.
+    private static func activeDisplayBounds() -> [CGRect] {
+        var count: UInt32 = 0
+        guard CGGetActiveDisplayList(0, nil, &count) == .success, count > 0 else { return [] }
+        var ids = [CGDirectDisplayID](repeating: 0, count: Int(count))
+        guard CGGetActiveDisplayList(count, &ids, &count) == .success else { return [] }
+        return ids.prefix(Int(count)).map(CGDisplayBounds)
     }
 
     // MARK: - Tap callback
