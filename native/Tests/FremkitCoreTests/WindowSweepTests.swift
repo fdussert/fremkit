@@ -47,13 +47,29 @@ final class WindowSweepTests: XCTestCase {
         XCTAssertTrue(WindowSweep.strays(in: [info(id: 3, pid: ownPid, frame: kiosk)], edge: edge, ownPid: ownPid).isEmpty)
     }
 
-    func testIgnoresEverythingThatIsNotAnOrdinaryWindow() {
-        // The Dock, the menu bar and the screen saver live on their own layers and belong there.
+    func testIgnoresEverythingThatIsNotAnApplicationsWindow() {
+        // The desktop, the Dock, the menu bar, the status items, an open menu, a tooltip and the
+        // screen saver live on their own layers and belong there.
         let furniture = CGRect(x: -2560, y: 362, width: 2560, height: 40)
-        for layer in [-1, 3, 20, 1000] {
+        for layer in [-1, 19, 20, 24, 25, 101, 200, 1000] {
             let strays = WindowSweep.strays(in: [info(id: 4, pid: 900, frame: furniture, layer: layer)], edge: edge, ownPid: ownPid)
             XCTAssertTrue(strays.isEmpty, "layer \(layer)")
         }
+    }
+
+    func testTakesAFloatingPanelSuchAsAReminder() {
+        // A mail client's reminder is a floating panel (layer 3): as lost under the kiosk as an
+        // ordinary window, and the one the user most needs to see.
+        let reminder = CGRect(x: -2560, y: 951, width: 400, height: 131)
+        let strays = WindowSweep.strays(in: [info(id: 8, pid: 900, frame: reminder, layer: 3)], edge: edge, ownPid: ownPid)
+        XCTAssertEqual(strays, [StrayWindow(id: 8, pid: 900, frame: reminder)])
+    }
+
+    func testTakesAModalPanel() {
+        // An alert that is its own window (layer 8) holds its application until it is answered.
+        let alert = CGRect(x: -1500, y: 500, width: 420, height: 180)
+        let strays = WindowSweep.strays(in: [info(id: 9, pid: 900, frame: alert, layer: 8)], edge: edge, ownPid: ownPid)
+        XCTAssertEqual(strays, [StrayWindow(id: 9, pid: 900, frame: alert)])
     }
 
     func testIgnoresAWindowThatIsFullyTransparent() {

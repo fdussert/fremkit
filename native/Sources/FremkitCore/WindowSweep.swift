@@ -25,6 +25,18 @@ public struct StrayWindow: Equatable {
 /// The reading of `CGWindowListCopyWindowInfo` lives here, away from AppKit and the Accessibility
 /// API, so the rules can be tested with plain dictionaries.
 public enum WindowSweep {
+    /// The layers an application puts its own windows on: an ordinary window (0), a floating
+    /// panel (3: a reminder, an inspector, a palette) and a modal panel (8: an alert that is its
+    /// own window). All three sit under the kiosk and are as lost there as each other; the first
+    /// version took layer 0 only and left a mail client's reminder on the Edge. Everything else
+    /// (the desktop, the Dock, the menu bar and its extras, an open menu, a tooltip, a screen
+    /// saver, the kiosk itself) is furniture that is meant to be where it is.
+    static let applicationLayers: Set<Int> = [
+        Int(CGWindowLevelForKey(.normalWindow)),
+        Int(CGWindowLevelForKey(.floatingWindow)),
+        Int(CGWindowLevelForKey(.modalPanelWindow)),
+    ]
+
     /// The windows that overlap `edge` and belong to somebody else, in the order they are listed.
     ///
     /// - Parameters:
@@ -33,9 +45,7 @@ public enum WindowSweep {
     ///   - ownPid: this process, whose own kiosk window covers the whole Edge on purpose.
     public static func strays(in infos: [[String: Any]], edge: CGRect, ownPid: pid_t) -> [StrayWindow] {
         infos.compactMap { info in
-            // Layer 0 is an ordinary window. Everything else (the Dock, the menu bar extras, a
-            // screen saver, the kiosk itself) is furniture that is meant to be above or below.
-            guard let layer = info[kCGWindowLayer as String] as? Int, layer == 0 else { return nil }
+            guard let layer = info[kCGWindowLayer as String] as? Int, applicationLayers.contains(layer) else { return nil }
             // A fully transparent window is one nobody can see or lose: applications keep such
             // helper windows anywhere, and moving one would spend an attempt on nothing.
             if let alpha = info[kCGWindowAlpha as String] as? Double, alpha <= 0 { return nil }
