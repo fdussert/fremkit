@@ -91,7 +91,7 @@ struct RootView: View {
             }
         case let .unreachable(name):
             UnreachableView(name: name, isRetrying: model.isConnecting,
-                            retry: { model.reconnect() }, forget: { model.forget() })
+                            retry: { model.reconnect() }, forget: { flow.forgetMac() })
                 .task {
                     // Every 5 s while the screen is up; the task ends with the screen.
                     while !Task.isCancelled {

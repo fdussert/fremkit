@@ -116,6 +116,35 @@ final class PairingFlowTests: XCTestCase {
         XCTAssertEqual(model.mac, paired)
     }
 
+    /// Forget this Mac, tapped while a link waits behind its question: there is no pairing left to
+    /// replace, and the question would name a Mac that is gone.
+    func testForgettingTheMacPairsWithALinkThatWasWaiting() async {
+        let pairer = ScriptedPairer(.success(paired))
+        let (flow, model) = makeFlow(store: MemoryCredentialStore(sampleMac), pairer: pairer)
+        await model.reconnect().value
+        XCTAssertEqual(model.state, .unreachable(name: sampleMac.name))
+        flow.handle(url: linkURL)
+        XCTAssertNotNil(flow.pendingLink)
+
+        flow.forgetMac()
+        XCTAssertNil(flow.pendingLink)
+        XCTAssertEqual(flow.step, .link(PairingLink(url: linkURL)!))
+        await flow.inFlight?.value
+        XCTAssertEqual(pairer.attempts.count, 1)
+        XCTAssertEqual(model.mac, paired)
+    }
+
+    func testForgettingTheMacWithNoLinkWaitingShowsTheWelcomeScreen() async {
+        let store = MemoryCredentialStore(sampleMac)
+        let (flow, model) = makeFlow(store: store)
+        await model.reconnect().value
+        flow.forgetMac()
+        XCTAssertNil(model.mac)
+        XCTAssertEqual(model.state, .welcome)
+        XCTAssertEqual(flow.step, .idle)
+        XCTAssertNil(try store.load())
+    }
+
     func testALinkAfterTheMacRemovedThisIPadDoesNotAsk() async {
         let (flow, model) = makeFlow(store: MemoryCredentialStore(sampleMac),
                                      prober: ScriptedProber(["studio.local": .unauthorized]))
