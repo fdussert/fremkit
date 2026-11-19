@@ -32,12 +32,14 @@ The name is the Fremen survival kit from *Dune*.
   auto-rotation.
 - **A live editor** at `/admin`: the real page rendered with real widgets, drag and resize with
   snapping, overlap refused, keyboard nudges, undo/redo and autosave.
-- **Thirty-nine widgets** — clock, weather, a pomodoro timer, CPU, memory, disks, a disk map, network
+- **Forty-one widgets** — clock, weather, a pomodoro timer, CPU, memory, disks, a disk map, network
   throughput, batteries, processes, volume, Spotify, Dock badges, a clipboard history, shortcut
-  buttons, service status checks, published calendars, Claude Code sessions and limits; and,
+  buttons, service status checks, published calendars, a board of GIFs, recent projects, Claude Code
+  sessions and limits; and,
   *from the registry*, meeting controls, CleanShot X actions, Azure DevOps builds, GitHub
-  notifications and Actions, a Bambu Lab printer, Homey devices and flows, a Synology NAS.
-  Twenty-two ship with Fremkit; the rest are one press away in the admin.
+  notifications and Actions, a Bambu Lab printer, Homey devices and flows, a Synology NAS, Codex
+  sessions and limits, Docker containers, an Elgato Key Light.
+  Twenty-four ship with Fremkit; the rest are one press away in the admin.
 - **An iPad app**, [on the App Store](https://apps.apple.com/app/id6824504862), that shows a screen
   of the dashboard from your Mac over the local network, paired by QR code and revocable from the
   admin. See [docs/devices.md](docs/devices.md).
@@ -311,9 +313,8 @@ button so the admin shortcut remains available.
 you set, as many as fit beside the page buttons. The screen's settings list them as the bar reads,
 left of the dots then right of them; drag one to move it, to the other side too. A compact rendering is one readable line, as wide
 as the widget's manifest asks for and as tall as the bar; the bar is its surface, so it has no
-title and no tile of its own. Ten of the built-ins have one: `clock`, `weather`, `pomodoro`,
-`cpu`, `memory`, `network`, `battery`, `calendar`, `claude-usage` and `service-status`. Registry
-widgets bring their own — `github-inbox`, `homey-devices` and the two Synology ones have one too.
+title and no tile of its own. Most of the built-ins have one and registry widgets bring their
+own: the *Compact* column of the tables under [Widgets](#widgets) marks them.
 
 **Full widget on touch.** A bar widget can be marked for a popover: touching it opens the same
 widget at its full default size above the bar, in one of three shapes: *Standard*, *Low and wide*
@@ -325,7 +326,7 @@ on a page change, or after fifteen seconds.
 ![The Screen dialog: language, bar height and opacity, and the widgets in the bar](docs/images/admin-screen.png)
 
 **Connections.** A widget that talks to an outside service — Azure DevOps, GitHub, a Bambu
-printer, a Homey, a NAS, a published calendar — reads its credentials from a named *connection*,
+printer, a NAS, a published calendar — reads its credentials from a named *connection*,
 configured once in the admin and referenced by the widget. The connection types are part of
 Fremkit; the widgets for these live on the registry, which is why creating one lists them.
 Several widgets can share one, and one service can have several. Non-secret fields live in `data/fremkit.json`; secrets go to the macOS **keychain**
@@ -371,12 +372,15 @@ lines such as "Server: running" and "Touch: active".
 | `cpu` | CPU load and temperature | — | ● |
 | `disk` | Disk usage and available space | — | — |
 | `disk-map` | What fills the disk, as rings you drill into; long press shows it in Finder | — | ● |
+| `fremplay` | The video of a Chrome tab, sent by the Fremkit Companion extension, with touch controls | — | ● |
+| `gif-board` | Favourite GIFs in groups; a touch copies one, ready to paste animated into a chat | Giphy, for its search only | ● |
 | `memory` | Memory usage, available RAM and swap | — | ● |
 | `uptime` | Time since the Mac last booted | — | — |
 | `network` | Live network throughput, with a sparkline | — | ● |
 | `notifications` | Unread badges read from the Dock | — | — |
 | `pomodoro` | A work and break timer, driven by touch | — | ● |
 | `processes` | Top processes | — | — |
+| `recent-projects` | The folders you worked in lately, one tap away | — | ● |
 | `service-status` | A green, amber or red dot per service it pings | — | ● |
 | `shortcuts` | Big touch buttons that open apps, links and shortcuts | — | — |
 | `spotify` | Current track and transport | — | — |
@@ -386,9 +390,10 @@ lines such as "Server: running" and "Touch: active".
 ### On the sietch
 
 Published on the [widget registry](https://github.com/fdussert/fremkit-sietch) rather than
-shipped, because each one only does anything with a printer, a hub, a NAS or an account behind
-it. Install them from **Sietch** in the admin’s top bar; the provider or connection type each
-one reads is already part of Fremkit, so there is nothing else to set up. A tile placed on a
+shipped, because each one only does anything with a printer, a hub, a NAS, an account or another
+application behind it. Install them from **Sietch** in the admin’s top bar; the provider or connection type each
+one reads is already part of Fremkit, or declared by the widget itself, so there is nothing else
+to set up. A tile placed on a
 screen whose widget is not installed offers the install where it stands.
 
 | Widget | Shows | Connection | Compact |
@@ -396,11 +401,18 @@ screen whose widget is not installed offers the install where it stands.
 | `ado-pipelines` | Azure DevOps runs in progress and recent history | Azure DevOps | — |
 | `bambu-job` | A printer's current job, AMS and chamber camera | Bambu Lab | — |
 | `cleanshot` | Big touch buttons for captures, needs [CleanShot X](https://cleanshot.com) with its URL scheme API allowed | — | — |
+| `codex-sessions` | Codex sessions by directory, with their models, turn durations and subagents | — | ● |
+| `codex-usage` | Codex account quotas and usage | — | ● |
+| `docker-containers` | Local Docker containers: state, CPU, memory and I/O, read-only | — | — |
 | `github-actions` | Running and finished GitHub Actions workflows | GitHub | — |
 | `github-inbox` | GitHub notifications, review requests and pull requests | GitHub | ● |
-| `homey-devices` | Lights, plugs and sensors of a Homey Pro | Homey Pro | ● |
-| `homey-flows` | Buttons that run a Homey Pro's flows | Homey Pro | — |
+| `homey-devices` | Lights, plugs and sensors of a Homey Pro | its own: the Homey's address and an API key | ● |
+| `homey-flows` | Buttons that run a Homey Pro's flows | its own, shared with `homey-devices` | — |
+| `key-light` | An Elgato Key Light, switched on or off and adjusted | its own: the light's address | ● |
+| `local-models` | Installed and loaded Ollama models, and MLX processes | — | — |
+| `mac-temperatures` | The CPU temperature, measured by macmon or the system | — | ● |
 | `mutedeck` | Meeting controls through MuteDeck | — | — |
+| `rtk-gain` | The tokens RTK saved, today and overall | — | ● |
 | `synology-storage` | Volumes, disk health and temperature of a NAS | Synology | ● |
 | `synology-system` | CPU, memory, network and uptime of a NAS | Synology | ● |
 
@@ -419,11 +431,15 @@ What the installer checks, what a consent record is and how an update asks again
 |---|---|---|
 | Azure DevOps | organisation, project, a personal access token with Build (read) | `ado-pipelines` (from the registry) |
 | Bambu Lab | IP address, serial number, LAN access code | `bambu-job` (from the registry) |
+| Giphy | an API key | `gif-board`, for its search in the admin |
 | GitHub | a personal access token — classic for the notifications, fine-grained enough for reviews, pull requests and Actions — optionally an Enterprise API host | `github-inbox`, `github-actions` (from the registry) |
-| Homey Pro | the Homey's address, an API key with Devices and Flows in read and control | `homey-devices`, `homey-flows` (from the registry) |
 | ICS calendar | the published calendar address, a colour | `calendar` |
 | Synology | the NAS address, a dedicated DSM account in the administrators group (no shared folder, DSM application only) and its password | `synology-storage`, `synology-system` (from the registry) |
 ![The Connections dialog](docs/images/admin-connections.png)
+
+A registry widget can also declare the connection it needs in its own manifest, as the Homey and
+Key Light ones do: the form, the keychain and the **Test** button are the same, and the widget
+reaches only the address you typed.
 
 How to obtain each credential, what is stored where, and what is never logged:
 **[docs/connections.md](docs/connections.md)**.
