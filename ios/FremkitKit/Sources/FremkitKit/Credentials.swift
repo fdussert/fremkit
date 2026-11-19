@@ -156,11 +156,21 @@ public struct KeychainVault: PairingVault {
     }
 }
 
+/// What the app's container says about this installation.
+public enum InstallMark: Equatable, Sendable {
+    /// Nothing there: the first launch, or the first one after the app was deleted and installed
+    /// again.
+    case absent
+    /// Something is there and it is not an id (an empty file, one cut short). The container was
+    /// not wiped, so the app was not reinstalled: this is damage, never a reason to drop a pairing.
+    case damaged
+    case id(String)
+}
+
 /// The id of this installation of the app, kept where deleting the app deletes it.
 public protocol InstallMarker: Sendable {
-    /// nil when there is none: the first launch, or the first one after the app was deleted and
-    /// installed again. Throws when there is one that cannot be read.
-    func read() throws -> String?
+    /// Throws when what is there cannot be read at all.
+    func read() throws -> InstallMark
     func write(_ id: String) throws
 }
 
@@ -179,15 +189,15 @@ public struct FileInstallMarker: InstallMarker {
         return FileInstallMarker(file: folder.appendingPathComponent("install-id"))
     }
 
-    public func read() throws -> String? {
+    public func read() throws -> InstallMark {
         let data: Data
         do {
             data = try Data(contentsOf: file)
         } catch let error as CocoaError where error.code == .fileReadNoSuchFile {
-            return nil
+            return .absent
         }
         let id = String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
-        return id.isEmpty ? nil : id
+        return UUID(uuidString: id) == nil ? .damaged : .id(id)
     }
 
     /// Readable from the first unlock on, as the keychain item is: the two are read together.
@@ -228,6 +238,11 @@ struct StoredPairing: Codable {
 /// the keychain alone, deleting the app and installing it again brought back the old pairing, and
 /// an iPad whose Mac was gone could not be reset by reinstalling. Each record carries the id of
 /// the installation that wrote it, and one whose installation is not this one is removed.
+///
+/// "Not this one" is an empty container or another id, nothing else: an iPad erased and restored
+/// without the app's data counts, as a reinstall does. Whatever is only an error (a keychain or a
+/// container that cannot be read, a damaged id file, a record that does not decode) removes
+/// nothing.
 public struct InstallBoundCredentialStore: CredentialStore {
     private let vault: any PairingVault
     private let marker: any InstallMarker
@@ -240,26 +255,28 @@ public struct InstallBoundCredentialStore: CredentialStore {
     public func load() throws -> PairedMac? {
         guard let data = try vault.read() else { return nil }
         let record = try JSONDecoder().decode(StoredPairing.self, from: data)
-        // An id that cannot be read throws: that is not "the app was installed again".
-        let here = try marker.read()
-        guard let wrote = record.install else {
-            // Written by 1.0, which recorded no installation. Nothing tells an update from a
-            // reinstall here, and an update must keep its pairing: it is kept and bound to this
-            // installation from now on, at the next load if it cannot be written now.
-            try? write(record.mac, installation: here)
+        let mark = try marker.read()
+        switch (record.install, mark) {
+        case let (wrote?, .id(here)) where wrote == here:
             return record.mac
-        }
-        guard wrote == here else {
+        case (_?, .id), (_?, .absent):
+            // Left by an installation that is gone.
             vault.remove()
             return nil
+        case (nil, _), (_?, .damaged):
+            // A record written by 1.0, which recorded no installation: nothing tells an update
+            // from a reinstall here, and an update must keep its pairing. Or the id file is
+            // damaged, in a container that was not wiped. Either way the pairing is kept and bound
+            // to this installation, at the next load if it cannot be written now.
+            try? write(record.mac, mark: mark)
+            return record.mac
         }
-        return record.mac
     }
 
     /// Throws when the installation id cannot be recorded either: the next launch would take the
     /// pairing for a stale one and remove it.
     public func save(_ mac: PairedMac) throws {
-        try write(mac, installation: try marker.read())
+        try write(mac, mark: try marker.read())
     }
 
     public func clear() {
@@ -267,10 +284,10 @@ public struct InstallBoundCredentialStore: CredentialStore {
     }
 
     /// The marker first: a record must never name an installation the container does not hold.
-    private func write(_ mac: PairedMac, installation: String?) throws {
+    private func write(_ mac: PairedMac, mark: InstallMark) throws {
         let id: String
-        if let installation {
-            id = installation
+        if case let .id(here) = mark {
+            id = here
         } else {
             id = UUID().uuidString
             try marker.write(id)
