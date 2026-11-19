@@ -10,20 +10,6 @@ Anything that changes what the dashboard, the admin or a widget can do gets a li
 (`package.json`, `server/package.json`, `ui/package.json`, `server/src/version.ts`) and is
 tagged `vX.Y.Z`.
 
-## Unreleased
-
-### Added
-
-- **Claude sessions: pinned sessions in two sizes.** A new setting, *Size of pinned sessions*,
-  makes them narrower than a card, so that more of them fit on a row.
-
-- **Claude sessions: a pinned session shows that it is working.** Three dots move in the corner
-  of its card for as long as it does, so a glance at the pins says which ones are busy.
-
-- **Claude sessions: drag a pinned session to put it where you want.** Press a pin and slide it
-  onto another: it takes that place and the others close up. On the Edge, hold the pin for a
-  moment before sliding, as for anything dragged there.
-
 ## 0.5.2 — 2026-11-19
 
 ### Added
@@ -33,7 +19,11 @@ tagged `vX.Y.Z`.
   pinned sessions still leave room for the ones that are moving. A pinned session stays on the
   board however long it has been quiet and whatever the tile's filters say, turns orange when it
   waits for you, and keeps its pin through `/clear`. A long press on it lets it go. On the Edge,
-  hold for a second and lift.
+  hold for a second and lift. Three dots move in the corner of a pinned session for as long as it
+  is working. Drag a pin onto another to put it in that place, the others closing up (on the
+  Edge, hold the pin for a moment before sliding, as for anything dragged there). And a new
+  setting, *Size of pinned sessions*, makes pins narrower than a card, so that more of them fit
+  on a row.
 
 - **A window that lands on the Edge comes back.** Another application could place a window on the
   Edge display, where the kiosk covers it: the window was focused, it took the keyboard, and it
