@@ -13,6 +13,8 @@
 /assets/*
   Cache-Control: public, max-age=86400, stale-while-revalidate=604800
 
+# The pages name the stylesheet and the script by their content (`?v=`, kept right by
+# server/test/site-assets.test.ts): a page is never shown with the files of the one before it.
 /*.css
   Cache-Control: public, max-age=3600, stale-while-revalidate=86400
 
