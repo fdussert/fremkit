@@ -12,6 +12,10 @@ your 3D printer, your smart home; you arrange them by dragging them around in a 
 admin, and you drive them by touch through a native macOS helper. Widgets are plain HTML folders,
 so writing one takes a manifest and an `index.html` — no build step, no framework.
 
+What goes on it is yours to choose: a developer's side screen (Claude Code sessions and limits,
+pipelines, containers), a smart home panel (Homey devices and flows), a 3D printer's job and its
+camera, a NAS's volumes and load.
+
 **No iCUE, no third-party driver, no kernel extension.** The helper talks to the Edge's touch
 panel over USB HID itself. Quit iCUE and Touchscreen Gestures if you run them — Fremkit
 replaces them, it does not sit beside them.
