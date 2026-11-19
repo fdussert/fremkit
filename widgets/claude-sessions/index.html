@@ -167,7 +167,7 @@
     }
     // A refusal to go to the window outlives the next render, which would otherwise erase it
     // within the second.
-    var line = (failedUntil[s.id] > now) ? Fremkit.t(L.noWindow) : lineFor(s, now), lineEl = card.querySelector('.line')
+    var line = (failedUntil[s.sessionId] > now) ? Fremkit.t(L.noWindow) : lineFor(s, now), lineEl = card.querySelector('.line')
     lineEl.textContent = line; lineEl.hidden = !line
     card.querySelector('.meta').innerHTML = metaFor(s, now)
     var footHtml = footFor(s), footEl = card.querySelector('.foot')
