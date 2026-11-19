@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import Fastify from 'fastify'
 import { ClaudeConfigDirs, configDirOf, defaultConfigDir, keychainServiceFor, MAX_CONFIG_DIRS } from '../src/claude/configDirs.js'
-import { freshestToken, readClaudeOAuthToken } from '../src/claude/account.js'
+import { freshestToken } from '../src/claude/account.js'
 import { claudeRoutes } from '../src/claude/routes.js'
 import { ClaudeTracker } from '../src/claude/tracker.js'
 import { ClaudeUsage } from '../src/claude/usage.js'
@@ -104,37 +104,7 @@ describe('ClaudeConfigDirs', () => {
   })
 })
 
-describe('readClaudeOAuthToken', () => {
-  it('tries the default item and each learnt folder\'s, and takes the one expiring last', async () => {
-    const store: Record<string, string> = {
-      'Claude Code-credentials': item('stale', 1_000),
-      [keychainServiceFor('/u/profile')]: item('fresh', 9_000),
-    }
-    const asked: string[] = []
-    const read = async (service: string) => { asked.push(service); if (!(service in store)) throw new Error('not found'); return store[service] }
-    expect(await readClaudeOAuthToken(['/u/profile', '/u/gone'], read)).toBe('fresh')
-    expect(asked).toEqual(['Claude Code-credentials', keychainServiceFor('/u/profile'), keychainServiceFor('/u/gone')])
-  })
-  it('reads only the picked folder\'s item, even when another one is fresher', async () => {
-    const store: Record<string, string> = {
-      'Claude Code-credentials': item('work', 9_000),
-      [keychainServiceFor('/u/personal')]: item('personal', 1_000),
-    }
-    const asked: string[] = []
-    const read = async (service: string) => { asked.push(service); if (!(service in store)) throw new Error('not found'); return store[service] }
-    expect(await readClaudeOAuthToken(['/u/personal'], read, '/u/personal')).toBe('personal')
-    expect(asked).toEqual([keychainServiceFor('/u/personal')])
-  })
-  it('reads the plain item too for the default folder, which Claude Code uses without CLAUDE_CONFIG_DIR', async () => {
-    const asked: string[] = []
-    const read = async (service: string) => { asked.push(service); return item('tok', 1) }
-    await readClaudeOAuthToken(['/u/personal'], read, defaultConfigDir())
-    expect(asked).toEqual(['Claude Code-credentials', keychainServiceFor(defaultConfigDir())])
-  })
-  it('still reads the default item alone, as before', async () => {
-    expect(await readClaudeOAuthToken([], async () => item('tok', 1))).toBe('tok')
-    expect(await readClaudeOAuthToken([], async () => { throw new Error('not found') })).toBeNull()
-  })
+describe('freshestToken', () => {
   it('ranks an item that does not say when it expires after every one that does', () => {
     expect(freshestToken([{ token: 'unknown', expiresAt: null }, { token: 'dated', expiresAt: 1 }])).toBe('dated')
     expect(freshestToken([null, { token: 'only', expiresAt: null }])).toBe('only')

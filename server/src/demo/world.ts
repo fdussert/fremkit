@@ -40,6 +40,15 @@ export const DEMO_CALENDARS = [
 /** The Synology NAS the demo dashboard is connected to. Never contacted: its channel is invented. */
 export const DEMO_NAS = { id: 'demo-nas', name: 'NAS', host: '192.0.2.10', account: 'fremkit' } as const
 
+/**
+ * The two claude.ai accounts a demo Mac runs Claude Code on, as the Claude limits widget shows
+ * them: placeholder uuids, the names the seed gives them, a personal plan and a team one.
+ */
+export const DEMO_CLAUDE_ACCOUNTS = [
+  { uuid: '00000000-0000-4000-8000-00000000d001', plan: 'Max', org: null, name: { fr: 'Perso', en: 'Personal' } },
+  { uuid: '00000000-0000-4000-8000-00000000d002', plan: 'Team', org: 'Example Corp', name: { fr: 'Boulot', en: 'Work' } },
+] as const
+
 /** Hours after local midnight, and how long, for each calendar's recurring events. */
 const WORK_EVENTS = [
   { title: 'Weekly sync', at: 9.5, minutes: 30, location: 'Room 2' },

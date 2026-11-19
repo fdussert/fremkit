@@ -5,9 +5,11 @@ import { findInstance, type InstanceLookup } from '../config/instances.js'
 import { resolveServices, type ServiceResult } from '../providers/service-status.js'
 import { buildView, findNode, type DiskNode } from '../providers/disk-map-tree.js'
 import { codexProviders } from './codex.js'
+import { createHash } from 'node:crypto'
 import { tr } from '../i18n.js'
+import type { AccountSummary } from '../claude/account.js'
 import {
-  DEMO_APPS, DEMO_CLIPBOARD, DEMO_PROCESSES, DEMO_SESSIONS, DEMO_TRACKS,
+  DEMO_APPS, DEMO_CLAUDE_ACCOUNTS, DEMO_CLIPBOARD, DEMO_PROCESSES, DEMO_SESSIONS, DEMO_TRACKS,
   clamp, coverArt, round1, wander,
 } from './world.js'
 import { DEMO_GIF_COLOUR_BARS, DEMO_GIF_MANDELBROT, DEMO_GIF_RGB_BARS, DEMO_GIF_TEST_PATTERN } from './gif-samples.js'
@@ -41,6 +43,11 @@ export interface DemoProviderOptions {
 
 /** What a demo command answers when it would have acted on the Mac. */
 const ACTED = async (): Promise<{ ok: true }> => ({ ok: true })
+
+/** The demo's Claude accounts as the settings window lists them: both seen a minute ago. */
+export function demoClaudeAccounts(t = Date.now()): AccountSummary[] {
+  return DEMO_CLAUDE_ACCOUNTS.map((a) => ({ uuid: a.uuid, plan: a.plan, org: a.org, lastSeen: t - 60_000 }))
+}
 
 export function createDemoProviders(opts: DemoProviderOptions): Provider[] {
   const now = opts.now ?? Date.now
@@ -516,25 +523,23 @@ function claudeProviders(now: () => number, config: () => Config): Provider[] {
     },
     {
       channel: 'claude-account',
-      intervalMs: 60_000,
+      intervalMs: 20_000,
       poll: async () => {
         const t = now()
-        if (!config().privacy.claudeAccountUsage) {
-          return { available: false, stale: false, error: 'disabled', updatedAt: null, fiveHour: null, sevenDay: null, limits: [], breakdown: [] }
-        }
+        const on = config().privacy.claudeAccountUsage
+        const names = config().privacy.claudeAccountNames
         const five = Math.round(wander(t, 38, 6, 600_000))
-        return {
-          available: true, stale: false, updatedAt: t,
-          fiveHour: { pct: five, resetsAt: resetIn(t, 2.3) },
-          sevenDay: { pct: 61, resetsAt: resetIn(t, 76) },
-          limits: [
-            // Named as the real provider names them, in the user's language.
-            { kind: 'session', name: tr(undefined, 'claude.limit.session'), percent: five, resetsAt: resetIn(t, 2.3), active: true },
-            { kind: 'weekly_all', name: tr(undefined, 'claude.limit.weeklyAll'), percent: 61, resetsAt: resetIn(t, 76), active: true },
-            { kind: 'seven_day_opus', name: 'Opus', percent: 44, resetsAt: resetIn(t, 76), active: true },
-          ],
-          breakdown: [{ name: 'Opus', percent: 72 }, { name: 'Sonnet', percent: 28 }],
-        }
+        // Two accounts, one with room and one near its 5-hour limit: what the rows are for.
+        const windows = [
+          { fiveHour: { pct: five, resetsAt: resetIn(t, 2.3) }, sevenDay: { pct: 61, resetsAt: resetIn(t, 76) } },
+          { fiveHour: { pct: 91, resetsAt: resetIn(t, 0.6) }, sevenDay: { pct: 47, resetsAt: resetIn(t, 101) } },
+        ]
+        const accounts = DEMO_CLAUDE_ACCOUNTS.map((a, i) => ({
+          key: createHash('sha256').update(a.uuid).digest('hex').slice(0, 16),
+          name: names[a.uuid] || a.plan, named: Boolean(names[a.uuid]), plan: a.plan,
+          ...windows[i], available: true, stale: false, updatedAt: t,
+        }))
+        return on ? { source: 'account', accounts } : { source: 'status-line', accounts, error: 'disabled' }
       },
     },
     {
