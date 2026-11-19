@@ -107,10 +107,14 @@ final class EventPoster: PointerPoster {
 
     private func showCursorIfHidden() {
         lock.lock()
-        let wasHidden = cursorHidden
+        defer { lock.unlock() }
+        showCursorLocked()
+    }
+
+    /// `showCursorIfHidden` for a caller that already holds `lock`.
+    private func showCursorLocked() {
+        guard cursorHidden else { return }
         cursorHidden = false
-        lock.unlock()
-        guard wasHidden else { return }
         CGDisplayShowCursor(CGMainDisplayID())
     }
 
@@ -181,17 +185,31 @@ final class EventPoster: PointerPoster {
         let stamp = gesture
         let work = DispatchWorkItem { [weak self] in
             guard let self else { return }
+            /*
+             The whole restore holds the lock, the warp back and the show included. Released in
+             between, a touch starting on the driver thread could warp the pointer onto the panel
+             right after the warp back, and the show would then clear `cursorHidden` under that
+             new gesture: the cursor visible on the panel, and `isDrivingCursor` false, so the
+             patrol would push away a finger held still. With the lock held, a new gesture either
+             bumped `gesture` before (and this block stands down) or waits until the restore is
+             complete (and hides and warps after it).
+
+             This cannot deadlock: `lock` is the only lock either thread takes here, neither
+             thread takes it twice (`showCursorLocked` does not lock), and the calls made while
+             holding it (the warp, `CGDisplayShowCursor`) are synchronous requests to the window
+             server that never call back into this class or wait on the driver or main thread.
+             */
             self.lock.lock()
+            defer { self.lock.unlock() }
             // A new gesture started while this was queued or already running: leave the cursor
             // where that gesture put it, and leave it hidden for the gesture's duration.
-            guard stamp == self.gesture else { self.lock.unlock(); return }
+            guard stamp == self.gesture else { return }
             let saved = self.savedCursor
             self.savedCursor = nil
             self.pendingRestore = nil
-            self.lock.unlock()
             guard let saved else { return }
             warpCursor(to: saved)
-            self.showCursorIfHidden()
+            self.showCursorLocked()
         }
         pendingRestore = work
         lock.unlock()
