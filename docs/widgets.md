@@ -110,7 +110,7 @@ with the repository's name. The line under the title says where the session sits
 the worktree or subfolder it runs in, and the branch (`platform/tools/bg-rollup@develop`). An idle
 or finished card says how long it has been silent.
 
-**Pinning.** A long press on a card pins the session: it moves to the top of the tile as a small
+**Pinning.** A long press on a card (on the Edge: hold for a second, then lift) pins the session: it moves to the top of the tile as a small
 card, its name and the model's context bar and nothing else, so that several pinned sessions leave
 room for the ones that are moving. A pinned session is shown whatever the filters below say, stays
 on the board however long it has been quiet, and turns orange and pulses when it waits for you. A

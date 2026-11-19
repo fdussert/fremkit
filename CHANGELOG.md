@@ -18,7 +18,8 @@ tagged `vX.Y.Z`.
   the top of the tile as a small card, its name and the model's context bar, so that half a dozen
   pinned sessions still leave room for the ones that are moving. A pinned session stays on the
   board however long it has been quiet and whatever the tile's filters say, turns orange when it
-  waits for you, and keeps its pin through `/clear`. A long press on it lets it go.
+  waits for you, and keeps its pin through `/clear`. A long press on it lets it go. On the Edge,
+  hold for a second and lift.
 
 ### Fixed
 
