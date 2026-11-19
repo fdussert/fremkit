@@ -10,6 +10,7 @@ To write your own, see [writing-widgets.md](writing-widgets.md).
 | Widget | Shows | Connection | Compact | Default size |
 |---|---|---|---|---|
 | [battery](#battery) | The Mac and its Bluetooth peripherals | — | 5 cells | 8 × 6 |
+| [brightness](#brightness) | The brightness of the screen it is on, with a slider | — | 5 cells | 12 × 4 |
 | [calendar](#calendar) | The next events of published calendars | ICS calendar | 8 cells | 16 × 10 |
 | [claude-sessions](#claude-sessions) | Live Claude Code sessions | — | — | 16 × 8 |
 | [claude-usage](#claude-usage) | Claude 5 h / 7 day limits | — | 9 cells | 16 × 4 |
@@ -26,6 +27,7 @@ To write your own, see [writing-widgets.md](writing-widgets.md).
 | [notifications](#notifications) | Unread badges read from the Dock | — | — | 16 × 4 |
 | [pomodoro](#pomodoro) | A work and break timer | — | 5 cells | 8 × 6 |
 | [processes](#processes) | Top processes | — | — | 16 × 8 |
+| [recent-projects](#recent-projects) | The folders you worked in lately, one tap away | — | 8 cells | 12 × 8 |
 | [service-status](#service-status) | A dot per service, up, warn or down | — | 4 cells | 8 × 6 |
 | [shortcuts](#shortcuts) | Big buttons that open apps, links and shortcuts | — | — | 16 × 8 |
 | [spotify](#spotify) | Spotify transport controls | — | long press opens the app | 16 × 4 |
@@ -35,10 +37,10 @@ To write your own, see [writing-widgets.md](writing-widgets.md).
 ## On the sietch
 
 These are published on the [widget registry](https://github.com/fdussert/fremkit-sietch) rather
-than shipped with Fremkit: they only do anything with a printer, a hub, a NAS or an account
-behind them, and the core ships what works on any Mac with nothing set up. Install them from the
+than shipped with Fremkit: they only do anything with a printer, a hub, a NAS, an account or
+another application behind them, and the core ships what works on any Mac with nothing set up. Install them from the
 **Sietch** panel in the admin. The provider or connection type each one reads is part of Fremkit,
-so there is nothing else to install — see [connections.md](connections.md).
+or declared by the widget itself, so there is nothing else to install — see [connections.md](connections.md).
 
 Their settings are documented below like any other, because the widget is the same widget.
 
@@ -47,11 +49,18 @@ Their settings are documented below like any other, because the widget is the sa
 | [ado-pipelines](#ado-pipelines) | Azure DevOps builds | Azure DevOps | — | 24 × 10 |
 | [bambu-job](#bambu-job) | A Bambu Lab printer's current job | Bambu Lab | — | 16 × 6 |
 | [cleanshot](#cleanshot) | Big buttons for CleanShot X captures | — | — | 12 × 6 |
+| [codex-sessions](#codex-sessions) | Codex sessions grouped by folder | — | 6 cells | 20 × 12 |
+| [codex-usage](#codex-usage) | Codex account quotas and usage | — | 7 cells | 20 × 12 |
+| [docker-containers](#docker-containers) | Local Docker containers, read-only | — | — | 32 × 8 |
 | [github-actions](#github-actions) | Running and finished GitHub Actions workflows | GitHub | — | 24 × 10 |
 | [github-inbox](#github-inbox) | GitHub notifications, review requests, pull requests | GitHub | 5 cells | 20 × 10 |
 | [homey-devices](#homey-devices) | Lights, plugs and sensors | declared | 6 cells | 24 × 8 |
 | [homey-flows](#homey-flows) | Buttons that run flows | declared | — | 16 × 8 |
+| [key-light](#key-light) | An Elgato Key Light: on or off, brightness, warmth | declared | 5 cells | 12 × 6 |
+| [local-models](#local-models) | Ollama models and MLX processes | — | — | 32 × 8 |
+| [mac-temperatures](#mac-temperatures) | The CPU temperature and where it was read | — | 5 cells | 16 × 6 |
 | [mutedeck](#mutedeck) | Meeting controls | — | — | 8 × 4 |
+| [rtk-gain](#rtk-gain) | Tokens RTK saved, today and overall | — | 6 cells | 12 × 4 |
 | [synology-storage](https://github.com/fdussert/fremkit-sietch) | Volumes, disk health and temperature | Synology | 5 cells | 16 × 8 |
 | [synology-system](https://github.com/fdussert/fremkit-sietch) | CPU, memory, network and uptime of a NAS | Synology | 5 cells | 16 × 8 |
 
@@ -76,6 +85,22 @@ Minimum size 8 × 4, default 8 × 6. Compact width 5 cells: the battery that wil
 |---|---|---|---|---|
 | `showMac` | boolean | `true` | tile | Show the Mac's own battery |
 | `max` | number | `6` | tile | Most rows to show |
+
+## brightness
+
+*Brightness* — the brightness of the screen the tile is on: a slider to slide a finger along, the
+level as a number, and a line saying what drives it — manual, day / night with the time of the
+next switch, following the Mac's screen, or both. A change by hand holds until the next switch
+or until the Mac's brightness moves noticeably, and **Auto** ends it at once. The day and night
+levels and what the screen follows are set per screen, in *Settings → your screen → Brightness*.
+
+It works over DDC/CI on Apple silicon and needs the helper. A display that does not answer says
+so in the tile instead of failing silently: see
+[troubleshooting](troubleshooting.md#brightness-says-not-adjustable). On a screen shown by a
+paired tablet, the tile sets that tablet's own brightness, never the Edge's.
+
+Minimum size 8 × 3, default 12 × 4. Compact width 5 cells: the slider and the level, slid in the
+bar itself. No settings.
 
 ## calendar
 
@@ -356,6 +381,40 @@ Minimum size 16 × 4, default 16 × 8.
 |---|---|---|---|---|
 | `count` | number | `6` | both | Number of rows |
 
+## recent-projects
+
+*Recent projects* — the folders you worked in lately, most recent first: the git repositories
+under the folders you name, plus, when ticked, what Claude Code, Codex, VS Code, Cursor, the
+JetBrains IDEs, zoxide, tmux and Herdr remember. A tap opens the folder in Finder, a terminal,
+your editor or Herdr (the pane already in that folder, else a new one), or starts Claude Code or
+Codex on it in a new Herdr pane or tmux window. A long press offers the other installed
+applications and can make one the project's own for every later tap. Without such a choice, the
+files at a project's root can suggest the right IDE: a `.sln` for Rider, a `Cargo.toml` for
+RustRover.
+
+Only folder paths, dates and the names at a project's root are read, never a conversation or a
+file's contents.
+
+Minimum size 8 × 4, default 12 × 8. Compact width 8 cells: the most recent projects by name.
+
+| Setting | Type | Default | Scope | What it is |
+|---|---|---|---|---|
+| `source_git` | boolean | `true` | both | Source: the git repositories under the folders of `gitRoots` |
+| `gitRoots` | list of `path` | `[]` | both | Folders to look for git repositories in, three levels deep (`~/Dev`, `/Volumes/Dev`…), twenty at most |
+| `source_claude` | boolean | `false` | both | Source: Claude Code |
+| `source_codex` | boolean | `false` | both | Source: Codex |
+| `source_vscode` | boolean | `false` | both | Source: the folders VS Code opened recently |
+| `source_cursor` | boolean | `false` | both | Source: the folders Cursor opened recently |
+| `source_jetbrains` | boolean | `false` | both | Source: the recent projects of the JetBrains IDEs |
+| `source_zoxide` | boolean | `false` | both | Source: zoxide |
+| `source_tmux` | boolean | `false` | both | Source: the open tmux panes |
+| `source_herdr` | boolean | `false` | both | Source: the open Herdr panes |
+| `defaultApp` | enum | `finder` | both | What a tap opens a project with: `finder`, a terminal (`terminal`, `iterm`, `ghostty`), an editor (`vscode`, `cursor`, `zed`, `xcode`, a `jetbrains-…` IDE), `herdr` or `tmux`, or Claude Code or Codex started on it (`herdr-claude`, `herdr-codex`, `tmux-claude`, `tmux-codex`) |
+| `suggestApp` | boolean | `true` | both | Suggest an application from the files at the project's root |
+| `herdrTerminal` | enum `auto` \| `terminal` \| `iterm` \| `ghostty` | `auto` | both | The terminal Herdr runs in, brought to the front |
+| `max` | number | `8` | both | Rows shown |
+| `compactCount` | number | `3` | compact | Bar: how many projects |
+
 ## service-status
 
 *Service status* — pings a list of services and draws one dot each: green when it answers, amber
@@ -616,6 +675,44 @@ Minimum size 8 × 4, default 12 × 6.
 
 With every button off the tile says so rather than going blank.
 
+## codex-sessions
+
+*Codex sessions* — at most fifty stored Codex sessions, grouped by the name of the folder each
+one ran in, each card with what was observed of it: model, thinking effort, turn duration, source
+and direct subagents. What was not observed stays unknown rather than guessed. Touching a card
+opens that chat in the Codex desktop application, when the server can prove it is a local chat
+that moved in the last two minutes; a session in a terminal has no window Fremkit can find and
+does not open.
+
+Nothing is read until you choose what may be: tick the sources under **Codex history to show**
+in the admin's privacy settings. Codex must be installed on the Mac. What is read, and what never
+is: [codex.md](codex.md).
+
+Minimum size 12 × 6, default 20 × 12. Compact width 6 cells: a count of sessions. No settings.
+
+## codex-usage
+
+*Codex usage* — the account's type and plan, up to six quota windows with the time each resets,
+and the account's usage figures. A value the account does not report is shown as unknown, never
+as zero, and a stale one keeps its date. Quotas come with a ChatGPT sign-in; with an API key or
+Amazon Bedrock the tile explains why there are none. The account's e-mail address is never part
+of it.
+
+Off until **Read Codex account quotas and usage** is ticked in the admin's privacy settings.
+Codex must be installed and signed in on the Mac: see [codex.md](codex.md).
+
+Minimum size 12 × 6, default 20 × 12. Compact width 7 cells: the quota windows. No settings.
+
+## docker-containers
+
+*Docker containers* — the containers of the Docker running on this Mac: name, image, state and,
+for a running one, CPU, memory, processes, network and disk I/O. It only looks: nothing here
+starts, stops or removes a container. Only a local Docker socket is read; a context that points
+at another machine is refused and the tile says so. See
+[local-operations.md](local-operations.md#docker).
+
+Minimum size 24 × 8, default 32 × 8. No settings.
+
 ## github-actions
 
 *GitHub Actions* — the workflow runs of the repositories the connection watches: the ones still
@@ -695,6 +792,42 @@ Minimum size 8 × 4, default 16 × 8.
 | `folder` | string | `""` | both | Keep only flows of this folder |
 | `max` | number | `8` | both | How many flows to draw |
 
+## key-light
+
+*Key Light* — an Elgato Key Light: a button that switches it on or off, and its brightness and
+warmth, each moved by the step you set. Brings its own connection, which is the light's address
+on your network with port 9123 — a Key Light has no account and no key. The address is in the
+Elgato Control Center application (Settings → Network), or on your router. See
+[Connections a widget declares](connections.md#connections-a-widget-declares).
+
+Minimum size 8 × 4, default 12 × 6. Compact width 5 cells.
+
+| Setting | Type | Default | Scope | What it is |
+|---|---|---|---|---|
+| `connection` | connection (`decl:key-light:key-light`) | — | both | Which light |
+| `step` | number | `10` | tile | How much one press changes the brightness or the warmth, in percent |
+
+## local-models
+
+*Local AI* — the Ollama models installed on this Mac, the ones loaded into memory with their
+footprint and context size, and the MLX or oMLX server processes found running. A model loaded
+into memory is not a model generating, and the tile says so; no prompt and no answer is ever
+read. Ollama is asked on `127.0.0.1:11434`. See
+[local-operations.md](local-operations.md#local-models).
+
+Minimum size 24 × 8, default 32 × 8. No settings.
+
+## mac-temperatures
+
+*Mac temperatures* — the CPU temperature in °C, with where the reading came from. On Apple
+silicon the measured value comes from macmon: install it with `brew install macmon`, then tick
+**Read the CPU temperature with macmon** in the admin's privacy settings, as for the
+[cpu](#cpu) widget. Without it the system's own sensor is used when it has a reading. The tile
+says which of these is missing rather than showing a zero, and a reading that could not be taken
+is `?`.
+
+Minimum size 8 × 4, default 16 × 6. Compact width 5 cells: the same value. No settings.
+
 ## mutedeck
 
 *MuteDeck* — meeting controls, through the MuteDeck app's own HTTP API on `localhost:3491`. The
@@ -709,3 +842,16 @@ Minimum size 8 × 4, default 8 × 4.
 | `showShare` | boolean | `false` | both | Screen share button |
 | `showRecord` | boolean | `false` | both | Record button |
 | `showLeave` | boolean | `true` | both | Leave button |
+
+## rtk-gain
+
+*RTK savings* — the tokens [RTK](https://github.com/rtk-ai/rtk) saved today and overall, the
+number of commands it compacted, and a history by day. Fremkit only reads what RTK already
+records, once a minute; RTK has to be installed (`brew install rtk`) and set up for your coding
+agent. See [local-operations.md](local-operations.md#rtk).
+
+Minimum size 8 × 3, default 12 × 4. Compact width 6 cells.
+
+| Setting | Type | Default | Scope | What it is |
+|---|---|---|---|---|
+| `days` | enum `7` \| `14` \| `30` | `14` | both | How many days of history to draw |
