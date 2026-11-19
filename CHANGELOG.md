@@ -20,6 +20,10 @@ tagged `vX.Y.Z`.
 - **Claude sessions: a pinned session shows that it is working.** Three dots move in the corner
   of its card for as long as it does, so a glance at the pins says which ones are busy.
 
+- **Claude sessions: drag a pinned session to put it where you want.** Press a pin and slide it
+  onto another: it takes that place and the others close up. On the Edge, hold the pin for a
+  moment before sliding, as for anything dragged there.
+
 ## 0.5.2 — 2026-11-19
 
 ### Added

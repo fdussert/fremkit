@@ -86,6 +86,8 @@
      must not get selected or call up the system's menu instead. */
   .card{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;transition:transform .15s}
   .card.holding{transform:scale(.96);transition:transform .5s}
+  /* A pin being dragged follows the finger exactly, above its neighbours. */
+  .card.pin.dragging{transition:none;z-index:3;box-shadow:0 10px 28px rgba(0,0,0,.55);cursor:grabbing}
   .q{font-size:calc(14px * var(--text-scale, 1));color:var(--text, #e6e8eb);white-space:normal}.q b{display:block;font-size:calc(12px * var(--text-scale, 1));color:#f0a020;text-transform:uppercase;letter-spacing:.06em}.q ul{margin:2px 0 0 16px;padding:0;color:#c3c8d0;font-size:calc(13px * var(--text-scale, 1))}
 </style>
 </head>
@@ -220,7 +222,17 @@
   function isPinned(s) { return typeof s.pinnedAt === 'number' }
   /** The pinned sessions, in the order they were pinned. No filter applies: a pin is a choice. */
   function pinnedSessions() {
-    return sessions.filter(isPinned).sort(function (a, b) { return a.pinnedAt - b.pinnedAt || (a.sessionId < b.sessionId ? -1 : 1) })
+    var list = sessions.filter(isPinned).sort(function (a, b) { return a.pinnedAt - b.pinnedAt || (a.sessionId < b.sessionId ? -1 : 1) })
+    if (!pinOrder) return list
+    // The order being dragged, or just dropped, holds until the server's own order says the same.
+    var ids = list.map(function (s) { return s.sessionId })
+    var mine = pinOrder.filter(function (id) { return ids.indexOf(id) >= 0 })
+    var theirs = ids.filter(function (id) { return pinOrder.indexOf(id) >= 0 })
+    if (!drag && (mine.join() === theirs.join() || Date.now() > pinOrderUntil)) { pinOrder = null; return list }
+    var rank = {}; pinOrder.forEach(function (id, i) { rank[id] = i })
+    // A session pinned from another tile meanwhile is in neither order: it goes last, as it would.
+    return list.map(function (s, i) { return { s: s, at: rank[s.sessionId] === undefined ? 1000 + i : rank[s.sessionId] } })
+      .sort(function (a, b) { return a.at - b.at }).map(function (x) { return x.s })
   }
   /** Only exactly one takes the singular: zero reads as a plural in both languages. */
   function plural(n, one, many) { return n === 1 ? Fremkit.t(one) : Fremkit.t(many, { n: n }) }
@@ -283,6 +295,7 @@
       var key = 'p:' + s.sessionId, node = nodes[key]
       if (!node) { node = buildPin(s); nodes[key] = node }
       updatePin(node, s, now)
+      if (drag && drag.node === node) node.classList.add('dragging')
       if (pinsEl.children[i] !== node) pinsEl.insertBefore(node, pinsEl.children[i] || null)
       seen[key] = true
     })
@@ -372,19 +385,88 @@
     clearTimeout(hold.timer); hold.card.classList.remove('holding'); hold = null
   }
   function startHold(e) {
+    // A second button or finger during a drag starts nothing of its own.
+    if (drag) return
     endHold()
     var card = e.target.closest && e.target.closest('.card')
     if (!card) return
     // The driver's long press, already over by the time it is heard of.
     if (e.button === 2) { longPressed(card); return }
     if (e.button !== 0) return
-    hold = { card: card, x: e.clientX, y: e.clientY, timer: setTimeout(function () {
+    hold = { card: card, x: e.clientX, y: e.clientY, pointerId: e.pointerId, timer: setTimeout(function () {
       swallowClickUntil = Date.now() + 800; longPressed(card)
     }, HOLD_MS) }
     card.classList.add('holding')
   }
   function moveHold(e) {
-    if (hold && (Math.abs(e.clientX - hold.x) > HOLD_SLOP || Math.abs(e.clientY - hold.y) > HOLD_SLOP)) endHold()
+    if (drag) { moveDrag(e); return }
+    if (!hold || (Math.abs(e.clientX - hold.x) <= HOLD_SLOP && Math.abs(e.clientY - hold.y) <= HOLD_SLOP)) return
+    // A press that moves is a scroll on a card, and the start of a drag on a pin.
+    if (hold.card.classList.contains('pin') && pinnedSessions().length > 1) startDrag(e); else endHold()
+  }
+  /**
+   * Dragging a pin puts it somewhere else among the pins.
+   *
+   * The pin follows the pointer and takes the place of whichever pin the pointer is over, the
+   * others closing up, so what is on screen while dragging is what a release will leave. The
+   * order lives in `pinOrder` from the first move until the server's snapshot agrees with it:
+   * `render` runs every second and on every snapshot, and would otherwise put the pins back.
+   *
+   * On the Edge a drag is a press held a third of a second and then moved (`GestureEngine`): the
+   * driver then sends the button down at the place first touched and the moves after it, which
+   * is exactly this. A finger on a tablet has to set off sideways, the tile keeping vertical
+   * movement for scrolling (`touch-action: pan-y`).
+   *
+   * A slide across a tile is also how the dashboard's page is turned, hence `holdSwipe()` on
+   * every move.
+   *
+   * The pointer is captured by the wrapper and not by the pin: the pin is moved in the document
+   * as it changes place, and an element taken out, even to be put straight back, loses capture.
+   */
+  var drag = null, pinOrder = null, pinOrderUntil = 0
+  function startDrag(e) {
+    var card = hold.card, x = hold.x, y = hold.y, pointerId = hold.pointerId, wrap = document.getElementById('wrap')
+    endHold()
+    card.classList.add('dragging')
+    // Read once the card is at rest: it was giving under the finger a moment ago.
+    var r = card.getBoundingClientRect()
+    drag = { id: card.getAttribute('data-id'), node: card, pointerId: pointerId, offX: x - r.left, offY: y - r.top, captured: false }
+    pinOrder = pinnedSessions().map(function (s) { return s.sessionId })
+    try { wrap.setPointerCapture(drag.pointerId); drag.captured = true } catch (err) { /* followed while it stays inside the tile */ }
+    moveDrag(e)
+  }
+  function moveDrag(e) {
+    // A slide across a widget turns the dashboard's page, unless the widget says it is its own.
+    Fremkit.holdSwipe()
+    var node = drag.node, pins = document.getElementById('pins').children, over = null
+    for (var i = 0; i < pins.length; i++) {
+      if (pins[i] === node) continue
+      var b = pins[i].getBoundingClientRect()
+      if (e.clientX >= b.left && e.clientX <= b.right && e.clientY >= b.top && e.clientY <= b.bottom) { over = pins[i].getAttribute('data-id'); break }
+    }
+    if (over) {
+      var to = pinOrder.indexOf(over)
+      pinOrder.splice(pinOrder.indexOf(drag.id), 1)
+      pinOrder.splice(to, 0, drag.id)
+      render()
+    }
+    // Its slot, read without the offset that makes it follow the pointer.
+    node.style.transform = ''
+    var r = node.getBoundingClientRect()
+    node.style.transform = 'translate(' + (e.clientX - drag.offX - r.left) + 'px,' + (e.clientY - drag.offY - r.top) + 'px)'
+  }
+  function endDrag(commit) {
+    var node = drag.node, order = pinOrder.slice()
+    try { document.getElementById('wrap').releasePointerCapture(drag.pointerId) } catch (err) { /* was not captured */ }
+    node.classList.remove('dragging'); node.style.transform = ''
+    drag = null
+    // The release of a drag is not a touch on the card it ends over.
+    swallowClickUntil = Date.now() + 800
+    if (!commit) { pinOrder = null; render(); return }
+    pinOrderUntil = Date.now() + 4000
+    function undo() { pinOrder = null; render() }
+    Fremkit.sendCommand('claude-sessions', 'reorder', { order: order }).then(function (r) { if (!r || !r.ok) undo() }, undo)
+    render()
   }
   var maxShown = 0, onlyWaiting = false, hideDone = true, groupByClient = false, showCount = true, showStats = true, sortRecent = false, showCost = true
   /** The title note last sent, so a render that changes nothing sends nothing. */
@@ -412,9 +494,11 @@
     var wrap = document.getElementById('wrap')
     wrap.addEventListener('pointerdown', startHold)
     wrap.addEventListener('pointermove', moveHold)
-    wrap.addEventListener('pointerup', endHold)
-    wrap.addEventListener('pointercancel', endHold)
-    wrap.addEventListener('pointerleave', endHold)
+    wrap.addEventListener('pointerup', function () { if (drag) endDrag(true); else endHold() })
+    wrap.addEventListener('pointercancel', function () { if (drag) endDrag(false); else endHold() })
+    // A captured pointer does not leave. One that could not be captured takes the release with
+    // it when it leaves the tile, so the drag ends here, where the pin is.
+    wrap.addEventListener('pointerleave', function () { if (drag) { if (!drag.captured) endDrag(true) } else endHold() })
     // A browser's long touch, and a mouse's right click after its button event: no menu over
     // the card, and the press is answered if nothing answered it yet.
     wrap.addEventListener('contextmenu', function (e) {

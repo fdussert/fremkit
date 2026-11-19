@@ -391,6 +391,26 @@ export class ClaudeTracker {
     return 'ok'
   }
 
+  /**
+   * Puts the pinned sessions in the order given.
+   *
+   * The order of the pins is the order of their `pinnedAt`, so reordering deals the same times
+   * out again: the sessions named, in the order named, take the times those sessions already
+   * held. An id that is not a pinned session is skipped, and a pinned session left out keeps its
+   * time — another tile may have pinned it since the list was drawn.
+   */
+  reorderPins(order: string[]): void {
+    const listed = [...new Set(order)]
+      .map((id) => this.sessions.get(id))
+      .filter((s): s is ClaudeSession => s?.pinnedAt !== undefined)
+    if (listed.length < 2) return
+    const times = listed.map((s) => s.pinnedAt!).sort((a, b) => a - b)
+    // Strictly increasing: two equal times would leave their order to the tie-break.
+    for (let i = 1; i < times.length; i++) if (times[i] <= times[i - 1]) times[i] = times[i - 1] + 1
+    listed.forEach((s, i) => { s.pinnedAt = times[i] })
+    this.schedulePersist()
+  }
+
   private notePin(what: PinEvent['what'], sessionId: string, more: { to?: string; why?: string } = {}): void {
     this.onPin?.({ what, session: sessionId.slice(0, 8), ...(more.to ? { to: more.to.slice(0, 8) } : {}), ...(more.why ? { why: more.why } : {}) })
   }

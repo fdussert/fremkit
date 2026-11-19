@@ -339,6 +339,32 @@ describe('pinned sessions', () => {
   const start = (id: string, pid?: number) => ({ hook_event_name: 'SessionStart', session_id: id, cwd: '/p/a', ...(pid ? { client: { pid } } : {}) })
   const pins = (tracker: ClaudeTracker) => tracker.snapshot().sessions.filter((s) => s.pinnedAt !== undefined).map((s) => s.sessionId)
 
+  it('puts the pins in the order asked for, by dealing their times out again', () => {
+    const { tracker, tick } = make()
+    for (const id of ['a', 'b', 'c', 'd']) { tracker.handle(start(id)); tracker.pin(id, true); tick(1000) }
+    const times = () => Object.fromEntries(tracker.snapshot().sessions.map((s) => [s.sessionId, s.pinnedAt]))
+    const before = times()
+    const order = () => tracker.snapshot().sessions.filter((s) => s.pinnedAt !== undefined).sort((x, y) => x.pinnedAt! - y.pinnedAt!).map((s) => s.sessionId)
+    tracker.reorderPins(['c', 'a', 'b', 'd'])
+    expect(order()).toEqual(['c', 'a', 'b', 'd'])
+    // The same four times, held by other sessions: nothing about when a pin was set is invented.
+    expect(Object.values(times()).sort()).toEqual(Object.values(before).sort())
+  })
+
+  it('reorders only what it is told about, and only pinned sessions', () => {
+    const { tracker, tick } = make()
+    for (const id of ['a', 'b', 'c']) { tracker.handle(start(id)); tracker.pin(id, true); tick(1000) }
+    tracker.handle(start('loose'))
+    const order = () => tracker.snapshot().sessions.filter((s) => s.pinnedAt !== undefined).sort((x, y) => x.pinnedAt! - y.pinnedAt!).map((s) => s.sessionId)
+    // `b` is left out and keeps its place; an unpinned session and an unknown id are skipped,
+    // and a repeated id counts once.
+    tracker.reorderPins(['c', 'loose', 'nobody', 'a', 'c'])
+    expect(order()).toEqual(['c', 'b', 'a'])
+    expect(tracker.snapshot().sessions.find((s) => s.sessionId === 'loose')!.pinnedAt).toBeUndefined()
+    tracker.reorderPins(['a'])
+    expect(order()).toEqual(['c', 'b', 'a'])
+  })
+
   it('says what happens to a pin, naming the session by the start of its id only', () => {
     const events: unknown[] = []
     let t = 1_000_000

@@ -117,7 +117,9 @@ on the board however long it has been quiet, shows three moving dots in its corn
 working, and turns orange and pulses when it waits for you. A
 touch still goes to its window; a long press on it lets it go. The pins are the server's, so every
 *Claude sessions* tile and every paired device shows the same ones, in the order they were pinned,
-and a pin follows its terminal through `/clear`. It ends when the session closes.
+and a pin follows its terminal through `/clear`. It ends when the session closes. Dragging a pin
+onto another puts it in that place (on the Edge, hold it for a moment before sliding; on a
+tablet, set off sideways).
 
 | Setting | Type | Default | Scope | What it is |
 |---|---|---|---|---|

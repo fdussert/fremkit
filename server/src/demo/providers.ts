@@ -493,6 +493,16 @@ function claudeProviders(now: () => number, config: () => Config): Provider[] {
           if (p.pinned) { if (!pinned.has(p.sessionId)) pinned.set(p.sessionId, now()) } else pinned.delete(p.sessionId)
           return { ok: true }
         },
+        // The real tracker's rule: the ids named take, in that order, the times they held.
+        reorder: async (payload) => {
+          const order = (payload as { order?: unknown } | null)?.order
+          if (!Array.isArray(order)) return { ok: true }
+          const ids = [...new Set(order)].filter((id): id is string => typeof id === 'string' && pinned.has(id))
+          const times = ids.map((id) => pinned.get(id)!).sort((a, b) => a - b)
+          for (let i = 1; i < times.length; i++) if (times[i] <= times[i - 1]) times[i] = times[i - 1] + 1
+          ids.forEach((id, i) => pinned.set(id, times[i]))
+          return { ok: true }
+        },
         dismiss: async (payload) => {
           const id = (payload as { sessionId?: unknown } | null)?.sessionId
           if (typeof id === 'string') dismissed.add(id)
