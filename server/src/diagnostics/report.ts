@@ -355,6 +355,11 @@ export async function buildDiagnostics(deps: DiagnosticsDeps): Promise<string> {
   names.push(...pairedDevices.map((d) => d.name))
   names.push(...config.screens.filter((s) => s.kind === 'device').map((s) => s.name))
   if (deps.accessToken) secrets.push(deps.accessToken)
+  // The Claude accounts the user named: their uuids identify the accounts, and the names are the
+  // user's own words. Neither is reported; should a log line carry one, it is blanked like a secret.
+  const claudeNames = config.privacy?.claudeAccountNames ?? {}
+  secrets.push(...Object.keys(claudeNames))
+  names.push(...Object.values(claudeNames))
 
   const facts: DiagnosticsFacts = {
     generatedAt: (deps.now?.() ?? new Date()).toISOString(),
