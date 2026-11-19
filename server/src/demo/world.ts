@@ -171,5 +171,5 @@ export const DEMO_SESSIONS = [
   { project: 'website', title: 'Settings page', branch: 'feature/settings', state: 'working', tool: 'Edit', toolDetail: 'src/pages/settings.vue', model: 'Opus', minutesAgo: 3, pct: 41 },
   { project: 'api', title: 'Rate limits', branch: 'feature/rate-limit', state: 'permission', tool: 'Bash', toolDetail: 'pnpm test', model: 'Sonnet', minutesAgo: 1, pct: 63 },
   { project: 'docs', repo: 'website', place: 'docs', title: 'Quick start', branch: 'main', state: 'done', model: 'Opus', minutesAgo: 12, pct: 28, lastMessage: 'The quick start now covers the three install paths.' },
-  { project: 'mobile-app', repo: 'mobile-app', branch: 'hotfix/login', state: 'idle', model: 'Sonnet', minutesAgo: 40, pct: 12 },
+  { project: 'mobile-app', repo: 'mobile-app', title: 'Flaky login', branch: 'hotfix/login', state: 'idle', model: 'Sonnet', minutesAgo: 40, pct: 12, pinned: true },
 ] as const

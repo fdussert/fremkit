@@ -433,6 +433,9 @@ function diskMapProvider(now: () => number): Provider {
 
 function claudeProviders(now: () => number, config: () => Config): Provider[] {
   const dismissed = new Set<string>()
+  // One session starts pinned, so the board shows what a pin looks like; a long press moves it.
+  const pinned = new Map<string, number>()
+  DEMO_SESSIONS.forEach((s, i) => { if ('pinned' in s) pinned.set(`demo-session-${i + 1}`, i + 1) })
   const sessions = (): unknown[] => {
     const t = now()
     // The working session moves on to another file every twenty seconds.
@@ -460,6 +463,7 @@ function claudeProviders(now: () => number, config: () => Config): Provider[] {
         context: { used: Math.round(size * s.pct / 100), size, pct: s.pct },
         costUsd: round1(s.pct / 9),
         client: { kind: i % 2 ? 'terminal' : 'vscode', label: i % 2 ? 'Terminal' : 'VS Code' },
+        ...(pinned.has(sessionId) ? { pinnedAt: pinned.get(sessionId) } : {}),
       }
     }).filter((s) => !dismissed.has(s.sessionId))
   }
@@ -476,6 +480,12 @@ function claudeProviders(now: () => number, config: () => Config): Provider[] {
       commands: {
         focus: ACTED,
         preview: ACTED,
+        pin: async (payload) => {
+          const p = payload as { sessionId?: unknown; pinned?: unknown } | null
+          if (typeof p?.sessionId !== 'string' || typeof p.pinned !== 'boolean') return { ok: false, reason: 'unknownSession' }
+          if (p.pinned) { if (!pinned.has(p.sessionId)) pinned.set(p.sessionId, now()) } else pinned.delete(p.sessionId)
+          return { ok: true }
+        },
         dismiss: async (payload) => {
           const id = (payload as { sessionId?: unknown } | null)?.sessionId
           if (typeof id === 'string') dismissed.add(id)

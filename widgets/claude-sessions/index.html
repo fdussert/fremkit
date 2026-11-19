@@ -58,10 +58,23 @@
   .tags{display:flex;align-items:baseline;gap:8px;min-width:0;max-width:100%}
   .client{font-size:calc(11px * var(--text-scale, 1));color:var(--text-muted, #8b93a0);border:1px solid var(--border-strong, #3a404a);border-radius:6px;padding:0 5px;white-space:nowrap}
   .group{grid-column:1/-1;font-size:calc(12px * var(--text-scale, 1));text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted, #8b93a0);padding:6px 2px 0}
+  /* Pinned sessions, kept at hand above the others: a name and the model's bar and nothing else,
+     so that six of them still leave the board to the sessions that are moving. Same columns as
+     the cards below, so the two line up. */
+  .pins{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));grid-auto-rows:max-content;gap:6px 8px;flex:0 0 auto;max-height:60%;overflow-y:auto;touch-action:pan-y;-webkit-overflow-scrolling:touch;padding-right:4px}
+  .card.pin{min-height:0;padding:6px 10px;gap:4px}
+  /* Most pinned sessions are idle; dimming every one of them would dim the whole row. */
+  .card.pin.idle{opacity:1}
+  .card.pin .title{font-size:calc(15px * var(--text-scale, 1))}
+  .card.pin .foot{margin-top:0;padding:3px 8px;font-size:calc(12px * var(--text-scale, 1))}
+  /* A long press pins: the card gives under the finger while it is being held, and the text
+     must not get selected or call up the system's menu instead. */
+  .card{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;transition:transform .15s}
+  .card.holding{transform:scale(.96);transition:transform .5s}
   .q{font-size:calc(14px * var(--text-scale, 1));color:var(--text, #e6e8eb);white-space:normal}.q b{display:block;font-size:calc(12px * var(--text-scale, 1));color:#f0a020;text-transform:uppercase;letter-spacing:.06em}.q ul{margin:2px 0 0 16px;padding:0;color:#c3c8d0;font-size:calc(13px * var(--text-scale, 1))}
 </style>
 </head>
-<body><div class="wrap"><div class="hdr" id="hdr" hidden><span class="stats" id="stats"></span></div><div class="cards" id="cards"></div></div>
+<body><div class="wrap" id="wrap"><div class="hdr" id="hdr" hidden><span class="stats" id="stats"></span></div><div class="pins" id="pins" hidden></div><div class="cards" id="cards"></div></div>
 <script>
   var L = {
     working: { fr: 'en travail', en: 'working' },
@@ -173,6 +186,27 @@
     var footHtml = footFor(s), footEl = card.querySelector('.foot')
     footEl.innerHTML = footHtml; footEl.hidden = !footHtml
   }
+  /** A pinned session's card: its name and the model's bar. The edge still says the state. */
+  function buildPin(s) {
+    var card = document.createElement('div')
+    card.setAttribute('data-id', s.sessionId)
+    card.innerHTML = '<span class="title"></span><div class="line" hidden></div><div class="foot"></div>'
+    return card
+  }
+  function updatePin(card, s, now) {
+    if (card.getAttribute('data-state') !== s.state) { card.className = 'card pin ' + s.state; card.setAttribute('data-state', s.state) }
+    card.querySelector('.title').textContent = s.title || s.repo || s.project
+    // The one line a pinned card can grow: that its window could not be found.
+    var lineEl = card.querySelector('.line'), failed = failedUntil[s.sessionId] > now
+    lineEl.textContent = failed ? Fremkit.t(L.noWindow) : ''; lineEl.hidden = !failed
+    var footHtml = footFor(s), footEl = card.querySelector('.foot')
+    footEl.innerHTML = footHtml; footEl.hidden = !footHtml
+  }
+  function isPinned(s) { return typeof s.pinnedAt === 'number' }
+  /** The pinned sessions, in the order they were pinned. No filter applies: a pin is a choice. */
+  function pinnedSessions() {
+    return sessions.filter(isPinned).sort(function (a, b) { return a.pinnedAt - b.pinnedAt || (a.sessionId < b.sessionId ? -1 : 1) })
+  }
   /** Only exactly one takes the singular: zero reads as a plural in both languages. */
   function plural(n, one, many) { return n === 1 ? Fremkit.t(one) : Fremkit.t(many, { n: n }) }
   function statsFor(t) {
@@ -191,7 +225,8 @@
    * not about pretending the others are not running.
    */
   function visible(now) {
-    var out = sessions
+    // A pinned session is drawn above, once.
+    var out = sessions.filter(function (s) { return !isPinned(s) })
     if (onlyWaiting) out = out.filter(function (s) { return s.state === 'permission' })
     if (hideDone) out = out.filter(function (s) {
       return !((s.state === 'done' || s.state === 'idle') && now - s.lastEventAt > HIDE_AFTER_MS)
@@ -227,8 +262,17 @@
     // The count above keeps the real total; the list itself honours the filters and "max".
     var list = visible(now)
     if (maxShown > 0) list = list.slice(0, maxShown)
+    var pinned = pinnedSessions(), pinsEl = document.getElementById('pins')
+    pinsEl.hidden = !pinned.length
+    pinned.forEach(function (s, i) {
+      var key = 'p:' + s.sessionId, node = nodes[key]
+      if (!node) { node = buildPin(s); nodes[key] = node }
+      updatePin(node, s, now)
+      if (pinsEl.children[i] !== node) pinsEl.insertBefore(node, pinsEl.children[i] || null)
+      seen[key] = true
+    })
     var empty = document.getElementById('empty')
-    if (!list.length) {
+    if (!list.length && !pinned.length) {
       if (!empty) { empty = document.createElement('div'); empty.id = 'empty'; empty.className = 'muted'; el.appendChild(empty) }
       empty.textContent = Fremkit.t(L.empty)
     } else if (empty) { empty.remove() }
@@ -266,6 +310,44 @@
       refused()
     }, refused)
   }
+  /**
+   * Pin a session, or let a pinned one go.
+   *
+   * Drawn at once, because a card that stays put for a second after a long press reads as a
+   * press that did nothing; the server's next word replaces this guess either way, and a
+   * refusal puts the card back.
+   */
+  function togglePin(id) {
+    var s = sessions.filter(function (x) { return x.sessionId === id })[0]
+    if (!s) return
+    var pin = !isPinned(s), before = s.pinnedAt
+    function undo() { if (before === undefined) delete s.pinnedAt; else s.pinnedAt = before; render() }
+    if (pin) s.pinnedAt = Date.now(); else delete s.pinnedAt
+    render()
+    Fremkit.sendCommand('claude-sessions', 'pin', { sessionId: id, pinned: pin }).then(function (r) { if (!r || !r.ok) undo() }, undo)
+  }
+  /**
+   * The long press. A touch that moves is a scroll and one that lifts early is a tap; the tap
+   * that follows a press held to the end is swallowed, or pinning a card would also open it.
+   */
+  var HOLD_MS = 550, HOLD_SLOP = 10, hold = null, swallowClickUntil = 0
+  function endHold() {
+    if (!hold) return
+    clearTimeout(hold.timer); hold.card.classList.remove('holding'); hold = null
+  }
+  function startHold(e) {
+    endHold()
+    var card = e.target.closest && e.target.closest('.card')
+    if (!card || (e.pointerType === 'mouse' && e.button !== 0)) return
+    var id = card.getAttribute('data-id')
+    hold = { card: card, x: e.clientX, y: e.clientY, timer: setTimeout(function () {
+      endHold(); swallowClickUntil = Date.now() + 800; togglePin(id)
+    }, HOLD_MS) }
+    card.classList.add('holding')
+  }
+  function moveHold(e) {
+    if (hold && (Math.abs(e.clientX - hold.x) > HOLD_SLOP || Math.abs(e.clientY - hold.y) > HOLD_SLOP)) endHold()
+  }
   var maxShown = 0, onlyWaiting = false, hideDone = true, groupByClient = false, showCount = true, showStats = true, sortRecent = false, showCost = true
   /** The title note last sent, so a render that changes nothing sends nothing. */
   var lastNote = null
@@ -288,7 +370,16 @@
     Fremkit.onLocale(function (locale) { document.documentElement.lang = locale; render() })
     Fremkit.subscribe('claude-sessions', function (d) { if (d.error) return; sessions = d.sessions || []; today = d.today || null; render() })
     setInterval(render, 1000)
-    document.getElementById('cards').addEventListener('click', function (e) {
+    var wrap = document.getElementById('wrap')
+    wrap.addEventListener('pointerdown', startHold)
+    wrap.addEventListener('pointermove', moveHold)
+    wrap.addEventListener('pointerup', endHold)
+    wrap.addEventListener('pointercancel', endHold)
+    wrap.addEventListener('pointerleave', endHold)
+    // A long touch is the system's "context menu" too, which would come up over the card.
+    wrap.addEventListener('contextmenu', function (e) { if (e.target.closest('.card')) e.preventDefault() })
+    wrap.addEventListener('click', function (e) {
+      if (Date.now() < swallowClickUntil) { swallowClickUntil = 0; return }
       var card = e.target.closest('.card'); if (!card) return
       // A touch anywhere on any card goes to the session; the server finds its window from the
       // hook's report or, failing that, from the process tree.

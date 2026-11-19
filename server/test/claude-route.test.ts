@@ -66,6 +66,19 @@ describe('POST /api/hooks/claude', () => {
 })
 
 describe('providers', () => {
+  it('pins a session on a card\'s word, and answers a refusal instead of throwing it', async () => {
+    const p = createClaudeSessionsProvider(tracker, { listProcesses: async () => null })
+    tracker.handle({ hook_event_name: 'Stop', session_id: 'z', cwd: '/p/z' })
+    await expect(p.commands!.pin({ sessionId: 'z', pinned: true })).resolves.toEqual({ ok: true })
+    const polled = (await p.poll!()) as { sessions: { sessionId: string; pinnedAt?: number }[] }
+    expect(polled.sessions[0].pinnedAt).toEqual(expect.any(Number))
+    await expect(p.commands!.pin({ sessionId: 'z', pinned: false })).resolves.toEqual({ ok: true })
+    await expect(p.commands!.pin({ sessionId: 'nobody', pinned: true })).resolves.toEqual({ ok: false, reason: 'unknownSession' })
+    // A payload that is not exactly a session and a yes or no is refused, without echoing it.
+    for (const bad of [{ sessionId: 'z' }, { sessionId: 'z', pinned: 'yes' }, { sessionId: '', pinned: true }, { sessionId: 'z', pinned: true, pinnedAt: 1 }, null]) {
+      await expect(p.commands!.pin(bad), JSON.stringify(bad)).rejects.toThrow(/session/)
+    }
+  })
   it('sessions provider polls the tracker and exposes dismiss', async () => {
     // No real listProcesses here: this test must stay deterministic regardless of
     // what Claude Code processes happen to be open on the machine running it.

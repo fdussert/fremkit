@@ -105,6 +105,13 @@ export interface ClaudeSession {
   client?: SessionClient
   /** True for a placeholder created from a running process with no hook event yet. */
   discovered?: boolean
+  /**
+   * When the user pinned the session, which is also where it sits among the pinned ones.
+   *
+   * A pin is "keep this one at hand": a pinned session is not forgotten for having been quiet
+   * (`sweep`), only for having closed.
+   */
+  pinnedAt?: number
 }
 
 /**
@@ -114,6 +121,17 @@ export interface ClaudeSession {
  * what stops a hook caller — the endpoint takes any session id — from filling the map.
  */
 export const MAX_SESSIONS = 200
+
+/** Most sessions pinned at once: a pinned session is exempt from the TTL, so the pins are counted. */
+export const MAX_PINS = 24
+
+/**
+ * How long a pin waits for the session that replaces the one it was on.
+ *
+ * `/clear` and `/resume` end a session and start another in the same `claude` process, the two
+ * hooks arriving within the second and in either order.
+ */
+const PIN_HANDOFF_MS = 30_000
 
 export interface HookEvent {
   hook_event_name?: string
@@ -190,6 +208,7 @@ const claudeSessionSchema = z.object({
   question: z.object({ header: z.string().optional(), text: z.string(), options: z.array(z.string()) }).optional(),
   pid: z.number().optional(),
   discovered: z.boolean().optional(),
+  pinnedAt: z.number().optional(),
   client: z.object({
     bundleId: z.string().optional(),
     program: z.string().optional(),
@@ -228,6 +247,8 @@ export interface ClaudeTrackerOptions {
 
 export class ClaudeTracker {
   private sessions = new Map<string, ClaudeSession>()
+  /** Pins of sessions that just ended, by `claude` pid, waiting for their successor (`handOffPin`). */
+  private orphanPins = new Map<number, { pinnedAt: number; from: string; until: number }>()
   private readonly now: () => number
   private readonly ttlMs: number
   private readonly filePath?: string
@@ -272,6 +293,7 @@ export class ClaudeTracker {
     this.noteSeen(id)
     const before = s.state
     if (event.client) this.mergeClient(s, event.client)
+    this.adoptPin(s, t)
     if (event.cwd && name !== 'StatusLine') { s.cwd = event.cwd; s.project = basename(event.cwd) || event.cwd }
     switch (name) {
       case 'SessionStart': this.setState(s, 'idle', t); break
@@ -303,7 +325,7 @@ export class ClaudeTracker {
       case 'SubagentStart': this.agentStarted(s, event.agent_id); break
       case 'SubagentStop': this.agentStopped(s, event.agent_id); break
       case 'StatusLine': this.applyStatusLine(s, event); break
-      case 'SessionEnd': this.sessions.delete(id); break
+      case 'SessionEnd': this.sessions.delete(id); this.handOffPin(s, t); break
       default: break
     }
     if (!fresh && s.state === 'permission' && before !== 'permission') {
@@ -322,6 +344,29 @@ export class ClaudeTracker {
     this.sessions.delete(sessionId)
     this.schedulePersist()
     return true
+  }
+
+  /**
+   * Pins or unpins a session.
+   *
+   * A pin is the user's and nothing else's: it changes where the card is drawn, never what the
+   * session does, which is why any tile showing the sessions — a paired device's included — may
+   * ask for it.
+   */
+  pin(sessionId: string, pinned: boolean): 'ok' | 'unknownSession' | 'tooMany' {
+    const s = this.sessions.get(sessionId)
+    if (!s) return 'unknownSession'
+    if (pinned === (s.pinnedAt !== undefined)) return 'ok'
+    if (pinned) {
+      let count = 0
+      for (const other of this.sessions.values()) if (other.pinnedAt !== undefined) count++
+      if (count >= MAX_PINS) return 'tooMany'
+      s.pinnedAt = this.now()
+    } else {
+      s.pinnedAt = undefined
+    }
+    this.schedulePersist()
+    return 'ok'
   }
 
   /** Reconciles known sessions with the live Claude Code processes (null = discovery failed, no change). */
@@ -377,7 +422,8 @@ export class ClaudeTracker {
       const parsed = claudeSessionSchema.safeParse(item)
       if (!parsed.success) continue // drop invalid entries, keep the rest
       const s = parsed.data
-      if (t - s.lastEventAt > this.ttlMs) continue // drop stale entries
+      // Drop stale entries, except a pinned one: the process scan forgets it if it has closed.
+      if (t - s.lastEventAt > this.ttlMs && s.pinnedAt === undefined) continue
       this.sessions.set(s.sessionId, s)
     }
     // Only restore the day counters if they still refer to the current local day;
@@ -452,10 +498,45 @@ export class ClaudeTracker {
    * taken them in.
    */
   private sweep(t: number): void {
-    for (const [id, s] of this.sessions) if (t - s.lastEventAt > this.ttlMs) this.sessions.delete(id)
+    // A pinned session outlives the TTL: it was pinned to be kept through a quiet day, and it is
+    // the process scan (`syncProcesses`) that drops it once it has closed. `MAX_PINS` bounds them.
+    for (const [id, s] of this.sessions) if (t - s.lastEventAt > this.ttlMs && s.pinnedAt === undefined) this.sessions.delete(id)
+    for (const [pid, pin] of this.orphanPins) if (t > pin.until) this.orphanPins.delete(pid)
     if (this.sessions.size <= MAX_SESSIONS) return
-    const byAge = [...this.sessions.entries()].sort((a, b) => a[1].lastEventAt - b[1].lastEventAt)
+    const pinFirst = (s: ClaudeSession): number => (s.pinnedAt === undefined ? 0 : 1)
+    const byAge = [...this.sessions.entries()].sort((a, b) => pinFirst(a[1]) - pinFirst(b[1]) || a[1].lastEventAt - b[1].lastEventAt)
     for (const [id] of byAge.slice(0, byAge.length - MAX_SESSIONS)) this.sessions.delete(id)
+  }
+
+  /**
+   * A pinned session ended: its pin goes to the session that took its place in the same process.
+   *
+   * The pin is on "that terminal" as far as the person who set it is concerned, and `/clear`
+   * gives the terminal a new session id. The successor is named by the `claude` pid, which both
+   * sessions' hooks report; when its first hook has already arrived it takes the pin now,
+   * otherwise the pin waits for it for a few seconds. A process that really exited never claims
+   * it, and the wait runs out.
+   */
+  private handOffPin(ended: ClaudeSession, t: number): void {
+    const pid = ended.client?.pid
+    if (ended.pinnedAt === undefined || pid === undefined) return
+    for (const other of this.sessions.values()) {
+      if (other.discovered || other.client?.pid !== pid) continue
+      if (other.pinnedAt === undefined) other.pinnedAt = ended.pinnedAt
+      return
+    }
+    this.orphanPins.set(pid, { pinnedAt: ended.pinnedAt, from: ended.sessionId, until: t + PIN_HANDOFF_MS })
+  }
+
+  /** The other half of {@link handOffPin}: a session heard from the pid a pin is waiting on. */
+  private adoptPin(s: ClaudeSession, t: number): void {
+    const pid = s.client?.pid
+    if (pid === undefined || !this.orphanPins.size) return
+    const pin = this.orphanPins.get(pid)
+    // A late hook of the session that just ended is not its successor.
+    if (!pin || pin.from === s.sessionId || t > pin.until) return
+    this.orphanPins.delete(pid)
+    if (s.pinnedAt === undefined) s.pinnedAt = pin.pinnedAt
   }
 
   /** Counters for the local day: sessions seen, sessions that reached "done", git commits observed. */
@@ -510,7 +591,8 @@ export class ClaudeTracker {
       for (const [key, existing] of this.sessions) {
         if (!existing.discovered || existing.cwd !== cwd) continue
         if (reported !== undefined && existing.pid !== reported) continue
-        s.pid = existing.pid; this.sessions.delete(key); break
+        // The placeholder was this very session before its first hook: a pin set on it stays.
+        s.pid = existing.pid; s.pinnedAt = existing.pinnedAt; this.sessions.delete(key); break
       }
       this.sessions.set(id, s)
     }

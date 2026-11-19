@@ -10,6 +10,21 @@ Anything that changes what the dashboard, the admin or a widget can do gets a li
 (`package.json`, `server/package.json`, `ui/package.json`, `server/src/version.ts`) and is
 tagged `vX.Y.Z`.
 
+## Unreleased
+
+### Added
+
+- **Claude sessions: pin the ones to keep at hand.** A long press on a session's card pins it to
+  the top of the tile as a small card, its name and the model's context bar, so that half a dozen
+  pinned sessions still leave room for the ones that are moving. A pinned session stays on the
+  board however long it has been quiet and whatever the tile's filters say, turns orange when it
+  waits for you, and keeps its pin through `/clear`. A long press on it lets it go.
+
+### Fixed
+
+- **Claude sessions: "cannot find its window" stays readable.** The message a card shows when
+  its session's window could not be raised was erased within the second.
+
 ## 0.5.1 — 2026-11-18
 
 ### Added

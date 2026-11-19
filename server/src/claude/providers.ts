@@ -25,6 +25,8 @@ export interface ClaudeSessionsProviderOptions {
 export const DismissPayloadSchema = z.object({ sessionId: z.string().min(1).max(200) })
 /** Same shape for `focus`: the id names the session, and the server looks up everything else. */
 export const FocusPayloadSchema = DismissPayloadSchema
+/** `pin`: the session, and whether it is pinned from now on. */
+export const PinPayloadSchema = z.object({ sessionId: z.string().min(1).max(200), pinned: z.boolean() }).strict()
 
 export function createClaudeSessionsProvider(tracker: ClaudeTracker, opts: ClaudeSessionsProviderOptions = {}): Provider {
   const list = opts.listProcesses ?? listClaudeProcesses
@@ -74,6 +76,16 @@ export function createClaudeSessionsProvider(tracker: ClaudeTracker, opts: Claud
         if (value === 'none') return { ok: true }
         const played = await playSound(value, opts.soundRunner)
         return played ? { ok: true } : { ok: false, reason: 'unknownSound' }
+      },
+      /**
+       * Pin a session, or let it go. It moves a card on the board and does nothing on the Mac,
+       * so a paired device's tile may ask too; a refusal is answered, not thrown.
+       */
+      pin: async (payload) => {
+        const parsed = PinPayloadSchema.safeParse(payload)
+        if (!parsed.success) throw new Error(tr(undefined, 'claude.invalidDismiss'))
+        const result = tracker.pin(parsed.data.sessionId, parsed.data.pinned)
+        return result === 'ok' ? { ok: true } : { ok: false, reason: result }
       },
       dismiss: async (payload) => {
         const parsed = DismissPayloadSchema.safeParse(payload)
