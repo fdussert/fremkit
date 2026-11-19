@@ -180,7 +180,15 @@ final class EventPoster: PointerPoster {
     /// capture its own on-Edge position as the "original" one, so the pointer would stay there.
     private func restoreCursor() {
         lock.lock()
-        guard savedCursor != nil else { lock.unlock(); return }
+        guard savedCursor != nil else {
+            // Nothing was saved: either there is nothing to restore, or the cursor could not be
+            // read when the gesture began (`CGEvent(source: nil)` answered nil). The cursor is
+            // then not put back, but it must still be shown, or it would stay hidden for good
+            // and `isDrivingCursor` would keep the patrol standing back for ever.
+            showCursorLocked()
+            lock.unlock()
+            return
+        }
         pendingRestore?.cancel()
         let stamp = gesture
         let work = DispatchWorkItem { [weak self] in
