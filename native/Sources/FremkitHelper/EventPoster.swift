@@ -160,13 +160,16 @@ final class EventPoster: PointerPoster {
     private func warp(to point: CGPoint) {
         // A tap within `restoreDelay` of the previous gesture would otherwise be teleported
         // away mid-gesture by the restore still queued from that previous gesture.
-        let current = Self.currentCursor()
         lock.lock()
         pendingRestore?.cancel()
         pendingRestore = nil
         // A restore already running cannot be cancelled; this is what makes it stand down.
         gesture &+= 1
-        if savedCursor == nil { savedCursor = current }
+        // Read under the lock, which a running restore holds from its check to its warp back:
+        // read before it, the position could be the panel's, from just before a restore that
+        // then completed, and this gesture would save it as where the user left the pointer and
+        // put the pointer back on the panel at its end.
+        if savedCursor == nil { savedCursor = Self.currentCursor() }
         lock.unlock()
 
         hideCursor()
