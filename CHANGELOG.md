@@ -20,6 +20,14 @@ tagged `vX.Y.Z`.
   board however long it has been quiet and whatever the tile's filters say, turns orange when it
   waits for you, and keeps its pin through `/clear`. A long press on it lets it go.
 
+- **A window that lands on the Edge comes back.** Another application could place a window on the
+  Edge display, where the kiosk covers it: the window was focused, it took the keyboard, and it
+  was invisible, with nothing to click to get it back. Safari or the Finder restoring a frame
+  saved before the Edge was plugged in is enough to fall into it. The helper now moves any such
+  window back onto the display you work on, within two seconds, under the same switch that keeps
+  the mouse out. That switch is called *Edge fence* now, since it fences more than the pointer
+  (@mcouzinet, #7).
+
 ### Fixed
 
 - **Claude sessions: "cannot find its window" stays readable.** The message a card shows when
