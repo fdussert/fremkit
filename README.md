@@ -4,6 +4,8 @@
 
 **[fremkit.app](https://fremkit.app)** · [Download](https://github.com/fdussert/fremkit/releases/latest) · `brew install --cask fdussert/fremkit/fremkit`
 
+![Fremkit in thirty seconds: widgets answering a touch on the Edge, Claude Code sessions pinned and reordered, a bar widget unfolding above the bar, a page swipe, a page built in the editor, a theme change](docs/images/tour.gif)
+
 Fremkit turns the Corsair Xeneon Edge — a 2560 × 720 touch strip — into a widget dashboard for
 your Mac. Pages of tiles show the clock, the machine's load, your calendar, your build pipelines,
 your 3D printer, your smart home; you arrange them by dragging them around in a browser-based
