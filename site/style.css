@@ -130,6 +130,15 @@ h1 em { font-size: 1.08em; }
 .fine { margin: 0; font: 400 12.5px/1.6 var(--mono); color: var(--dim); }
 .fine a { color: var(--muted); }
 .fine.center { text-align: center; margin-top: 28px; }
+.hero-also { margin: 4px 0 0; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 10px; font-size: 14px; color: var(--muted); }
+.hero-also a {
+  display: inline-flex; align-items: center; height: 36px; padding: 0 16px; border-radius: 999px;
+  border: 1px solid var(--border-strong); background: rgba(255,255,255,.02);
+  color: var(--text); font-weight: 500; text-decoration: none; white-space: nowrap; transition: border-color .2s, color .2s;
+}
+.hero-also a:hover { border-color: var(--accent); color: var(--accent-hi); }
+/* the cards rise 24px as they are revealed, after the browser has picked where to stop */
+#tablets, #companion { scroll-margin-top: 24px; }
 
 /* the device */
 .stage { position: relative; z-index: 1; margin: 72px auto 0; width: min(1360px, 100% - 32px); perspective: 1800px; }
@@ -425,6 +434,8 @@ details p { margin: 0 0 22px; color: var(--muted); max-width: 640px; }
   .nav-actions .ghost { display: none; }
   .hero { padding-top: 48px; }
   .cmd { width: 100%; }
+  .hero-also span { flex-basis: 100%; }
+  .hero-also a { height: 44px; }
   .stage { margin-top: 48px; }
   .bento, .invariants, .steps { grid-template-columns: 1fr; }
   .flow { grid-template-columns: 1fr; gap: 0; justify-items: stretch; }
