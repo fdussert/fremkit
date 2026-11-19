@@ -1,4 +1,7 @@
 import type { Page } from '@playwright/test'
+import { mkdtemp, mkdir, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { expect, test } from '../fixtures/test.js'
 
 const settings = (page: Page) => page.getByRole('dialog', { name: 'Settings' })
@@ -57,4 +60,37 @@ test('a command that reveals a section opens the window on its pane', async ({ p
   await expect(settings(page)).toBeVisible()
   await expect(heading(page)).toHaveText('About')
   await expect(settings(page).getByRole('button', { name: 'Prepare diagnostics' })).toBeVisible()
+})
+
+test('each Claude account in use gets a name field, saved under its account', async ({ page, api, openAdmin, savedConfig }) => {
+  // A Claude Code profile folder signed in to a placeholder account, and one hook event from a
+  // session running in it: what makes the server list the account.
+  const uuid = '00000000-0000-4000-8000-0000000e2e01'
+  const profile = await mkdtemp(join(tmpdir(), 'fremkit-e2e-claude-'))
+  await mkdir(join(profile, 'projects', '-p'), { recursive: true })
+  await writeFile(join(profile, '.claude.json'), JSON.stringify({
+    oauthAccount: { accountUuid: uuid, emailAddress: 'someone@example.com', organizationType: 'claude_max', organizationName: 'Example Corp' },
+  }))
+  const hook = await api.post('/api/hooks/claude', { data: { hook_event_name: 'UserPromptSubmit', session_id: 'e2e-accounts', cwd: '/p', transcript_path: join(profile, 'projects', '-p', 'e2e.jsonl') } })
+  expect(hook.status()).toBe(204)
+
+  await openAdmin()
+  await page.getByRole('button', { name: 'Settings', exact: true }).click()
+  await sidebar(page).getByRole('button', { name: 'Privacy' }).click()
+  await expect(settings(page).getByText('Claude accounts', { exact: true })).toBeVisible()
+  const field = settings(page).getByLabel(/Max plan · Example Corp · seen/)
+  await expect(field).toHaveAttribute('placeholder', 'Max')
+  // Never the address, even in a label.
+  await expect(settings(page).getByText(/example\.com/)).toHaveCount(0)
+  await field.fill('  Work  ')
+  await field.press('Enter')
+  await expect.poll(async () => ((await savedConfig()) as { privacy?: { claudeAccountNames?: unknown } }).privacy?.claudeAccountNames).toEqual({ [uuid]: 'Work' })
+  // Emptied, the row goes back to the plan.
+  await field.fill('')
+  await field.press('Enter')
+  await expect.poll(async () => ((await savedConfig()) as { privacy?: { claudeAccountNames?: unknown } }).privacy?.claudeAccountNames).toEqual({})
+
+  // The search finds the fields' block by its title.
+  await search(page).fill('Claude accounts')
+  await expect(settings(page).locator('[data-section="screen.privacy"]')).toBeVisible()
 })

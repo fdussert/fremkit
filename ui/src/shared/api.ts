@@ -146,11 +146,12 @@ export type GifSearchResponse =
 
 /** A Claude Code configuration folder and how its account is named, never by its address. */
 /** `expired`: the folder's sign-in has lapsed (no Claude Code session ran from it lately). */
-export interface ClaudeAccount { dir: string; plan: string | null; org: string | null; expired?: boolean }
+/** A Claude account in use on this Mac, as the settings window names it. Never an e-mail address. */
+export interface ClaudeAccount { uuid: string; plan: string | null; org: string | null; lastSeen: number | null }
 
 export const api = {
   getConfig: () => fetch('/api/config').then((r) => json<Config>(r)),
-  /** The Claude Code configuration folders seen on this Mac, for the account usage's picker. */
+  /** The Claude accounts in use on this Mac, for their name fields in the privacy pane. */
   getClaudeAccounts: () => fetch('/api/claude/accounts').then((r) => json<{ accounts: ClaudeAccount[] }>(r)),
   /** A Giphy search made by the server with the Giphy connection's key; `q` has 2 characters or more. */
   searchGifs: (q: string, offset = 0) =>
