@@ -141,6 +141,26 @@
         }
       }
     },
+    "Forget %@?" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Oublier %@ ?"
+          }
+        }
+      }
+    },
+    "Forget this Mac" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Oublier ce Mac"
+          }
+        }
+      }
+    },
     "Fremkit shows it on the Mac in Settings → Devices, beside the code: a name ending in .local, or four numbers separated by dots." : {
       "localizations" : {
         "fr" : {
@@ -367,6 +387,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Cet iPad n’est plus autorisé"
+          }
+        }
+      }
+    },
+    "This iPad will have to be paired again to show a dashboard." : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il faudra appairer à nouveau cet iPad pour afficher un tableau de bord."
           }
         }
       }

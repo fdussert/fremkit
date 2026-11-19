@@ -102,7 +102,10 @@ closes the listener and the iPads show that the Mac is unreachable until it is b
   **Settings → Devices** shows beside the code: the app then shows the four words of whatever
   answers there, to compare as for a Mac in the list. Or put the Mac and the iPad on the same Wi-Fi.
 - **The app says it cannot reach the Mac.** The Mac is asleep, pairing is switched off, or the
-  Local Network permission was refused (above). The app retries by itself.
+  Local Network permission was refused (above). The app retries by itself. If that Mac is not
+  coming back (sold, erased, Fremkit removed from it), tap **Forget this Mac** on that screen
+  (iPad app 1.0.1 or later) and pair with another; scanning another Mac's QR code with the Camera
+  app works too, and asks before replacing the pairing.
 - **The app says "This Mac's key has changed".** The certificate was reset in Fremkit (or another
   machine answers at the Mac's address). Tap **Pair again** and pair as the first time; if you
   did not reset it, check that the iPad is on the right network.

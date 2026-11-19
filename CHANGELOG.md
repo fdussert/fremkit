@@ -16,6 +16,9 @@ tagged `vX.Y.Z`.
 
 - **Claude sessions: pinned sessions in two sizes.** A new setting, *Size of pinned sessions*,
   makes them narrower than a card, so that more of them fit on a row.
+- **iPad app 1.0.1: Forget this Mac.** The "Can't reach the Mac" screen has a **Forget this Mac**
+  button, which asks first. An iPad paired with a Mac that is not coming back no longer stays on
+  that screen for good: forget it, then pair with another.
 
 ## 0.5.2 — 2026-11-19
 
