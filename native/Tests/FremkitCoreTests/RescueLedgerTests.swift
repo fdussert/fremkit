@@ -8,7 +8,7 @@ final class RescueLedgerTests: XCTestCase {
     private func sweep(_ ledger: inout RescueLedger, onEdge: Set<CGWindowID>, present: Set<CGWindowID>? = nil,
                        at now: TimeInterval) -> [CGWindowID] {
         ledger.observe(onEdge: onEdge, present: present ?? onEdge, now: now)
-        return onEdge.sorted().filter { ledger.takeAttempt($0, now: now) }
+        return onEdge.sorted().filter { ledger.decide($0, now: now) == .move }
     }
 
     func testAWindowPutStraightBackIsMovedThreeTimesThenLeftAlone() {
@@ -24,7 +24,7 @@ final class RescueLedgerTests: XCTestCase {
     func testTheCountIsForgottenOnceTheWindowStaysOffTheEdgeForThirtySeconds() {
         var ledger = RescueLedger()
         for tick in 0..<3 { _ = sweep(&ledger, onEdge: [7], present: [7], at: TimeInterval(tick)) }
-        XCTAssertFalse(ledger.takeAttempt(7, now: 3))
+        XCTAssertEqual(ledger.decide(7, now: 3), .giveUp)
         // Last seen on the Edge at 3; still there, but elsewhere, for the next 30 seconds.
         _ = sweep(&ledger, onEdge: [], present: [7], at: 20)
         XCTAssertEqual(ledger.attempts(of: 7), 3)
@@ -59,6 +59,20 @@ final class RescueLedgerTests: XCTestCase {
         var ledger = RescueLedger()
         for tick in 0..<3 { _ = sweep(&ledger, onEdge: [7], at: TimeInterval(tick)) }
         XCTAssertEqual(sweep(&ledger, onEdge: [7, 8], at: 4), [8])
+    }
+
+    func testGivingUpIsReportedOncePerEpisode() {
+        var ledger = RescueLedger()
+        var decisions: [RescueLedger.Decision] = []
+        for tick in 0..<6 {
+            ledger.observe(onEdge: [7], present: [7], now: TimeInterval(tick))
+            decisions.append(ledger.decide(7, now: TimeInterval(tick)))
+        }
+        XCTAssertEqual(decisions, [.move, .move, .move, .giveUp, .leaveAlone, .leaveAlone])
+        // A new episode can be given up on, and reported, again.
+        ledger.observe(onEdge: [], present: [7], now: 100)
+        let again = (0..<5).map { ledger.decide(7, now: TimeInterval(200 + $0)) }
+        XCTAssertEqual(again, [.move, .move, .move, .giveUp, .leaveAlone])
     }
 
     func testResetForgetsEverything() {

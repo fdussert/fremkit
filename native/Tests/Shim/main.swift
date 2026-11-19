@@ -94,6 +94,7 @@ let suites: [(String, () -> XCTestCase, [TestMethod])] = [
         ("testNoResetWhileTheWindowKeepsComingBackWithinThirtySeconds", { ($0 as! RescueLedgerTests).testNoResetWhileTheWindowKeepsComingBackWithinThirtySeconds() }),
         ("testAClosedWindowTakesItsCountWithIt", { ($0 as! RescueLedgerTests).testAClosedWindowTakesItsCountWithIt() }),
         ("testWindowsAreCountedSeparately", { ($0 as! RescueLedgerTests).testWindowsAreCountedSeparately() }),
+        ("testGivingUpIsReportedOncePerEpisode", { ($0 as! RescueLedgerTests).testGivingUpIsReportedOncePerEpisode() }),
         ("testResetForgetsEverything", { ($0 as! RescueLedgerTests).testResetForgetsEverything() }),
     ]),
     ("AdminPlacementTests", { AdminPlacementTests() }, [

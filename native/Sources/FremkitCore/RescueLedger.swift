@@ -12,11 +12,22 @@ import Foundation
 ///
 /// Time is passed in, in seconds on any monotonic clock, so the rules can be tested without one.
 public struct RescueLedger {
+    /// What to do about a window found on the Edge.
+    public enum Decision: Equatable {
+        /// Move it; this counts as one attempt.
+        case move
+        /// Its last attempt did not stick: say so once, and leave it there.
+        case giveUp
+        /// Already given up on in this episode.
+        case leaveAlone
+    }
+
     public let maxAttempts: Int
     public let forgetAfter: TimeInterval
 
     private struct Entry {
         var attempts = 0
+        var gaveUp = false
         /// The last sweep that saw the window on the Edge.
         var lastOnEdge: TimeInterval
     }
@@ -45,17 +56,18 @@ public struct RescueLedger {
         }
     }
 
-    /// Whether the window on the Edge may be moved now; a yes counts as one attempt.
-    public mutating func takeAttempt(_ id: CGWindowID, now: TimeInterval) -> Bool {
+    /// What to do about a window found on the Edge now.
+    public mutating func decide(_ id: CGWindowID, now: TimeInterval) -> Decision {
         var entry = entries[id] ?? Entry(lastOnEdge: now)
         entry.lastOnEdge = now
+        defer { entries[id] = entry }
         guard entry.attempts < maxAttempts else {
-            entries[id] = entry
-            return false
+            if entry.gaveUp { return .leaveAlone }
+            entry.gaveUp = true
+            return .giveUp
         }
         entry.attempts += 1
-        entries[id] = entry
-        return true
+        return .move
     }
 
     /// The attempts spent on a window in its current episode.
