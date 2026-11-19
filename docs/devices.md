@@ -83,8 +83,11 @@ all of them. **Reset the certificate** makes a new key, which removes every iPad
 shows "This Mac's key has changed" and must be paired again with **Pair again**. The app never
 forgets a pairing by itself, and keeps retrying meanwhile, so an iPad that only met another
 machine on the Mac's old address recovers on its own. Deleting the app from the iPad does forget
-it: from version 1.0.1 a pairing is kept only for the installation that made it (iOS keeps the
-keychain of a deleted app, and 1.0 found its old pairing again after a reinstall). Neither touches a linked browser extension
+it, from version 1.0.1: a pairing is kept only for the installation that made it, or that first
+opened it when 1.0 made it (iOS keeps the keychain of a deleted app, and 1.0 found its old pairing
+again after a reinstall). So a pairing 1.0 made and 1.0.1 never opened still comes back once after
+a reinstall, where **Forget this Mac** removes it; and an iPad erased and restored without the
+app's data starts unpaired, as after a reinstall. Neither touches a linked browser extension
 ([docs/companion.md](companion.md)), which pins no key: it is removed from its own row. Turning the switch off
 closes the listener and the iPads show that the Mac is unreachable until it is back on.
 

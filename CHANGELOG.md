@@ -24,7 +24,9 @@ tagged `vX.Y.Z`.
 
 - **iPad app 1.0.1: deleting the app forgets its Mac.** iOS keeps an app's keychain after the app
   is deleted, so a reinstalled app found its old pairing again and could not be reset that way.
-  The pairing now goes with the installation; updating the app keeps it.
+  A pairing made or first opened with 1.0.1 now goes with the installation; updating the app
+  keeps it. One made with 1.0 and never opened with 1.0.1 still comes back once after a
+  reinstall: **Forget this Mac** removes it.
 
 ## 0.5.2 — 2026-11-19
 
