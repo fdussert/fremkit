@@ -27,7 +27,8 @@ final class MouseFence {
      How often the pointer's real position is looked at, over and above the events the tap sees.
 
      Short enough that a cursor that lands on the panel is gone before a hand reaches the mouse,
-     long enough to cost nothing: one `CGEvent(source: nil)` read, no event, no round trip.
+     long enough for the cost to be negligible: each tick allocates one empty `CGEvent` to read
+     the cursor position and lists the active displays, and posts nothing.
      */
     private static let patrolInterval: TimeInterval = 0.2
 
@@ -188,6 +189,9 @@ final class MouseFence {
         let timer = Timer(timeInterval: Self.patrolInterval, repeats: true) { [weak self] _ in
             self?.patrolTick()
         }
+        // A quarter of the interval: the push stays well under a glance, and the system may
+        // coalesce the wake-ups.
+        timer.tolerance = 0.05
         RunLoop.main.add(timer, forMode: .common)
         patrolTimer = timer
     }
