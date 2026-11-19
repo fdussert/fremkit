@@ -25,8 +25,13 @@ export interface ClaudeSessionsProviderOptions {
 export const DismissPayloadSchema = z.object({ sessionId: z.string().min(1).max(200) })
 /** Same shape for `focus`: the id names the session, and the server looks up everything else. */
 export const FocusPayloadSchema = DismissPayloadSchema
-/** `pin`: the session, and whether it is pinned from now on. */
-export const PinPayloadSchema = z.object({ sessionId: z.string().min(1).max(200), pinned: z.boolean() }).strict()
+/**
+ * `pin`: the session, and whether it is pinned from now on.
+ *
+ * Not strict: the host stamps every widget command with the frame's `instanceId`
+ * (`stampInstance`), and a schema that refused the extra key refused every pin a tile sent.
+ */
+export const PinPayloadSchema = z.object({ sessionId: z.string().min(1).max(200), pinned: z.boolean() })
 
 export function createClaudeSessionsProvider(tracker: ClaudeTracker, opts: ClaudeSessionsProviderOptions = {}): Provider {
   const list = opts.listProcesses ?? listClaudeProcesses

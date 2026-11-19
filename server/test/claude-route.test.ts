@@ -74,8 +74,11 @@ describe('providers', () => {
     expect(polled.sessions[0].pinnedAt).toEqual(expect.any(Number))
     await expect(p.commands!.pin({ sessionId: 'z', pinned: false })).resolves.toEqual({ ok: true })
     await expect(p.commands!.pin({ sessionId: 'nobody', pinned: true })).resolves.toEqual({ ok: false, reason: 'unknownSession' })
-    // A payload that is not exactly a session and a yes or no is refused, without echoing it.
-    for (const bad of [{ sessionId: 'z' }, { sessionId: 'z', pinned: 'yes' }, { sessionId: '', pinned: true }, { sessionId: 'z', pinned: true, pinnedAt: 1 }, null]) {
+    // As a tile really sends it: the host stamps every widget command with the frame's instance
+    // id (`stampInstance`), which the command has no use for and must not choke on.
+    await expect(p.commands!.pin({ sessionId: 'z', pinned: true, instanceId: 'claude-sessions-1' })).resolves.toEqual({ ok: true })
+    // A payload without a session and a yes or no is refused, without echoing it.
+    for (const bad of [{ sessionId: 'z' }, { sessionId: 'z', pinned: 'yes' }, { sessionId: '', pinned: true }, null]) {
       await expect(p.commands!.pin(bad), JSON.stringify(bad)).rejects.toThrow(/session/)
     }
   })
