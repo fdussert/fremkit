@@ -126,6 +126,7 @@ and a pin follows its terminal through `/clear`. It ends when the session closes
 | `showCount` | boolean | on | both | The number of sessions after the tile's title (`Claude sessions · 18`); nothing when the title is hidden |
 | `showStats` | boolean | on | both | Today's summary above the cards: sessions, finished, commits |
 | `sort` | enum | `state` | both | `state`: the sessions waiting for you first, then working, failed, finished and idle, the most recent first within each; `recent`: by last activity alone |
+| `pinSize` | enum | `card` | both | `card`: a pinned session is as wide as a card, so pins and cards line up; `small`: narrower, to fit more of them on a row |
 | `groupByClient` | boolean | off | both | One section per application (Orca, Terminal, …) |
 | `sound` | enum | `none` | both | A macOS system sound when a session starts waiting |
 | `soundOn` | enum | `attention` | both | What the sound is for: a question, or a question or a permission |

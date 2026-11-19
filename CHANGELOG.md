@@ -10,6 +10,13 @@ Anything that changes what the dashboard, the admin or a widget can do gets a li
 (`package.json`, `server/package.json`, `ui/package.json`, `server/src/version.ts`) and is
 tagged `vX.Y.Z`.
 
+## Unreleased
+
+### Added
+
+- **Claude sessions: pinned sessions in two sizes.** A new setting, *Size of pinned sessions*,
+  makes them narrower than a card, so that more of them fit on a row.
+
 ## 0.5.2 — 2026-11-19
 
 ### Added
