@@ -371,6 +371,11 @@ export function defaultLocale(locale: string = SYSTEM_LOCALE): Locale {
  * what is read and where it goes. Nothing is inferred from a widget being on the dashboard: a
  * widget asking for data is not consent to read a credential.
  */
+/** How long a name the user gives a Claude account may be: it titles a row on a narrow tile. */
+export const ACCOUNT_NAME_MAX = 24
+/** How many Claude accounts may be named: far more than one Mac signs in to. */
+export const MAX_ACCOUNT_NAMES = 32
+
 export const PrivacySchema = z.object({
   /**
    * Read Claude Code's OAuth token from the macOS keychain item `Claude Code-credentials` and
@@ -383,10 +388,25 @@ export const PrivacySchema = z.object({
    * Whose usage that is when Claude Code runs from several configuration folders (profiles, each
    * signed in to its own account): `auto` takes the token refreshed last, which follows whichever
    * profile was used last; an absolute folder reads that folder's token only.
+   *
+   * No longer read by the account usage, which reads every account in use, each with its own
+   * token (`claude/account.ts`). The `claude-identity` provider still runs `claude auth status` in
+   * it. Kept so a config that set it reads back unchanged.
    */
   claudeAccountDir: z.string().max(4096)
     .refine((v) => v === 'auto' || v.startsWith('/'), { message: 'auto or an absolute folder' })
     .default('auto'),
+  /**
+   * The user's own name for each Claude account, by `oauthAccount.accountUuid`: what the Claude
+   * limits widget calls the account's row instead of its plan. Edited in the settings window. A
+   * config written before it names no account. The uuids identify accounts, so this stays out of
+   * diagnostics and out of shared layouts (which never carry `privacy`).
+   */
+  claudeAccountNames: z.record(
+    z.string().regex(/^[0-9a-f-]{8,64}$/i),
+    z.string().trim().min(1).max(ACCOUNT_NAME_MAX),
+  ).refine((names) => Object.keys(names).length <= MAX_ACCOUNT_NAMES, { message: 'too many account names' })
+    .default({}),
   /**
    * Let an account provider (Claude, Codex, …) put the account's e-mail address in what it
    * publishes. Off, the field is never in the snapshot: anything on a channel reaches every
@@ -551,7 +571,7 @@ export const DEFAULT_CONFIG: Config = {
   connections: [],
   secrets: { backend: defaultSecretsBackend() },
   locale: defaultLocale(),
-  privacy: { claudeAccountUsage: false, claudeAccountDir: 'auto', showAccountEmail: false, codexAccount: false, codexHistorySources: [], macmonTemperature: false },
+  privacy: { claudeAccountUsage: false, claudeAccountDir: 'auto', claudeAccountNames: {}, showAccountEmail: false, codexAccount: false, codexHistorySources: [], macmonTemperature: false },
   labs: {},
   marketplace: { installed: {} },
   widgets: {

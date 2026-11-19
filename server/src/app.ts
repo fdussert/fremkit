@@ -48,6 +48,8 @@ import { createClaudeSessionsProvider, createClaudeUsageProvider, createClaudeAc
 import { createCodexProvider } from './providers/codex.js'
 import { createLocalChatValidator } from './codex/local-chats.js'
 import { createClaudeIdentityProvider } from './claude/identity.js'
+import { ClaudeAccountDiscovery } from './claude/accounts.js'
+import type { AccountSummary } from './claude/account.js'
 import { createAttention } from './claude/attention.js'
 import { DockState } from './dock/state.js'
 import { dockRoutes } from './dock/routes.js'
@@ -61,7 +63,7 @@ import { createDockProvider } from './dock/provider.js'
 import { bambuCameras } from './bambu/cameras.js'
 import { sweepStaleCameraDirs } from './providers/bambu-rtsp.js'
 import { DEFAULT_BACKGROUND, seedDefaultBackground } from './backgrounds/seed.js'
-import { isSafeBackgroundName } from './config/schema.js'
+import { isSafeBackgroundName, type Config } from './config/schema.js'
 import { backupRoutes } from './backup/routes.js'
 import { bambuRoutes } from './bambu/routes.js'
 import { createShortcutsProvider } from './providers/shortcuts.js'
@@ -104,7 +106,7 @@ import { shareRedaction } from './share/context.js'
 import type { LogTail } from './diagnostics/log-tail.js'
 import { isDeclaredType } from './connections/declared.js'
 import { tightenDataDir } from './data-permissions.js'
-import { createDemoProviders } from './demo/providers.js'
+import { createDemoProviders, demoClaudeAccounts } from './demo/providers.js'
 import { demoConnectionTypes } from './demo/connections.js'
 import { demoPublicFetch } from './demo/fetch.js'
 import { demoConnectionFetch } from './demo/declared.js'
@@ -272,6 +274,8 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   await claudeConfigDirs.load()
   const usage = new ClaudeUsage({ filePath: join(opts.dataDir, 'claude-usage.json'), transcriptsDir: demo ? join(opts.dataDir, 'demo-transcripts') : opts.claudeTranscriptsDir ?? join(homedir(), '.claude', 'projects'),
     moreTranscriptsDirs: demo ? undefined : () => claudeConfigDirs.list().map((d) => join(d, 'projects')),
+    // While the account usage is off, the status line is each account's only source: keep it by folder.
+    attributeByFolder: () => !store.get().privacy.claudeAccountUsage,
   })
   await usage.load()
   // The GIF board's files, shared by its provider and its routes. A demo reaches no network: its
@@ -308,6 +312,8 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   }
   /** Kept for the diagnostics, which report its sources' counts. Null in demo mode. */
   let recentProjects: ReturnType<typeof createRecentProjectsProvider> | null = null
+  /** The Claude accounts the settings window names: the real provider's, or the demo's. */
+  let claudeAccounts: () => Promise<AccountSummary[]> = async () => (demo ? demoClaudeAccounts() : [])
   /** Every real provider: the Mac, the accounts, the helper's reports. Never called in demo mode. */
   function registerRealProviders(): void {
     for (const p of opts.providers ?? []) registry.register(p)
@@ -316,12 +322,17 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     registry.register(createClaudeSessionsProvider(tracker))
     registry.register(createClaudeUsageProvider(usage))
     registry.register(createClaudeIdentityProvider({ configDir: () => store.get().privacy.claudeAccountDir }))
-    registry.register(createClaudeAccountProvider({
+    const discovery = new ClaudeAccountDiscovery({ dirs: () => claudeConfigDirs.list(), lastSeen: (dir) => claudeConfigDirs.lastSeen(dir) })
+    const claudeAccount = createClaudeAccountProvider({
       filePath: join(opts.dataDir, 'claude-account.json'),
       enabled: () => store.get().privacy.claudeAccountUsage,
-      configDirs: () => claudeConfigDirs.list(),
-      accountDir: () => store.get().privacy.claudeAccountDir,
-    }))
+      discover: () => discovery.list(),
+      names: () => store.get().privacy.claudeAccountNames,
+      showEmail: () => store.get().privacy.showAccountEmail,
+      statusLine: (dirs) => usage.windowsFor(dirs),
+    })
+    registry.register(claudeAccount)
+    claudeAccounts = () => claudeAccount.accounts()
     const codex = createCodexProvider({
       enabled: () => store.get().privacy.codexAccount || store.get().privacy.codexHistorySources.length > 0,
       accountEnabled: () => store.get().privacy.codexAccount,
@@ -411,13 +422,14 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   // How each provider's last poll went, for the editor's widget health (providers/health.ts).
   const stopHealth = publishHealth(registry, (channel, data) => hub.broadcast(channel, data))
   let showAccountEmail = store.get().privacy.showAccountEmail
-  let claudeAccount = `${store.get().privacy.claudeAccountUsage}:${store.get().privacy.claudeAccountDir}`
+  const claudeAccountKey = (cfg: Config): string => JSON.stringify([cfg.privacy.claudeAccountUsage, cfg.privacy.claudeAccountDir, cfg.privacy.claudeAccountNames])
+  let claudeAccount = claudeAccountKey(store.get())
   // A tile that ticks a source or adds a git root sees it now, not on the next minute's poll.
   let recentProjectsWants = JSON.stringify(findInstances(store.get(), RECENT_PROJECTS_WIDGET))
   store.onChange((cfg) => {
-    // Another Claude account, or the reading turned on: read it now rather than at the next poll,
-    // which can be minutes away and would keep showing the old account's state until then.
-    const account = `${cfg.privacy.claudeAccountUsage}:${cfg.privacy.claudeAccountDir}`
+    // The reading turned on or off, or an account renamed: answer now rather than at the next
+    // poll, so the tile shows the change at once.
+    const account = claudeAccountKey(cfg)
     if (account !== claudeAccount) {
       claudeAccount = account
       registry.refresh('claude-account')
@@ -558,9 +570,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   // The editor's GIF search and link check, on the one GIF store the provider shares.
   await app.register(gifRoutes, { store, gifs, screenOfDevice, secretsFor: (c) => connections.secretsFor(c), demo })
   await app.register(claudeRoutes, {
-    tracker, usage, configDirs: claudeConfigDirs,
-    // A demo never runs the Claude CLI: its one account is the folder Claude Code uses by default.
-    ...(demo ? { describe: async (dir: string) => ({ dir, plan: 'max', org: null }), expiry: async () => null } : {}),
+    tracker, usage, configDirs: claudeConfigDirs, accounts: () => claudeAccounts(),
   })
   await app.register(dockRoutes, {
     state: dock,

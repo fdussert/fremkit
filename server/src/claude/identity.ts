@@ -10,7 +10,6 @@ const Status = z.object({
   loggedIn: z.boolean(),
   authMethod: z.string().max(100).nullish(),
   subscriptionType: z.string().max(100).nullish(),
-  orgName: z.string().max(200).nullish(),
 })
 
 export interface ClaudeIdentity {
@@ -66,30 +65,6 @@ function readStatus(configDir = 'auto'): Promise<string> {
 
 function plan(type: string | null | undefined): string | null {
   return type === 'max' || type === 'pro' || type === 'team' || type === 'enterprise' ? type : null
-}
-
-/** How the admin names a configuration folder in the account picker. */
-export interface ConfigDirAccount {
-  dir: string
-  /** The plan, as the identity channel spells it, or null when not signed in to claude.ai. */
-  plan: string | null
-  /** The organisation's name; null when it holds an address (a personal one is named after it). */
-  org: string | null
-}
-
-/** What `claude auth status` says about one folder's account, without its e-mail address. */
-export async function describeConfigDir(dir: string, read: (dir: string) => Promise<string> = readStatus): Promise<ConfigDirAccount> {
-  try {
-    const status = Status.parse(JSON.parse(await read(dir)))
-    const org = status.orgName?.trim() || null
-    return {
-      dir,
-      plan: status.loggedIn && status.authMethod === 'claude.ai' ? plan(status.subscriptionType) : null,
-      org: org && !org.includes('@') ? org : null,
-    }
-  } catch {
-    return { dir, plan: null, org: null }
-  }
 }
 
 export function createClaudeIdentityProvider(opts: {

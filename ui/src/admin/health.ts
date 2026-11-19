@@ -67,6 +67,8 @@ export type ProblemCode =
   | 'unavailable'
   | 'invalid'
   | 'failing'
+  /** Some of the accounts a provider reads fail, the others do not: `detail` is how many. */
+  | 'partial'
 
 /** A newer version of the widget in the registry. */
 export interface HealthUpdate {
@@ -113,6 +115,8 @@ const ERROR_CODES: Record<string, { code: ProblemCode; level: 'warning' | 'error
   unavailable: { code: 'unavailable', level: 'warning' },
   // Claude Code is not signed in on this Mac (`claude-account`): nothing the editor can fix.
   'no-token': { code: 'unavailable', level: 'warning' },
+  // No claude.ai account in use on this Mac (`claude-account`): the same.
+  'no-account': { code: 'unavailable', level: 'warning' },
   unauthorized: { code: 'unauthorized', level: 'error' },
   unconfigured: { code: 'unconfigured', level: 'error' },
   invalid: { code: 'invalid', level: 'error' },
@@ -127,7 +131,7 @@ const NOT_A_PROBLEM = new Set(['disabled'])
 /** Sort order within a level: what blocks the widget entirely comes before what degrades it. */
 const ORDER: ProblemCode[] = [
   'missing', 'connectionGone', 'connectionIncomplete', 'unauthorized', 'unconfigured', 'invalid', 'failing',
-  'connectionUnset', 'offline', 'rateLimited', 'unavailable',
+  'connectionUnset', 'partial', 'offline', 'rateLimited', 'unavailable',
 ]
 
 const rank = (p: HealthProblem): number => (p.level === 'error' ? 0 : 100) + ORDER.indexOf(p.code)
@@ -164,6 +168,10 @@ function incomplete(conn: ConnectionSummary, type: ConnectionTypeInfo | undefine
 /** The problem a channel's last poll is, or none for a clean one. */
 function channelProblem(error: string | null | undefined, action: HealthAction, viaConnection: boolean): HealthProblem | null {
   if (error === null || error === undefined || NOT_A_PROBLEM.has(error)) return null
+  // A provider reading several accounts (`claude-account`) says how many fail, never which; the
+  // widget still shows the others, so it is a warning.
+  const partial = /^partial-(\d{1,3})$/.exec(error)
+  if (partial) return { level: 'warning', code: 'partial', detail: partial[1], action }
   const known = ERROR_CODES[error]
   if (!known) return { level: 'error', code: 'failing', error, action }
   // A provider of this Mac's own (Codex, say) is unconfigured while what it reads is not turned

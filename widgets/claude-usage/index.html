@@ -13,12 +13,13 @@
   .note{font-size:calc(13px * var(--text-scale, 1));color:var(--text-muted, #8b93a0);letter-spacing:.06em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   /* The host says which way round the tile is: on-light means dark text on a light body. */
   html.on-light body{color:var(--on-surface,#0b0d10)}
-  html.on-light .muted,html.on-light .note{color:var(--on-surface,#0b0d10);opacity:.75}
+  html.on-light .muted,html.on-light .note,html.on-light .why,html.on-light .lbl{color:var(--on-surface,#0b0d10);opacity:.75}
   /* A bar painted in the accent vanishes when the body *is* the accent, so it flips to the text colour. */
   html.on-light .bar,html.accent-fill .bar{background:rgba(128,128,128,.35)}
   html.accent-fill .bar>i{background:var(--on-surface,#0b0d10)}
   .note-line{display:flex;align-items:center;gap:8px;min-width:0;line-height:1;overflow:hidden}
   .note-line .note{min-width:0}
+  .note-line:empty,.note:empty{display:none}
   .plan{font-size:calc(12px * var(--text-scale, 1));font-weight:600;color:var(--accent, #d9b36a);white-space:nowrap}
   html.on-light .plan,html.accent-fill .plan{color:var(--on-surface,#0b0d10)}
 </style>
@@ -30,11 +31,36 @@
   .g .bar{height:10px;border-radius:5px}
   .ok>i{background:var(--ok, #2fb36b)}.warn>i{background:#f0a020}.hot>i{background:var(--danger, #d9463f)}
   .stale .g{opacity:.45}
-  .foot{font-size:calc(14px * var(--text-scale, 1));color:#c3c8d0}
+  .foot{flex-shrink:0;font-size:calc(14px * var(--text-scale, 1));color:#c3c8d0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  html.on-light .foot{color:var(--on-surface,#0b0d10)}
   .foot .plan{margin-right:8px}
   .hist{flex:1;min-width:0;display:flex;align-items:flex-end;gap:2px;height:40px;margin-top:6px}.hist>i{flex:1;background:var(--border-strong, #3a404a);border-radius:2px 2px 0 0;min-height:1px}.hist>i.now{background:var(--accent, #d9b36a)}.histrow{display:flex;gap:12px;align-items:flex-end}.histlbl{font-size:calc(12px * var(--text-scale, 1));color:var(--text-muted, #8b93a0);white-space:nowrap}
   [hidden]{display:none!important}
-  /* Compact: the navigation bar shows the three limits on one line, sized from the bar height (--h). */
+  /* One row per account: the name on the left, then the 5-hour and 7-day gauges in two columns,
+     aligned from row to row so the accounts compare at a glance. */
+  .wrap.multi{justify-content:flex-start;gap:6px;padding:10px 18px}
+  .rows{display:flex;flex-direction:column;gap:8px;min-height:0;flex:0 1 auto}
+  .acct{display:grid;grid-template-columns:minmax(90px,.8fr) 1fr 1fr;column-gap:18px;align-items:center;min-height:0}
+  .who{min-width:0;display:flex;flex-direction:column;gap:3px;line-height:1.1}
+  .nm{font-size:calc(17px * var(--text-scale, 1));font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .sub{display:flex;flex-wrap:wrap;column-gap:6px;align-items:baseline;min-width:0;overflow:hidden}
+  .sub .plan{white-space:nowrap}
+  .why{font-size:calc(11px * var(--text-scale, 1));line-height:1.2;color:var(--text-muted, #8b93a0);overflow:hidden;min-width:0;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+  .g2{display:flex;flex-direction:column;gap:3px;min-width:0}
+  .g2 .row{align-items:baseline;gap:6px;font-size:calc(13px * var(--text-scale, 1))}
+  .g2 .lbl{color:var(--text-muted, #8b93a0)}
+  .g2 .pct{font-size:calc(20px * var(--text-scale, 1));font-weight:600;line-height:1}
+  .g2 .rs{font-size:calc(11px * var(--text-scale, 1));white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-height:1.1em}
+  .acct.stale .g2{opacity:.45}
+  /* Three accounts or more: smaller rows, the reset time beside the label. */
+  .rows.dense{gap:4px}
+  .rows.dense .nm{font-size:calc(14px * var(--text-scale, 1))}
+  .rows.dense .g2 .pct{font-size:calc(15px * var(--text-scale, 1))}
+  .rows.dense .g2 .bar{height:6px}
+  .rows.dense .g2 .rs,.rows.dense .sub{display:none}
+  .rows:not(.dense) .g2 .lbl-rs{display:none}
+  .lbl-rs{font-size:calc(11px * var(--text-scale, 1));color:var(--text-muted, #8b93a0);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  /* Compact: the navigation bar shows the limits on one line, sized from the bar height (--h). */
   html.compact,html.compact body{overflow:hidden}
   html.compact .wrap{display:none}
   .cwrap{display:none}
@@ -49,12 +75,27 @@
   html.compact .cbar{height:max(2px, calc(var(--h,80px) * .045));border-radius:999px;background:var(--surface-3, #252a32);overflow:hidden}
   html.compact .cbar>i{display:block;height:100%;width:0;background:var(--accent, #d9b36a);transition:width .4s}
   html.compact .cbar.ok>i{background:var(--ok, #2fb36b)}html.compact .cbar.warn>i{background:#f0a020}html.compact .cbar.hot>i{background:var(--danger, #d9463f)}
+  html.on-light.compact .clabel,html.on-light.compact .cline .n{color:var(--on-surface,#0b0d10);opacity:.75}
+  html.on-light.compact .cbar,html.accent-fill.compact .cbar{background:rgba(128,128,128,.35)}
+  html.accent-fill.compact .cbar>i{background:var(--on-surface,#0b0d10)}
+  /* Two accounts in the bar: two stacked mini-rows, each with its name and its two gauges. */
+  html.compact .cwrap.stack{flex-direction:column;align-items:stretch;justify-content:center;gap:calc(var(--h,80px) * .07);padding:calc(var(--h,80px) * .06) calc(var(--h,80px) * .10)}
+  html.compact .crow{display:flex;align-items:center;gap:calc(var(--h,80px) * .12);min-width:0}
+  html.compact .crow.stale .cg{opacity:.45}
+  html.compact .cname{flex:0 0 28%;min-width:0;font-size:calc(clamp(9px, calc(var(--h,80px) * .15), 14px) * var(--text-scale, 1));font-weight:600;
+    letter-spacing:.06em;text-transform:uppercase;color:var(--text-muted, #8b93a0);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  html.compact .stack .cline{font-size:calc(clamp(10px, calc(var(--h,80px) * .16), 15px) * var(--text-scale, 1))}
+  html.compact .stack .cg{gap:calc(var(--h,80px) * .03)}
+  html.compact .stack .cbar{height:max(2px, calc(var(--h,80px) * .035))}
+  html.on-light.compact .cname{color:var(--on-surface,#0b0d10);opacity:.75}
   /* Right cluster: the bar pushes the iframe against the dots, so its content hugs that edge too. */
   html.compact.slot-right .cwrap{justify-content:flex-end;text-align:right}
+  html.compact.slot-right .cwrap.stack{justify-content:center}
 </style>
 </head>
 <body><div class="wrap" id="wrap"><div class="note-line"><div class="note" id="note"></div></div>
-<div class="gauges" id="gauges"></div><div class="foot" id="foot"><span class="plan" id="plan" hidden></span><span id="foot-text"></span></div>
+<div class="gauges" id="gauges"></div><div class="rows" id="rows" hidden></div>
+<div class="foot" id="foot"><span class="plan" id="plan" hidden></span><span id="foot-text"></span></div>
 <div class="histrow" id="histrow" hidden><div class="hist" id="hist"></div><div class="histlbl" id="histlbl"></div></div></div>
 <div class="cwrap" id="cwrap"></div>
 <script>
@@ -64,18 +105,24 @@
     delayDays: { fr: '{d} j {h} h', en: '{d} d {h} h' },
     delayHours: { fr: '{h} h {m}', en: '{h} h {m}' },
     delayMinutes: { fr: '{m} min', en: '{m} min' },
+    fiveHour: { fr: '5 h', en: '5 h' },
     sevenDay: { fr: '7 jours', en: '7 days' },
+    sevenDayShort: { fr: '7 j', en: '7 d' },
     stale: { fr: '· données anciennes', en: '· stale data' },
-    staleWithError: { fr: '· données anciennes ({error})', en: '· stale data ({error})' },
+    readAt: { fr: 'lu à {time}', en: 'read at {time}' },
+    readOn: { fr: 'lu le {date}', en: 'read on {date}' },
+    notRead: { fr: 'pas encore lu', en: 'not read yet' },
     // What the account provider's error codes mean to the person reading the tile.
     errors: {
-      unauthorized: { fr: 'connexion expirée, choisis un autre compte dans Confidentialité', en: 'sign-in expired, pick another account in Privacy' },
-      'no-token': { fr: 'pas de compte Claude Code connecté', en: 'no Claude Code account signed in' },
+      unauthorized: { fr: 'connexion refusée, relance une session sur ce compte', en: 'sign-in refused, start a session on this account' },
+      'no-token': { fr: 'pas de connexion Claude Code pour ce compte', en: 'no Claude Code sign-in for this account' },
       'rate-limited': { fr: 'trop de demandes, nouvel essai bientôt', en: 'too many requests, retrying soon' },
+      expired: { fr: 'aucune session en cours sur ce compte', en: 'no session running on this account' },
+      offline: { fr: 'hors ligne', en: 'offline' },
+      invalid: { fr: 'réponse illisible', en: 'unreadable answer' },
     },
     noSession: { fr: '· lance une session Claude Code', en: '· start a Claude Code session' },
     accountOff: { fr: '· consommation du compte désactivée', en: '· account usage turned off' },
-    breakdown: { fr: '{name} {percent} %', en: '{name} {percent}%' },
     today: { fr: 'aujourd’hui : {tokens} tokens · {sessions}', en: 'today: {tokens} tokens · {sessions}' },
     sessionOne: { fr: '1 session', en: '1 session' },
     sessionMany: { fr: '{n} sessions', en: '{n} sessions' },
@@ -85,13 +132,21 @@
     thousands: { fr: '{n} k', en: '{n}k' }
   }
   function errorText(code) { return Object.prototype.hasOwnProperty.call(L.errors, code) ? Fremkit.t(L.errors[code]) : String(code) }
-  var data = null, account = null, accountOff = false, identity = null
+  /** `claude-usage`: the Mac's day (tokens, sessions, cost) and the status line's last windows. */
+  var data = null
+  /** `claude-account`: one row per Claude account, with its own numbers. */
+  var accounts = null, source = null
   /** On by default, so an absent setting is not "off": an older instance keeps showing the cost. */
   var showCost = true
   function applySettings(s) { showCost = !s || s.showCost !== false }
   function cls(p) { return p < 60 ? 'ok' : p < 85 ? 'warn' : 'hot' }
   /** A decimal separator follows the language: a comma in French, a point in English. */
   function dec(n, digits) { var text = n.toFixed(digits); return Fremkit.locale === 'fr' ? text.replace('.', ',') : text }
+  /**
+   * A window whose reset time has passed is reset, whatever the last reading said; a window the
+   * account does not have running reads 0 % with no reset time.
+   */
+  function live(w) { return w && typeof w.pct === 'number' && w.resetsAt * 1000 > Date.now() ? w : null }
   function until(epochSec) {
     if (!epochSec) return ''
     var ms = epochSec * 1000 - Date.now()
@@ -107,44 +162,104 @@
     if (n >= 1e3) return Fremkit.t(L.thousands, { n: Math.round(n / 1e3) })
     return String(n)
   }
+  function two(n) { return String(n).padStart(2, '0') }
+  /** When a stale row's numbers were read: the time today, the day and time before. */
+  function readWhen(ms) {
+    if (!ms) return Fremkit.t(L.notRead)
+    var d = new Date(ms), now = new Date()
+    var time = two(d.getHours()) + ':' + two(d.getMinutes())
+    if (d.toDateString() === now.toDateString()) return Fremkit.t(L.readAt, { time: time })
+    return Fremkit.t(L.readOn, { date: two(d.getDate()) + '/' + two(d.getMonth() + 1) + ' ' + time })
+  }
+  /** Why a row is dimmed, in words: when it was read, and what went wrong since. */
+  function staleText(a) {
+    var parts = [readWhen(a.updatedAt)]
+    if (a.error) parts.push(errorText(a.error))
+    return parts.join(' · ')
+  }
   function gaugeHtml(name, pct, resetsAt) {
     var p = Math.round(pct)
     return '<div class="g"><div class="row"><span>' + Fremkit.esc(name) + '</span><span class="pct">' + p + '%</span></div><div class="bar ' + cls(pct) + '"><i style="width:' + Math.min(100, pct) + '%"></i></div><div class="muted">' + until(resetsAt) + '</div></div>'
   }
-  /** The three limits as `name pct%` gauges on one line; falls back to the local 5 h / 7 day windows. */
-  function renderCompact(useAccount) {
-    var items = useAccount ? account.limits.slice(0, 3).map(function (l) { return { name: l.name, pct: l.percent } })
-      : data ? [{ name: '5 h', pct: data.fiveHour ? data.fiveHour.pct : 0 }, { name: Fremkit.t(L.sevenDay), pct: data.sevenDay ? data.sevenDay.pct : 0 }] : []
-    // A label in front: three bare gauges read as noise next to the clock and the CPU line.
-    document.getElementById('cwrap').innerHTML = '<span class="clabel">Claude</span>' + items.map(function (g) {
-      var p = Math.round(g.pct)
-      return '<div class="cg"><div class="cline"><span class="n">' + Fremkit.esc(g.name) + '</span><span>' + p + '%</span></div>'
-        + '<div class="cbar ' + cls(g.pct) + '"><i style="width:' + Math.min(100, g.pct) + '%"></i></div></div>'
-    }).join('')
+  /** One window of an account row: label and percentage, the bar, and the time to its reset. */
+  function cellHtml(label, w) {
+    w = live(w)
+    var pct = w ? w.pct : 0, p = Math.round(pct), rs = w ? until(w.resetsAt) : ''
+    return '<div class="g2"><div class="row"><span class="lbl">' + Fremkit.esc(label) + '</span><span class="lbl-rs">' + Fremkit.esc(rs) + '</span><span class="pct">' + p + '%</span></div>'
+      + '<div class="bar ' + cls(pct) + '"><i style="width:' + Math.min(100, pct) + '%"></i></div>'
+      + '<div class="muted rs">' + Fremkit.esc(rs) + '</div></div>'
+  }
+  function rowHtml(a) {
+    var sub = (a.named && a.plan ? '<span class="plan">' + Fremkit.esc(a.plan) + '</span>' : '')
+      + (a.stale ? '<span class="why">' + Fremkit.esc(staleText(a)) + '</span>' : '')
+    return '<div class="acct' + (a.stale ? ' stale' : '') + '"><div class="who"><div class="nm">' + Fremkit.esc(a.name) + '</div><div class="sub">' + sub + '</div></div>'
+      + cellHtml(Fremkit.t(L.fiveHour), a.fiveHour) + cellHtml(Fremkit.t(L.sevenDay), a.sevenDay) + '</div>'
+  }
+  /** How close an account is to a limit: what decides which two the bar shows. */
+  function load(a) { var f = live(a.fiveHour), s = live(a.sevenDay); return Math.max(f ? f.pct : 0, s ? s.pct : 0) }
+  /** The two most loaded accounts, in their own order: rows never swap places in the bar either. */
+  function mostLoaded(list, n) {
+    if (list.length <= n) return list
+    var keep = list.map(function (a, i) { return { a: a, i: i } }).sort(function (x, y) { return load(y.a) - load(x.a) || x.i - y.i }).slice(0, n)
+    return keep.sort(function (x, y) { return x.i - y.i }).map(function (x) { return x.a })
+  }
+  function cgHtml(name, w) {
+    w = live(w)
+    var pct = w ? w.pct : 0, p = Math.round(pct)
+    return '<div class="cg"><div class="cline"><span class="n">' + Fremkit.esc(name) + '</span><span>' + p + '%</span></div>'
+      + '<div class="cbar ' + cls(pct) + '"><i style="width:' + Math.min(100, pct) + '%"></i></div></div>'
+  }
+  /** The bar: one line for one account, as it always was; two stacked mini-rows for several. */
+  function renderCompact(rows, single) {
+    var cwrap = document.getElementById('cwrap')
+    if (rows.length >= 2) {
+      cwrap.classList.add('stack')
+      cwrap.innerHTML = mostLoaded(rows, 2).map(function (a) {
+        return '<div class="crow' + (a.stale ? ' stale' : '') + '"><span class="cname">' + Fremkit.esc(a.name) + '</span>'
+          + cgHtml(Fremkit.t(L.fiveHour), a.fiveHour) + cgHtml(Fremkit.t(L.sevenDayShort), a.sevenDay) + '</div>'
+      }).join('')
+      return
+    }
+    cwrap.classList.remove('stack')
+    // A label in front: bare gauges read as noise next to the clock and the CPU line.
+    cwrap.innerHTML = single ? '<span class="clabel">Claude</span>' + cgHtml(Fremkit.t(L.fiveHour), single.fiveHour) + cgHtml(Fremkit.t(L.sevenDay), single.sevenDay) : ''
   }
   function render() {
-    var knownPlan = identity && identity.loggedIn && identity.authMethod === 'claude.ai'
-      && !identity.stale && identity.subscriptionType
-    var planBadge = document.getElementById('plan')
-    planBadge.hidden = !knownPlan
-    planBadge.textContent = knownPlan ? 'Claude ' + identity.subscriptionType.charAt(0).toUpperCase() + identity.subscriptionType.slice(1) : ''
-    var wrap = document.getElementById('wrap'), note = document.getElementById('note'), footText = document.getElementById('foot-text'), gauges = document.getElementById('gauges')
-    var useAccount = account && account.available && account.limits && account.limits.length
-    var stale = useAccount ? account.stale : !!(data && data.stale)
-    wrap.classList.toggle('stale', stale)
-    if (Fremkit.compact) { renderCompact(useAccount); return }
-    if (useAccount) {
-      gauges.innerHTML = account.limits.map(function (l) { return gaugeHtml(l.name, l.percent, l.resetsAt) }).join('')
-      note.textContent = stale ? (account.error ? Fremkit.t(L.staleWithError, { error: errorText(account.error) }) : Fremkit.t(L.stale)) : ''
-    } else if (data) {
-      gauges.innerHTML = gaugeHtml('5 h', data.fiveHour ? data.fiveHour.pct : 0, data.fiveHour ? data.fiveHour.resetsAt : 0)
-        + gaugeHtml(Fremkit.t(L.sevenDay), data.sevenDay ? data.sevenDay.pct : 0, data.sevenDay ? data.sevenDay.resetsAt : 0)
-      note.textContent = accountOff ? Fremkit.t(L.accountOff)
-        : data.updatedAt === null ? Fremkit.t(L.noSession) : stale ? Fremkit.t(L.stale) : ''
+    var wrap = document.getElementById('wrap'), note = document.getElementById('note'), footText = document.getElementById('foot-text')
+    var gauges = document.getElementById('gauges'), rowsEl = document.getElementById('rows'), planBadge = document.getElementById('plan')
+    var rows = accounts || []
+    // One account, or none known: the tile reads as it always did. The Mac-wide status line is
+    // the fallback when no Claude account is known (signed in with an API key, say).
+    var single = rows.length === 1 ? rows[0]
+      : rows.length === 0 && data ? { fiveHour: data.fiveHour, sevenDay: data.sevenDay, stale: !!data.stale, updatedAt: data.updatedAt, fallback: true } : null
+    if (Fremkit.compact) { renderCompact(rows, single); return }
+    var multi = rows.length >= 2
+    wrap.classList.toggle('multi', multi)
+    rowsEl.hidden = !multi
+    gauges.hidden = multi
+    if (multi) {
+      wrap.classList.toggle('stale', false)
+      rowsEl.classList.toggle('dense', rows.length >= 3)
+      rowsEl.innerHTML = rows.map(rowHtml).join('')
+      note.textContent = ''
+      planBadge.hidden = true
+    } else if (single) {
+      wrap.classList.toggle('stale', !!single.stale)
+      var f = live(single.fiveHour), s = live(single.sevenDay)
+      gauges.innerHTML = gaugeHtml(Fremkit.t(L.fiveHour), f ? f.pct : 0, f ? f.resetsAt : 0) + gaugeHtml(Fremkit.t(L.sevenDay), s ? s.pct : 0, s ? s.resetsAt : 0)
+      // From the status line (account usage off, or no account known): what it always said.
+      // From the account: when the numbers were read, and why they are not newer.
+      note.textContent = source === 'status-line' ? Fremkit.t(L.accountOff)
+        : single.fallback ? (single.updatedAt === null ? Fremkit.t(L.noSession) : single.stale ? Fremkit.t(L.stale) : '')
+        : single.stale ? '· ' + staleText(single) : ''
+      // The account's name, or its plan as the tile always said it ("Claude Max").
+      var badge = single.fallback ? '' : single.named ? single.name + (single.plan ? ' · ' + single.plan : '') : single.plan ? 'Claude ' + single.plan : ''
+      planBadge.hidden = !badge
+      planBadge.textContent = badge
     } else { return }
     var parts = []
-    if (useAccount && account.breakdown.length) parts.push(account.breakdown.filter(function (b) { return b.percent > 0 }).map(function (b) { return Fremkit.t(L.breakdown, { name: b.name, percent: Math.round(b.percent) }) }).join(' · '))
-    if (data && data.today && data.today.messages) {
+    // Three rows and more fill the tile: the day's line gives them its room.
+    if (data && data.today && data.today.messages && rows.length < 3) {
       var t = data.today, total = t.input + t.output + t.cacheRead + t.cacheWrite
       var sessions = t.sessions === 1 ? Fremkit.t(L.sessionOne) : Fremkit.t(L.sessionMany, { n: t.sessions })
       parts.push(Fremkit.t(L.today, { tokens: tokens(total), sessions: sessions })
@@ -152,7 +267,9 @@
     }
     footText.innerHTML = parts.map(Fremkit.esc).join('<br>')
     var histrow = document.getElementById('histrow'), hist = document.getElementById('hist'), histlbl = document.getElementById('histlbl')
-    if (data && data.today && data.today.hourly && Fremkit.size.h >= 4) {
+    // Only where it fits: under one account from five cells high (at four it was cut in half),
+    // under the rows once the tile is taller still.
+    if (data && data.today && data.today.hourly && Fremkit.size.h >= (multi ? 6 + rows.length - 2 : 5)) {
       histrow.hidden = false
       var hh = data.today.hourly, raw = Math.max.apply(null, hh), max = raw || 1, cur = new Date().getHours()
       hist.innerHTML = hh.map(function (v, i) { return '<i' + (i === cur ? ' class="now"' : '') + ' style="height:' + Math.max(2, Math.round(v / max * 100)) + '%"></i>' }).join('')
@@ -164,16 +281,13 @@
   Fremkit.whenReady(function () {
     applySettings(Fremkit.settings)
     Fremkit.onSettings(function (s) { applySettings(s); render() })
-    Fremkit.subscribe('claude-identity', function (d) { identity = d; render() })
     Fremkit.subscribe('claude-usage', function (d) { if (d.error) return; data = d; render() })
-    // A rate-limited poll still carries the last good gauges (flagged stale): keep showing them.
+    // Each row carries its own state: a rate-limited account keeps its last good gauges, flagged
+    // stale, beside an account that is fine.
     Fremkit.subscribe('claude-account', function (d) {
-      // Reading the account is opt-in. While it is off the gauges below come from the local
-      // transcripts instead, and the note says why the per-model ones are missing.
-      if (d.error === 'disabled') { accountOff = true; render(); return }
-      accountOff = false
-      if (d.error && !d.available) return
-      account = d
+      if (!d || !Array.isArray(d.accounts)) return
+      accounts = d.accounts
+      source = d.source || null
       render()
     })
     /** The bar's height drives every compact size; the full layout ignores it. */

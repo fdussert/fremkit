@@ -6,13 +6,16 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import BaseCheckbox from '../../shared/ui/BaseCheckbox.vue'
 import BaseField from '../../shared/ui/BaseField.vue'
+import BaseInput from '../../shared/ui/BaseInput.vue'
 import { api, type ClaudeAccount } from '../../shared/api'
 import BaseSection from '../../shared/ui/BaseSection.vue'
 import { useI18n } from '../../shared/i18n'
 import { useAdminStore } from '../store'
 
 const s = useAdminStore()
-const { t } = useI18n()
+const { t, locale } = useI18n()
+/** As long as the server takes (`ACCOUNT_NAME_MAX`): the name titles a row on a narrow tile. */
+const CLAUDE_ACCOUNT_NAME_MAX = 24
 
 const privacy = computed(() => s.state.config!.privacy)
 /**
@@ -24,35 +27,38 @@ function setClaudeAccountUsage(on: boolean): void {
   s.apply((c) => { c.privacy.claudeAccountUsage = on })
 }
 /**
- * Whose usage, when Claude Code runs from several folders signed in to different accounts. Asked
- * for only while the usage is on: listing runs `claude auth status` once per folder.
+ * The Claude accounts in use on this Mac, one name field each: what the Claude limits widget calls
+ * each account's row. Listed by the server from the Claude Code folders' own files, with the plan,
+ * the organisation unless it is an address, and when the account was last seen; never an e-mail.
  */
 const claudeAccounts = ref<ClaudeAccount[]>([])
 async function loadClaudeAccounts(): Promise<void> {
-  if (!privacy.value.claudeAccountUsage) return
   try { claudeAccounts.value = (await api.getClaudeAccounts()).accounts } catch { claudeAccounts.value = [] }
 }
 onMounted(loadClaudeAccounts)
 watch(() => privacy.value.claudeAccountUsage, loadClaudeAccounts)
-const claudeAccountDir = computed(() => privacy.value.claudeAccountDir ?? 'auto')
-/** `~/…` for a folder under the home folder, so the picker stays readable. */
-function shortDir(dir: string): string {
-  const home = dir.match(/^\/Users\/[^/]+/)?.[0]
-  return home ? '~' + dir.slice(home.length) : dir
-}
+/** What tells the accounts apart without an address: the plan, the organisation, when last seen. */
 function accountLabel(a: ClaudeAccount): string {
-  const who = [a.org, a.plan ? t('admin.inspector.screen.claudeAccount.plan', { plan: a.plan[0].toUpperCase() + a.plan.slice(1) }) : null].filter(Boolean).join(' · ')
-  const label = who ? `${who} — ${shortDir(a.dir)}` : shortDir(a.dir)
-  return a.expired ? `${label} (${t('admin.inspector.screen.claudeAccount.expired')})` : label
+  const parts = [
+    a.plan ? t('admin.inspector.screen.claudeAccount.plan', { plan: a.plan }) : t('admin.inspector.screen.claudeAccount.noPlan'),
+    a.org,
+    a.lastSeen ? t('admin.inspector.screen.claudeAccount.seen', { when: new Date(a.lastSeen).toLocaleString(locale.value, { dateStyle: 'short', timeStyle: 'short' }) }) : null,
+  ]
+  return parts.filter(Boolean).join(' · ')
 }
-/** The saved folder stays listed even when this Mac has not seen it lately, so the select shows it. */
-const claudeAccountOptions = computed(() => {
-  const list = claudeAccounts.value
-  const saved = claudeAccountDir.value
-  return saved !== 'auto' && !list.some((a) => a.dir === saved) ? [...list, { dir: saved, plan: null, org: null }] : list
-})
-function setClaudeAccountDir(dir: string): void {
-  s.apply((c) => { c.privacy.claudeAccountDir = dir })
+function accountName(uuid: string): string {
+  return privacy.value.claudeAccountNames?.[uuid] ?? ''
+}
+/** An empty name removes the entry: the row goes back to showing the plan. */
+function setAccountName(uuid: string, value: string): void {
+  const name = value.trim().slice(0, CLAUDE_ACCOUNT_NAME_MAX)
+  if (name === accountName(uuid)) return
+  s.apply((c) => {
+    const names = { ...(c.privacy.claudeAccountNames ?? {}) }
+    if (name) names[uuid] = name
+    else delete names[uuid]
+    c.privacy.claudeAccountNames = names
+  })
 }
 const CODEX_SOURCES = ['appServer', 'vscode', 'cli', 'exec', 'subAgent', 'unknown'] as const
 const CODEX_SUBAGENT_SOURCES = ['subAgentReview', 'subAgentCompact', 'subAgentThreadSpawn', 'subAgentOther'] as const
@@ -83,12 +89,12 @@ function setShowAccountEmail(on: boolean): void {
     :label="t('admin.inspector.screen.claudeUsage')"
     @update:model-value="setClaudeAccountUsage($event)" />
   <p class="ro">{{ t('admin.inspector.screen.claudeUsage.hint') }}</p>
-  <BaseField v-if="privacy.claudeAccountUsage" :label="t('admin.inspector.screen.claudeAccount')"
-    :hint="t('admin.inspector.screen.claudeAccount.hint')">
-    <select class="select" :value="claudeAccountDir" @change="setClaudeAccountDir(($event.target as HTMLSelectElement).value)">
-      <option value="auto">{{ t('admin.inspector.screen.claudeAccount.auto') }}</option>
-      <option v-for="a in claudeAccountOptions" :key="a.dir" :value="a.dir">{{ accountLabel(a) }}</option>
-    </select>
+  <p class="ro sub">{{ t('admin.inspector.screen.claudeAccounts') }}</p>
+  <p class="ro">{{ t('admin.inspector.screen.claudeAccounts.hint') }}</p>
+  <p v-if="claudeAccounts.length === 0" class="ro">{{ t('admin.inspector.screen.claudeAccounts.none') }}</p>
+  <BaseField v-for="a in claudeAccounts" :key="a.uuid" :label="accountLabel(a)">
+    <BaseInput lazy :model-value="accountName(a.uuid)" :placeholder="a.plan ?? 'Claude'"
+      @update:model-value="setAccountName(a.uuid, String($event))" />
   </BaseField>
   <BaseCheckbox :model-value="privacy.showAccountEmail"
     :label="t('admin.inspector.screen.accountEmail')"
@@ -126,7 +132,6 @@ function setShowAccountEmail(on: boolean): void {
 .ro { margin: 0 0 var(--space-2); font-size: var(--fs-sm); color: var(--text-muted); }
 .codex-sources { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: var(--space-1); margin-bottom: var(--space-3); }
 .codex-subagent-sources { margin-bottom: var(--space-3); }
-.select { width: 100%; min-height: 44px; box-sizing: border-box; font: inherit; font-size: var(--fs-sm); color: var(--text);
-  background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--radius-sm); padding: 6px 8px; }
+.sub { color: var(--text); font-weight: 600; }
 .codex-subagent-sources summary { cursor: pointer; margin-bottom: var(--space-2); }
 </style>

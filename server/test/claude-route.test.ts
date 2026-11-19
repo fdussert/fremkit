@@ -25,22 +25,16 @@ beforeEach(async () => {
 afterEach(() => app.close())
 
 describe('GET /api/claude/accounts', () => {
-  it('lists the learnt folders and the default one, each described', async () => {
-    const { ClaudeConfigDirs, defaultConfigDir } = await import('../src/claude/configDirs.js')
-    const dirs = new ClaudeConfigDirs()
-    dirs.note('/u/profile/projects/-p/1.jsonl')
+  it('lists the accounts the limits widget shows, for the settings window to name them', async () => {
+    const accounts = [{ uuid: '00000000-0000-4000-8000-00000000000a', plan: 'Max', org: 'Example Corp', lastSeen: 2000 }]
     const local = Fastify()
-    await local.register(claudeRoutes, {
-      tracker, usage, configDirs: dirs, describe: async (d) => ({ dir: d, plan: 'max', org: null }),
-      // The learnt profile's sign-in lapsed; the default one says nothing about its expiry.
-      expiry: async (d) => (d === '/u/profile' ? 1000 : null), now: () => 2000,
-    })
+    await local.register(claudeRoutes, { tracker, usage, accounts: async () => accounts })
     const res = await local.inject({ method: 'GET', url: '/api/claude/accounts' })
-    expect(res.json()).toEqual({ accounts: [
-      { dir: '/u/profile', plan: 'max', org: null, expired: true },
-      { dir: defaultConfigDir(), plan: 'max', org: null, expired: false },
-    ] })
+    expect(res.json()).toEqual({ accounts })
     await local.close()
+  })
+  it('lists none when nothing provides them', async () => {
+    expect((await app.inject({ method: 'GET', url: '/api/claude/accounts' })).json()).toEqual({ accounts: [] })
   })
 })
 

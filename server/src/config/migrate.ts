@@ -169,7 +169,7 @@ function readV3(raw: unknown, version: unknown): V3Config {
     connections: [],
     secrets: { backend: defaultSecretsBackend() },
     locale: defaultLocale(),
-    privacy: { claudeAccountUsage: false, claudeAccountDir: 'auto', showAccountEmail: false, codexAccount: false, codexHistorySources: [], macmonTemperature: false },
+    privacy: { claudeAccountUsage: false, claudeAccountDir: 'auto', claudeAccountNames: {}, showAccountEmail: false, codexAccount: false, codexHistorySources: [], macmonTemperature: false },
     // A v1 config predates the marketplace by a long way; nothing can have been installed.
     marketplace: { installed: {} },
     pages: v1.pages.map((p) => ({
