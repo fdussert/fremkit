@@ -73,6 +73,11 @@ final class WindowFence {
         ledger.observe(onEdge: Set(strays.map(\.id)), present: WindowSweep.present(in: infos), now: now)
         guard !strays.isEmpty else { return }
 
+        // A window being dragged toward the Edge would be yanked from under the pointer, and the
+        // move would cost it one of its attempts. The next sweep after the button is released
+        // deals with wherever it was dropped.
+        guard !Self.aMouseButtonIsDown() else { return }
+
         guard AXIsProcessTrusted() else {
             if !warnedAboutPermission {
                 warnedAboutPermission = true
@@ -98,6 +103,13 @@ final class WindowFence {
             case .leaveAlone:
                 continue
             }
+        }
+    }
+
+    /// Whether the left, right or centre button is held, by a mouse, a trackpad or the touch panel.
+    private static func aMouseButtonIsDown() -> Bool {
+        [CGMouseButton.left, .right, .center].contains {
+            CGEventSource.buttonState(.combinedSessionState, button: $0)
         }
     }
 
