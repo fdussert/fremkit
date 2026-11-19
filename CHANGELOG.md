@@ -21,6 +21,17 @@ tagged `vX.Y.Z`.
   waits for you, and keeps its pin through `/clear`. A long press on it lets it go. On the Edge,
   hold for a second and lift.
 
+- **A window that lands on the Edge comes back.** Another application could place a window on the
+  Edge display, where the kiosk covers it: the window was focused, it took the keyboard, and it
+  was invisible, with nothing to click to get it back. Safari or the Finder restoring a frame
+  saved before the Edge was plugged in is enough to fall into it. The helper now moves any such
+  window back to the middle of the display you work on within about two seconds, under the same
+  switch that keeps the mouse out; several windows brought back together are staggered rather than
+  stacked. A window you are dragging is left alone until you let go, and one that its application
+  keeps putting back on the Edge is moved three times and then left there, until it has stayed
+  away for half a minute. The switch is called *Edge fence* now, since it fences more than the
+  pointer. It needs the Accessibility permission (@mcouzinet, #7).
+
 ### Changed
 
 - **Claude limits: one row per account.** When Claude Code runs on several claude.ai accounts at
@@ -34,14 +45,6 @@ tagged `vX.Y.Z`.
   breakdown line are no longer drawn, and the account picker is gone: every account is shown.
   With a single account the tile reads as before.
 
-- **A window that lands on the Edge comes back.** Another application could place a window on the
-  Edge display, where the kiosk covers it: the window was focused, it took the keyboard, and it
-  was invisible, with nothing to click to get it back. Safari or the Finder restoring a frame
-  saved before the Edge was plugged in is enough to fall into it. The helper now moves any such
-  window back onto the display you work on, within two seconds, under the same switch that keeps
-  the mouse out. That switch is called *Edge fence* now, since it fences more than the pointer
-  (@mcouzinet, #7).
-
 ### Fixed
 
 - **Claude sessions: "cannot find its window" stays readable.** The message a card shows when
@@ -50,8 +53,9 @@ tagged `vX.Y.Z`.
   that moved, so a cursor warped there by an application, or left behind by a display being
   rearranged, simply stayed: the next click or scroll went to the dashboard instead of the window
   you were looking at. The fence now also checks where the pointer really is, five times a
-  second, and pushes it back. That half works even without the Accessibility grant, since moving
-  the cursor needs no permission (@mcouzinet, #9).
+  second, and pushes it back onto a display you can see, while leaving it alone during a touch on
+  the panel. That half works even without the Accessibility permission, since moving the cursor
+  needs none (@mcouzinet, #9).
 
 ## 0.5.1 — 2026-11-18
 
