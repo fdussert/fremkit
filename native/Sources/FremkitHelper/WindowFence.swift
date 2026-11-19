@@ -133,6 +133,9 @@ final class WindowFence {
         var value: CFTypeRef?
         guard AXUIElementCopyAttributeValue(app, kAXWindowsAttribute as CFString, &value) == .success,
               let windows = value as? [AXUIElement] else { return }
+        // The timeout belongs to the element it is set on: the window elements copied from the
+        // application do not inherit it, and would wait the system's default of several seconds.
+        for window in windows { AXUIElementSetMessagingTimeout(window, Self.messagingTimeout) }
 
         // The window list and the Accessibility API name the same window in two ways that have no
         // identifier in common, so it is matched on its frame, and, if it moved in between, on
