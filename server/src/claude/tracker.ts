@@ -428,9 +428,26 @@ export class ClaudeTracker {
       return l.splice(i >= 0 ? i : 0, 1)[0]
     }
     let changed = false
-    // Hook sessions first: they claim a process of their cwd, or disappear when none is left.
+    // Hook sessions first, and among them the ones whose hook named its own `claude`: that
+    // process is theirs wherever the session has gone since. `claude` stays in the folder it was
+    // started from while the session's cwd follows every `cd`, so matching those by folder lost
+    // a session — and its pin — at the first scan after it stepped into a subfolder. When two
+    // sessions name one process (a `/clear` whose SessionEnd never came), the one heard from
+    // last has it.
+    const owner = new Map<number, ClaudeSession>()
+    for (const s of this.sessions.values()) {
+      const pid = s.discovered ? undefined : s.client?.pid
+      if (pid === undefined || !alive.has(pid)) continue
+      const rival = owner.get(pid)
+      if (!rival || s.lastEventAt > rival.lastEventAt) owner.set(pid, s)
+    }
+    for (const [pid, s] of owner) {
+      take(alive.get(pid)!.cwd, pid)
+      if (s.pid !== pid) { s.pid = pid; changed = true }
+    }
+    // The others guess: they claim a process of their cwd, or disappear when none is left.
     for (const [id, s] of this.sessions) {
-      if (s.discovered) continue
+      if (s.discovered || (s.client?.pid !== undefined && owner.get(s.client.pid) === s)) continue
       const p = take(s.cwd, s.pid)
       if (!p) {
         this.sessions.delete(id); changed = true

@@ -300,6 +300,45 @@ describe('ClaudeTracker', () => {
       tracker.syncProcesses(procs([[9, '/p/other']]))
       expect(tracker.snapshot().sessions.map((x) => x.sessionId)).toEqual(['proc:9'])
     })
+    it('keeps a session that went into a subfolder, on the word of its own hook', () => {
+      // `claude` itself stays in the folder it was started from; the session's cwd follows every
+      // `cd`. A pinned session used to vanish at the next scan after one.
+      const events: { what: string }[] = []
+      const tracker = new ClaudeTracker({ now: () => 1_000_000, onPin: (e) => events.push(e) })
+      tracker.handle({ hook_event_name: 'SessionStart', session_id: 's1', cwd: '/p/a', client: { pid: 7 } })
+      tracker.pin('s1', true)
+      tracker.handle({ hook_event_name: 'PreToolUse', session_id: 's1', cwd: '/p/a/demo/v2', tool_name: 'Bash', client: { pid: 7 } })
+      tracker.syncProcesses(procs([[7, '/p/a']]))
+      const s = tracker.snapshot().sessions
+      // Neither dropped, nor doubled by a placeholder for the process it "left behind".
+      expect(s.map((x) => x.sessionId)).toEqual(['s1'])
+      expect(s[0].pinnedAt).toBe(1_000_000); expect(s[0].pid).toBe(7)
+      expect(events.map((e) => e.what)).toEqual(['pinned'])
+    })
+    it('drops a session whose own process is gone, wherever it had gone', () => {
+      const { tracker } = make()
+      tracker.handle({ hook_event_name: 'SessionStart', session_id: 's1', cwd: '/p/a/demo/v2', client: { pid: 7 } })
+      tracker.syncProcesses(procs([[9, '/p/a']]))
+      expect(tracker.snapshot().sessions.map((x) => x.sessionId)).toEqual(['proc:9'])
+    })
+    it('gives each session of a folder the process its hook named', () => {
+      const { tracker } = make()
+      tracker.handle({ hook_event_name: 'SessionStart', session_id: 's2', cwd: '/p/a', client: { pid: 2 } })
+      tracker.handle({ hook_event_name: 'SessionStart', session_id: 's1', cwd: '/p/a', client: { pid: 1 } })
+      tracker.handle({ hook_event_name: 'SessionStart', session_id: 'old', cwd: '/p/a' }) // a hook that names no process
+      tracker.syncProcesses(procs([[1, '/p/a'], [2, '/p/a'], [3, '/p/a']]))
+      const pids = Object.fromEntries(tracker.snapshot().sessions.map((x) => [x.sessionId, x.pid]))
+      expect(pids).toEqual({ s1: 1, s2: 2, old: 3 })
+    })
+    it('lets the session heard from last keep a process two of them name', () => {
+      // A `/clear` whose SessionEnd never arrived: the old id still names the pid the new one has.
+      const { tracker, tick } = make()
+      tracker.handle({ hook_event_name: 'SessionStart', session_id: 'before', cwd: '/p/a', client: { pid: 5 } })
+      tick(1000)
+      tracker.handle({ hook_event_name: 'SessionStart', session_id: 'after', cwd: '/p/a', client: { pid: 5 } })
+      tracker.syncProcesses(procs([[5, '/p/a']]))
+      expect(tracker.snapshot().sessions.map((x) => x.sessionId)).toEqual(['after'])
+    })
     it('dismiss ignores discovered sessions', () => {
       const { tracker } = make()
       tracker.syncProcesses(procs([[1, '/p/a']]))

@@ -25,6 +25,11 @@ tagged `vX.Y.Z`.
   A pairing made or first opened with 1.0.1 now goes with the installation; updating the app
   keeps it. One made with 1.0 and never opened with 1.0.1 still comes back once after a
   reinstall: **Forget this Mac** removes it.
+- **Claude sessions: a session keeps its card, and its pin, when it works in a subfolder.** A
+  session whose commands had moved into another folder was taken for closed at the next check: its
+  card came back a moment later as a new one, unpinned, beside a nameless card for the same
+  terminal. A session is now followed by its own process, wherever it has gone; two sessions
+  started in the same folder no longer swap processes either.
 
 ## 0.5.2 — 2026-11-19
 
