@@ -129,7 +129,7 @@ export function demoConfig(locale: 'fr' | 'en' = 'en'): Config {
     // A file next to the config, never the keychain: a demo has nothing to keep secret.
     secrets: { backend: 'file' },
     locale,
-    privacy: { claudeAccountUsage: true, claudeAccountDir: 'auto', showAccountEmail: false, codexAccount: true, codexHistorySources: ['cli', 'vscode', 'appServer'], macmonTemperature: false },
+    privacy: { claudeAccountUsage: true, claudeAccountDir: 'auto', claudeAccountNames: {}, showAccountEmail: false, codexAccount: true, codexHistorySources: ['cli', 'vscode', 'appServer'], macmonTemperature: false },
     marketplace: { installed: {} },
     labs: {},
     widgets,
