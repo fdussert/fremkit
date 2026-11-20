@@ -17,6 +17,9 @@ tagged `vX.Y.Z`.
 - **iPad app 1.0.1: Forget this Mac.** The "Can't reach the Mac" screen has a **Forget this Mac**
   button, which asks first. An iPad paired with a Mac that is not coming back no longer stays on
   that screen for good: forget it, then pair with another.
+- **Android app: Forget this Mac on the "Can't reach the Mac" screen.** The app could already
+  forget its Mac, but from its settings, which that screen only opens with a long press on the
+  Mac's name. The button is now on the screen itself and asks first, as on the iPad.
 
 ### Fixed
 

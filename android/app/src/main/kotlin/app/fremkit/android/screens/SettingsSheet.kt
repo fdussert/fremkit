@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -108,20 +107,13 @@ fun SettingsSheet(info: SettingsInfo, forget: () -> Unit, close: () -> Unit) {
     }
 
     if (confirmForget) {
-        AlertDialog(
-            onDismissRequest = { confirmForget = false },
-            title = { Text(stringResource(R.string.settings_forget_title)) },
-            text = { Text(stringResource(R.string.settings_forget_body)) },
-            confirmButton = {
-                TextButton(onClick = {
-                    confirmForget = false
-                    close()
-                    forget()
-                }) { Text(stringResource(R.string.settings_forget_confirm)) }
+        ForgetDialog(
+            confirm = {
+                confirmForget = false
+                close()
+                forget()
             },
-            dismissButton = {
-                TextButton(onClick = { confirmForget = false }) { Text(stringResource(R.string.pairing_cancel)) }
-            },
+            dismiss = { confirmForget = false },
         )
     }
 }

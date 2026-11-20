@@ -109,8 +109,9 @@ closes the listener and the iPads show that the Mac is unreachable until it is b
 - **The app says it cannot reach the Mac.** The Mac is asleep, pairing is switched off, or the
   Local Network permission was refused (above). The app retries by itself. If that Mac is not
   coming back (sold, erased, Fremkit removed from it), tap **Forget this Mac** on that screen
-  (iPad app 1.0.1 or later) and pair with another; scanning another Mac's QR code with the Camera
-  app works too, and asks before replacing the pairing.
+  (iPad app 1.0.1 or later; an Android app that does not show the button yet has it in its
+  settings, a long press on the Mac's name away) and pair with another; scanning another Mac's QR
+  code with the Camera app works too, and asks before replacing the pairing.
 - **The app says "This Mac's key has changed".** The certificate was reset in Fremkit (or another
   machine answers at the Mac's address). Tap **Pair again** and pair as the first time; if you
   did not reset it, check that the iPad is on the right network.
@@ -213,7 +214,8 @@ app never changes the system's own setting, and needs no permission for this.
 **The app's settings** (pin the app, forget the Mac, the versions of the app and of Fremkit on
 the Mac) open from the **⋮** button of the welcome screen, a long press on the Mac's name on the
 unreachable screen, or, over the dashboard, the page's own menu: the gesture that opens the admin
-on the Edge (hold or double-tap a page button in the bar) shows **App settings** instead.
+on the Edge (hold or double-tap a page button in the bar) shows **App settings** instead. The
+unreachable screen also has **Forget this Mac** as a button of its own, which asks first.
 
 **Screen pinning** keeps the tablet on Fremkit, for a tablet on a wall or a desk that does nothing
 else. It is Android's own feature and is off on most tablets: turn it on first in the system

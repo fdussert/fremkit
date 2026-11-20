@@ -143,9 +143,14 @@ fun Root(
                     is AppState.Dashboard -> mac?.let {
                         DashboardScreen(s.host, it, model, hygiene, brightness, openSettings = { settingsOpen = true })
                     }
-                    is AppState.Unreachable -> UnreachableScreen(s.name, isConnecting, nudge, openSettings = { settingsOpen = true }) {
-                        model.reconnect()
-                    }
+                    is AppState.Unreachable -> UnreachableScreen(
+                        s.name,
+                        isConnecting,
+                        nudge,
+                        openSettings = { settingsOpen = true },
+                        forget = model::forget,
+                        retry = { model.reconnect() },
+                    )
                     is AppState.KeyChanged -> KeyChangedScreen(
                         s.name,
                         isConnecting,
