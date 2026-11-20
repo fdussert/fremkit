@@ -30,6 +30,11 @@ tagged `vX.Y.Z`.
   card came back a moment later as a new one, unpinned, beside a nameless card for the same
   terminal. A session is now followed by its own process, wherever it has gone; two sessions
   started in the same folder no longer swap processes either.
+- **Fremkit Companion 0.1.1: the popup says why a pairing request was not taken.** Fremkit takes
+  a request only while the dashboard or **Settings → Devices** is open to show its code, and the
+  extension called that refusal *Another pairing request is already waiting on the Edge*. It now
+  says *Nobody would see the code: open the dashboard on the Edge, or Settings → Devices in
+  Fremkit, then try again.* The Chrome Web Store updates the extension by itself.
 
 ## 0.5.2 — 2026-11-19
 
