@@ -195,6 +195,26 @@ describe('demo mode', () => {
     expect(probe.results).toHaveLength(4)
   })
 
+  it('stops and starts its fake containers, and polls the list again at once', async () => {
+    const config = ConfigSchema.parse(demoConfig())
+    const refreshed: string[] = []
+    const docker = createDemoProviders({ config: () => config, refresh: (channel) => { refreshed.push(channel) } })
+      .find((p) => p.channel === 'docker-local')!
+    type Snapshot = { data: { containers: { id: string; state: string; stats: unknown }[]; actions: string[] } }
+    const states = async (): Promise<string[]> => ((await docker.poll!()) as Snapshot).data.containers.map((c) => c.state)
+    const first = (await docker.poll!()) as Snapshot
+    expect(first.data.actions).toEqual(['start', 'stop', 'restart'])
+    expect(await states()).toEqual(['running', 'running', 'running', 'exited'])
+    const [web, , , worker] = first.data.containers
+    expect(await docker.commands!.stop({ id: web.id, instanceId: 'docker-1' })).toEqual({ ok: true })
+    expect(await docker.commands!.start({ id: worker.id })).toEqual({ ok: true })
+    expect(await states()).toEqual(['exited', 'running', 'running', 'running'])
+    expect(await docker.commands!.restart({ id: web.id })).toEqual({ ok: true })
+    expect(await states()).toEqual(['running', 'running', 'running', 'running'])
+    expect(await docker.commands!.stop({ id: 'ffff' })).toEqual({ ok: false, error: 'unknown-container' })
+    expect(refreshed).toEqual(['docker-local', 'docker-local', 'docker-local'])
+  })
+
   it("acts out Fremdev's server list behind its switch, and its commands change nothing", async () => {
     const off = ConfigSchema.parse(demoConfig())
     const offServers = createDemoProviders({ config: () => off }).find((p) => p.channel === 'companion:servers')!

@@ -69,6 +69,7 @@ import { bambuRoutes } from './bambu/routes.js'
 import { createShortcutsProvider } from './providers/shortcuts.js'
 import { createServiceStatusProvider } from './providers/service-status.js'
 import { createSystemProvider } from './providers/system.js'
+import { createDockerProvider, DOCKER_CHANNEL } from './providers/local-operations.js'
 import { createDiskMapProvider } from './providers/disk-map.js'
 import { GifStore } from './gifs/store.js'
 import { gifRoutes } from './gifs/routes.js'
@@ -323,6 +324,8 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   /** Every real provider: the Mac, the accounts, the helper's reports. Never called in demo mode. */
   function registerRealProviders(): void {
     for (const p of opts.providers ?? []) registry.register(p)
+    // An action changes the list: poll at once rather than at the next tick.
+    registry.register(createDockerProvider({ refresh: () => registry.refresh(DOCKER_CHANNEL) }))
     // Consent lives in the config store, so this provider is registered beside the Claude providers.
     registry.register(createSystemProvider({ macmonTemperatureEnabled: () => store.get().privacy.macmonTemperature }))
     registry.register(createClaudeSessionsProvider(tracker))
@@ -377,7 +380,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   if (demo) {
     // The demo has its own `brightness` channel; the service above still serves the routes and
     // the paired devices.
-    for (const p of createDemoProviders({ config: () => store.get(), instances })) registry.register(p)
+    for (const p of createDemoProviders({ config: () => store.get(), instances, refresh: (channel) => registry.refresh(channel) })) registry.register(p)
   } else {
     registerRealProviders()
   }

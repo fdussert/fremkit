@@ -75,6 +75,105 @@ describe('Docker observation', () => {
   })
 })
 
+describe('Docker actions', () => {
+  const SOCKET = 'unix:///path/to/docker.sock'
+  const local = { loopback: true, paired: false }
+  /** A provider that has listed the container `abcd`, with every docker call it makes recorded. */
+  async function listed(over: { act?: (args: string[]) => Promise<string>; context?: () => string } = {}) {
+    const calls: string[][] = []
+    const timeouts: (number | undefined)[] = []
+    let refreshed = 0
+    const provider = createDockerProvider({
+      refresh: () => { refreshed++ },
+      run: async (args, timeoutMs) => {
+        calls.push(args)
+        timeouts.push(timeoutMs)
+        if (args[0] === 'context') return over.context?.() ?? SOCKET
+        if (args.includes('ps')) return container()
+        if (args.includes('stats')) return stats
+        return over.act ? over.act(args) : ''
+      },
+    })
+    await provider.poll!()
+    calls.length = 0
+    timeouts.length = 0
+    return { provider, calls, timeouts, refreshed: () => refreshed }
+  }
+  const acted = (calls: string[][]): string[][] => calls.filter((args) => args[0] !== 'context')
+
+  it('says which actions it takes, so a widget shows a button only where one works', async () => {
+    const { provider } = await listed()
+    expect((await provider.poll!()).data?.actions).toEqual(['start', 'stop', 'restart'])
+    expect(Object.keys(provider.commands!).sort()).toEqual(['restart', 'start', 'stop'])
+  })
+
+  it('starts, stops and restarts a listed container on the local socket it checked', async () => {
+    for (const verb of ['start', 'stop', 'restart']) {
+      const { provider, calls, timeouts, refreshed } = await listed()
+      // The host stamps `instanceId` on every widget command: a payload carrying it is not refused.
+      expect(await provider.commands![verb]({ id: 'abcd', instanceId: 'docker-1' }, local)).toEqual({ ok: true })
+      expect(acted(calls)).toEqual([['--host', SOCKET, verb, 'abcd']])
+      // `docker stop` waits for the container's own grace period: longer than a query is given.
+      expect(timeouts.at(-1)).toBeGreaterThanOrEqual(30000)
+      expect(refreshed()).toBe(1)
+    }
+  })
+
+  it('acts for a paired device as it does for the Mac, and for nobody else', async () => {
+    const { provider, calls } = await listed()
+    expect(await provider.commands!.stop({ id: 'abcd' }, { loopback: false, paired: true, deviceId: 'd1' })).toEqual({ ok: true })
+    calls.length = 0
+    expect(await provider.commands!.stop({ id: 'abcd' }, { loopback: false, paired: false })).toEqual({ ok: false, error: 'local-only' })
+    expect(await provider.commands!.stop({ id: 'abcd' })).toEqual({ ok: false, error: 'local-only' })
+    expect(calls).toEqual([])
+  })
+
+  it('takes its target from the containers it listed, and from nothing else', async () => {
+    const { provider, calls } = await listed()
+    expect(await provider.commands!.stop({ id: 'beef' }, local)).toEqual({ ok: false, error: 'unknown-container' })
+    for (const payload of [{ id: '--all' }, { id: 'abcd; rm -rf /' }, { id: 'example' }, { id: ['abcd'] }, {}, null, 'abcd']) {
+      expect(await provider.commands!.stop(payload, local), JSON.stringify(payload)).toEqual({ ok: false, error: 'invalid' })
+    }
+    expect(calls).toEqual([])
+    // Before the first listing there is no list at all: nothing is a target.
+    const unlisted = createDockerProvider({ run: async (args) => { calls.push(args); return '' } })
+    expect(await unlisted.commands!.start({ id: 'abcd' }, local)).toEqual({ ok: false, error: 'unknown-container' })
+    expect(calls).toEqual([])
+  })
+
+  it('reads the context again before acting, and leaves a remote one alone', async () => {
+    let context = SOCKET
+    const { provider, calls } = await listed({ context: () => context })
+    context = 'tcp://192.0.2.10:2375'
+    expect(await provider.commands!.restart({ id: 'abcd' }, local)).toEqual({ ok: false, error: 'remote-context' })
+    expect(acted(calls)).toEqual([])
+  })
+
+  it('runs one action at a time on a container', async () => {
+    // Only the first action is held; the ones after it answer at once.
+    let release: (() => void) | null = null
+    const { provider, calls } = await listed({
+      act: () => release ? Promise.resolve('') : new Promise((resolve) => { release = () => resolve('') }),
+    })
+    const first = provider.commands!.stop({ id: 'abcd' }, local)
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(await provider.commands!.start({ id: 'abcd' }, local)).toEqual({ ok: false, error: 'busy' })
+    release!()
+    expect(await first).toEqual({ ok: true })
+    expect(acted(calls)).toEqual([['--host', SOCKET, 'stop', 'abcd']])
+    expect(await provider.commands!.start({ id: 'abcd' }, local)).toEqual({ ok: true })
+  })
+
+  it('reports a failure with a code, never with what docker said, and still asks for a fresh list', async () => {
+    const failing = await listed({ act: async () => { throw new Error('PRIVATE') } })
+    const result = await failing.provider.commands!.stop({ id: 'abcd' }, local)
+    expect(result).toEqual({ ok: false, error: 'failed' })
+    expect(failing.refreshed()).toBe(1)
+    const missing = await listed({ act: async () => { throw new Error('unavailable') } })
+    expect(await missing.provider.commands!.stop({ id: 'abcd' }, local)).toEqual({ ok: false, error: 'unavailable' })
+  })
+})
+
 describe('Local model observation', () => {
   const modelResponse = async () => new Response(JSON.stringify({ models: [{ name: 'example-model', size: 100, size_vram: 80, context_length: 4096 }] }))
 

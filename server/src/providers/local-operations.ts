@@ -4,7 +4,7 @@ import { homedir } from 'node:os'
 import { basename, isAbsolute, join } from 'node:path'
 import si from 'systeminformation'
 import { z } from 'zod'
-import type { Provider } from './types.js'
+import { isTrusted, type CommandContext, type Provider } from './types.js'
 
 export const localEnv = (env: NodeJS.ProcessEnv): NodeJS.ProcessEnv => {
   const safe: NodeJS.ProcessEnv = {}
@@ -59,26 +59,84 @@ export async function resolveDockerBinary(canExecute: (path: string) => Promise<
   throw new Error('unavailable')
 }
 
-const dockerRun = async (args: string[]): Promise<string> => {
+const QUERY_TIMEOUT_MS = 10000
+/**
+ * `docker stop` waits for the container to leave before it kills it — ten seconds unless the
+ * container asks for more — and a restart starts it again after that.
+ */
+const ACTION_TIMEOUT_MS = 60000
+
+const dockerRun = async (args: string[], timeoutMs = QUERY_TIMEOUT_MS): Promise<string> => {
   const binary = await resolveDockerBinary()
   return new Promise((resolve, reject) => execFile(binary, args, {
-    env: localEnv(process.env), timeout: 10000, maxBuffer: 1048576, shell: false,
+    env: localEnv(process.env), timeout: timeoutMs, maxBuffer: 1048576, shell: false,
   }, (error, stdout) => error ? reject(new Error('offline')) : resolve(stdout)))
 }
 
-/** Publish local Docker state only, with nullable per-container stats. */
-export function createDockerProvider(opts: { run?: (args: string[]) => Promise<string> } = {}): Provider<Part<{ containers: DockerContainer[] }>> {
+export const DOCKER_CHANNEL = 'docker-local'
+/** What the channel does to a container. Nothing here removes one, kills one or runs anything in one. */
+export const DOCKER_ACTIONS = ['start', 'stop', 'restart'] as const
+type DockerAction = (typeof DOCKER_ACTIONS)[number]
+type DockerSnapshot = Part<{ containers: DockerContainer[]; actions: readonly DockerAction[] }>
+type ActionResult = { ok: true } | { ok: false; error: 'local-only' | 'invalid' | 'unknown-container' | 'busy' | 'remote-context' | 'unavailable' | 'failed' }
+// Not `.strict()`: the host stamps `instanceId` on every command a widget sends.
+const ActionPayload = z.object({ id: identifier })
+
+/** The selected context's endpoint when it is a socket on this Mac, null for TCP, SSH or anything else. */
+async function localSocket(run: (args: string[]) => Promise<string>): Promise<string | null> {
+  const host = (await run(['context', 'inspect', '--format', '{{.Endpoints.docker.Host}}'])).trim()
+  return host.length <= 4096 && /^unix:\/\/\/[^\0]+$/.test(host) ? host : null
+}
+
+/**
+ * Publish local Docker state, with nullable per-container stats, and start, stop or restart a
+ * container it listed.
+ *
+ * `refresh` asks for a poll now: an action changes what the list says, and the next tick is up to
+ * ten seconds away.
+ */
+export function createDockerProvider(opts: { run?: (args: string[], timeoutMs?: number) => Promise<string>; refresh?: () => void } = {}): Provider<DockerSnapshot> {
   const run = opts.run ?? dockerRun
-  let last = empty<{ containers: DockerContainer[] }>()
+  let last: DockerSnapshot = empty()
   let generation = 0
+  /** Containers with an action under way: a second one would race the first. */
+  const busy = new Set<string>()
+
+  const act = (verb: DockerAction) => async (payload: unknown, ctx?: CommandContext): Promise<ActionResult> => {
+    if (!isTrusted(ctx)) return { ok: false, error: 'local-only' }
+    const parsed = ActionPayload.safeParse(payload)
+    if (!parsed.success) return { ok: false, error: 'invalid' }
+    // The closed list: a container this provider listed, named by the id it published. What goes
+    // to docker is the list's own value, never the payload's.
+    const target = last.data?.containers.find((container) => container.id === parsed.data.id)
+    if (!target) return { ok: false, error: 'unknown-container' }
+    if (busy.has(target.id)) return { ok: false, error: 'busy' }
+    busy.add(target.id)
+    try {
+      // Read again rather than remembered from the last poll: the context can have been switched
+      // to another machine since, and a container there is not ours to stop.
+      const host = await localSocket(run)
+      if (!host) return { ok: false, error: 'remote-context' }
+      await run(['--host', host, verb, target.id], ACTION_TIMEOUT_MS)
+      return { ok: true }
+    } catch (error) {
+      // A code, never docker's own words: they quote the command line and the daemon's paths.
+      return { ok: false, error: error instanceof Error && error.message === 'unavailable' ? 'unavailable' : 'failed' }
+    } finally {
+      busy.delete(target.id)
+      opts.refresh?.()
+    }
+  }
+
   return {
-    channel: 'docker-local', intervalMs: 10000,
+    channel: DOCKER_CHANNEL, intervalMs: 10000,
     stop() { generation++ },
+    commands: { start: act('start'), stop: act('stop'), restart: act('restart') },
     async poll() {
       const epoch = generation
       try {
-        const host = (await run(['context', 'inspect', '--format', '{{.Endpoints.docker.Host}}'])).trim()
-        if (host.length > 4096 || !/^unix:\/\/\/[^\0]+$/.test(host)) {
+        const host = await localSocket(run)
+        if (!host) {
           if (epoch === generation) last = failed(empty(), 'remote-context')
           return last
         }
@@ -99,7 +157,7 @@ export function createDockerProvider(opts: { run?: (args: string[]) => Promise<s
             id: row.ID, name: row.Names, image: row.Image, state: row.State, status: row.Status,
             stats: stat ? { cpu: stat.CPUPerc, memory: stat.MemUsage, memoryPercent: stat.MemPerc, pids: stat.PIDs, netIO: stat.NetIO, blockIO: stat.BlockIO } : null,
           }
-        }) }
+        }), actions: DOCKER_ACTIONS }
         if (epoch === generation) last = fresh(data)
       } catch (error) {
         const reason = error instanceof z.ZodError || error instanceof SyntaxError ? 'invalid'

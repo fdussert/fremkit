@@ -14,6 +14,11 @@ tagged `vX.Y.Z`.
 
 ### Added
 
+- **Docker: a widget can start, stop and restart a container.** The `docker-local` channel, which
+  only listed containers until now, takes three commands. They act on a container of the list and
+  on the Docker of this Mac only; nothing can be removed, killed or run inside a container. A
+  widget has to ask for these commands and you have to accept them: the Docker containers widget
+  you have installed stays read-only until a version of it does.
 - **iPad app 1.0.1: Forget this Mac.** The "Can't reach the Mac" screen has a **Forget this Mac**
   button, which asks first. An iPad paired with a Mac that is not coming back no longer stays on
   that screen for good: forget it, then pair with another.
