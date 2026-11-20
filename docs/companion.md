@@ -562,7 +562,10 @@ the light of the Fremdev tab open on that port, if any.
   (`.app`, `.sdPlugin`, `.bundle`, `.plugin`), or whose working folder is under `~/Library`, never
   counts as a dev server, runtimes included (Stream Deck's plugins, an editor's helpers). The one
   exception is the `Python.app` inside a `Python.framework`'s `Resources` folder, through which
-  Homebrew's, python.org's and the Command Line Tools' `python3` all run.
+  Homebrew's, python.org's and the Command Line Tools' `python3` all run. Nor do a build tool's
+  daemons, which listen on loopback ports of their own between builds: Gradle's (its main class, or
+  any program working under `~/.gradle`) and the Kotlin compiler's. A server Gradle starts
+  (`bootRun`) is its own `java` and is listed as usual.
 - *The project* is the `name` in the `package.json` of the process's folder (read when it is at most
   64 KB), else the folder's name. Under `~/Documents`, `~/Desktop`, `~/Downloads` and iCloud Drive
   the file is not read and the folder's name is used, so that polling never makes macOS ask for

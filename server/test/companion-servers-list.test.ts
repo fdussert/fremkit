@@ -79,6 +79,20 @@ describe('isDevRuntime', () => {
   it.each(['node', 'bun', 'deno', 'python3', 'python3.12', 'ruby', 'php', 'java', 'dotnet', 'go'])('%s', (n) => {
     expect(isDevRuntime(proc(1, 0, `/opt/bin/${n}`, n), null, '/Users/someone')).toBe(true)
   })
+  it("rejects a build tool's daemon: its ports are its own, not a server to open", () => {
+    const java = '/Users/someone/Library/Java/JavaVirtualMachines/jdk-17/Contents/Home/bin/java'
+    const gradle = proc(1, 0, java, `${java} -Xmx2g -cp /x/gradle-daemon-main-9.7.1.jar org.gradle.launcher.daemon.bootstrap.GradleDaemon 9.7.1`)
+    expect(isDevRuntime(gradle, '/Users/someone/.gradle/daemon/9.7.1', '/Users/someone')).toBe(false)
+    // Recognised by its main class too, wherever it was started from.
+    expect(isDevRuntime(gradle, '/Users/someone/code/app', '/Users/someone')).toBe(false)
+    const kotlin = proc(2, 1, java, `${java} -cp /x/kotlin-daemon.jar org.jetbrains.kotlin.daemon.KotlinCompileDaemon --daemon-runFilesPath /tmp/k`)
+    expect(isDevRuntime(kotlin, '/Users/someone/code/app', '/Users/someone')).toBe(false)
+    // Any program working in ~/.gradle is Gradle's own.
+    expect(isDevRuntime(proc(3, 0, java, java), '/Users/someone/.gradle', '/Users/someone')).toBe(false)
+    // A server Gradle runs (bootRun) is still one, and so is a project folder named like it.
+    expect(isDevRuntime(proc(4, 1, java, `${java} -cp build/classes com.example.Application`), '/Users/someone/code/app', '/Users/someone')).toBe(true)
+    expect(isDevRuntime(proc(5, 0, java, java), '/Users/someone/code/.gradle-demo', '/Users/someone')).toBe(true)
+  })
   it('rejects a system app', () => {
     const p = proc(1, 0, '/System/Library/CoreServices/ControlCenter.app/Contents/MacOS/ControlCenter')
     expect(isDevRuntime(p, '/', '/Users/someone')).toBe(false)
