@@ -1,6 +1,6 @@
 # Local Docker and model observations
 
-Fremkit publishes two read-only channels only while a dashboard widget subscribes. Their widgets live in the registry. Neither channel starts a container or a model.
+Fremkit publishes two channels only while a dashboard widget subscribes. Their widgets live in the registry. `local-models` is read-only and never starts a model; `docker-local` can start, stop and restart a container it listed, for a widget that was granted its commands, and does nothing else to one.
 
 ## Docker
 
@@ -8,7 +8,20 @@ Fremkit publishes two read-only channels only while a dashboard widget subscribe
 
 `data.containers` contains at most 200 records. Each record has `id`, `name`, `image`, `state`, `status` and `stats`. The optional `stats` object contains Docker's `cpu`, `memory`, `memoryPercent`, `pids`, `netIO` and `blockIO` strings. It is null for stopped containers and whenever stats cannot be collected. A container that stops after listing does not blank the rest of the snapshot. No commands, environment, labels, mounts or ports are published.
 
-The helper needs access to the local Docker socket. This channel cannot start, stop, remove or execute a container.
+`data.actions` lists what the channel can do to a container: `["start", "stop", "restart"]`. A release older than these commands publishes no `actions` at all, so a widget shows a button only for a verb it finds there.
+
+### Commands
+
+`start`, `stop` and `restart` each take `{ id }`, the `id` of a container from the last snapshot, and answer `{ ok: true }` or `{ ok: false, error }`. A widget sends them with `Fremkit.sendCommand('docker-local', 'stop', { id })` and needs `docker-local` in its manifest's `commands`, which the person installing it is asked to accept.
+
+- The target comes from the list and from nothing else: an id the channel did not publish answers `unknown-container`, anything that is not an identifier answers `invalid`. A name is not accepted.
+- The context is read again before each action. A context that is no longer a local Unix socket answers `remote-context` and nothing is run.
+- One action runs at a time on a container; a second one meanwhile answers `busy`.
+- A caller that is neither this Mac nor a paired device answers `local-only`.
+- A missing executable answers `unavailable`; any other failure answers `failed`, with no text from Docker. `docker stop` is given 60 seconds, since it waits for the container's own grace period.
+- The list is polled again as soon as an action ends, whatever its outcome.
+
+The helper needs access to the local Docker socket. This channel cannot remove, kill, pause or create a container, and cannot run anything inside one.
 
 ## Local models
 

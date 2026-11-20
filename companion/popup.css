@@ -2,7 +2,7 @@
 :root {
   --bg: #0b0d10; --surface: #14171c; --surface-2: #1a1e24; --surface-3: #252a32;
   --border: #22272e; --text: #e6e8eb; --muted: #8b93a0; --dim: #5f6771;
-  --accent: #d9b36a; --accent-hi: #ecd29a; --accent-2: #9a7540; --ok: #2fb36b; --danger: #d9463f;
+  --accent: #d9b36a; --accent-hi: #ecd29a; --accent-2: #9a7540; --ok: #2fb36b; --warn: #e08a2c; --danger: #d9463f;
 }
 * { box-sizing: border-box; }
 body { margin: 0; width: 340px; background: var(--bg); color: var(--text); font: 13px/1.4 -apple-system, BlinkMacSystemFont, system-ui, sans-serif; }
@@ -13,8 +13,8 @@ header { display: flex; align-items: center; gap: 8px; padding: 12px 14px; borde
 .pill.ok i { background: var(--ok); } .pill.ko i { background: var(--danger); } .pill.wait i { background: var(--accent); }
 main { padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
 .module { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
-.module.soon { flex-direction: row; align-items: center; gap: 10px; padding: 9px 12px; opacity: .55; }
 .mhead { display: flex; gap: 10px; align-items: center; }
+.grow { flex: 1; min-width: 0; }
 .mname { font-weight: 600; font-size: 14px; }
 .mdesc { color: var(--muted); font-size: 12px; }
 .micon { flex: none; width: 32px; height: 32px; border-radius: 9px; background: var(--surface-3) center/18px no-repeat; }
@@ -38,7 +38,30 @@ button.ghost:hover { border-color: var(--muted); }
 .hint { color: var(--dim); font-size: 11px; text-align: center; }
 kbd { font: 11px ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--surface-2); border: 1px solid var(--border); border-radius: 4px; padding: 0 4px; color: var(--muted); }
 .error { color: var(--danger); font-size: 12px; }
-.soon-title { margin: 6px 2px 0; color: var(--dim); font-size: 11px; text-transform: uppercase; letter-spacing: .08em; }
+.micon.code.on { background-color: var(--accent); background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%230b0d10' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m8 7-5 5 5 5M16 7l5 5-5 5'/%3E%3C/svg%3E"); }
+/* Fremdev's on/off switch: a button with role=switch, so the click that asks for permissions is the user's. */
+button.switch { flex: none; position: relative; width: 40px; height: 24px; padding: 0; border-radius: 99px; background: var(--surface-3); }
+button.switch::after { content: ''; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%; background: var(--muted); transition: transform .15s; }
+button.switch[aria-checked="true"] { background: var(--accent); }
+button.switch[aria-checked="true"]::after { transform: translateX(16px); background: var(--bg); }
+button.switch:disabled { opacity: .4; }
+button.switch:focus-visible { outline: 2px solid var(--accent-hi); outline-offset: 2px; }
+/* Fremdev's dev tabs: the widget's light, the title, and a Copy report per tab. */
+.devtabs { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.devtabs li { display: flex; align-items: center; gap: 8px; background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 6px 6px 6px 10px; min-width: 0; flex-wrap: wrap; }
+.devtabs .light { flex: none; width: 9px; height: 9px; border-radius: 50%; background: var(--ok); }
+.devtabs .light.red { background: var(--danger); } .devtabs .light.orange { background: var(--warn); }
+.devtabs .light.seen { background: transparent; box-shadow: inset 0 0 0 2px var(--danger); }
+.devtabs .light.orange.seen { box-shadow: inset 0 0 0 2px var(--warn); }
+.devtabs .dtitle { flex: 1 1 110px; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.devtabs button[hidden] { display: none; }
+/* With two buttons the row can wrap them under the title, right-aligned. */
+.devtabs button { margin-left: auto; }
+.devtabs button { flex: none; height: 30px; padding: 0 10px; font-size: 12px; }
+.devtabs button.done { color: var(--ok); border-color: var(--ok); }
+.devtabs button.failed { color: var(--danger); border-color: var(--danger); }
+.check { display: flex; align-items: center; gap: 6px; color: var(--muted); cursor: pointer; }
+.check input { margin: 0; accent-color: var(--accent); }
 footer { display: flex; justify-content: space-between; padding: 10px 14px 12px; border-top: 1px solid var(--border); }
 footer a { color: var(--muted); text-decoration: none; font-size: 12px; } footer a:hover { color: var(--text); }
 .lead { margin: 0; }

@@ -6,12 +6,18 @@ import {
   COMPANION_EXTENSION_ID,
   shortExtensionId,
   ControlSchema,
+  DevTabSchema,
   EXTENSION_ORIGIN_RE,
+  FREMDEV_BUILD_MODULE,
+  FREMDEV_FEATURES,
+  FREMDEV_PERF_MODULE,
+  FREMDEV_SLOW_MODULE,
   MAX_MESSAGE_BYTES,
   MAX_SDP,
   MetaSchema,
   PROTOCOL,
   isLocalSdp,
+  parseAfterHello,
   parseExtensionMessage,
 } from '../src/companion/protocol.js'
 
@@ -194,9 +200,248 @@ describe('parseExtensionMessage', () => {
     expect(parse({ type: 'hello', token, installId, protocol: 3 })).toMatchObject({ protocol: 3 })
   })
 
-  it('lets a hello carry keys it does not know, and strips them, so a newer extension still connects', () => {
-    expect(parse({ type: 'hello', token, installId, protocol: PROTOCOL, modules: ['fremplay'] }))
-      .toEqual({ type: 'hello', token, installId, protocol: PROTOCOL })
+  it('keeps a hello\'s modules list and still strips unknown keys', () => {
+    const modules = ['fremplay', 'fremdev', 'fremfuture']
+    expect(parse({ type: 'hello', token, installId, protocol: PROTOCOL, modules, foo: 1 }))
+      .toEqual({ type: 'hello', token, installId, protocol: PROTOCOL, modules })
+  })
+
+  it('keeps a hello with the cockpit\'s nine modules, and up to sixteen', () => {
+    const nine = ['fremplay', 'fremdev', 'fremdev.report', 'fremdev.build', 'fremdev.open', 'fremdev.reload', 'fremdev.slow', 'fremdev.perf', 'fremdev.shot']
+    expect(parse({ type: 'hello', token, installId, protocol: PROTOCOL, modules: nine })).toEqual({ type: 'hello', token, installId, protocol: PROTOCOL, modules: nine })
+    const sixteen = Array.from({ length: 16 }, (_, i) => `m${i}`)
+    expect(parse({ type: 'modules', modules: sixteen })).toEqual({ type: 'modules', modules: sixteen })
+  })
+
+  it('still reads a hello whose modules it cannot read, as one without modules', () => {
+    // A newer extension's seventeenth module, or a longer name: it connects, just not Fremdev-capable.
+    const seventeen = Array.from({ length: 17 }, (_, i) => `m${i}`)
+    expect(parse({ type: 'hello', token, installId, protocol: PROTOCOL, modules: seventeen })).toEqual({ type: 'hello', token, installId, protocol: PROTOCOL })
+    expect(parse({ type: 'hello', token, installId, protocol: PROTOCOL, modules: ['x'.repeat(33)] })).toEqual({ type: 'hello', token, installId, protocol: PROTOCOL })
+    expect(parse({ type: 'hello', token, installId, protocol: PROTOCOL, modules: 'fremdev' })).toEqual({ type: 'hello', token, installId, protocol: PROTOCOL })
+  })
+
+  it('parses modules and ping', () => {
+    expect(parse({ type: 'modules', modules: ['fremplay', 'fremdev'] })).toEqual({ type: 'modules', modules: ['fremplay', 'fremdev'] })
+    expect(parse({ type: 'ping' })).toEqual({ type: 'ping' })
+    expect(parse({ type: 'modules', modules: Array.from({ length: 17 }, (_, i) => `m${i}`) })).toBeNull()
+    expect(parse({ type: 'modules', modules: ['x'.repeat(33)] })).toBeNull()
+  })
+
+  describe('dev.tabs', () => {
+    const row = (over: Record<string, unknown> = {}) => ({
+      tabId: 1,
+      app: 'My app',
+      host: 'localhost:5173',
+      errors: { total: 3, open: 1, seen: 0, last: { text: 'TypeError: x is undefined', at: 1_760_000_000_000 } },
+      requests: { total: 10, open: 0, seen: 0, last: { path: '/api/items', status: 500, at: 1_760_000_000_000 } },
+      history: [
+        { kind: 'error', id: 3, text: 'TypeError: x is undefined', origin: '/src/app.js:12:5', n: 2, at: 1_760_000_000_000, state: 'open' },
+        { kind: 'request', id: 2, method: 'POST', path: '/api/items', status: 500, n: 1, at: 1_759_999_999_000, state: 'seen' },
+        { kind: 'limited', id: 1, n: 40, at: 1_759_999_998_000, state: 'resolved' },
+      ],
+      devServer: null,
+      inFlight: 0,
+      perf: {},
+      server: 'up',
+      activity: 1_760_000_000_000,
+      ...over,
+    })
+    const tabs = (rows: unknown[]) => parse({ type: 'dev.tabs', tabs: rows })
+
+    it('parses a dev.tabs message with two rows', () => {
+      expect(tabs([row(), row({ tabId: 2 })])?.type).toBe('dev.tabs')
+      expect(tabs([row({ errors: { total: 0, open: 0, seen: 0, last: null }, requests: { total: 0, open: 0, seen: 0, last: null } })])).not.toBeNull()
+      expect(tabs([row({ errors: { total: 3, open: 2, seen: 2, last: null } })])).not.toBeNull()
+    })
+
+    it('refuses 33 tabs, a long error text, an unknown key, open above total, seen above open or missing, and a path with a query', () => {
+      expect(tabs(Array.from({ length: 33 }, (_, i) => row({ tabId: i })))).toBeNull()
+      expect(tabs([row({ errors: { total: 1, open: 1, seen: 0, last: { text: 'x'.repeat(301), at: 1 } } })])).toBeNull()
+      expect(tabs([row({ extra: 1 })])).toBeNull()
+      expect(tabs([row({ errors: { total: 1, open: 2, seen: 0, last: null } })])).toBeNull()
+      expect(tabs([row({ errors: { total: 2, open: 1, seen: 2, last: null } })])).toBeNull()
+      expect(tabs([row({ requests: { total: 1, open: 1, last: null } })])).toBeNull()
+      expect(tabs([row({ requests: { total: 1, open: 0, seen: 0, last: { path: '/a?b=1', status: 200, at: 1 } } })])).toBeNull()
+      expect(tabs([row({ requests: { total: 1, open: 0, seen: 0, last: { path: '/a#b', status: 200, at: 1 } } })])).toBeNull()
+      expect(tabs([row({ requests: { total: 1, open: 0, seen: 0, last: { path: 'a', status: 200, at: 1 } } })])).toBeNull()
+      expect(tabs([row({ requests: { total: 1, open: 0, seen: 0, last: { path: '/a', status: 600, at: 1 } } })])).toBeNull()
+      expect(tabs([row({ host: 'bad host/' })])).toBeNull()
+      expect(tabs([row({ server: 'sideways' })])).toBeNull()
+    })
+
+    it('refuses a bad history: 21 entries, an unknown kind or state, a method outside the list, n of 0, a stack', () => {
+      const entry = { kind: 'error', id: 1, text: 'x', origin: null, n: 1, at: 1, state: 'open' }
+      const request = { kind: 'request', id: 1, method: 'GET', path: '/a', status: 404, n: 1, at: 1, state: 'open' }
+      expect(tabs([row({ history: Array.from({ length: 20 }, () => entry) })])).not.toBeNull()
+      expect(tabs([row({ history: Array.from({ length: 21 }, () => entry) })])).toBeNull()
+      expect(tabs([row({ history: [{ ...entry, kind: 'warning' }] })])).toBeNull()
+      expect(tabs([row({ history: [{ ...entry, state: 'gone' }] })])).toBeNull()
+      expect(tabs([row({ history: [{ ...request, method: 'FOO' }] })])).toBeNull()
+      expect(tabs([row({ history: [{ ...request, method: 'OTHER' }] })])).not.toBeNull()
+      expect(tabs([row({ history: [{ ...request, path: '/a?token=1' }] })])).toBeNull()
+      expect(tabs([row({ history: [{ ...entry, n: 0 }] })])).toBeNull()
+      expect(tabs([row({ history: [{ ...entry, stack: ['f /a.js:1:2'] }] })])).toBeNull()
+      expect(tabs([row({ history: [{ ...entry, text: 'x'.repeat(301) }] })])).toBeNull()
+      expect(tabs([row({ history: [{ kind: 'limited', id: 1, n: 1, at: 1, state: 'open', text: 'x' }] })])).toBeNull()
+    })
+
+    it('takes a build entry with a file or none, and refuses line 0, a long file or an extra key', () => {
+      const build = { kind: 'build', id: 4, text: 'Invalid end tag.', file: '~/app/src/App.vue', line: 12, col: 3, n: 1, at: 1, state: 'open' }
+      expect(tabs([row({ history: [build] })])).not.toBeNull()
+      expect(tabs([row({ history: [{ ...build, file: null, line: null, col: null }] })])).not.toBeNull()
+      expect(tabs([row({ history: [{ ...build, line: 10_000_000, col: 10_000_000 }] })])).not.toBeNull()
+      for (const bad of [
+        { ...build, line: 0 },
+        { ...build, col: 0 },
+        { ...build, line: 10_000_001 },
+        { ...build, line: 1.5 },
+        { ...build, file: 'x'.repeat(301) },
+        { ...build, text: 'x'.repeat(301) },
+        { ...build, path: '/Users/example/app/src/App.vue' },
+        (({ file: _, ...rest }) => rest)(build),
+      ]) expect(tabs([row({ history: [bad] })]), JSON.stringify(bad)).toBeNull()
+    })
+
+    it('lists fremdev.build among the Fremdev features', () => {
+      expect(FREMDEV_BUILD_MODULE).toBe('fremdev.build')
+      expect(FREMDEV_FEATURES).toContain(FREMDEV_BUILD_MODULE)
+    })
+
+    it('lists fremdev.slow among the Fremdev features', () => {
+      expect(FREMDEV_SLOW_MODULE).toBe('fremdev.slow')
+      expect(FREMDEV_FEATURES).toContain(FREMDEV_SLOW_MODULE)
+    })
+
+    it('lists fremdev.perf among the Fremdev features', () => {
+      expect(FREMDEV_PERF_MODULE).toBe('fremdev.perf')
+      expect(FREMDEV_FEATURES).toContain(FREMDEV_PERF_MODULE)
+    })
+
+    it('takes a perf entry and a row\'s values within bounds, and refuses anything else', () => {
+      const perf = { kind: 'perf', id: 6, metric: 'lcp', value: 1800, ratio: 1.6, n: 1, at: 1, state: 'open' }
+      expect(tabs([row({ history: [perf] })])).not.toBeNull()
+      expect(tabs([row({ history: [{ ...perf, metric: 'cls', value: 0.31, ratio: null }] })])).not.toBeNull()
+      expect(tabs([row({ history: [{ ...perf, metric: 'load', value: 600_000, ratio: 1000 }] })])).not.toBeNull()
+      for (const bad of [
+        { ...perf, metric: 'fps' },
+        { ...perf, value: -1 },
+        { ...perf, value: 600_001 },
+        { ...perf, ratio: 0.9 },
+        { ...perf, ratio: 1000.5 },
+        { ...perf, path: '/' },
+        (({ ratio: _, ...rest }) => rest)(perf),
+      ]) expect(tabs([row({ history: [bad] })]), JSON.stringify(bad)).toBeNull()
+      const values = { load: 1234, lcp: 800, cls: 0.02, longTasks: 3, heapMb: 45 }
+      expect(DevTabSchema.parse(row({ perf: values })).perf).toEqual(values)
+      expect(DevTabSchema.parse(row({ perf: { lcp: 800 } })).perf).toEqual({ lcp: 800 })
+      const { perf: _, ...without } = row({ perf: values })
+      expect(DevTabSchema.parse(without).perf).toEqual({})
+      for (const bad of [{ cls: 101 }, { cls: -0.1 }, { load: 600_001 }, { lcp: 1.5 }, { longTasks: 100_001 }, { heapMb: 65_537 }, { fps: 60 }, { heapMb: '45' }]) {
+        expect(DevTabSchema.safeParse(row({ perf: bad })).success, JSON.stringify(bad)).toBe(false)
+      }
+    })
+
+    it('takes a slow entry from 1 s to an hour, and refuses one outside it, with a query or an extra key', () => {
+      const slow = { kind: 'slow', id: 5, method: 'GET', path: '/api/items', ms: 1200, n: 2, at: 1, state: 'open' }
+      expect(tabs([row({ history: [slow] })])).not.toBeNull()
+      expect(tabs([row({ history: [{ ...slow, ms: 1000 }] })])).not.toBeNull()
+      expect(tabs([row({ history: [{ ...slow, ms: 3_600_000, method: 'OTHER' }] })])).not.toBeNull()
+      for (const bad of [
+        { ...slow, ms: 999 },
+        { ...slow, ms: 3_600_001 },
+        { ...slow, ms: 1200.5 },
+        { ...slow, method: 'FOO' },
+        { ...slow, path: '/api/items?token=1' },
+        { ...slow, path: 'api' },
+        { ...slow, path: `/${'p'.repeat(300)}` },
+        { ...slow, status: 200 },
+        (({ ms: _, ...rest }) => rest)(slow),
+      ]) expect(tabs([row({ history: [bad] })]), JSON.stringify(bad)).toBeNull()
+    })
+
+    it('reads a row without inFlight as 0, and takes 0 to 999', () => {
+      const { inFlight: _, ...without } = row({ inFlight: 1 })
+      expect(DevTabSchema.parse(without).inFlight).toBe(0)
+      for (const n of [0, 1, 999]) expect(DevTabSchema.parse(row({ inFlight: n })).inFlight).toBe(n)
+      for (const n of [-1, 1000, 1.5, '3']) expect(DevTabSchema.safeParse(row({ inFlight: n })).success, String(n)).toBe(false)
+    })
+
+    it('needs an entry id from 1 to 2 147 483 647', () => {
+      const entry = { kind: 'error', id: 1, text: 'x', origin: null, n: 1, at: 1, state: 'open' }
+      const { id: _, ...noId } = entry
+      expect(tabs([row({ history: [{ ...entry, id: 2_147_483_647 }] })])).not.toBeNull()
+      for (const bad of [noId, { ...entry, id: 0 }, { ...entry, id: 1.5 }, { ...entry, id: 2_147_483_648 }, { kind: 'limited', n: 1, at: 1, state: 'open' }]) {
+        expect(tabs([row({ history: [bad] })]), JSON.stringify(bad)).toBeNull()
+      }
+    })
+
+    it('reads a row without devServer as null, and refuses a kind outside the list', () => {
+      const { devServer: _, ...without } = row()
+      expect(DevTabSchema.parse(without).devServer).toBeNull()
+      for (const kind of ['vite', 'next', 'webpack', null]) expect(DevTabSchema.parse(row({ devServer: kind })).devServer).toBe(kind)
+      expect(DevTabSchema.safeParse(row({ devServer: 'parcel' })).success).toBe(false)
+      expect(DevTabSchema.safeParse(row({ serverBase: '/' })).success).toBe(false)
+    })
+
+    it('reads a row from an extension that sends no history as an empty one', () => {
+      const { history: _, ...older } = row()
+      const parsed = tabs([older])
+      expect(parsed?.type === 'dev.tabs' && parsed.tabs[0].history).toEqual([])
+    })
+
+    it('takes a host with an underscore, as a URL may carry one', () => {
+      expect(tabs([row({ host: 'my_app.localhost:3000' })])?.type).toBe('dev.tabs')
+    })
+
+    describe('after hello (parseAfterHello)', () => {
+      const after = (m: unknown) => parseAfterHello(typeof m === 'string' ? m : JSON.stringify(m))
+
+      it('passes what parses, whatever its type', () => {
+        expect(after({ type: 'dev.tabs', tabs: [row()] })).toEqual({ msg: { type: 'dev.tabs', tabs: [row()] }, dropped: 0 })
+        expect(after({ type: 'tab.stopped', sessionId })).toEqual({ msg: { type: 'tab.stopped', sessionId }, dropped: 0 })
+      })
+
+      it('keeps the rows of a dev.tabs that do parse, and counts the others', () => {
+        expect(after({ type: 'dev.tabs', tabs: [row(), row({ tabId: 2, host: 'bad host/' }), row({ tabId: 3 }), 'junk'] }))
+          .toEqual({ msg: { type: 'dev.tabs', tabs: [row(), row({ tabId: 3 })] }, dropped: 2 })
+      })
+
+      it('drops a Fremdev message it cannot read, whole, rather than refuse it', () => {
+        expect(after({ type: 'dev.tabs', tabs: Array.from({ length: 33 }, (_, i) => row({ tabId: i })) })).toEqual({ msg: null, dropped: 1 })
+        expect(after({ type: 'dev.tabs', tabs: 'all' })).toEqual({ msg: null, dropped: 1 })
+        expect(after({ type: 'dev.tabs', tabs: [], extra: 1 })).toEqual({ msg: null, dropped: 1 })
+        expect(after({ type: 'modules', modules: ['x'.repeat(33)] })).toEqual({ msg: null, dropped: 1 })
+        expect(after({ type: 'modules' })).toEqual({ msg: null, dropped: 1 })
+        expect(after({ type: 'ping', extra: 1 })).toEqual({ msg: null, dropped: 1 })
+      })
+
+      it('passes a dev.report and drops one whose text is over 48 000 characters, keeping the socket', () => {
+        const id = '33333333-3333-4333-8333-333333333333'
+        const report = { type: 'dev.report', id, tabId: 7, text: 'x'.repeat(48_000) }
+        expect(after(report)).toEqual({ msg: report, dropped: 0 })
+        expect(after({ ...report, text: 'x'.repeat(48_001) })).toEqual({ msg: null, dropped: 1 })
+        expect(after({ ...report, id: 'not-a-uuid' })).toEqual({ msg: null, dropped: 1 })
+        expect(after({ ...report, extra: 1 })).toEqual({ msg: null, dropped: 1 })
+      })
+
+      it('passes a dev.open.done and drops one with an extra key or a non-boolean ok, keeping the socket', () => {
+        const id = '33333333-3333-4333-8333-333333333333'
+        const done = { type: 'dev.open.done', id, tabId: 7, ok: true }
+        expect(after(done)).toEqual({ msg: done, dropped: 0 })
+        expect(after({ ...done, extra: 1 })).toEqual({ msg: null, dropped: 1 })
+        expect(after({ ...done, ok: 'yes' })).toEqual({ msg: null, dropped: 1 })
+        expect(after({ ...done, id: 'not-a-uuid' })).toEqual({ msg: null, dropped: 1 })
+      })
+
+      it('still refuses anything else that does not parse, and what is not JSON or too big', () => {
+        expect(after({ type: 'tab.meta', sessionId, meta: { ...meta, title: 'x'.repeat(301) } })).toBeNull()
+        expect(after({ type: 'tab.nonsense' })).toBeNull()
+        expect(after('not json')).toBeNull()
+        expect(after('null')).toBeNull()
+        expect(after(JSON.stringify({ type: 'ping' }) + ' '.repeat(MAX_MESSAGE_BYTES))).toBeNull()
+      })
+    })
   })
 })
 

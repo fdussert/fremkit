@@ -63,9 +63,11 @@ export const DEMO_SETTINGS: Record<string, Record<string, unknown>> = {
 
 /**
  * Built-ins the demo leaves off its dashboard and gives no provider: Fremplay shows a browser
- * tab sent by the Fremkit Companion extension, which a demo has no way to fake.
+ * tab sent by the Fremkit Companion extension, and Fremdev the dev tabs that extension watches,
+ * which a demo has no way to fake; Fremdev is an experimental feature hidden in the admin until
+ * `labs.fremdev` is on.
  */
-export const DEMO_LEAVES_OUT: readonly string[] = ['fremplay']
+export const DEMO_LEAVES_OUT: readonly string[] = ['fremplay', 'fremdev']
 
 /** The instance ids and places of the seeded dashboard: two pages that show every built-in but those. */
 const PAGES: { id: string; name: string; items: (Placement & { widgetId: string })[] }[] = [
@@ -131,7 +133,8 @@ export function demoConfig(locale: 'fr' | 'en' = 'en'): Config {
     locale,
     privacy: { claudeAccountUsage: true, claudeAccountDir: 'auto', claudeAccountNames: Object.fromEntries(DEMO_CLAUDE_ACCOUNTS.map((a) => [a.uuid, a.name[locale]])), showAccountEmail: false, codexAccount: true, codexHistorySources: ['cli', 'vscode', 'appServer'], macmonTemperature: false },
     marketplace: { installed: {} },
-    labs: {},
+    // As on a fresh install: Fremdev stays an experimental feature until it is ticked.
+    labs: { fremdev: false },
     widgets,
     screens: [{
       id: 'edge',

@@ -481,9 +481,8 @@ export const MarketplaceSchema = z.object({
 export type MarketplaceState = z.infer<typeof MarketplaceSchema>
 
 /**
- * Features that ship in the code but stay out of the admin until they are ready for everyone:
- * none right now. The switches live in Settings → About, revealed by seven clicks on the version
- * (`ui/src/admin/labs.ts`).
+ * Features that ship in the code but stay out of the admin until they are ready for everyone. The
+ * switches live in Settings → About, revealed by seven clicks on the version (`ui/src/admin/labs.ts`).
  *
  * To add one: a key here, `name: z.boolean().default(false)`, the same key in `Labs` in
  * `ui/src/shared/types.ts`, and one entry in `LAB_FLAGS` in `ui/src/admin/labs.ts`.
@@ -495,8 +494,13 @@ export type MarketplaceState = z.infer<typeof MarketplaceSchema>
  * `devices` (iPad pairing and extra screens) and `companion` (the browser extension and Fremplay)
  * lived here until they shipped for everyone. A file that still carries them loads as is: the
  * schema strips unknown keys, and the next save leaves them out.
+ *
+ * `fremdev` is Fremdev, the companion's development-tabs module (`fremdevEnabled` in
+ * `companion/dev.ts`). Off unless a file states it on: a placed Fremdev widget does not turn it on.
  */
-export const LabsSchema = z.object({}).prefault({})
+export const LabsSchema = z.object({
+  fremdev: z.boolean().default(false),
+}).prefault({})
 export type Labs = z.infer<typeof LabsSchema>
 
 /**
@@ -572,7 +576,7 @@ export const DEFAULT_CONFIG: Config = {
   secrets: { backend: defaultSecretsBackend() },
   locale: defaultLocale(),
   privacy: { claudeAccountUsage: false, claudeAccountDir: 'auto', claudeAccountNames: {}, showAccountEmail: false, codexAccount: false, codexHistorySources: [], macmonTemperature: false },
-  labs: {},
+  labs: { fremdev: false },
   marketplace: { installed: {} },
   widgets: {
     'clock-1': { widgetId: 'clock', showTitle: true, settings: {} },

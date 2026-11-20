@@ -11,6 +11,9 @@
   "commandToggle": {
     "message": "Fremplay : envoyer la vidéo de cet onglet sur l'Edge, ou arrêter"
   },
+  "commandShot": {
+    "message": "Fremdev : copier une capture de l’onglet de développement"
+  },
   "linkOk": {
     "message": "Relié"
   },
@@ -102,14 +105,129 @@
   "errFailed": {
     "message": "L'envoi a échoué"
   },
-  "soon": {
-    "message": "Bientôt"
+  "fremdevDesc": {
+    "message": "Erreurs, requêtes et serveur de vos onglets de dev"
   },
-  "localhostName": {
-    "message": "Localhost"
+  "fremdevToggle": {
+    "message": "Activer ou désactiver Fremdev"
   },
-  "localhostDesc": {
-    "message": "Erreurs et requêtes de vos onglets de dev"
+  "fremdevTabs": {
+    "message": "$value$ onglets surveillés",
+    "placeholders": {
+      "value": {
+        "content": "$1"
+      }
+    }
+  },
+  "fremdevTabsNone": {
+    "message": "Aucun onglet surveillé"
+  },
+  "fremdevTabsOne": {
+    "message": "1 onglet surveillé"
+  },
+  "fremdevUnsupported": {
+    "message": "Mettez Fremkit à jour pour utiliser Fremdev."
+  },
+  "fremdevDisabled": {
+    "message": "Fremdev est désactivé dans Fremkit (fonctions expérimentales)."
+  },
+  "fremdevNeedsAccess": {
+    "message": "Fremdev a besoin d’accéder à vos onglets de développement."
+  },
+  "fremdevFailed": {
+    "message": "Fremdev n’a pas pu démarrer. Réessayez."
+  },
+  "fremdevCopy": {
+    "message": "Copier le rapport"
+  },
+  "fremdevShot": {
+    "message": "Copier une capture"
+  },
+  "fremdevCopied": {
+    "message": "Copié"
+  },
+  "fremdevCopyFailed": {
+    "message": "Échec de la copie"
+  },
+  "fremdevWithStack": {
+    "message": "Avec la pile"
+  },
+  "reportTitle": {
+    "message": "Rapport de bug"
+  },
+  "reportServer": {
+    "message": "serveur de dev"
+  },
+  "reportLines": {
+    "message": "Les numéros de ligne sont ceux du code envoyé par le serveur de dev, pas des fichiers sources."
+  },
+  "reportErrors": {
+    "message": "Erreurs ($v1$ ouvertes, $v2$ au total)",
+    "placeholders": {
+      "v1": {
+        "content": "$1"
+      },
+      "v2": {
+        "content": "$2"
+      }
+    }
+  },
+  "reportRequests": {
+    "message": "Requêtes en échec"
+  },
+  "reportPerf": {
+    "message": "Performance"
+  },
+  "reportPerfSlower": {
+    "message": "$v1$ $v2$, ×$v3$ plus lent",
+    "placeholders": {
+      "v1": {
+        "content": "$1"
+      },
+      "v2": {
+        "content": "$2"
+      },
+      "v3": {
+        "content": "$3"
+      }
+    }
+  },
+  "reportPerfPoor": {
+    "message": "$v1$ $v2$, mauvais",
+    "placeholders": {
+      "v1": {
+        "content": "$1"
+      },
+      "v2": {
+        "content": "$2"
+      }
+    }
+  },
+  "reportSlow": {
+    "message": "Requêtes lentes"
+  },
+  "reportBuild": {
+    "message": "Compilation ($v1$ ouvertes, $v2$ au total)",
+    "placeholders": {
+      "v1": {
+        "content": "$1"
+      },
+      "v2": {
+        "content": "$2"
+      }
+    }
+  },
+  "reportLimited": {
+    "message": "erreurs au-delà de la limite"
+  },
+  "stateSeen": {
+    "message": "vue"
+  },
+  "stateResolved": {
+    "message": "résolue"
+  },
+  "noAnswer": {
+    "message": "sans réponse"
   },
   "settings": {
     "message": "Réglages"
@@ -224,8 +342,43 @@
   "optUnpairHint": {
     "message": "Efface la clé de ce navigateur. L'appareil reste listé dans Réglages → Appareils jusqu'à ce que vous l'y retiriez."
   },
+  "optDevHosts": {
+    "message": "Vos hôtes de développement"
+  },
+  "optDevHostsBuiltin": {
+    "message": "localhost, 127.0.0.1, [::1], *.localhost et *.test sont toujours inclus, sur tous les ports. Ajoutez ici vos autres serveurs de dev."
+  },
+  "optDevHostsNone": {
+    "message": "Aucun hôte ajouté."
+  },
+  "optDevHostAdd": {
+    "message": "Ajouter"
+  },
+  "optDevHostRemove": {
+    "message": "Retirer"
+  },
+  "optDevHostRemoveLabel": {
+    "message": "Retirer $value$",
+    "placeholders": {
+      "value": {
+        "content": "$1"
+      }
+    }
+  },
+  "optDevHostInvalid": {
+    "message": "Un hôte (bo-dev.example.com) ou un motif avec une * dans le premier mot (*-dev.example.com)."
+  },
+  "optDevHostsUnseen": {
+    "message": "Les requêtes vers d’autres hôtes que vos hôtes de développement ne sont pas vues."
+  },
   "optShortcut": {
     "message": "Raccourci Fremplay"
+  },
+  "optShotShortcut": {
+    "message": "Capture Fremdev"
+  },
+  "optShotSound": {
+    "message": "Jouer le son de capture"
   },
   "optShortcutChange": {
     "message": "Changer le raccourci"

@@ -11,6 +11,9 @@
   "commandToggle": {
     "message": "Fremplay: send this tab's video to the Edge, or stop"
   },
+  "commandShot": {
+    "message": "Fremdev: copy a screenshot of the development tab"
+  },
   "linkOk": {
     "message": "Linked"
   },
@@ -102,14 +105,129 @@
   "errFailed": {
     "message": "Sending failed"
   },
-  "soon": {
-    "message": "Coming soon"
+  "fremdevDesc": {
+    "message": "Errors, requests and server state of your dev tabs"
   },
-  "localhostName": {
-    "message": "Localhost"
+  "fremdevToggle": {
+    "message": "Turn Fremdev on or off"
   },
-  "localhostDesc": {
-    "message": "Errors and failed requests from your dev tabs"
+  "fremdevTabs": {
+    "message": "$value$ tabs watched",
+    "placeholders": {
+      "value": {
+        "content": "$1"
+      }
+    }
+  },
+  "fremdevTabsNone": {
+    "message": "No tab watched"
+  },
+  "fremdevTabsOne": {
+    "message": "1 tab watched"
+  },
+  "fremdevUnsupported": {
+    "message": "Update Fremkit to use Fremdev."
+  },
+  "fremdevDisabled": {
+    "message": "Fremdev is turned off in Fremkit (experimental features)."
+  },
+  "fremdevNeedsAccess": {
+    "message": "Fremdev needs access to your development tabs."
+  },
+  "fremdevFailed": {
+    "message": "Fremdev could not start. Try again."
+  },
+  "fremdevCopy": {
+    "message": "Copy report"
+  },
+  "fremdevShot": {
+    "message": "Copy screenshot"
+  },
+  "fremdevCopied": {
+    "message": "Copied"
+  },
+  "fremdevCopyFailed": {
+    "message": "Copy failed"
+  },
+  "fremdevWithStack": {
+    "message": "With stack"
+  },
+  "reportTitle": {
+    "message": "Bug report"
+  },
+  "reportServer": {
+    "message": "dev server"
+  },
+  "reportLines": {
+    "message": "Line numbers are those of the code the dev server sent, not of the source files."
+  },
+  "reportErrors": {
+    "message": "Errors ($v1$ open, $v2$ total)",
+    "placeholders": {
+      "v1": {
+        "content": "$1"
+      },
+      "v2": {
+        "content": "$2"
+      }
+    }
+  },
+  "reportRequests": {
+    "message": "Failed requests"
+  },
+  "reportPerf": {
+    "message": "Performance"
+  },
+  "reportPerfSlower": {
+    "message": "$v1$ $v2$, ×$v3$ slower",
+    "placeholders": {
+      "v1": {
+        "content": "$1"
+      },
+      "v2": {
+        "content": "$2"
+      },
+      "v3": {
+        "content": "$3"
+      }
+    }
+  },
+  "reportPerfPoor": {
+    "message": "$v1$ $v2$, poor",
+    "placeholders": {
+      "v1": {
+        "content": "$1"
+      },
+      "v2": {
+        "content": "$2"
+      }
+    }
+  },
+  "reportSlow": {
+    "message": "Slow requests"
+  },
+  "reportBuild": {
+    "message": "Build ($v1$ open, $v2$ total)",
+    "placeholders": {
+      "v1": {
+        "content": "$1"
+      },
+      "v2": {
+        "content": "$2"
+      }
+    }
+  },
+  "reportLimited": {
+    "message": "errors over the rate limit"
+  },
+  "stateSeen": {
+    "message": "seen"
+  },
+  "stateResolved": {
+    "message": "resolved"
+  },
+  "noAnswer": {
+    "message": "no answer"
   },
   "settings": {
     "message": "Settings"
@@ -224,8 +342,43 @@
   "optUnpairHint": {
     "message": "Forgets this browser's key. The device stays listed in Settings → Devices until you remove it there."
   },
+  "optDevHosts": {
+    "message": "Your development hosts"
+  },
+  "optDevHostsBuiltin": {
+    "message": "localhost, 127.0.0.1, [::1], *.localhost and *.test are always included, on any port. Add your other dev servers here."
+  },
+  "optDevHostsNone": {
+    "message": "No host added."
+  },
+  "optDevHostAdd": {
+    "message": "Add"
+  },
+  "optDevHostRemove": {
+    "message": "Remove"
+  },
+  "optDevHostRemoveLabel": {
+    "message": "Remove $value$",
+    "placeholders": {
+      "value": {
+        "content": "$1"
+      }
+    }
+  },
+  "optDevHostInvalid": {
+    "message": "A host (bo-dev.example.com) or a pattern with one * in its first label (*-dev.example.com)."
+  },
+  "optDevHostsUnseen": {
+    "message": "Requests to hosts other than your development hosts are not seen."
+  },
   "optShortcut": {
     "message": "Fremplay shortcut"
+  },
+  "optShotShortcut": {
+    "message": "Fremdev screenshot"
+  },
+  "optShotSound": {
+    "message": "Play the screenshot sound"
   },
   "optShortcutChange": {
     "message": "Change the shortcut"

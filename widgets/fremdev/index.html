@@ -1,0 +1,1112 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Fremdev</title>
+<style>
+  html,body{margin:0;height:100%;background:transparent;color:var(--text, #e6e8eb);font-family:var(--font, -apple-system,system-ui,sans-serif);overflow:hidden;
+    -webkit-user-select:none;user-select:none}
+  .stage{position:relative;height:100%;width:100%;box-sizing:border-box;overflow:hidden;display:flex;flex-direction:column}
+  /* Under the segment bar: the current segment's message or list. */
+  .pane{position:relative;flex:1;min-height:0;display:flex;flex-direction:column}
+
+  /* The two segments, Tabs and Servers, each with its count; shown while Fremdev is on. */
+  .segs{flex:none;display:flex;gap:6px;padding:clamp(4px,1.6vh,10px) clamp(6px,1.4vw,12px) 0}
+  .segs[hidden]{display:none}
+  button.seg{flex:1 1 0;min-width:0;box-sizing:border-box;min-height:44px;border:0;border-radius:12px;padding:0 12px;
+    background:rgba(255,255,255,.04);color:var(--text-muted, #8b93a0);cursor:pointer;
+    font:inherit;font-size:calc(15px * var(--text-scale, 1));font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  button.seg[aria-selected="true"]{background:color-mix(in srgb, var(--accent, #d9b36a) 20%, transparent);color:var(--accent, #d9b36a)}
+  button.seg:active{background:var(--accent, #d9b36a);color:var(--on-accent, #0b0d10)}
+
+  /* One sentence when there is nothing to list, in the tile's own colours. */
+  .msg{position:absolute;inset:0;box-sizing:border-box;display:flex;align-items:center;justify-content:center;
+    padding:clamp(10px,4vh,24px) clamp(12px,4vw,32px);text-align:center;
+    font-size:calc(clamp(14px,min(7vh,3.2vw),28px) * var(--text-scale, 1));font-weight:600;line-height:1.2;overflow-wrap:anywhere}
+  .msg:empty,.stage.rows .msg{display:none}
+
+  /* The rows: one per dev tab, worst first (or one per server, by port). The list scrolls when the tile is short. */
+  .list{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;box-sizing:border-box;padding:clamp(4px,1.6vh,10px) clamp(6px,1.4vw,12px);
+    display:none;flex-direction:column;gap:6px;scrollbar-width:none}
+  .list::-webkit-scrollbar{display:none}
+  .stage.rows .list.current{display:flex}
+  /* The last listing failed: the rows are the last good ones, a line says so. */
+  .snote{flex:none;padding:6px clamp(6px,1.4vw,12px) 0;font-size:calc(13px * var(--text-scale, 1));color:var(--warn, #f0a020)}
+  .snote[hidden]{display:none}
+  .row{flex:none;box-sizing:border-box;display:flex;flex-direction:column;border-radius:12px;background:rgba(255,255,255,.04)}
+  /* The top line: a tap on it unfolds the row (the light, the name and the facts). */
+  .top{box-sizing:border-box;min-height:56px;display:flex;align-items:center;gap:12px;padding:4px 6px 4px 12px;border-radius:12px;cursor:pointer}
+  /* Lit by a press on the row itself, not by one on Show tab or × inside it. */
+  .top:active:not(:has(button:active)){background:rgba(255,255,255,.06)}
+  .row.flash{animation:flash 1.2s ease-out 1}
+  @keyframes flash{0%{background:color-mix(in srgb, var(--danger, #ff6b5e) 45%, transparent)}100%{background:rgba(255,255,255,.04)}}
+  @media (prefers-reduced-motion:reduce){.row.flash{animation:none}}
+
+  .light{flex:none;width:14px;height:14px;border-radius:50%;background:var(--ok, #46c46e)}
+  .light.orange{background:var(--warn, #f0a020)}
+  .light.red{background:var(--danger, #ff6b5e)}
+  /* Seen: only issues the user marked seen (×) colour it. Hollow, a ring in its colour, same box. */
+  .light.seen{box-sizing:border-box;background:transparent;border:2px solid var(--ok, #46c46e)}
+  .light.seen.orange{border-color:var(--warn, #f0a020)}
+  .light.seen.red{border-color:var(--danger, #ff6b5e)}
+
+  .body{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+  .head,.facts{display:flex;align-items:baseline;gap:10px;min-width:0;white-space:nowrap}
+  .app{font-size:calc(17px * var(--text-scale, 1));font-weight:600;overflow:hidden;text-overflow:ellipsis;min-width:0}
+  .browser,.down,.flight{flex:none;font-size:calc(13px * var(--text-scale, 1));color:var(--text-muted, #8b93a0)}
+  .flight{font-variant-numeric:tabular-nums}
+  .down{color:var(--danger, #ff6b5e);font-weight:600}
+  .facts{font-size:calc(14px * var(--text-scale, 1))}
+  .fact{display:flex;align-items:baseline;gap:6px;min-width:0;overflow:hidden}
+  .fact.errors{flex:1 1 auto}
+  .fact.requests{flex:0 1 auto;max-width:45%}
+  .n{flex:none;font-weight:700;font-variant-numeric:tabular-nums;color:var(--danger, #ff6b5e)}
+  .fact.requests .n{color:var(--warn, #f0a020)}
+  .t{overflow:hidden;text-overflow:ellipsis;color:var(--text-muted, #8b93a0);font-family:var(--font-mono, ui-monospace, Menlo, monospace)}
+  /* A counter whose events were all dismissed: greyed, with the resolved label in place of the last. */
+  .fact.resolved,.fact.resolved .n{color:var(--text-dim, #6b737c);font-weight:500}
+  .fact.resolved .t{font-family:inherit;color:inherit}
+  /* A counter whose open events were all marked seen: its count and last event, dimmed. */
+  .fact.seen,.fact.seen .n,.fact.seen .t{color:var(--text-dim, #6b737c)}
+  .fact.seen .n{font-weight:500}
+
+  button.show{flex:none;box-sizing:border-box;min-width:44px;height:44px;border:0;border-radius:12px;padding:0 12px;
+    background:transparent;color:var(--accent, #d9b36a);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:6px;
+    font:inherit;font-size:calc(14px * var(--text-scale, 1));font-weight:600;white-space:nowrap}
+  button.show svg{flex:none;width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  button.show:active{background:var(--accent, #d9b36a);color:var(--on-accent, #0b0d10)}
+  /* A narrow tile keeps the icon and drops the word. */
+  @media (max-width:520px){button.show{padding:0}button.show .label{display:none}}
+  button.clear{flex:none;box-sizing:border-box;width:44px;height:44px;border:0;border-radius:12px;padding:0;
+    background:transparent;color:var(--text-muted, #8b93a0);cursor:pointer;display:inline-flex;align-items:center;justify-content:center}
+  button.clear svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  button.clear:active{background:var(--accent, #d9b36a);color:var(--on-accent, #0b0d10)}
+  button.clear[hidden]{display:inline-flex;visibility:hidden}
+  .facts[hidden],.fact[hidden],.n[hidden],.browser[hidden],.down[hidden],.flight[hidden]{display:none}
+
+  /* A shot just copied from this tab: its thumbnail, the height of the line, and "Copied", for 3 s. */
+  .shot{flex:none;display:flex;align-items:center;gap:8px;min-width:0;animation:shotin .2s ease-out 1}
+  .shot[hidden]{display:none}
+  .shot img{display:block;height:44px;width:auto;max-width:96px;object-fit:cover;border-radius:6px;
+    box-shadow:0 0 0 2px var(--accent, #d9b36a)}
+  .shot img[hidden]{display:none}
+  .shot .said{font-size:calc(14px * var(--text-scale, 1));font-weight:600;color:var(--accent, #d9b36a);white-space:nowrap}
+  @keyframes shotin{from{opacity:0;transform:translateX(8px)}to{opacity:1;transform:none}}
+  @media (prefers-reduced-motion:reduce){.shot{animation:none}}
+  /* A narrow tile keeps the picture and drops the word; with no picture, the word stays. */
+  @media (max-width:520px){.shot:not(.bare) .said{display:none}}
+  .body:focus-visible{outline:2px solid var(--accent, #d9b36a);outline-offset:2px;border-radius:6px}
+  button:focus-visible{outline:2px solid var(--accent, #d9b36a);outline-offset:-2px}
+
+  /* Unfolded: the tab's history, newest first, scrolling inside the row, and the copy buttons. */
+  .detail{display:none;flex-direction:column;gap:8px;padding:0 10px 10px 38px}
+  .row.unfolded .detail{display:flex}
+  .history{margin:0;padding:0;list-style:none;max-height:clamp(96px,42vh,320px);overflow-y:auto;overscroll-behavior:contain;
+    display:flex;flex-direction:column;gap:6px;scrollbar-width:thin}
+  .entry{display:flex;flex-direction:column;gap:1px;min-width:0;font-size:calc(14px * var(--text-scale, 1))}
+  .entry .line{display:flex;align-items:baseline;gap:8px;min-width:0}
+  .entry .time,.entry .times{flex:none;font-variant-numeric:tabular-nums;color:var(--text-muted, #8b93a0)}
+  .entry .times{font-weight:700}
+  .entry .what{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--font-mono, ui-monospace, Menlo, monospace)}
+  .entry.error .what{color:var(--danger, #ff6b5e)}
+  .entry.request .what{color:var(--warn, #f0a020)}
+  .entry.build .what{color:var(--danger, #ff6b5e)}
+  .entry .kind{flex:none;font-weight:700;color:var(--danger, #ff6b5e)}
+  .entry.limited .what{font-family:inherit;color:var(--text-muted, #8b93a0);font-style:italic}
+  /* A slow request is no fault: muted, its duration beside it. */
+  .entry.slow .what{color:var(--text-muted, #8b93a0)}
+  .entry .dur{flex:none;font-variant-numeric:tabular-nums;font-weight:600;color:var(--text-muted, #8b93a0)}
+  /* A load's regression: orange, as it lights the row. */
+  .entry.perf .what{font-family:inherit;color:var(--warn, #f0a020)}
+  /* The current document's values, one dimmed line above the history; a poor one in the danger colour. */
+  .perfline{display:flex;flex-wrap:wrap;gap:2px 14px;font-size:calc(13px * var(--text-scale, 1));font-variant-numeric:tabular-nums;color:var(--text-muted, #8b93a0)}
+  .perfline[hidden]{display:none}
+  .perfline .poor{color:var(--danger, #ff6b5e);font-weight:600}
+  .perfline .dim{color:var(--text-dim, #6b737c)}
+  .entry .origin{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-left:calc(8ch + 8px);
+    font-family:var(--font-mono, ui-monospace, Menlo, monospace);font-size:calc(12px * var(--text-scale, 1));color:var(--text-dim, #6b737c)}
+  .entry .origin:empty{display:none}
+  /* An openable file: a button the width of the line, tall enough to hit, still reading as the origin. */
+  .entry button.origin{display:flex;align-items:center;box-sizing:border-box;min-height:44px;width:100%;margin:0;border:0;border-radius:10px;
+    padding:0 8px 0 calc(8ch + 8px);background:transparent;text-align:left;cursor:pointer;color:var(--accent, #d9b36a);text-decoration:underline dotted}
+  .entry button.origin:active{background:var(--accent, #d9b36a);color:var(--on-accent, #0b0d10)}
+  .entry button.origin.ok{color:var(--ok, #46c46e);text-decoration:none}
+  .entry button.origin.failed{color:var(--danger, #ff6b5e);text-decoration:none}
+  /* Seen: dimmed. Resolved: greyed and struck through. */
+  .entry.seen{opacity:.55}
+  .entry.resolved .what,.entry.resolved .time,.entry.resolved .times,.entry.resolved .kind,.entry.resolved .dur{color:var(--text-dim, #6b737c)}
+  .entry.resolved .what{text-decoration:line-through}
+  .entry.resolved{opacity:.7}
+  .actions{display:flex;flex-wrap:wrap;gap:8px}
+  .actions[hidden]{display:none}
+  button.act{box-sizing:border-box;min-height:56px;min-width:56px;padding:0 18px;border:1px solid color-mix(in srgb, var(--accent, #d9b36a) 55%, transparent);
+    border-radius:14px;background:transparent;color:var(--accent, #d9b36a);cursor:pointer;
+    font:inherit;font-size:calc(15px * var(--text-scale, 1));font-weight:600;white-space:nowrap}
+  button.act:active{background:var(--accent, #d9b36a);color:var(--on-accent, #0b0d10)}
+  button.act:disabled{cursor:default;opacity:.6}
+  button.act.ok{border-color:var(--ok, #46c46e);color:var(--ok, #46c46e)}
+  button.act.failed{border-color:var(--danger, #ff6b5e);color:var(--danger, #ff6b5e)}
+
+  /* A server row: the light, the port, the project and tool, the run time, CPU and memory. */
+  .srow{flex:none;box-sizing:border-box;display:flex;flex-direction:column;border-radius:12px;background:rgba(255,255,255,.04)}
+  .light.grey{background:var(--text-dim, #6b737c)}
+  .port{flex:none;font-size:calc(17px * var(--text-scale, 1));font-weight:700;font-variant-numeric:tabular-nums;color:var(--accent, #d9b36a)}
+  .project{font-size:calc(17px * var(--text-scale, 1));font-weight:600;overflow:hidden;text-overflow:ellipsis;min-width:0}
+  .tool{flex:none;font-size:calc(13px * var(--text-scale, 1));color:var(--text-muted, #8b93a0)}
+  .badge{flex:none;font-size:calc(12px * var(--text-scale, 1));font-weight:700;padding:1px 7px;border-radius:999px;
+    border:1px solid color-mix(in srgb, var(--accent, #d9b36a) 55%, transparent);color:var(--accent, #d9b36a)}
+  /* The Fremdev tab open on this port: its light, small. */
+  .tabdot{flex:none;align-self:center;width:9px;height:9px;border-radius:50%;background:var(--ok, #46c46e)}
+  .tabdot.orange{background:var(--warn, #f0a020)}
+  .tabdot.red{background:var(--danger, #ff6b5e)}
+  .stats{display:flex;align-items:baseline;gap:12px;min-width:0;white-space:nowrap;font-size:calc(14px * var(--text-scale, 1));
+    font-variant-numeric:tabular-nums;color:var(--text-muted, #8b93a0)}
+  /* What a touch on a button is doing or answered: confirm, restarting, an error. */
+  .status{min-width:0;overflow:hidden;text-overflow:ellipsis;font-weight:600;color:var(--accent, #d9b36a)}
+  .status.failed{color:var(--danger, #ff6b5e)}
+  .tool[hidden],.badge[hidden],.tabdot[hidden],.status[hidden],.port[hidden]{display:none}
+  .srow.unfolded .detail{display:flex}
+  .cmd,.folder{min-width:0;overflow-wrap:anywhere;font-family:var(--font-mono, ui-monospace, Menlo, monospace);font-size:calc(13px * var(--text-scale, 1))}
+  .folder{color:var(--text-muted, #8b93a0)}
+  .folder:empty{display:none}
+  .log{margin:0;padding:8px 10px;border-radius:10px;background:rgba(0,0,0,.18);max-height:clamp(80px,34vh,260px);overflow-y:auto;overscroll-behavior:contain;
+    font-family:var(--font-mono, ui-monospace, Menlo, monospace);font-size:calc(12px * var(--text-scale, 1));line-height:1.35;
+    white-space:pre-wrap;overflow-wrap:anywhere;color:var(--text-muted, #8b93a0)}
+  .log[hidden]{display:none}
+  button.act.danger{border-color:color-mix(in srgb, var(--danger, #ff6b5e) 60%, transparent);color:var(--danger, #ff6b5e)}
+  button.act.armed{background:var(--danger, #ff6b5e);border-color:var(--danger, #ff6b5e);color:var(--on-accent, #0b0d10)}
+  .srow.busy .light{animation:pulse 1s ease-in-out infinite alternate}
+  @keyframes pulse{from{opacity:1}to{opacity:.3}}
+  @media (prefers-reduced-motion:reduce){.srow.busy .light{animation:none}}
+
+  /* The host says which way round the tile is: on-light means dark text on a light body. */
+  html.on-light body{color:var(--on-surface, #0b0d10)}
+  html.on-light .row{background:rgba(0,0,0,.05)}
+  html.on-light .top:active:not(:has(button:active)){background:rgba(0,0,0,.07)}
+  html.on-light .browser,html.on-light .t,html.on-light button.clear{color:var(--on-surface, #0b0d10);opacity:.7}
+  html.on-light button.show,html.on-light button.act{color:var(--on-surface, #0b0d10)}
+  html.on-light button.act{border-color:color-mix(in srgb, var(--on-surface, #0b0d10) 35%, transparent)}
+  html.on-light .entry .time,html.on-light .entry .times,html.on-light .entry.limited .what,html.on-light .entry.slow .what,html.on-light .entry .dur,html.on-light .flight,html.on-light .entry .origin{color:var(--on-surface, #0b0d10);opacity:.7}
+  /* The warning orange reads too faint on a light body: darkened towards the text colour. */
+  html.on-light .perfline{color:var(--on-surface, #0b0d10)}
+  html.on-light .perfline span:not(.poor){opacity:.7}
+  html.on-light .perfline .dim{color:inherit;opacity:.45}
+  html.on-light .entry.request .what,html.on-light .entry.perf .what,html.on-light .fact.requests .n{color:color-mix(in srgb, var(--warn, #f0a020) 55%, var(--on-surface, #0b0d10))}
+  html.on-light .entry.resolved .what,html.on-light .entry.resolved .time,html.on-light .entry.resolved .times,html.on-light .entry.resolved .kind,html.on-light .entry.resolved .dur{color:var(--on-surface, #0b0d10)}
+  html.on-light .fact.resolved,html.on-light .fact.resolved .n{color:var(--on-surface, #0b0d10);opacity:.5}
+  html.on-light .fact.seen,html.on-light .fact.seen .n,html.on-light .fact.seen .t{color:var(--on-surface, #0b0d10);opacity:.5}
+  /* An accent body: the accent of the clear button would vanish, so it takes the text colour. */
+  html.accent-fill button.clear:active,html.accent-fill button.show:active,html.accent-fill button.act:active{background:var(--on-surface, #0b0d10);color:var(--accent, #d9b36a)}
+  html.on-light .entry button.origin{color:var(--on-surface, #0b0d10)}
+  html.on-light .shot .said{color:var(--on-surface, #0b0d10)}
+  html.on-light .shot img{box-shadow:0 0 0 2px var(--on-surface, #0b0d10)}
+  html.accent-fill .shot .said{color:var(--on-surface, #0b0d10)}
+  html.accent-fill .shot img{box-shadow:0 0 0 2px var(--on-surface, #0b0d10)}
+  html.accent-fill .entry button.origin:active{background:var(--on-surface, #0b0d10);color:var(--accent, #d9b36a)}
+  html.accent-fill button.show,html.accent-fill button.act{color:var(--on-surface, #0b0d10)}
+  html.accent-fill button.act{border-color:var(--on-surface, #0b0d10)}
+  html.on-light .srow,html.on-light button.seg{background:rgba(0,0,0,.05)}
+  html.on-light button.seg{color:var(--on-surface, #0b0d10);opacity:.75}
+  html.on-light button.seg[aria-selected="true"]{opacity:1;background:color-mix(in srgb, var(--on-surface, #0b0d10) 14%, transparent)}
+  html.on-light .port,html.on-light .badge,html.on-light .status:not(.failed){color:var(--on-surface, #0b0d10)}
+  html.on-light .badge{border-color:color-mix(in srgb, var(--on-surface, #0b0d10) 35%, transparent)}
+  html.on-light .tool,html.on-light .stats,html.on-light .folder,html.on-light .log{color:var(--on-surface, #0b0d10);opacity:.7}
+  html.on-light .log{background:rgba(0,0,0,.06)}
+  html.on-light .snote{color:color-mix(in srgb, var(--warn, #f0a020) 55%, var(--on-surface, #0b0d10))}
+  html.accent-fill button.seg:active{background:var(--on-surface, #0b0d10);color:var(--accent, #d9b36a)}
+  html.accent-fill button.act.danger{color:var(--on-surface, #0b0d10);border-color:var(--on-surface, #0b0d10)}
+
+  /*
+   * Compact: the worst light and the open errors, nothing to touch — a tap on a bar tile belongs to
+   * the host, which opens the popover with the full widget and its rows.
+   */
+  .sum{display:none}
+  html.compact body{pointer-events:none}
+  html.compact .stage .pane,html.compact .stage .segs{display:none}
+  html.compact .sum{display:flex;height:100%;align-items:center;justify-content:center;gap:8px;padding:0 4px;box-sizing:border-box}
+  html.compact.slot-left .sum{justify-content:flex-start}
+  html.compact.slot-right .sum{justify-content:flex-end}
+  html.compact .sum .light{width:clamp(10px,24vh,18px);height:clamp(10px,24vh,18px)}
+  html.compact .sum .count{font-size:calc(clamp(12px,36vh,28px) * var(--text-scale, 1));font-weight:700;font-variant-numeric:tabular-nums}
+  html.compact .sum .count:empty{display:none}
+  html.compact .sum.idle .light{background:var(--text-dim, #6b737c)}
+  html.on-light.compact .sum.idle .light{background:var(--on-surface, #0b0d10);opacity:.35}
+</style></head><body>
+<div id="stage" class="stage">
+  <div id="segs" class="segs" role="tablist" hidden>
+    <button id="segTabs" class="seg" type="button" role="tab" aria-selected="true"></button>
+    <button id="segServers" class="seg" type="button" role="tab" aria-selected="false"></button>
+  </div>
+  <div class="pane">
+    <div id="msg" class="msg"></div>
+    <div id="list" class="list current"></div>
+    <div id="snote" class="snote" hidden></div>
+    <div id="slist" class="list servers"></div>
+  </div>
+  <div id="sum" class="sum"><i id="sumLight" class="light"></i><span id="sumCount" class="count"></span></div>
+</div>
+<script src="logic.js"></script>
+<script>
+  var L = {
+    off: { fr: 'Fonction désactivée', en: 'Feature turned off' },
+    unpaired: { fr: 'Reliez le navigateur avec Fremkit Companion', en: 'Link your browser with Fremkit Companion' },
+    offline: { fr: 'Extension hors ligne', en: 'Extension offline' },
+    moduleOff: { fr: 'Activez Fremdev dans l’extension', en: 'Turn Fremdev on in the extension' },
+    empty: { fr: 'Aucun onglet de développement ouvert', en: 'No development tab open' },
+    resolved: { fr: '{n} erreurs, résolues', en: '{n} errors, resolved' },
+    resolvedRequests: { fr: '{n} requêtes en échec, résolues', en: '{n} failed requests, resolved' },
+    resolvedFlagged: { fr: '{n} signalés, résolus', en: '{n} flagged, resolved' },
+    down: { fr: 'serveur arrêté', en: 'server down' },
+    noAnswer: { fr: 'sans réponse', en: 'no answer' },
+    clear: { fr: 'Effacer', en: 'Clear' },
+    reload: { fr: 'Recharger', en: 'Reload' },
+    reloadHard: { fr: 'Recharger sans cache', en: 'Reload without cache' },
+    showTab: { fr: 'Afficher l’onglet', en: 'Show tab' },
+    copy: { fr: 'Copier le rapport', en: 'Copy report' },
+    copyStack: { fr: 'Copier avec la pile', en: 'Copy with stack' },
+    copied: { fr: 'Copié ✓', en: 'Copied ✓' },
+    copyFailed: { fr: 'Échec de la copie', en: 'Copy failed' },
+    limited: { fr: '+{n} erreurs (débit limité)', en: '+{n} errors (rate limited)' },
+    build: { fr: 'Compilation', en: 'Build' },
+    openSent: { fr: 'Envoyé à l’éditeur', en: 'Sent to the editor' },
+    openFailed: { fr: 'Impossible d’ouvrir ici', en: 'Can\'t open here' },
+    openFile: { fr: 'Ouvrir dans l’éditeur', en: 'Open in the editor' },
+    inFlight: { fr: '{n} en cours', en: '{n} in flight' },
+    seconds: { fr: '{n} s', en: '{n} s' },
+    load: { fr: 'Chargement', en: 'Load' },
+    lcp: { fr: 'LCP', en: 'LCP' },
+    cls: { fr: 'CLS', en: 'CLS' },
+    longTask: { fr: '{n} tâche longue', en: '{n} long task' },
+    longTasks: { fr: '{n} tâches longues', en: '{n} long tasks' },
+    heap: { fr: '{n} Mo', en: '{n} MB' },
+    perfSlower: { fr: '{m} {v}, ×{r} plus lent', en: '{m} {v}, ×{r} slower' },
+    perfPoor: { fr: '{m} {v}, mauvais', en: '{m} {v}, poor' },
+    shotCopied: { fr: 'Copiée', en: 'Copied' },
+    shotCopiedLong: { fr: 'Capture copiée', en: 'Screenshot copied' },
+    elsewhere: { fr: 'Fremdev ne s\'affiche que sur l\'Edge du Mac.', en: 'Fremdev only shows on the Mac\'s Edge.' },
+    segTabs: { fr: 'Onglets ({n})', en: 'Tabs ({n})' },
+    segServers: { fr: 'Serveurs ({n})', en: 'Servers ({n})' },
+    serversEmpty: { fr: 'Aucun serveur de dev', en: 'No dev server running' },
+    unavailable: { fr: 'Impossible de lister les serveurs', en: 'Can\'t list the servers' },
+    docker: { fr: 'Docker → {name}', en: 'Docker → {name}' },
+    managed: { fr: 'Fremkit', en: 'Fremkit' },
+    managedLong: { fr: 'Redémarré par Fremkit', en: 'Restarted by Fremkit' },
+    tabOpen: { fr: 'Onglet Fremdev ouvert sur ce port', en: 'Fremdev tab open on this port' },
+    cpu: { fr: '{n} % CPU', en: '{n}% CPU' },
+    starting: { fr: 'Démarrage…', en: 'Starting…' },
+    failed: { fr: 'Arrêté en erreur', en: 'Exited with an error' },
+    portBusy: { fr: 'Bloque un redémarrage', en: 'Blocking a restart' },
+    open: { fr: 'Ouvrir', en: 'Open' },
+    reveal: { fr: 'Finder', en: 'Finder' },
+    restart: { fr: 'Redémarrer', en: 'Restart' },
+    kill: { fr: 'Arrêter', en: 'Kill' },
+    dismiss: { fr: 'Retirer', en: 'Dismiss' },
+    confirm: { fr: 'Confirmer ?', en: 'Confirm?' },
+    restarting: { fr: 'Redémarrage…', en: 'Restarting…' },
+    killing: { fr: 'Arrêt…', en: 'Stopping…' },
+    actionFailed: { fr: 'Échec', en: 'Failed' }
+  }
+
+  var FD = FremkitFremdev
+  var CHANNEL = 'companion:dev'
+
+  Fremkit.whenReady(function () {
+    var $ = function (id) { return document.getElementById(id) }
+    var stage = $('stage'), list = $('list')
+
+    // Not this Mac (a paired iPad): the channel is refused there. One sentence, nothing subscribed.
+    if (!FD.onMac(location)) {
+      $('sum').classList.add('idle')
+      var say = function () { $('msg').textContent = Fremkit.t(L.elsewhere) }
+      Fremkit.onLocale(say)
+      say()
+      return
+    }
+
+    var snap = null
+    var SVG = 'http://www.w3.org/2000/svg'
+    /** As long as the flash animation: a row erroring at every snapshot flashes once per this. */
+    var FLASH_MS = 1200
+    /**
+     * The drawn rows by `deviceId:tabId`. Each keeps its element across snapshots, updated in
+     * place and moved rather than rebuilt, so a tap that straddles a snapshot still lands, `:active`
+     * holds, and a flash runs to its end.
+     */
+    var drawn = {}
+    /** The one unfolded row, as `deviceId:tabId`, or null. Cleared when its tab goes away. */
+    var unfolded = null
+    /** How long "Copied ✓" or "Copy failed" stays on a copy button, and the open answer on a file. */
+    var COPIED_MS = 2000
+
+    function el(tag, cls) {
+      var e = document.createElement(tag)
+      if (cls) e.className = cls
+      return e
+    }
+    function setText(e, text) { if (e.textContent !== text) e.textContent = text }
+    function send(name, row) {
+      Fremkit.sendCommand(CHANNEL, name, { deviceId: row.deviceId, tabId: row.tabId }).catch(function () {})
+    }
+    /** Reloads the row's tab; the page's own loading state tells the Edge it happened. */
+    function reload(row, bypassCache) {
+      Fremkit.sendCommand(CHANNEL, 'reload', { deviceId: row.deviceId, tabId: row.tabId, bypassCache: bypassCache }).catch(function () {})
+    }
+    function pad(n) { return (n < 10 ? '0' : '') + n }
+    /** A number with `digits` decimals, in the user's language. */
+    function num(n, digits) {
+      return n.toLocaleString(Fremkit.locale === 'fr' ? 'fr' : 'en', { minimumFractionDigits: digits, maximumFractionDigits: digits })
+    }
+    /** A duration, in seconds with one decimal, in the user's language. */
+    function seconds(ms) {
+      return Fremkit.t(L.seconds, { n: num(ms / 1000, 1) })
+    }
+    /** A perf metric's value: a time in seconds, the CLS with two decimals. */
+    function metricValue(metric, value) {
+      return metric === 'cls' ? num(value, 2) : seconds(value)
+    }
+    /** A perf entry's text: "LCP 1.8 s, ×1.6 slower", or "CLS 0.30, poor" without a ratio. */
+    function perfText(v) {
+      return Fremkit.t(v.ratio !== null ? L.perfSlower : L.perfPoor,
+        { m: Fremkit.t(L[v.metric]), v: metricValue(v.metric, v.value), r: v.ratio !== null ? num(v.ratio, 1) : '' })
+    }
+    /** One of the row's values, as the perf line writes it. */
+    function perfPart(p) {
+      if (p.key === 'longTasks') return Fremkit.t(p.value === 1 ? L.longTask : L.longTasks, { n: p.value })
+      if (p.key === 'heapMb') return Fremkit.t(L.heap, { n: p.value })
+      return Fremkit.t(L[p.key]) + ' ' + metricValue(p.key, p.value)
+    }
+    /** The perf line, rebuilt only when what it shows changed. */
+    function updatePerf(entry) {
+      var parts = FD.perfView(entry.row.perf).map(function (p) { return { text: perfPart(p), poor: p.poor, dim: p.dim } })
+      var sig = JSON.stringify(parts)
+      if (sig === entry.perfSig) return
+      entry.perfSig = sig
+      var line = entry.perf
+      while (line.firstChild) line.removeChild(line.firstChild)
+      parts.forEach(function (p) {
+        var span = el('span', p.poor ? 'poor' : p.dim ? 'dim' : '')
+        span.textContent = p.text
+        line.appendChild(span)
+      })
+      line.hidden = parts.length === 0
+    }
+    /** An entry's time, local, as HH:MM:SS. */
+    function clock(ms) {
+      if (!(ms > 0)) return ''
+      var d = new Date(ms)
+      return pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds())
+    }
+
+    /** A Lucide icon (ISC) from its elements, built node by node. */
+    function icon(parts) {
+      var s = document.createElementNS(SVG, 'svg')
+      s.setAttribute('viewBox', '0 0 24 24')
+      s.setAttribute('aria-hidden', 'true')
+      parts.forEach(function (p) {
+        var e = document.createElementNS(SVG, p[0])
+        Object.keys(p[1]).forEach(function (k) { e.setAttribute(k, p[1][k]) })
+        s.appendChild(e)
+      })
+      return s
+    }
+    /** Lucide's "x". */
+    function crossIcon() {
+      return icon([['line', { x1: '18', y1: '6', x2: '6', y2: '18' }], ['line', { x1: '6', y1: '6', x2: '18', y2: '18' }]])
+    }
+    /** Lucide's "external-link". */
+    function showIcon() {
+      return icon([['path', { d: 'M15 3h6v6' }], ['path', { d: 'M10 14 21 3' }],
+        ['path', { d: 'M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6' }]])
+    }
+
+    function factEl(kind) {
+      var f = el('div', 'fact ' + kind)
+      f.n = el('span', 'n')
+      f.t = el('span', 't')
+      f.appendChild(f.n)
+      f.appendChild(f.t)
+      return f
+    }
+
+    /**
+     * A counter: the open count and the last event, dimmed when every open one was marked seen, or
+     * greyed with the resolved label; hidden at zero.
+     */
+    function updateFact(f, tally, lastText, resolvedLabel) {
+      var total = tally && tally.total > 0 ? tally.total : 0
+      f.hidden = total === 0
+      if (total === 0) return
+      var resolved = tally.open === 0
+      f.classList.toggle('resolved', resolved)
+      f.classList.toggle('seen', !resolved && (tally.seen || 0) >= tally.open)
+      f.n.hidden = resolved
+      setText(f.n, resolved ? '' : String(tally.open))
+      setText(f.t, resolved ? Fremkit.t(resolvedLabel, { n: total }) : lastText)
+    }
+
+    /** A copy button's face: its label, or the answer for two seconds after one came. */
+    function paintCopy(c) {
+      var label = c.status === 'ok' ? L.copied : c.status === 'failed' ? L.copyFailed : c.stack ? L.copyStack : L.copy
+      setText(c.btn, Fremkit.t(label))
+      c.btn.classList.toggle('ok', c.status === 'ok')
+      c.btn.classList.toggle('failed', c.status === 'failed')
+      c.btn.disabled = c.status === 'busy'
+    }
+
+    /** Asks the server for the tab's report, onto the Mac's clipboard; one ask at a time per button. */
+    function copy(entry, c) {
+      if (c.status === 'busy') return
+      c.status = 'busy'
+      clearTimeout(c.timer)
+      paintCopy(c)
+      function done(ok) {
+        c.status = ok ? 'ok' : 'failed'
+        paintCopy(c)
+        c.timer = setTimeout(function () { c.status = 'idle'; paintCopy(c) }, COPIED_MS)
+      }
+      var row = entry.row, asked
+      try {
+        asked = Fremkit.sendCommand(CHANNEL, 'report', { deviceId: row.deviceId, tabId: row.tabId, stack: c.stack })
+      } catch (e) { done(false); return }
+      Promise.resolve(asked).then(function (res) { done(!!res && res.ok === true) }, function () { done(false) })
+    }
+
+    function copyButton(entry, stack) {
+      var c = { btn: el('button', 'act copy'), stack: stack, status: 'idle', timer: 0 }
+      c.btn.type = 'button'
+      c.btn.addEventListener('click', function (ev) { ev.stopPropagation(); copy(entry, c) })
+      return c
+    }
+
+    /**
+     * Asks the server to open the history entry's file in the editor; its answer shows on the file
+     * for two seconds. One ask at a time per entry; the row stays as it is.
+     */
+    function openFile(entry, id) {
+      var st = entry.opens[id]
+      if (st && st.status === 'busy') return
+      if (st) clearTimeout(st.timer)
+      st = entry.opens[id] = { status: 'busy', timer: 0 }
+      function done(ok) {
+        if (entry.opens[id] !== st) return
+        st.status = ok ? 'ok' : 'failed'
+        updateHistory(entry)
+        st.timer = setTimeout(function () {
+          if (entry.opens[id] === st) delete entry.opens[id]
+          updateHistory(entry)
+        }, COPIED_MS)
+      }
+      var row = entry.row, asked
+      try {
+        asked = Fremkit.sendCommand(CHANNEL, 'open', { deviceId: row.deviceId, tabId: row.tabId, entryId: id })
+      } catch (e) { done(false); return }
+      Promise.resolve(asked).then(function (res) { done(!!res && res.ok === true) }, function () { done(false) })
+    }
+
+    /** The history list, rebuilt only when what it shows changed, so its scroll stays put. */
+    function updateHistory(entry) {
+      var hist = Array.isArray(entry.row.history) ? entry.row.history : []
+      var views = []
+      hist.forEach(function (h) {
+        var v = FD.entryView(h)
+        if (!v) return
+        v.id = typeof h.id === 'number' ? h.id : null
+        v.open = v.id !== null && !!v.origin && FD.openable(entry.row, h)
+        var st = v.open ? entry.opens[v.id] : null
+        v.answer = st && st.status !== 'busy' ? st.status : null
+        views.push(v)
+      })
+      var sig = JSON.stringify(views) + '|' + Fremkit.locale + '|' + Fremkit.t(L.noAnswer) + '|' + Fremkit.t(L.limited, { n: 0 }) + '|' + Fremkit.t(L.build) +
+        '|' + Fremkit.t(L.openSent) + '|' + Fremkit.t(L.openFailed)
+      if (sig === entry.historySig) return
+      entry.historySig = sig
+      var ul = entry.history
+      while (ul.firstChild) ul.removeChild(ul.firstChild)
+      views.forEach(function (v) {
+        var li = el('li', 'entry ' + v.kind + ' ' + v.state)
+        var line = el('div', 'line')
+        var time = el('span', 'time')
+        time.textContent = clock(v.time)
+        line.appendChild(time)
+        if (v.kind !== 'limited' && v.n > 1) {
+          var times = el('span', 'times')
+          times.textContent = '×' + v.n
+          line.appendChild(times)
+        }
+        if (v.kind === 'build') {
+          var kind = el('span', 'kind')
+          kind.textContent = Fremkit.t(L.build)
+          line.appendChild(kind)
+        }
+        var what = el('span', 'what')
+        what.textContent = v.kind === 'limited' ? Fremkit.t(L.limited, { n: v.n })
+          : v.kind === 'perf' ? perfText(v)
+          : v.noAnswer ? v.text + ' ' + Fremkit.t(L.noAnswer) : v.text
+        line.appendChild(what)
+        if (v.kind === 'slow' && v.ms !== null) {
+          var dur = el('span', 'dur')
+          dur.textContent = seconds(v.ms)
+          line.appendChild(dur)
+        }
+        li.appendChild(line)
+        var origin
+        if (v.open) {
+          origin = el('button', 'origin' + (v.answer ? ' ' + v.answer : ''))
+          origin.type = 'button'
+          origin.setAttribute('aria-label', Fremkit.t(L.openFile) + ' ' + v.origin)
+          origin.textContent = v.answer === 'ok' ? Fremkit.t(L.openSent) : v.answer === 'failed' ? Fremkit.t(L.openFailed) : v.origin
+          var id = v.id
+          origin.addEventListener('click', function (ev) { ev.stopPropagation(); openFile(entry, id) })
+        } else {
+          origin = el('div', 'origin')
+          origin.textContent = v.origin || ''
+        }
+        li.appendChild(origin)
+        ul.appendChild(li)
+      })
+    }
+
+    /** Folds or unfolds the row: only one at a time. */
+    function paintFold(entry) {
+      var open = entry.key === unfolded
+      entry.el.classList.toggle('unfolded', open)
+      entry.body.setAttribute('aria-expanded', open ? 'true' : 'false')
+      if (open) {
+        updatePerf(entry)
+        updateHistory(entry)
+      }
+    }
+    function toggle(entry) {
+      unfolded = unfolded === entry.key ? null : entry.key
+      Object.keys(drawn).forEach(function (k) { paintFold(drawn[k]) })
+      if (unfolded === entry.key && entry.el.scrollIntoView) entry.el.scrollIntoView({ block: 'nearest' })
+    }
+
+    /** A row's elements, built once; `entry.row` is the latest data its handlers act on. */
+    function create(key) {
+      var entry = { key: key, row: null, total: null, flashAt: -Infinity, historySig: null, perfSig: null, opens: {} }
+      var r = entry.el = el('div', 'row')
+      var top = entry.top = el('div', 'top')
+      entry.light = el('i', 'light')
+      // The unfold control is the name and the facts, not the whole line: Show tab and × are
+      // buttons of their own and must not sit inside another. A tap anywhere else on the line
+      // still unfolds it (the click below is on `top`).
+      var body = entry.body = el('div', 'body')
+      body.setAttribute('role', 'button')
+      body.tabIndex = 0
+      var head = el('div', 'head'), facts = entry.facts = el('div', 'facts')
+      entry.app = el('span', 'app')
+      entry.browser = el('span', 'browser')
+      entry.down = el('span', 'down')
+      entry.flight = el('span', 'flight')
+      head.appendChild(entry.app)
+      head.appendChild(entry.browser)
+      head.appendChild(entry.down)
+      head.appendChild(entry.flight)
+      entry.errors = factEl('errors')
+      entry.requests = factEl('requests')
+      facts.appendChild(entry.errors)
+      facts.appendChild(entry.requests)
+      body.appendChild(head)
+      body.appendChild(facts)
+      entry.show = el('button', 'show')
+      entry.show.type = 'button'
+      entry.show.appendChild(showIcon())
+      entry.showLabel = el('span', 'label')
+      entry.show.appendChild(entry.showLabel)
+      entry.clear = el('button', 'clear')
+      entry.clear.type = 'button'
+      entry.clear.appendChild(crossIcon())
+      entry.shot = el('div', 'shot')
+      entry.shot.hidden = true
+      entry.shot.setAttribute('role', 'status')
+      entry.shotImg = el('img')
+      entry.shotImg.alt = ''
+      entry.shotSaid = el('span', 'said')
+      entry.shot.appendChild(entry.shotImg)
+      entry.shot.appendChild(entry.shotSaid)
+      entry.shotUntil = 0
+      entry.shotTimer = 0
+      top.appendChild(entry.light)
+      top.appendChild(body)
+      top.appendChild(entry.shot)
+      top.appendChild(entry.show)
+      top.appendChild(entry.clear)
+
+      var detail = el('div', 'detail')
+      entry.perf = el('div', 'perfline')
+      entry.perf.hidden = true
+      entry.history = el('ul', 'history')
+      entry.actions = el('div', 'actions')
+      entry.copy = copyButton(entry, false)
+      entry.copyStack = copyButton(entry, true)
+      entry.actions.appendChild(entry.copy.btn)
+      entry.actions.appendChild(entry.copyStack.btn)
+      entry.reload = el('button', 'act reload')
+      entry.reload.type = 'button'
+      entry.reloadHard = el('button', 'act reload hard')
+      entry.reloadHard.type = 'button'
+      entry.actions.appendChild(entry.reload)
+      entry.actions.appendChild(entry.reloadHard)
+      entry.reload.addEventListener('click', function (ev) { ev.stopPropagation(); reload(entry.row, false) })
+      entry.reloadHard.addEventListener('click', function (ev) { ev.stopPropagation(); reload(entry.row, true) })
+      detail.appendChild(entry.perf)
+      detail.appendChild(entry.history)
+      detail.appendChild(entry.actions)
+      r.appendChild(top)
+      r.appendChild(detail)
+
+      entry.show.addEventListener('click', function (ev) {
+        ev.stopPropagation()
+        send('focus', entry.row)
+      })
+      entry.clear.addEventListener('click', function (ev) {
+        ev.stopPropagation()
+        send('clear', entry.row)
+      })
+      top.addEventListener('click', function () { toggle(entry) })
+      body.addEventListener('keydown', function (ev) {
+        if (ev.target !== body || (ev.key !== 'Enter' && ev.key !== ' ')) return
+        ev.preventDefault()
+        toggle(entry)
+      })
+      r.addEventListener('animationend', function () { r.classList.remove('flash') })
+      return entry
+    }
+
+    /**
+     * The shot copied from this tab, while it shows: the thumbnail and "Copied". Hidden at its
+     * `until` by a timer of its own, so a late snapshot does not leave it up.
+     */
+    function paintShot(entry) {
+      var shot = FD.shotOf(entry.row, Date.now())
+      entry.shot.hidden = !shot
+      clearTimeout(entry.shotTimer)
+      if (!shot) {
+        entry.shotUntil = 0
+        if (entry.shotImg.getAttribute('src')) entry.shotImg.removeAttribute('src')
+        return
+      }
+      setText(entry.shotSaid, Fremkit.t(L.shotCopied))
+      entry.shot.setAttribute('aria-label', Fremkit.t(L.shotCopiedLong))
+      if (shot.thumb) {
+        if (entry.shotImg.getAttribute('src') !== shot.thumb) entry.shotImg.src = shot.thumb
+      } else if (entry.shotImg.getAttribute('src')) entry.shotImg.removeAttribute('src')
+      entry.shotImg.hidden = !shot.thumb
+      entry.shot.classList.toggle('bare', !shot.thumb)
+      // A new shot replays the entrance.
+      if (entry.shotUntil !== shot.until) {
+        entry.shotUntil = shot.until
+        entry.shot.style.animation = 'none'
+        void entry.shot.offsetWidth
+        entry.shot.style.animation = ''
+      }
+      entry.shotTimer = setTimeout(function () { paintShot(entry) }, Math.min(shot.until - Date.now(), 5000) + 20)
+    }
+
+    function update(entry, row, several) {
+      entry.row = row
+      var r = entry.el, e = row.errors, q = row.requests
+      entry.light.className = 'light ' + row.light + (row.seen ? ' seen' : '')
+      entry.body.setAttribute('aria-label', row.app || row.host)
+      setText(entry.app, row.app || row.host)
+      setText(entry.browser, several && row.browser ? row.browser : '')
+      entry.browser.hidden = !(several && row.browser)
+      setText(entry.down, Fremkit.t(L.down))
+      entry.down.hidden = row.server !== 'down'
+      // The requests in flight, while there are any: live, so it never flashes the row.
+      var flying = typeof row.inFlight === 'number' && row.inFlight > 0 ? row.inFlight : 0
+      setText(entry.flight, flying > 0 ? Fremkit.t(L.inFlight, { n: flying }) : '')
+      entry.flight.hidden = flying === 0
+      updateFact(entry.errors, e, e && e.last ? e.last.text : '', L.resolved)
+      var last = q && q.last
+      // A load's regression counts here too: with no failed request to show, its text stands in, and
+      // the resolved label does not call it a failed request.
+      var rf = FD.requestsFact(row)
+      var lastText = last ? (last.status === 0 ? Fremkit.t(L.noAnswer) : String(last.status)) + ' ' + last.path
+        : rf.perf ? perfText(rf.perf) : ''
+      updateFact(entry.requests, q, lastText, rf.neutral ? L.resolvedFlagged : L.resolvedRequests)
+      entry.facts.hidden = entry.errors.hidden && entry.requests.hidden
+      setText(entry.showLabel, Fremkit.t(L.showTab))
+      entry.show.setAttribute('aria-label', Fremkit.t(L.showTab))
+      entry.clear.setAttribute('aria-label', Fremkit.t(L.clear))
+      entry.clear.hidden = !FD.hasUnseen(row)
+      // Copy only for an install that can build the report.
+      var canReload = FD.hasFeature(row, 'fremdev.reload')
+      entry.actions.hidden = !row.report && !canReload
+      entry.copy.btn.hidden = !row.report
+      entry.copyStack.btn.hidden = !row.report
+      entry.reload.hidden = !canReload
+      entry.reloadHard.hidden = !canReload
+      setText(entry.reload, Fremkit.t(L.reload))
+      setText(entry.reloadHard, Fremkit.t(L.reloadHard))
+      paintCopy(entry.copy)
+      paintCopy(entry.copyStack)
+      paintFold(entry)
+      paintShot(entry)
+
+      // A new error flashes the row, at most once per flash: a page erroring at every snapshot
+      // does not keep it blinking.
+      var total = e ? e.total : 0
+      var now = Date.now()
+      if (entry.total !== null && total > entry.total && now - entry.flashAt >= FLASH_MS) {
+        entry.flashAt = now
+        r.classList.remove('flash')
+        void r.offsetWidth
+        r.classList.add('flash')
+      }
+      entry.total = total
+    }
+
+    /* ---- The Servers segment. ---- */
+
+    var SCHANNEL = 'companion:servers'
+    var slist = $('slist')
+    var sSnap = null
+    /** The segment on show, 'tabs' or 'servers'. In memory: each instance is a frame of its own. */
+    var segment = 'tabs'
+    /** How long Kill and Restart wait for the second touch. */
+    var CONFIRM_MS = 3000
+    /** How long a refused command's error stays on its row. */
+    var ERROR_MS = 4000
+    /** A kill or restart the server has not answered by then is given up on, so the row is usable again. */
+    var BUSY_MAX_MS = 30000
+    /** The drawn server rows by `FD.serverKey`, kept across snapshots like the tab rows. */
+    var sDrawn = {}
+    /** The one unfolded server row's key, or null. */
+    var sUnfolded = null
+    /**
+     * Per row key, what a touch started: `armed` (the button waiting for its second touch), `busy`
+     * (a kill or restart sent, not answered), `error` (a refusal's text, for a few seconds). By key,
+     * not id: a server Fremkit restarts comes back under another pid, the same key.
+     */
+    var sState = {}
+
+    function showAll() { return !!(Fremkit.settings && Fremkit.settings.showAllListeners === true) }
+    function stateFor(key) {
+      return sState[key] || (sState[key] = { armed: null, armTimer: 0, busy: null, busyTimer: 0, token: null, error: null, errorTimer: 0 })
+    }
+    function repaint(key) { if (sDrawn[key]) paintServer(sDrawn[key]) }
+
+    function showError(key, st, text) {
+      clearTimeout(st.errorTimer)
+      st.error = text
+      st.errorTimer = setTimeout(function () { st.error = null; repaint(key) }, ERROR_MS)
+    }
+
+    /** Sends the command for the row's current id; a kill or restart holds the row busy until answered. */
+    function sendServer(entry, name) {
+      var key = entry.key, st = stateFor(key)
+      disarm(st)
+      clearTimeout(st.errorTimer)
+      st.error = null
+      var token = {}, long = name === 'kill' || name === 'restart'
+      if (long) {
+        st.busy = name
+        st.token = token
+        clearTimeout(st.busyTimer)
+        st.busyTimer = setTimeout(function () {
+          if (st.token !== token) return
+          st.busy = null
+          st.token = null
+          repaint(key)
+        }, BUSY_MAX_MS)
+      }
+      repaint(key)
+      function done(res) {
+        if (long) {
+          if (st.token !== token) return
+          clearTimeout(st.busyTimer)
+          st.busy = null
+          st.token = null
+        }
+        if (!res || res.ok !== true) {
+          showError(key, st, res && typeof res.error === 'string' && res.error ? res.error : Fremkit.t(L.actionFailed))
+        }
+        repaint(key)
+      }
+      var asked
+      try {
+        // Dismissing a gone server is a kill the server answers by forgetting it.
+        asked = Fremkit.sendCommand(SCHANNEL, name === 'dismiss' ? 'kill' : name, { id: entry.row.id })
+      } catch (e) { done(null); return }
+      Promise.resolve(asked).then(done, function () { done(null) })
+    }
+
+    /** Open and Finder act at once; Kill and Restart arm "Confirm?" for 3 s and act on the second touch. */
+    function press(entry, name) {
+      var key = entry.key, st = stateFor(key)
+      if (st.busy) return
+      if ((name === 'kill' || name === 'restart') && st.armed !== name) {
+        clearTimeout(st.armTimer)
+        st.armed = name
+        st.armTimer = setTimeout(function () {
+          if (st.armed !== name) return
+          st.armed = null
+          repaint(key)
+        }, CONFIRM_MS)
+        repaint(key)
+        return
+      }
+      sendServer(entry, name)
+    }
+
+    var ACTIONS = ['open', 'reveal', 'restart', 'kill', 'dismiss']
+
+    function createServer(key) {
+      var entry = { key: key, row: null, logText: null, buttons: {} }
+      var r = entry.el = el('div', 'srow')
+      var top = el('div', 'top')
+      entry.light = el('i', 'light')
+      var body = entry.body = el('div', 'body')
+      body.setAttribute('role', 'button')
+      body.tabIndex = 0
+      var head = el('div', 'head')
+      entry.port = el('span', 'port')
+      entry.project = el('span', 'project')
+      entry.tool = el('span', 'tool')
+      entry.tabdot = el('i', 'tabdot')
+      entry.tabdot.setAttribute('role', 'img')
+      entry.badge = el('span', 'badge')
+      head.appendChild(entry.port)
+      head.appendChild(entry.project)
+      head.appendChild(entry.tool)
+      head.appendChild(entry.tabdot)
+      head.appendChild(entry.badge)
+      var stats = el('div', 'stats')
+      entry.uptime = el('span', 'uptime')
+      entry.cpu = el('span', 'cpu')
+      entry.mem = el('span', 'mem')
+      entry.status = el('span', 'status')
+      entry.status.setAttribute('role', 'status')
+      stats.appendChild(entry.uptime)
+      stats.appendChild(entry.cpu)
+      stats.appendChild(entry.mem)
+      stats.appendChild(entry.status)
+      body.appendChild(head)
+      body.appendChild(stats)
+      top.appendChild(entry.light)
+      top.appendChild(body)
+
+      var detail = el('div', 'detail')
+      entry.cmd = el('div', 'cmd')
+      entry.folder = el('div', 'folder')
+      entry.log = el('div', 'log')
+      entry.actions = el('div', 'actions')
+      ACTIONS.forEach(function (name) {
+        var b = el('button', 'act ' + name + (name === 'kill' ? ' danger' : ''))
+        b.type = 'button'
+        b.addEventListener('click', function (ev) { ev.stopPropagation(); press(entry, name) })
+        entry.buttons[name] = b
+        entry.actions.appendChild(b)
+      })
+      detail.appendChild(entry.cmd)
+      detail.appendChild(entry.folder)
+      detail.appendChild(entry.log)
+      detail.appendChild(entry.actions)
+      r.appendChild(top)
+      r.appendChild(detail)
+
+      top.addEventListener('click', function () { toggleServer(entry) })
+      body.addEventListener('keydown', function (ev) {
+        if (ev.target !== body || (ev.key !== 'Enter' && ev.key !== ' ')) return
+        ev.preventDefault()
+        toggleServer(entry)
+      })
+      return entry
+    }
+
+    /** Lets go of an armed Kill or Restart, so a later single touch never acts. */
+    function disarm(st) {
+      clearTimeout(st.armTimer)
+      st.armed = null
+    }
+
+    function toggleServer(entry) {
+      sUnfolded = sUnfolded === entry.key ? null : entry.key
+      // A fold forgets an armed button: unfolded again, the row asks for two touches again.
+      Object.keys(sState).forEach(function (k) { if (k !== sUnfolded) disarm(sState[k]) })
+      Object.keys(sDrawn).forEach(function (k) { paintServer(sDrawn[k]) })
+      if (sUnfolded === entry.key && entry.el.scrollIntoView) entry.el.scrollIntoView({ block: 'nearest' })
+    }
+
+    /** What the row's status says: a touch's state first, then the server's own. */
+    function statusOf(row, st) {
+      if (st && st.busy) return { text: Fremkit.t(st.busy === 'restart' ? L.restarting : L.killing), failed: false }
+      if (st && st.error) return { text: st.error, failed: true }
+      if (row.state === 'starting') return { text: Fremkit.t(L.starting), failed: false }
+      if (row.state === 'failed') return { text: Fremkit.t(L.failed), failed: true }
+      if (row.portBusy) return { text: Fremkit.t(L.portBusy), failed: true }
+      return { text: '', failed: false }
+    }
+
+    function paintServer(entry) {
+      var row = entry.row, st = sState[entry.key] || null
+      var acts = FD.serverActions(row, !!(sSnap && sSnap.canRestart === true))
+      var locale = Fremkit.locale
+      entry.light.className = 'light ' + FD.serverLight(row)
+      entry.el.classList.toggle('busy', !!(st && st.busy))
+      var ports = row.ports.join(', ')
+      setText(entry.port, ports)
+      var name
+      if (row.docker) {
+        name = row.docker === 'Docker' ? 'Docker' : Fremkit.t(L.docker, { name: row.docker })
+        entry.tool.hidden = true
+      } else {
+        name = row.project || row.tool || ''
+        setText(entry.tool, row.tool || '')
+        entry.tool.hidden = !row.tool || row.tool === name
+      }
+      setText(entry.project, name)
+      entry.body.setAttribute('aria-label', name + ' ' + ports)
+      setText(entry.badge, Fremkit.t(L.managed))
+      entry.badge.title = Fremkit.t(L.managedLong)
+      entry.badge.hidden = row.managed !== true
+      var tab = row.tab === 'red' || row.tab === 'orange' || row.tab === 'green' ? row.tab : null
+      entry.tabdot.className = 'tabdot' + (tab ? ' ' + tab : '')
+      entry.tabdot.hidden = !tab
+      entry.tabdot.setAttribute('aria-label', Fremkit.t(L.tabOpen))
+      setText(entry.uptime, FD.formatUptime(row.uptimeSec, locale))
+      setText(entry.cpu, typeof row.cpu === 'number' && isFinite(row.cpu) ? Fremkit.t(L.cpu, { n: num(row.cpu, 1) }) : '')
+      setText(entry.mem, FD.formatMem(row.rssKb, locale))
+      var s = statusOf(row, st)
+      setText(entry.status, s.text)
+      entry.status.hidden = s.text === ''
+      entry.status.classList.toggle('failed', s.failed)
+
+      setText(entry.cmd, row.command || '')
+      setText(entry.folder, row.folder || '')
+      var lines = row.managed === true && Array.isArray(row.log) ? row.log.filter(function (l) { return typeof l === 'string' }) : []
+      var logText = lines.join('\n')
+      entry.log.hidden = lines.length === 0
+      if (logText !== entry.logText) {
+        entry.logText = logText
+        entry.log.textContent = logText
+        // The newest line in view, as a terminal shows it.
+        entry.log.scrollTop = entry.log.scrollHeight
+      }
+      var any = false
+      ACTIONS.forEach(function (name) {
+        var b = entry.buttons[name]
+        b.hidden = !acts[name]
+        if (acts[name]) any = true
+        var armed = !!(st && st.armed === name)
+        setText(b, Fremkit.t(armed ? L.confirm : L[name]))
+        b.classList.toggle('armed', armed)
+        b.disabled = !!(st && st.busy)
+      })
+      entry.actions.hidden = !any
+      var open = sUnfolded === entry.key
+      entry.el.classList.toggle('unfolded', open)
+      entry.body.setAttribute('aria-expanded', open ? 'true' : 'false')
+    }
+
+    function renderServers() {
+      var rows = FD.serverRows(sSnap, showAll())
+      var next = {}
+      rows.forEach(function (row, i) {
+        var entry = sDrawn[row.key] || createServer(row.key)
+        next[row.key] = entry
+        // Another process under this key (one of two twins went, or a server Fremkit restarted now
+        // listens): what was armed or refused was for the other one. A command in flight keeps it.
+        var st = sState[row.key]
+        if (st && !st.busy && entry.row && entry.row.id !== row.id) {
+          disarm(st)
+          clearTimeout(st.errorTimer)
+          st.error = null
+        }
+        entry.row = row
+        if (slist.children[i] !== entry.el) slist.insertBefore(entry.el, slist.children[i] || null)
+      })
+      Object.keys(sDrawn).forEach(function (key) {
+        if (!next[key] && sDrawn[key].el.parentNode === slist) slist.removeChild(sDrawn[key].el)
+      })
+      sDrawn = next
+      Object.keys(next).forEach(function (key) { paintServer(next[key]) })
+      // A row gone for good forgets what was started on it; one being restarted keeps it, since it
+      // leaves the list between the kill and its new start.
+      Object.keys(sState).forEach(function (key) {
+        var st = sState[key]
+        if (next[key] || st.busy) return
+        clearTimeout(st.armTimer)
+        clearTimeout(st.errorTimer)
+        delete sState[key]
+      })
+      if (sUnfolded !== null && !next[sUnfolded] && !sState[sUnfolded]) sUnfolded = null
+      return rows.length
+    }
+
+    function pick(which) {
+      if (segment === which) return
+      segment = which
+      render()
+    }
+    $('segTabs').addEventListener('click', function () { pick('tabs') })
+    $('segServers').addEventListener('click', function () { pick('servers') })
+
+    function render() {
+      var state = FD.stateOf(snap)
+      // The segments while Fremdev is on: the servers need no extension, so an unpaired or offline
+      // Tabs segment still offers them. Off, the off sentence alone, whichever was picked.
+      var serversOn = !!sSnap && sSnap.enabled === true
+      var segs = state !== 'off' && (state !== 'loading' || serversOn)
+      var current = segs ? segment : 'tabs'
+      var nServers = renderServers()
+      var hasRows, say
+      if (current === 'servers') {
+        var ss = FD.serversStateOf(sSnap, showAll())
+        hasRows = ss === 'rows'
+        say = ss === 'loading' || ss === 'rows' ? '' : Fremkit.t(ss === 'off' ? L.off : ss === 'empty' ? L.serversEmpty : L[ss] || L.unavailable)
+      } else {
+        hasRows = state === 'rows'
+        say = state === 'loading' || state === 'rows' ? '' : Fremkit.t(L[state])
+      }
+      stage.classList.toggle('rows', hasRows)
+      setText($('msg'), say)
+      list.classList.toggle('current', current === 'tabs')
+      slist.classList.toggle('current', current === 'servers')
+      var note = $('snote')
+      var stale = current === 'servers' && hasRows && typeof sSnap.error === 'string' && sSnap.error !== ''
+      note.hidden = !stale
+      setText(note, stale ? Fremkit.t(L.unavailable) : '')
+      $('segs').hidden = !segs
+
+      var rows = FD.rowsOf(snap)
+      var segTabs = $('segTabs'), segServers = $('segServers')
+      setText(segTabs, Fremkit.t(L.segTabs, { n: rows.length }))
+      setText(segServers, Fremkit.t(L.segServers, { n: nServers }))
+      segTabs.setAttribute('aria-selected', current === 'tabs' ? 'true' : 'false')
+      segServers.setAttribute('aria-selected', current === 'servers' ? 'true' : 'false')
+      var browsers = {}
+      rows.forEach(function (r) { browsers[r.deviceId] = true })
+      var several = Object.keys(browsers).length > 1
+      var next = {}
+      rows.forEach(function (row, i) {
+        var key = row.deviceId + ':' + row.tabId
+        var entry = drawn[key] || create(key)
+        next[key] = entry
+        update(entry, row, several)
+        // Moved only when out of place: the node, and the tap on it, survive.
+        if (list.children[i] !== entry.el) list.insertBefore(entry.el, list.children[i] || null)
+      })
+      Object.keys(drawn).forEach(function (key) {
+        if (next[key]) return
+        // A row gone: its shot's timer goes with it.
+        clearTimeout(drawn[key].shotTimer)
+        if (drawn[key].el.parentNode === list) list.removeChild(drawn[key].el)
+      })
+      drawn = next
+      if (unfolded !== null && !next[unfolded]) unfolded = null
+
+      var s = FD.summaryOf(snap)
+      $('sumLight').className = 'light ' + s.light + (s.seen ? ' seen' : '')
+      setText($('sumCount'), s.errors > 0 ? String(s.errors) : '')
+      // Nothing watched (no rows, whatever the reason): a neutral light, not an "all good" green.
+      $('sum').classList.toggle('idle', state !== 'rows')
+    }
+
+    Fremkit.onLocale(render)
+    Fremkit.onSettings(render)
+    Fremkit.subscribe(CHANNEL, function (s) { snap = s && typeof s === 'object' ? s : null; render() })
+    Fremkit.subscribe(SCHANNEL, function (s) { sSnap = s && typeof s === 'object' ? s : null; render() })
+    render()
+  })
+</script>
+</body></html>

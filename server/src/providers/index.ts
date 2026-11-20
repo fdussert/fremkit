@@ -1,4 +1,4 @@
-import { createDockerProvider, createLocalModelsProvider } from './local-operations.js'
+import { createLocalModelsProvider } from './local-operations.js'
 import type { Provider } from './types.js'
 import { processesProvider } from './processes.js'
 import { createVolumeProvider } from './volume.js'
@@ -11,7 +11,6 @@ import { createBatteryProvider } from './battery.js'
 import { createRtkProvider } from './rtk.js'
 
 export const providers: Provider[] = [
-  createDockerProvider(),
   createLocalModelsProvider(),
   processesProvider,
   createVolumeProvider(),

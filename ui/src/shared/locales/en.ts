@@ -474,6 +474,8 @@ export const en: Record<string, string> = {
   'admin.inspector.screen.about': 'About',
   'admin.inspector.screen.about.version': 'Fremkit {version}',
   'admin.inspector.screen.labs': 'Experimental features',
+  'admin.inspector.screen.labs.fremdev': 'Fremdev (development tabs)',
+  'admin.inspector.screen.labs.fremdev.hint': 'Shows your development tabs’ errors on the Edge, through the Fremkit Companion extension. Untick to hide it again; a Fremdev widget already placed is kept.',
   'admin.inspector.screen.labs.none': 'No experimental features right now.',
   'admin.inspector.screen.about.authors': 'Written by {maintainer}, with {contributors}.',
   'admin.inspector.screen.about.source': 'Source code',
@@ -677,6 +679,8 @@ export const en: Record<string, string> = {
   'dashboard.navigation.previousNames': 'Show previous pages',
   'dashboard.navigation.nextNames': 'Show next pages',
   'dashboard.widget.notInstalled': 'not installed',
+  /** A placed widget whose experimental feature is off (`labs.fremdev`): the admin's canvas only. */
+  'dashboard.widget.featureOff': 'Feature turned off',
   'dashboard.remote.noScreen': 'Choose a screen for this tablet in the Mac’s admin',
   'dashboard.remote.noScreen.ipad': 'Choose a screen for this iPad in the Mac’s admin',
   'dashboard.remote.unauthorized': 'This tablet is no longer allowed',

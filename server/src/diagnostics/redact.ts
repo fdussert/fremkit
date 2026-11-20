@@ -13,6 +13,8 @@
  * addresses, LAN host names, IP addresses — catch what nobody told us about.
  */
 
+import { homeToTilde } from '../home-tilde.js'
+
 export interface RedactionContext {
   /** Values never to show: every connection's secrets, the access secret. */
   secrets?: string[]
@@ -154,10 +156,7 @@ export function redact(text: string, ctx: RedactionContext = {}): string {
   out = replaceValues(out, (ctx.secrets ?? []).flatMap(secretVariants), MARK.secret, { min: MIN_SECRET_LENGTH })
 
   // The home folder before anything that could match inside it.
-  if (ctx.home && ctx.home.length > 1) {
-    const home = ctx.home.replace(/\/+$/, '')
-    out = out.replace(new RegExp(`${escape(home)}(?=/|\\b|$)`, 'g'), '~')
-  }
+  out = homeToTilde(out, ctx.home)
   // Any other account's home: a log line from a run under another user, a path in a stack trace.
   out = out.replace(/\/Users\/(?!Shared\b)[^/\s"'`]+/g, `/Users/${MARK.user}`)
 

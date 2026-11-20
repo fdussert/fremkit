@@ -139,23 +139,268 @@ const Id = z.uuid()
 const Sdp = z.string().max(MAX_SDP)
 const Token = z.string().refine(isWellFormedToken, 'not a token')
 
+/** The extension's modules. */
+export const FREMPLAY_MODULE = 'fremplay'
+export const FREMDEV_MODULE = 'fremdev'
+/** Fremdev can answer `dev.report.ask`; announced only while Fremdev is on. */
+export const FREMDEV_REPORT_MODULE = 'fremdev.report'
+
+/** Fremdev reports a dev server's compile error overlay as a `build` entry. */
+export const FREMDEV_BUILD_MODULE = 'fremdev.build'
+
+/** Fremdev opens an entry's file in the editor through the dev server's own endpoint (`dev.open.ask`). */
+export const FREMDEV_OPEN_MODULE = 'fremdev.open'
+
+/** Fremdev reloads a tab, with or without its cache (`dev.reload`). */
+export const FREMDEV_RELOAD_MODULE = 'fremdev.reload'
+
+/** Fremdev reports a tab's slow requests (`slow` entries) and its requests in flight (`inFlight`). */
+export const FREMDEV_SLOW_MODULE = 'fremdev.slow'
+
+/** Fremdev reports a tab's performance values (`perf`) and a load's regression (`perf` entries). */
+export const FREMDEV_PERF_MODULE = 'fremdev.perf'
+
+/**
+ * Fremdev copies a dev tab's screenshot to the Mac's clipboard on ⌃⇧S (`POST /companion/dev/shot`,
+ * shot.ts): the route answers only an install that listed it.
+ */
+export const FREMDEV_SHOT_MODULE = 'fremdev.shot'
+
+/** The largest JPEG the shot route takes: 2 MiB, which the extension fits the capture into. */
+export const SHOT_MAX_BYTES = 2_097_152
+
+/**
+ * Fremdev tells the Edge that a shot reached the clipboard (`dev.shot`, with a thumbnail), and the
+ * widget shows it on the tab's row for a few seconds. Taken only from an install that listed it, and
+ * sent only to a server whose `ready` says `modules.shotView`.
+ */
+export const FREMDEV_SHOTVIEW_MODULE = 'fremdev.shotview'
+
+/** The longest thumbnail `dev.shot` carries, its `data:` prefix included (THUMB_MAX_CHARS in the extension). */
+export const SHOT_THUMB_MAX = 40_000
+
+/**
+ * A thumbnail: a JPEG (`/9j/` is the base64 of FF D8 FF) as a `data:` URL of whole base64 quads,
+ * nothing else; the widget paints it as an <img>. Linear: no nested quantifier can backtrack.
+ */
+export const SHOT_THUMB_RE = /^data:image\/jpeg;base64,\/9j\/(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/
+
+/**
+ * The Fremdev modules a control on the Edge depends on (`features` in the snapshot): an install
+ * that lists one is shown that control. Each feature's task appends its module name here.
+ */
+export const FREMDEV_FEATURES: readonly string[] = [
+  FREMDEV_BUILD_MODULE,
+  FREMDEV_OPEN_MODULE,
+  FREMDEV_RELOAD_MODULE,
+  FREMDEV_SLOW_MODULE,
+  FREMDEV_PERF_MODULE,
+  FREMDEV_SHOT_MODULE,
+  FREMDEV_SHOTVIEW_MODULE,
+]
+
+/**
+ * The names of the modules an extension runs. Unknown names pass, so a newer extension with a module
+ * this server has never heard of still connects. 16: the cockpit lists 10, and room is left so a
+ * newer extension's list does not cost the install its whole list through hello's `.catch`.
+ */
+const ModulesSchema = z.array(z.string().min(1).max(32)).max(16)
+
+/** At most this many dev tabs in one `dev.tabs`. */
+export const MAX_DEV_TABS = 32
+/** The longest error text or request path a dev tab row carries. */
+export const MAX_DEV_TEXT = 300
+/** The highest line or column a build entry carries. */
+const MAX_DEV_POS = 10_000_000
+const Pos = z.number().int().min(1).max(MAX_DEV_POS)
+
+const MAX_COUNT = 1_000_000
+const Count = z.number().int().min(0).max(MAX_COUNT)
+const Stamp = z.number().finite().min(0)
+
+/**
+ * A tab's errors or requests: counts, `open` being the ones not resolved since the last load or
+ * hot update, `seen` the open ones the user marked seen on the Edge.
+ */
+function tally<T extends z.ZodType>(last: T) {
+  return z
+    .strictObject({ total: Count, open: Count, seen: Count, last: last.nullable() })
+    .refine((t) => t.open <= t.total, { message: 'open above total' })
+    .refine((t) => t.seen <= t.open, { message: 'seen above open' })
+}
+
+/** The longest bug report text a `dev.report` carries. */
+export const REPORT_MAX = 48_000
+
+/** The entries a dev tab's history carries, newest first. */
+export const MAX_DEV_HISTORY = 20
+/** A request's method, from a closed list: anything else reads `OTHER`. */
+export const DEV_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS', 'OTHER'] as const
+
+/**
+ * Common to every history entry: `id` its own, unique within the tab for the tab's life (the
+ * extension counts up, wrapping to 1 after the last; a merge keeps it), `n` the times it came back
+ * to back, `at` the last of them, `state` `open`, `seen` (marked on the Edge) or `resolved` (the
+ * page reloaded or updated since).
+ */
+const entry = {
+  id: z.number().int().min(1).max(2_147_483_647),
+  n: z.number().int().min(1).max(MAX_COUNT),
+  at: Stamp,
+  state: z.enum(['open', 'seen', 'resolved']),
+}
+
+const TabId = z.number().int().min(0).max(2_147_483_647)
+
+/** The dev servers Fremdev tells apart. */
+export const DEV_SERVERS = ['vite', 'next', 'webpack'] as const
+
+/** A load or LCP time, in ms: up to ten minutes. */
+const PerfMs = z.number().int().min(0).max(600_000)
+
+/**
+ * A tab's performance values, from its current document (companion/fremdev/perf.js): each one
+ * optional. `cls` is the cumulative layout shift, `longTasks` the tasks of 50 ms or more since the
+ * page started, `heapMb` the JS heap where Chrome tells it (coarse, shown dimmed, never judged).
+ */
+const DevPerfSchema = z.strictObject({
+  load: PerfMs.optional(),
+  lcp: PerfMs.optional(),
+  cls: z.number().min(0).max(100).optional(),
+  longTasks: z.number().int().min(0).max(100_000).optional(),
+  heapMb: z.number().int().min(0).max(65_536).optional(),
+})
+
+/**
+ * A tab's last errors and failed requests, without stacks; `limited` the errors the relay only
+ * counted; `build` the dev server's compile errors (fremdev/build.js), counted among the errors;
+ * `slow` the requests that succeeded in a second or more, counted in no tally; `perf` a load's
+ * performance regression, counted among the requests (orange, never red).
+ */
+const DevHistorySchema = z
+  .array(
+    z.discriminatedUnion('kind', [
+      z.strictObject({
+        kind: z.literal('error'),
+        text: z.string().max(MAX_DEV_TEXT),
+        /** Where it was thrown: `path:line:col`, or `host/path:line:col` for another origin. */
+        origin: z.string().max(MAX_DEV_TEXT).nullable(),
+        ...entry,
+      }),
+      z.strictObject({
+        kind: z.literal('request'),
+        method: z.enum(DEV_METHODS),
+        path: z.string().max(MAX_DEV_TEXT).regex(/^\/[^?#]*$/),
+        status: z.number().int().min(0).max(599),
+        ...entry,
+      }),
+      z.strictObject({ kind: z.literal('limited'), ...entry }),
+      z.strictObject({
+        kind: z.literal('build'),
+        /** The dev server's compile error, as its overlay says it, a home folder written `~/`. */
+        text: z.string().max(MAX_DEV_TEXT),
+        /** The file the overlay names (an absolute path under Vite, `./src/…` otherwise), `~/` for a home folder. */
+        file: z.string().max(MAX_DEV_TEXT).nullable(),
+        line: Pos.nullable(),
+        col: Pos.nullable(),
+        ...entry,
+      }),
+      z.strictObject({
+        kind: z.literal('slow'),
+        method: z.enum(DEV_METHODS),
+        // A path alone, as a request entry's.
+        path: z.string().max(MAX_DEV_TEXT).regex(/^\/[^?#]*$/),
+        /** How long it took, the latest when folded: 1 s (slow) to an hour. */
+        ms: z.number().int().min(1000).max(3_600_000),
+        ...entry,
+      }),
+      z.strictObject({
+        kind: z.literal('perf'),
+        /** What regressed: the load, the LCP (both in ms) or the CLS. */
+        metric: z.enum(['load', 'lcp', 'cls']),
+        value: z.number().min(0).max(600_000),
+        /** How many times slower than the median of the previous loads; null for a "poor" Web Vital. */
+        ratio: z.number().min(1).max(1000).nullable(),
+        ...entry,
+      }),
+    ]),
+  )
+  .max(MAX_DEV_HISTORY)
+
+export const DevTabSchema = z.strictObject({
+  tabId: TabId,
+  /** The tab's title, or its host:port. */
+  app: z.string().max(120),
+  /** host:port, as the URL gives it: `_` included, a URL's host may carry one (`my_app.localhost`). */
+  host: z.string().regex(/^[a-z0-9._\-[\]:]{1,260}$/i),
+  errors: tally(z.strictObject({ text: z.string().max(MAX_DEV_TEXT), at: Stamp })),
+  requests: tally(
+    z.strictObject({
+      // A path alone: a query or fragment can carry a token.
+      path: z.string().max(MAX_DEV_TEXT).regex(/^\/[^?#]*$/),
+      /** 0: the request failed before any answer. */
+      status: z.number().int().min(0).max(599),
+      at: Stamp,
+    }),
+  ),
+  /**
+   * No published Companion sends a row without it: 0.1.x has no Fremdev at all. The default only
+   * lets a development build from before the history connect, its rows reading as an empty one.
+   */
+  history: DevHistorySchema.default([]),
+  /**
+   * The dev server that served the page, told by its script tags (companion/fremdev/kind.js); null
+   * until it is known, or for another one. The kind alone: the base path stays in the extension.
+   */
+  devServer: z.enum(DEV_SERVERS).nullable().default(null),
+  /** The tab's requests started and not finished (one pending over 30 s no longer counts), capped. */
+  inFlight: z.number().int().min(0).max(999).default(0),
+  /** The current document's performance values; `{}` until one is known, or from an older install. */
+  perf: DevPerfSchema.default({}),
+  server: z.enum(['up', 'down']),
+  /** Milliseconds since the epoch of the tab's last event. */
+  activity: Stamp,
+})
+export type DevTab = z.infer<typeof DevTabSchema>
+
 export const ExtensionMessageSchema = z.discriminatedUnion('type', [
   // The first message of a socket: which record to prove, and the nonce to prove it on.
   z.strictObject({ type: z.literal('challenge'), deviceId: Id, nonce: z.string().regex(NONCE_RE) }),
-  // The one message that is not strict: a newer extension may say more in its hello (the spec
-  // plans a `modules` list) and must still connect. Unknown keys are stripped, not refused.
+  // The one message that is not strict: a newer extension may say more in its hello (it already
+  // lists its `modules`) and must still connect. Unknown keys are stripped, not refused.
   z.object({
     type: z.literal('hello'),
     token: Token,
     installId: Id,
     // Any integer: the server answers a version it does not speak with `tab.refused`.
     protocol: z.number().int(),
+    // A list it cannot read (a newer extension's ninth module, a longer name) still connects:
+    // the install is then not Fremdev-capable, and Fremplay works as before.
+    modules: ModulesSchema.optional().catch(undefined),
     session: z.strictObject({ sessionId: Id, meta: MetaSchema }).optional(),
   }),
   z.strictObject({ type: z.literal('tab.started'), sessionId: Id, meta: MetaSchema }),
   z.strictObject({ type: z.literal('tab.meta'), sessionId: Id, meta: MetaSchema }),
   z.strictObject({ type: z.literal('tab.offer'), sessionId: Id, receiverId: Id, sdp: Sdp }),
   z.strictObject({ type: z.literal('tab.stopped'), sessionId: Id }),
+  // The modules the extension runs now, said again when the user switches one on or off.
+  z.strictObject({ type: z.literal('modules'), modules: ModulesSchema }),
+  // The dev tabs' whole state, replacing the last: a tab missing from it is gone.
+  z.strictObject({ type: z.literal('dev.tabs'), tabs: z.array(DevTabSchema).max(MAX_DEV_TABS) }),
+  // Keeps the extension's service worker awake while a dev tab is open.
+  z.strictObject({ type: z.literal('ping') }),
+  // The answer to a `dev.report.ask`: the tab's bug report, as plain text.
+  z.strictObject({ type: z.literal('dev.report'), id: Id, tabId: TabId, text: z.string().max(REPORT_MAX) }),
+  // The answer to a `dev.open.ask`: whether the dev server answered the open-in-editor request.
+  z.strictObject({ type: z.literal('dev.open.done'), id: Id, tabId: TabId, ok: z.boolean() }),
+  // A shot of the tab reached the clipboard: its thumbnail (null when none fitted), and whether the
+  // user asked for the capture sound.
+  z.strictObject({
+    type: z.literal('dev.shot'),
+    tabId: TabId,
+    thumb: z.string().max(SHOT_THUMB_MAX).regex(SHOT_THUMB_RE).nullable(),
+    sound: z.boolean(),
+  }),
 ])
 export type ExtensionMessage = z.infer<typeof ExtensionMessageSchema>
 
@@ -173,11 +418,13 @@ export type Control = z.infer<typeof ControlSchema>
 export type ServerMessage =
   | { type: 'proof'; mac: string }
   /**
-   * `modules`: which of the extension's modules this server has switched on, Fremplay alone so
-   * far, and always on since the companion left the experimental features. Optional within
-   * protocol 2; kept because an extension released before then reads it.
+   * `modules`: which of the extension's modules this server has switched on. `fremplay` is always
+   * on since the companion left the experimental features, and kept because an extension released
+   * before then reads it. `fremdev` (`labs.fremdev`) is present only on a server that speaks
+   * Fremdev, and the extension sends no Fremdev message to a server that leaves it out.
+   * `shotView`: this server takes `dev.shot`; an extension sends none to one that does not say so.
    */
-  | { type: 'ready'; protocol: number; modules?: { fremplay: boolean } }
+  | { type: 'ready'; protocol: number; modules?: { fremplay: boolean; fremdev?: boolean; shotView?: boolean } }
   | { type: 'tab.accepted'; sessionId: string }
   | { type: 'tab.refused'; sessionId: string; reason: 'noWidget' | 'protocol' }
   /** One receiver's offer named more than this Mac: that receiver gets no video, the share goes on. */
@@ -188,16 +435,67 @@ export type ServerMessage =
   | { type: 'tab.detach'; receiverId: string }
   | { type: 'tab.stop' }
   | { type: 'revoked' }
+  /** The Edge asks the tab to come to the front. */
+  | { type: 'dev.focus'; tabId: number }
+  /** The Edge marks the tab's open errors and requests seen. */
+  | { type: 'dev.clear'; tabId: number }
+  /** The Edge reloads the tab, skipping the browser's cache when `bypassCache`. */
+  | { type: 'dev.reload'; tabId: number; bypassCache: boolean }
+  /** The Edge asks for the tab's bug report (with stacks or not), answered by a `dev.report` with this `id`. */
+  | { type: 'dev.report.ask'; id: string; tabId: number; stack: boolean }
+  /**
+   * The Edge asks to open the entry's file in the editor; the extension builds the URL from the tab's
+   * own origin and its own copy of the entry, and answers a `dev.open.done` with this `id`.
+   */
+  | { type: 'dev.open.ask'; id: string; tabId: number; entryId: number }
+
+/** The JSON of a message within the size limit; undefined when over it or not JSON. */
+function readJson(raw: string): unknown {
+  if (Buffer.byteLength(raw, 'utf8') > MAX_MESSAGE_BYTES) return undefined
+  try {
+    return JSON.parse(raw)
+  } catch {
+    return undefined
+  }
+}
 
 /** Null when the text is over the size limit, is not JSON, or is not one of the messages. */
 export function parseExtensionMessage(raw: string): ExtensionMessage | null {
-  if (Buffer.byteLength(raw, 'utf8') > MAX_MESSAGE_BYTES) return null
-  let json: unknown
-  try {
-    json = JSON.parse(raw)
-  } catch {
-    return null
-  }
+  const json = readJson(raw)
+  if (json === undefined) return null
   const parsed = ExtensionMessageSchema.safeParse(json)
   return parsed.success ? parsed.data : null
+}
+
+/** Fremdev's messages: after hello, one that fails its schema costs itself, never the socket. */
+const DEV_MESSAGE_TYPES: ReadonlySet<unknown> = new Set(['dev.tabs', 'modules', 'ping', 'dev.report', 'dev.open.done', 'dev.shot'])
+
+/** A `dev.tabs` whose rows are judged one by one. */
+const DevTabsEnvelope = z.strictObject({ type: z.literal('dev.tabs'), tabs: z.array(z.unknown()).max(MAX_DEV_TABS) })
+
+/**
+ * What a message after hello comes to. `msg` null: a Fremdev message that did not parse, dropped
+ * whole. `dropped`: how many dev rows (or messages) were left out, for a debug line that carries
+ * none of their content. Null, as with `parseExtensionMessage`: the socket is refused.
+ *
+ * Fremdev's messages never cost the socket: it also carries Fremplay's share, and a row the server
+ * cannot read (an extension newer than it, or a bound one side has wrong) would otherwise close it,
+ * and the extension reconnect and send the same row again. Every other message stays strict.
+ */
+export function parseAfterHello(raw: string): { msg: ExtensionMessage | null; dropped: number } | null {
+  const json = readJson(raw)
+  if (json === undefined) return null
+  const parsed = ExtensionMessageSchema.safeParse(json)
+  if (parsed.success) return { msg: parsed.data, dropped: 0 }
+  const type = typeof json === 'object' && json !== null ? (json as { type?: unknown }).type : undefined
+  if (!DEV_MESSAGE_TYPES.has(type)) return null
+  if (type !== 'dev.tabs') return { msg: null, dropped: 1 }
+  const envelope = DevTabsEnvelope.safeParse(json)
+  if (!envelope.success) return { msg: null, dropped: 1 }
+  const tabs: DevTab[] = []
+  for (const row of envelope.data.tabs) {
+    const tab = DevTabSchema.safeParse(row)
+    if (tab.success) tabs.push(tab.data)
+  }
+  return { msg: { type: 'dev.tabs', tabs }, dropped: envelope.data.tabs.length - tabs.length }
 }

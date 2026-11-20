@@ -39,4 +39,18 @@ let scanSuites: [(String, () -> XCTestCase, [TestMethod])] = [
         ("testOnlyTheTopOfTheTreeGoesThroughTheOpener", { try ($0 as! DirectoryOpenerTests).testOnlyTheTopOfTheTreeGoesThroughTheOpener() }),
         ("testPastTheCapTheWalkWaitsForAnAnswerRatherThanLeaveAThread", { try ($0 as! DirectoryOpenerTests).testPastTheCapTheWalkWaitsForAnAnswerRatherThanLeaveAThread() }),
     ]),
+    ("ProcArgsTests", { ProcArgsTests() }, [
+        ("testProcargsCommandParsesAPid", { try ($0 as! ProcArgsTests).testProcargsCommandParsesAPid() }),
+        ("testProcargsCommandRefusesABadPid", { ($0 as! ProcArgsTests).testProcargsCommandRefusesABadPid() }),
+        ("testReadsTheCurrentProcess", { try ($0 as! ProcArgsTests).testReadsTheCurrentProcess() }),
+        ("testAnArgumentWithASpaceStaysOneElement", { try ($0 as! ProcArgsTests).testAnArgumentWithASpaceStaysOneElement() }),
+        ("testAMissingProcessThrows", { ($0 as! ProcArgsTests).testAMissingProcessThrows() }),
+        ("testAProcessOfAnotherUserIsDenied", { try ($0 as! ProcArgsTests).testAProcessOfAnotherUserIsDenied() }),
+        ("testTheOutputLineEscapesAndKeepsTheShape", { try ($0 as! ProcArgsTests).testTheOutputLineEscapesAndKeepsTheShape() }),
+        ("testParseKeepsEmptyArgumentsInPlace", { try ($0 as! ProcArgsTests).testParseKeepsEmptyArgumentsInPlace() }),
+        ("testParseRefusesWhatDoesNotFitTheLayout", { ($0 as! ProcArgsTests).testParseRefusesWhatDoesNotFitTheLayout() }),
+        ("testParseRefusesBytesThatAreNotUTF8", { ($0 as! ProcArgsTests).testParseRefusesBytesThatAreNotUTF8() }),
+        ("testAnExecutablePathThatIsNotUTF8IsRefused", { try ($0 as! ProcArgsTests).testAnExecutablePathThatIsNotUTF8IsRefused() }),
+        ("testParseReportsAHiddenEnvironmentAsNil", { try ($0 as! ProcArgsTests).testParseReportsAHiddenEnvironmentAsNil() }),
+    ]),
 ]

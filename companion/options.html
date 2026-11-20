@@ -22,9 +22,24 @@
       <p id="unpairhint" class="muted small" hidden>__MSG_optUnpairHint__</p>
     </section>
     <section class="module">
+      <div class="mname">__MSG_optDevHosts__</div>
+      <p class="muted">__MSG_optDevHostsBuiltin__</p>
+      <ul id="devhosts" class="devhosts"></ul>
+      <p id="devhostsnone" class="muted small" hidden>__MSG_optDevHostsNone__</p>
+      <form id="addhost" class="addhost" autocomplete="off">
+        <input id="newhost" spellcheck="false" autocapitalize="off" placeholder="*-dev.example.com" aria-label="__MSG_optDevHosts__">
+        <button id="addbutton" type="submit" class="primary">__MSG_optDevHostAdd__</button>
+      </form>
+      <div id="hosterror" class="error" role="alert" hidden></div>
+      <p class="muted small">__MSG_optDevHostsUnseen__</p>
+    </section>
+    <section class="module">
       <div class="mname">__MSG_optShortcut__</div>
       <div id="hint" class="hint left"></div>
+      <div class="mname">__MSG_optShotShortcut__</div>
+      <div id="shothint" class="hint left"></div>
       <button id="shortcuts" class="ghost">__MSG_optShortcutChange__</button>
+      <label class="check"><input type="checkbox" id="shotsound"> __MSG_optShotSound__</label>
     </section>
   </main>
   <script type="module" src="options.js"></script>

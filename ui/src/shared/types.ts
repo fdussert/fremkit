@@ -160,11 +160,14 @@ export interface Privacy {
 }
 
 /**
- * Features shipped but kept out of the admin until they are ready (`LabsSchema` on the server):
- * none right now. A flag added there gets its key here, `name?: boolean`, absent meaning off
+ * Features shipped but kept out of the admin until they are ready (`LabsSchema` on the server).
+ * A flag added there gets its key here, `name?: boolean`, absent meaning off
  * (see `admin/labs.ts`).
  */
-export interface Labs {}
+export interface Labs {
+  /** Fremdev, the companion's development-tabs module; absent means off. */
+  fremdev?: boolean
+}
 
 export interface Config {
   version: 4

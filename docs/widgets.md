@@ -51,7 +51,7 @@ Their settings are documented below like any other, because the widget is the sa
 | [cleanshot](#cleanshot) | Big buttons for CleanShot X captures | — | — | 12 × 6 |
 | [codex-sessions](#codex-sessions) | Codex sessions grouped by folder | — | 6 cells | 20 × 12 |
 | [codex-usage](#codex-usage) | Codex account quotas and usage | — | 7 cells | 20 × 12 |
-| [docker-containers](#docker-containers) | Local Docker containers, read-only | — | — | 32 × 8 |
+| [docker-containers](#docker-containers) | Local Docker containers: state, start, stop, restart | — | — | 32 × 8 |
 | [github-actions](#github-actions) | Running and finished GitHub Actions workflows | GitHub | — | 24 × 10 |
 | [github-inbox](#github-inbox) | GitHub notifications, review requests, pull requests | GitHub | 5 cells | 20 × 10 |
 | [homey-devices](#homey-devices) | Lights, plugs and sensors | declared | 6 cells | 24 × 8 |
@@ -706,10 +706,13 @@ Minimum size 12 × 6, default 20 × 12. Compact width 7 cells: the quota windows
 ## docker-containers
 
 *Docker containers* — the containers of the Docker running on this Mac: name, image, state and,
-for a running one, CPU, memory, processes, network and disk I/O. It only looks: nothing here
-starts, stops or removes a container. Only a local Docker socket is read; a context that points
-at another machine is refused and the tile says so. See
-[local-operations.md](local-operations.md#docker).
+for a running one, CPU, memory, processes, network and disk I/O. From its version 1.1.0 a tap on a
+card unfolds it with **Stop** and **Restart** for a running container, **Start** for a stopped
+one; Stop and Restart take a second tap to confirm, and the card folds back after ten seconds.
+Nothing here removes or kills a container. Updating from 1.0.x asks you to accept the new
+permission, and on a Fremkit older than these commands the cards do not unfold. Only a local
+Docker socket is used; a context that points at another machine is refused and the tile says so.
+See [local-operations.md](local-operations.md#docker).
 
 Minimum size 24 × 8, default 32 × 8. No settings.
 

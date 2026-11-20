@@ -30,6 +30,7 @@ function configWith(where: 'page' | 'bar' | 'nowhere'): Config {
   const edge = DEFAULT_CONFIG.screens[0]
   return {
     ...DEFAULT_CONFIG,
+    labs: { fremdev: true },
     widgets: {
       'clock-1': { widgetId: 'clock', showTitle: true, settings: {} },
       'play-1': { widgetId: 'fremplay', showTitle: false, settings: {} },
@@ -228,6 +229,20 @@ describe('createCompanion', () => {
     const res = await app.inject({ method: 'POST', url: '/api/companion/pair', headers: { origin: ORIGIN }, payload: { name: 'Chrome', installId: INSTALL, salt: 'S'.repeat(43) } })
     expect(res.statusCode).toBe(200)
     expect(companion.pairing.pending()?.name).toBe('Chrome')
+  })
+
+  it('registers companion:dev and refreshes it when an install reports, and when an extension is paired', async () => {
+    const { companion, registry } = await build()
+    const channels = registry.register.mock.calls.map(([p]) => (p as { channel: string }).channel)
+    expect(channels).toEqual(['companion', 'companion:dev'])
+    registry.refresh.mockClear()
+    companion.session.connect('ext', 'Chrome')
+    companion.session.onMessage('ext', { type: 'hello', token: 'a'.repeat(43), installId: INSTALL, protocol: 2, modules: ['fremdev'] })
+    expect(registry.refresh).toHaveBeenCalledWith('companion:dev')
+    expect(companion.dev.snapshot()).toMatchObject({ enabled: true, installs: [{ deviceId: 'ext', name: 'Chrome', on: true, tabs: [] }] })
+    registry.refresh.mockClear()
+    await store.createExtension({ name: 'Brave', origin: ORIGIN, installId: INSTALL })
+    expect(registry.refresh).toHaveBeenCalledWith('companion:dev')
   })
 
   it('refreshes the channel on every state change', async () => {

@@ -223,6 +223,50 @@ describe('the dashboard and the companion channel', () => {
     w.unmount()
   })
 
+  /** p0 a clock, p1 Fremdev alone, p2 Fremplay: what the server's reveal counts. */
+  const fremdevBeforeFremplay = (fremdev: boolean): Config => {
+    const c = config() as unknown as { labs: Record<string, boolean>; widgets: Record<string, unknown>; screens: { pages: { items: unknown[] }[] }[] }
+    c.labs = { fremdev }
+    c.widgets = {
+      c: { widgetId: 'clock', showTitle: false, settings: {} },
+      fd: { widgetId: 'fremdev', showTitle: false, settings: {} },
+      fp: { widgetId: 'fremplay', showTitle: false, settings: {} },
+    }
+    const at = (instanceId: string) => ({ instanceId, x: 0, y: 0, w: 4, h: 4 })
+    c.screens[0].pages[0].items = [at('c')]
+    c.screens[0].pages[1].items = [at('fd')]
+    c.screens[0].pages[2].items = [at('fp')]
+    return c as unknown as Config
+  }
+
+  it('lands on the revealed Fremplay page when a Fremdev-only page before it is not drawn', async () => {
+    fake.config = fremdevBeforeFremplay(false)
+    const w = await mountApp('http://127.0.0.1:4242/')
+    push('companion', state({}))
+    // The server counts p2 as index 2; the dashboard draws p0 and p2 only.
+    push('companion', state({ reveal: { seq: 1, screenId: 'edge', pageIndex: 2 } }))
+    await nextTick()
+    expect(w.find('.page-stub').text()).toBe('p2')
+    w.unmount()
+  })
+
+  it('drops a reveal of a page that is not drawn, and follows one with Fremdev on', async () => {
+    fake.config = fremdevBeforeFremplay(false)
+    const w = await mountApp('http://127.0.0.1:4242/')
+    push('companion', state({}))
+    push('companion', state({ reveal: { seq: 1, screenId: 'edge', pageIndex: 1 } }))
+    await nextTick()
+    expect(w.find('.page-stub').text()).toBe('p0')
+    w.unmount()
+    fake.config = fremdevBeforeFremplay(true)
+    const on = await mountApp('http://127.0.0.1:4242/')
+    push('companion', state({}))
+    push('companion', state({ reveal: { seq: 2, screenId: 'edge', pageIndex: 2 } }))
+    await nextTick()
+    expect(on.find('.page-stub').text()).toBe('p2')
+    on.unmount()
+  })
+
   it('a reload with a share already revealed does not jump', async () => {
     const w = await mountApp('http://127.0.0.1:4242/')
     push('companion', state({ reveal: { seq: 3, screenId: 'edge', pageIndex: 2 } }))
@@ -437,7 +481,11 @@ describe('landingPage', () => {
     pages: pages.map((ids, i) => ({ id: `p${i}`, name: '', items: ids.map((instanceId) => ({ instanceId, x: 0, y: 0, w: 1, h: 1 })) })),
   })
   const cfg = () => ({
-    widgets: { fp: { widgetId: 'fremplay', showTitle: false, settings: {} }, c: { widgetId: 'clock', showTitle: false, settings: {} } },
+    widgets: {
+      fp: { widgetId: 'fremplay', showTitle: false, settings: {} },
+      c: { widgetId: 'clock', showTitle: false, settings: {} },
+      fd: { widgetId: 'fremdev', showTitle: false, settings: {} },
+    },
   }) as unknown as Config
 
   it('is the first page holding Fremplay while a share is live', async () => {
@@ -447,5 +495,12 @@ describe('landingPage', () => {
     expect(landingPage({}, cfg(), screen([], [['c'], ['fp']]))).toBeNull()
     expect(landingPage({ tab: { state: 'sharing' } }, cfg(), screen(['fp'], [['c'], ['fp']]))).toBeNull()
     expect(landingPage({ tab: { state: 'sharing' } }, cfg(), screen([], [['c']]))).toBeNull()
+  })
+
+  it('looks for Fremplay alone, never for the other companion widget', async () => {
+    const { landingPage } = await import('../src/dashboard/companionReveal')
+    expect(landingPage({ tab: { state: 'sharing' } }, cfg(), screen([], [['fd'], ['fp']]))).toBe(1)
+    expect(landingPage({ tab: { state: 'sharing' } }, cfg(), screen(['fd'], [['c'], ['fp']]))).toBe(1)
+    expect(landingPage({ tab: { state: 'sharing' } }, cfg(), screen([], [['fd']]))).toBeNull()
   })
 })

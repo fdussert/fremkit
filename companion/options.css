@@ -2,3 +2,12 @@
 body.page { width: auto; max-width: 520px; margin: 24px auto; }
 body.page p { margin: 0; }
 .hint.left { text-align: left; }
+/* Your development hosts: one row per pattern, then the field that adds one. */
+.devhosts { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.devhosts li { display: flex; align-items: center; gap: 8px; background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 4px 4px 4px 10px; }
+.devhosts code { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; }
+.devhosts button { height: 30px; padding: 0 10px; }
+.addhost { display: flex; gap: 8px; }
+.addhost input { flex: 1; min-width: 0; height: 38px; font: 13px ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 0 10px; }
+.addhost input:focus { outline: none; border-color: var(--accent); }
+.addhost button { padding: 0 16px; }

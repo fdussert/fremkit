@@ -403,7 +403,7 @@ screen whose widget is not installed offers the install where it stands.
 | `cleanshot` | Big touch buttons for captures, needs [CleanShot X](https://cleanshot.com) with its URL scheme API allowed | — | — |
 | `codex-sessions` | Codex sessions by directory, with their models, turn durations and subagents | — | ● |
 | `codex-usage` | Codex account quotas and usage | — | ● |
-| `docker-containers` | Local Docker containers: state, CPU, memory and I/O, read-only | — | — |
+| `docker-containers` | Local Docker containers: state, CPU, memory and I/O; start, stop and restart | — | — |
 | `github-actions` | Running and finished GitHub Actions workflows | GitHub | — |
 | `github-inbox` | GitHub notifications, review requests and pull requests | GitHub | ● |
 | `homey-devices` | Lights, plugs and sensors of a Homey Pro | its own: the Homey's address and an API key | ● |

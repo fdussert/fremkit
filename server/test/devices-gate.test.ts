@@ -144,6 +144,8 @@ describe.skipIf(!hasOpenssl)('the remote gate, through a real TLS listener', () 
       'POST /api/companion/pair/:requestId/confirm',
       'POST /api/companion/requests/:requestId/refuse', 'POST /api/companion/unlock',
       'GET /companion/ws',
+      // Fremdev's shot writes this Mac's clipboard: never from a paired device.
+      'POST /companion/dev/shot',
       // The admin's "Reload the dashboard": a device reloads its own page, it never asks the Mac to.
       'POST /api/screens/:id/reload',
     ]))

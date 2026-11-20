@@ -24,15 +24,29 @@ function siteRows(): Row[] {
   return new Function(`return ${js.slice(start, end + 1)}`)() as Row[]
 }
 
+/**
+ * Built in, yet behind a switch under Experimental features: the page announces one only once
+ * its switch is gone, so it stays out of the table until then.
+ */
+const EXPERIMENTAL: readonly string[] = ['fremdev']
+
 function shipped() {
   return readdirSync(SHIPPED)
-    .filter((id) => existsSync(join(SHIPPED, id, 'manifest.json')))
+    .filter((id) => existsSync(join(SHIPPED, id, 'manifest.json')) && !EXPERIMENTAL.includes(id))
     .map((id) => JSON.parse(readFileSync(join(SHIPPED, id, 'manifest.json'), 'utf8')) as { id: string; name: string | { fr: string; en: string }; category: string })
 }
 
 describe('the built-in widgets listed on the site', () => {
   it('are the ones the repository ships', () => {
     expect(siteRows().map((row) => row[0]).sort()).toEqual(shipped().map((m) => m.id).sort())
+  })
+
+  it('leave out the experimental ones, which do exist', () => {
+    const ids = siteRows().map((row) => row[0])
+    for (const id of EXPERIMENTAL) {
+      expect(existsSync(join(SHIPPED, id, 'manifest.json')), `widgets/${id}`).toBe(true)
+      expect(ids, `${id} on the site`).not.toContain(id)
+    }
   })
 
   it('carry the names and categories of their manifests', () => {

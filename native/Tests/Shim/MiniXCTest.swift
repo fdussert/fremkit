@@ -168,3 +168,13 @@ public func XCTUnwrap<T>(_ expression: @autoclosure () throws -> T?,
     }
     return value
 }
+
+/// Thrown (by XCTSkipIf) to end a test as skipped rather than passed or failed.
+public struct XCTSkip: Error, CustomStringConvertible {
+    public let reason: String
+    public var description: String { reason }
+}
+
+public func XCTSkipIf(_ condition: @autoclosure () throws -> Bool, _ message: String = "") throws {
+    if try condition() { throw XCTSkip(reason: message) }
+}

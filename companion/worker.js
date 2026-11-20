@@ -1,5 +1,6 @@
 // The extension's service worker: pairing, the socket to Fremkit, Fremplay's share (which tab, which
-// frame, its meta), the page controls, the shortcut and the badge. The offscreen document holds the
+// frame, its meta), the page controls, the shortcut and the badge. Fremdev (the dev tabs) lives in
+// fremdev.js; this file only carries it over the socket. The offscreen document holds the
 // capture and the peers; it ticks this worker every second, which keeps it alive while sharing and
 // wakes it again if Chrome stopped it.
 //
@@ -7,6 +8,9 @@
 // pairing waiting for its code in `local`; the share and the link state in `session`.
 
 import { browserName } from './lib/browser.js'
+import { createFremdev } from './fremdev.js'
+import { clearBeforeCapture, isThumb, shootTab, shotFeedback, thumbOf } from './lib/devshot.js'
+import { dismissShotOverlay, shotOverlay } from './lib/shotview.js'
 import { handshake } from './lib/handshake.js'
 import { grantToReturn } from './lib/grant.js'
 import { closeOutcome, refusalOf } from './lib/link.js'
@@ -14,7 +18,8 @@ import { fremplaySwitch, pairRefusal } from './lib/errors.js'
 import { confirmCode, normalizeCode, pairingDeadline } from './lib/pairProof.js'
 import { newNonce } from './lib/proof.js'
 import { navigationClearsRect } from './lib/navigation.js'
-import { idleDelay } from './lib/presence.js'
+import { idleDelay, linkAlarm, onlyFremdev, ProbeBackoff, ReconnectGate } from './lib/presence.js'
+import { fremdevSupport } from './lib/devtabs.js'
 import { isOwnContext } from './lib/sender.js'
 import * as protocol from './lib/protocol.js'
 import { withVolumeHint } from './lib/volume.js'
@@ -36,6 +41,8 @@ const NO_VIDEO_MS = 10_000
 /** How long a start waits for the server's answer. */
 const START_TIMEOUT_MS = 8_000
 const PAIR_POLL_MS = 1_500
+/** Fremdev alone reconnects at most this often (dev events and its 20 s tick both ask). */
+const FREMDEV_RETRY_MS = 15_000
 const FLASH_MS = 1_500
 
 const GOLD = '#d9b36a'
@@ -44,7 +51,7 @@ const DANGER = '#d9463f'
 
 /** Mirrors of chrome.storage, loaded once per worker life. */
 const local = { installId: null, token: null, deviceId: null, name: null, pairing: null, pairError: null, revoked: false }
-const session = { link: 'unpaired', share: null, lastError: null, fremplayOff: false }
+const session = { link: 'unpaired', linkQuiet: false, share: null, lastError: null, fremplayOff: false }
 
 const ready = (async () => {
   // The token lives in `local`: only the extension's own pages and this worker may read it, never
@@ -89,8 +96,7 @@ const validId = (id) => Number.isInteger(id) && id >= 0
 let flashText = null
 
 function paintBadge() {
-  // While a share waits for the server to come back (a restart), the badge keeps showing it.
-  const bang = ['revoked', 'refused', 'impostor'].includes(session.link) || (session.link === 'unreachable' && !session.share)
+  const bang = linkAlarm(session)
   const text = flashText ?? (bang ? '!' : session.share ? '▶' : '')
   const alarm = text === '!'
   chrome.action.setBadgeBackgroundColor({ color: alarm ? DANGER : GOLD })
@@ -107,9 +113,10 @@ function flash(text) {
   }, FLASH_MS)
 }
 
-async function setLink(link) {
-  if (session.link === link) return
-  await saveSession({ link })
+/** `quietBadge`: an `unreachable` only Fremdev's own attempts met, true for the popup but kept off the badge. */
+async function setLink(link, { quietBadge = false } = {}) {
+  if (session.link === link && session.linkQuiet === quietBadge) return
+  await saveSession({ link, linkQuiet: quietBadge })
   paintBadge()
 }
 
@@ -253,8 +260,12 @@ let presenceUntil = 0
 let idleTimer = null
 const readyWaiters = new Set()
 
-/** The socket is wanted while sharing, and for a while after the popup opened. */
-const wanted = () => Boolean(local.token) && (Boolean(session.share) || Date.now() < presenceUntil)
+/** The socket is wanted while sharing, while Fremdev watches a dev tab, and for a while after the popup opened. */
+const wanted = () =>
+  Boolean(local.token) && (Boolean(session.share) || fremdev.active() || Date.now() < presenceUntil)
+
+/** Only Fremdev wants the socket: its attempts leave the link state, and so the badge, alone. */
+const quiet = () => onlyFremdev(session.share, presenceUntil, Date.now())
 
 function stayFor(ms) {
   presenceUntil = Math.max(presenceUntil, Date.now() + ms)
@@ -268,8 +279,8 @@ function armIdle() {
     idleTimer = null
     if (!wanted()) closeSocket()
     // Still wanted by the presence window alone: look again when it ends. A share re-arms this
-    // when it ends (`endShare`), so it needs no timer while it runs.
-    else if (!session.share) armIdle()
+    // when it ends (`endShare`), and Fremdev when it stops watching, so neither needs a timer.
+    else if (!session.share && !fremdev.active()) armIdle()
   }, idleDelay(presenceUntil, Date.now()))
 }
 
@@ -286,7 +297,9 @@ function send(msg) {
 function connect() {
   if (ws || retryTimer || !local.token || !local.deviceId) return
   // A warning stays up while the next attempts run: they meet it again, or a server that greets.
-  if (!['ok', 'impostor', 'refused', 'revoked'].includes(session.link)) setLink('connecting')
+  // Judged once, as the attempt starts: whoever wanted it then is who its failure is shown to.
+  const quietAttempt = quiet()
+  if (!quietAttempt && !['ok', 'impostor', 'refused', 'revoked'].includes(session.link)) setLink('connecting')
   const socket = new WebSocket(WS_URL)
   ws = socket
   greeted = false
@@ -297,7 +310,8 @@ function connect() {
     token: local.token,
     hello: () => {
       const share = session.share
-      return protocol.hello(local.token, local.installId, share?.accepted ? share : undefined)
+      // `modules` is for a server that speaks Fremdev; Fremkit 0.5.0's hello drops the key unread.
+      return protocol.hello(local.token, local.installId, share?.accepted ? share : undefined, fremdev.modules())
     },
     onImpostor: () => impostor(socket),
   })
@@ -320,6 +334,7 @@ function connect() {
     const wasGreeted = greeted
     ws = null
     greeted = false
+    fremdev.socketClosed()
     const outcome = closeOutcome(event.code, { proven: opening.proven, greeted: wasGreeted })
     // The proven server says the record this token named is gone.
     if (outcome === 'revoked') {
@@ -339,7 +354,9 @@ function connect() {
     if (wasGreeted) {
       retryDelay = RETRY_FIRST_MS
       failingSince = 0
-    } else setLink('unreachable')
+      // Only Fremdev holds on: no backoff run will say the server is gone, so the link says it now.
+      if (quiet()) setLink('unreachable', { quietBadge: true })
+    } else setLink('unreachable', { quietBadge: quietAttempt })
     retry()
   }
 }
@@ -352,6 +369,7 @@ function impostor(socket) {
   if (ws !== socket) return
   ws = null
   greeted = false
+  fremdev.socketClosed()
   try {
     socket.close(1000)
   } catch { /* already closed */ }
@@ -360,7 +378,8 @@ function impostor(socket) {
 }
 
 function retry() {
-  if (!wanted()) {
+  // Fremdev alone gets no backoff run: its tick and its events come back through its gate.
+  if (!wanted() || quiet()) {
     failingSince = 0
     retryDelay = RETRY_FIRST_MS
     return
@@ -401,7 +420,7 @@ async function removed() {
   readyWaiters.clear()
   if (session.share) await endShare({ notify: false })
   await saveLocal({ revoked: true })
-  await saveSession({ link: 'revoked' })
+  await saveSession({ link: 'revoked', linkQuiet: false })
   paintBadge()
 }
 
@@ -425,6 +444,7 @@ function closeSocket() {
   const socket = ws
   ws = null
   greeted = false
+  if (socket) fremdev.socketClosed()
   try {
     socket?.close(1000)
   } catch { /* already closed */ }
@@ -455,6 +475,39 @@ function whenGreeted(timeoutMs) {
   })
 }
 
+// --- Fremdev ----------------------------------------------------------------------------------
+
+const fremdevGate = new ReconnectGate(FREMDEV_RETRY_MS)
+/**
+ * A server that keeps saying it does not speak Fremdev (0.5.0) or has it off is asked again at
+ * most every 5 minutes after 3 such answers: each probe is a socket, which a Fremplay tile shows.
+ * A popup opening or a `yes` resets it. A server that does not answer at all is not an answer:
+ * it stays on the 15 s gate.
+ */
+const fremdevProbe = new ProbeBackoff()
+
+/**
+ * Opens the socket for Fremdev when it wants one and none is coming, at most once per
+ * FREMDEV_RETRY_MS; closes it once nothing wants it. `relearn`: one connection although Fremdev
+ * does not want the socket (the server said it does not speak Fremdev; it may have been updated).
+ */
+function fremdevWantsSocket({ relearn = false } = {}) {
+  if (!local.token) return
+  const want = wanted()
+  if (!want && !relearn) return armIdle()
+  if (ws || retryTimer) return
+  const now = Date.now()
+  // Wanted (a dev tab, with a server that speaks Fremdev) is not a probe; a relearn is.
+  const probe = !want
+  if (probe && !fremdevProbe.allow(now)) return
+  if (!fremdevGate.allow(now)) return
+  if (probe) fremdevProbe.probed(now)
+  connect()
+  // A relearning socket is closed once its `ready` is heard (Fremdev calls back, nothing wants it).
+}
+
+const fremdev = createFremdev({ send, wantSocket: (opts) => void ready.then(() => fremdevWantsSocket(opts)) })
+
 // --- Fremplay ---------------------------------------------------------------------------------
 
 /** sessionId → resolver of the start waiting for the server's answer. */
@@ -466,6 +519,10 @@ async function onServerMessage(msg) {
   switch (msg.type) {
     case 'ready':
       greeted = true
+      // Before any await: what Fremdev may send on this socket is this `ready`'s to say, and a
+      // flush or a ping in the meantime must not go out on the last socket's answer.
+      fremdevProbe.heard(fremdevSupport(msg))
+      fremdev.onReady(msg)
       // A proven server greeted this token: an unproven 4401 before was not its word.
       if (local.revoked) await saveLocal({ revoked: false })
       // Whether Fremkit has Fremplay on, for the popup to say before a click: a 0.5.0 server's
@@ -524,6 +581,12 @@ async function onServerMessage(msg) {
       return
     case 'tab.control':
       return onControl(msg)
+    case 'dev.focus':
+    case 'dev.clear':
+    case 'dev.reload':
+    case 'dev.report.ask':
+    case 'dev.open.ask':
+      return fremdev.onServer(msg)
   }
 }
 
@@ -778,6 +841,7 @@ async function onControl(c) {
 const FLASHES = { noVideo: '∅' }
 
 chrome.commands.onCommand.addListener(async (command, tab) => {
+  if (command === 'fremdev-shot') return shoot(tab)
   if (command !== 'fremplay-toggle') return
   await ready
   if (!tab || !validId(tab.id)) return
@@ -787,6 +851,60 @@ chrome.commands.onCommand.addListener(async (command, tab) => {
   if (res.error !== 'noVideo') await saveSession({ lastError: res.error })
   flash(FLASHES[res.error] ?? '!')
 })
+
+// --- Fremdev's shot ---------------------------------------------------------------------------
+
+/** ⌃⇧S: the focused window's dev tab, captured and posted for the Mac's clipboard (lib/devshot.js). */
+async function shoot(given) {
+  await ready
+  return shootTab(given, {
+    activeTab: async () => (await chrome.tabs.query({ active: true, lastFocusedWindow: true }).catch(() => []))[0],
+    isDevTab: (tabId) => fremdev.isDevTab(tabId),
+    canSend: () => fremdev.canSend(),
+    token: () => local.token,
+    capture: (windowId) => chrome.tabs.captureVisibleTab(windowId, { format: 'jpeg', quality: 85 }),
+    fetch: (...args) => fetch(...args),
+    url: `${HTTP}/companion/dev/shot`,
+    flash,
+    before: (tabId) => clearShot(tabId),
+    after: async (tabId, shot) => showShot(tabId, await thumbOf(shot)),
+  })
+}
+
+/** tabId → until when a shot's thumbnail may still show there (lib/shotview.js holds it 3 s). */
+const shotShown = new Map()
+const SHOT_SHOWN_MS = 3_500
+
+/**
+ * Before ⌃⇧S captures: the last shot's thumbnail out of the tab, so it is not in this shot. Only
+ * when one was shown there lately: a shot with nothing to clear pays nothing.
+ */
+async function clearShot(tabId) {
+  const until = shotShown.get(tabId)
+  shotShown.delete(tabId)
+  if (until === undefined || until <= Date.now()) return
+  await clearBeforeCapture(() => chrome.scripting.executeScript({ target: { tabId }, func: dismissShotOverlay }))
+}
+
+/** The options page's "Play the screenshot sound": off unless ticked. */
+const SHOT_SOUND_KEY = 'fremdevShotSound'
+
+/**
+ * A shot is on the clipboard (⌃⇧S, or the popup's Copy screenshot): the flash and the thumbnail in
+ * the tab, in the isolated world (the key press or the popup's click is the activeTab grant, and a
+ * dev tab is in Fremdev's own grant); then `dev.shot` for the Edge. An injection the tab refuses (a
+ * chrome:// page, an error page) leaves the badge's ✓ as the only sign.
+ */
+function showShot(tabId, thumb) {
+  return shotFeedback(tabId, thumb, {
+    inject: (id, shown) => {
+      shotShown.set(id, Date.now() + SHOT_SHOWN_MS)
+      return chrome.scripting.executeScript({ target: { tabId: id }, func: shotOverlay, args: [shown] })
+    },
+    sound: async () => (await chrome.storage.local.get(SHOT_SOUND_KEY))[SHOT_SOUND_KEY] === true,
+    tellEdge: (id, shown, loud) => fremdev.tellShot(id, shown, loud),
+  })
+}
 
 // The shared tab navigates: stop cropping the old rectangle out of the new page (lib/navigation.js).
 chrome.tabs.onUpdated.addListener(async (tabId, changeInfo) => {
@@ -821,6 +939,9 @@ chrome.permissions.onAdded.addListener(async (permissions) => {
 const OWN = { id: chrome.runtime.id, base: chrome.runtime.getURL(''), tabPages: [chrome.runtime.getURL('options.html')] }
 
 chrome.runtime.onMessage.addListener((msg, sender, respond) => {
+  // The one message from a page: Fremdev's relay. fremdev.js checks the sender is our content
+  // script in a dev tab's top frame, and rebuilds the event from its kind and text.
+  if (msg?.target === 'worker' && msg.type === 'dev.event') return void fremdev.onPageEvent(msg, sender)
   if (!isOwnContext(sender, OWN) || msg?.target !== 'worker') return
   const reply = (promise) => {
     promise.then(respond, (e) => respond({ ok: false, error: 'failed', detail: String(e?.message ?? e) }))
@@ -830,6 +951,8 @@ chrome.runtime.onMessage.addListener((msg, sender, respond) => {
     // The popup opened: be connected while it shows, to tell the link state.
     case 'open':
       return reply(ready.then(() => {
+        // Someone is looking: a server updated since is worth asking again soon.
+        fremdevProbe.reset()
         reconnectNow()
         return { ok: true }
       }))
@@ -856,5 +979,27 @@ chrome.runtime.onMessage.addListener((msg, sender, respond) => {
     // The capture ended on Chrome's side: the tab closed, or Chrome stopped it.
     case 'ended':
       return reply(ready.then(() => endShare({ notify: true })).then(() => ({ ok: true })))
+    // Fremdev switched in the popup (which asked for the host permissions), or its patterns edited.
+    // The popup is about to ask Chrome for Fremdev's permissions; the prompt may close it.
+    case 'expectFremdev':
+      return void fremdev.expectGrant()
+    case 'fremdevOn':
+      return reply(fremdev.start().then(() => ({ ok: true })))
+    case 'fremdevOff':
+      return reply(fremdev.stop().then(() => ({ ok: true })))
+    case 'fremdevPatterns':
+      return reply(fremdev.patternsChanged().then(() => ({ ok: true })))
+    // The popup's Copy screenshot landed on the clipboard: its thumbnail, made in the popup. Only for
+    // a dev tab, the one the popup's button is on.
+    case 'fremdevShot':
+      if (!validId(msg.tabId) || (msg.thumb !== null && !isThumb(msg.thumb))) return
+      return reply(ready.then(async () => {
+        if (!(await fremdev.isDevTab(msg.tabId))) return { ok: false }
+        await showShot(msg.tabId, msg.thumb)
+        return { ok: true }
+      }))
+    // The popup's Copy report: the text comes back, the popup writes the clipboard within its click.
+    case 'fremdevReport':
+      return reply(fremdev.report(msg.tabId, msg.stack === true).then((text) => (text === null ? { ok: false } : { ok: true, text })))
   }
 })

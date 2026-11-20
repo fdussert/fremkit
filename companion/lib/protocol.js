@@ -35,14 +35,20 @@ export function cleanMeta(m) {
 }
 
 export const challenge = (deviceId, nonce) => ({ type: 'challenge', deviceId, nonce })
-export const hello = (token, installId, session) => ({
+export const hello = (token, installId, session, modules) => ({
   type: 'hello',
   token,
   installId,
   protocol: PROTOCOL,
+  ...(modules ? { modules } : {}),
   ...(session ? { session: { sessionId: session.sessionId, meta: cleanMeta(session.meta) } } : {}),
 })
 export const started = (sessionId, meta) => ({ type: 'tab.started', sessionId, meta: cleanMeta(meta) })
 export const meta = (sessionId, m) => ({ type: 'tab.meta', sessionId, meta: cleanMeta(m) })
 export const offer = (sessionId, receiverId, sdp) => ({ type: 'tab.offer', sessionId, receiverId, sdp })
 export const stopped = (sessionId) => ({ type: 'tab.stopped', sessionId })
+export const modulesMsg = (modules) => ({ type: 'modules', modules })
+export const devTabs = (tabs) => ({ type: 'dev.tabs', tabs })
+export const ping = () => ({ type: 'ping' })
+/** A shot reached the clipboard: its thumbnail (a JPEG data URL, or null) and the sound option. */
+export const devShot = (tabId, thumb, sound) => ({ type: 'dev.shot', tabId, thumb: thumb ?? null, sound: sound === true })

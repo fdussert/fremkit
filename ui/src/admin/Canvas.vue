@@ -10,6 +10,7 @@ import EditOverlay from './EditOverlay.vue'
 import ScreenSelector from './ScreenSelector.vue'
 import { navHeightOf, navItemsOf, type NavItem } from '../shared/types'
 import { backgroundStyle, pageBackground } from '../shared/background'
+import { turnedOff } from '../shared/fremdevGate'
 import { useAdminStore } from './store'
 import { openContextMenu } from '../shared/ui/contextMenu'
 import { navBarMenu, navWidgetMenu, pageMenu } from './menus'
@@ -46,6 +47,11 @@ const onBoardUp = (e: PointerEvent): void => { if (testing.value) boardSwipe.up(
 const onBoardCancel = (): void => { if (testing.value) boardSwipe.cancel() }
 const onBoardWheel = (e: WheelEvent): void => { if (testing.value) boardSwipe.wheel(e) }
 const scale = ref(1)
+/**
+ * The widgets of an experimental feature that is off (`labs.fremdev`): kept on the canvas,
+ * greyed and labelled, to delete as usual. The dashboard does not draw them.
+ */
+const off = computed(() => turnedOff(s.state.config))
 
 /** The screen being edited: the preview takes its proportions, its bar and its pages. */
 const screen = computed(() => s.screen.value!)
@@ -111,10 +117,10 @@ onUnmounted(() => observer?.disconnect())
   <div class="host" ref="host">
     <div class="board" ref="board" :style="boardStyle"
       @pointerdown="onBoardDown" @pointerup="onBoardUp" @pointercancel="onBoardCancel" @wheel="onBoardWheel">
-      <PageView v-if="s.page.value" :page="s.page.value" :config="s.state.config!" :display="display" :manifests="s.state.manifests" :edit="s.state.mode === 'edit'" :reloads="s.state.reloads" />
+      <PageView v-if="s.page.value" :page="s.page.value" :config="s.state.config!" :display="display" :manifests="s.state.manifests" :edit="s.state.mode === 'edit'" :reloads="s.state.reloads" :off="off" />
       <NavBar :pages="screen.pages" :active="s.state.pageIndex" :height="navH"
         :opacity="display.navOpacity" :nav-items="navItemsOf(screen)" :widgets="s.state.config!.widgets" :manifests="s.state.manifests"
-        :cell="display.cell" :edit="s.state.mode === 'edit'" :nav-style="display.navStyle" @select="s.selectPage"
+        :cell="display.cell" :edit="s.state.mode === 'edit'" :nav-style="display.navStyle" :off="off" @select="s.selectPage"
         @swipe="go" @tap="popover.toggle"
         @item-menu="(item, e) => openContextMenu(e, navWidgetMenu(s, item.instanceId, menuUi))"
         @bar-menu="onBarMenu" />

@@ -31,10 +31,20 @@
       <div id="error" class="error" role="alert" hidden></div>
     </section>
 
-    <div class="soon-title">__MSG_soon__</div>
-    <section class="module soon" aria-disabled="true">
-      <span class="micon code"></span>
-      <div><div class="mname">__MSG_localhostName__</div><div class="mdesc">__MSG_localhostDesc__</div></div>
+    <section class="module" id="fremdev">
+      <div class="mhead">
+        <span class="micon code" id="fremdevicon"></span>
+        <div class="grow">
+          <div class="mname">Fremdev</div>
+          <div class="mdesc">__MSG_fremdevDesc__</div>
+        </div>
+        <button id="fremdevswitch" class="switch" type="button" role="switch" aria-checked="false" aria-label="__MSG_fremdevToggle__"></button>
+      </div>
+      <div id="fremdevtabs" class="muted small" hidden></div>
+      <ul id="fremdevlist" class="devtabs" hidden></ul>
+      <label id="fremdevstackrow" class="check small" hidden><input type="checkbox" id="fremdevstack"> __MSG_fremdevWithStack__</label>
+      <div id="fremdevnote" class="muted small" hidden></div>
+      <div id="fremdeverror" class="error" role="alert" hidden></div>
     </section>
   </main>
 

@@ -1,10 +1,13 @@
 import { z } from 'zod'
 import type { Provider } from '../providers/types.js'
+import { DOCKER_ACTIONS, DOCKER_CHANNEL } from '../providers/local-operations.js'
 import type { Config } from '../config/schema.js'
 import { findInstance, type InstanceLookup } from '../config/instances.js'
 import { resolveServices, type ServiceResult } from '../providers/service-status.js'
 import { buildView, findNode, type DiskNode } from '../providers/disk-map-tree.js'
 import { codexProviders } from './codex.js'
+import { fremdevEnabled } from '../companion/dev.js'
+import { COMPANION_SERVERS_CHANNEL, SERVERS_INTERVAL_MS, type ServerRow, type ServersSnapshot } from '../companion/servers/provider.js'
 import { createHash } from 'node:crypto'
 import { tr } from '../i18n.js'
 import type { AccountSummary } from '../claude/account.js'
@@ -39,6 +42,8 @@ export interface DemoProviderOptions {
    * providers are. Every instance of the config when left out.
    */
   instances?: InstanceLookup
+  /** Polls a channel now: for a command whose effect would otherwise wait for a slow tick. */
+  refresh?: (channel: string) => void
 }
 
 /** What a demo command answers when it would have acted on the Mac. */
@@ -65,11 +70,12 @@ export function createDemoProviders(opts: DemoProviderOptions): Provider[] {
     diskMapProvider(now),
     ...claudeProviders(now, opts.config),
     ...codexProviders(now, opts.config),
-    dockerProvider(now),
+    dockerProvider(now, () => opts.refresh?.(DOCKER_CHANNEL)),
     localModelsProvider(now),
     mutedeckProvider(now),
     { channel: 'cleanshot', commands: { run: ACTED } },
     rtkProvider(now),
+    serversProvider(now, opts.config),
     { channel: 'shortcuts', commands: { open: ACTED } },
     gifBoardProvider(),
     serviceStatusProvider(now, opts.instances ?? ((id) => findInstance(opts.config(), id))),
@@ -560,25 +566,89 @@ function claudeProviders(now: () => number, config: () => Config): Provider[] {
   ]
 }
 
-function dockerProvider(now: () => number): Provider {
+const DockerTarget = z.object({ id: z.string() })
+
+/** Four containers, three of them up; start, stop and restart act on that fake list and on nothing else. */
+function dockerProvider(now: () => number, refresh: () => void): Provider {
+  const containers = [
+    { id: 'a1b2c3d4e5f6', name: 'web', image: 'example/web:latest', cpu: 4, memory: '182MiB / 7.6GiB', memoryPercent: '2.34%', pids: '12', netIO: '48.2MB / 12.1MB', blockIO: '0B / 4.1MB' },
+    { id: 'b2c3d4e5f6a1', name: 'db', image: 'postgres:16', cpu: 1.5, memory: '96MiB / 7.6GiB', memoryPercent: '1.23%', pids: '9', netIO: '3.4MB / 5.8MB', blockIO: '22MB / 61MB' },
+    { id: 'c3d4e5f6a1b2', name: 'cache', image: 'redis:7', cpu: 0.4, memory: '12MiB / 7.6GiB', memoryPercent: '0.15%', pids: '5', netIO: '1.1MB / 0.9MB', blockIO: '0B / 0B' },
+    { id: 'd4e5f6a1b2c3', name: 'worker', image: 'example/worker:latest', cpu: 2, memory: '64MiB / 7.6GiB', memoryPercent: '0.82%', pids: '4', netIO: '0.6MB / 0.2MB', blockIO: '0B / 1.2MB' },
+  ]
+  const stopped = new Set(['d4e5f6a1b2c3'])
+  const act = (change: (id: string) => void) => async (payload: unknown): Promise<{ ok: boolean; error?: string }> => {
+    const parsed = DockerTarget.safeParse(payload)
+    if (!parsed.success) return { ok: false, error: 'invalid' }
+    if (!containers.some((c) => c.id === parsed.data.id)) return { ok: false, error: 'unknown-container' }
+    change(parsed.data.id)
+    refresh()
+    return { ok: true }
+  }
   return {
-    channel: 'docker-local',
+    channel: DOCKER_CHANNEL,
     intervalMs: 10_000,
+    commands: {
+      start: act((id) => { stopped.delete(id) }),
+      stop: act((id) => { stopped.add(id) }),
+      restart: act((id) => { stopped.delete(id) }),
+    },
     poll: async () => {
       const t = now()
       const cpu = (base: number, phase: number): string => `${clamp(wander(t, base, base * 0.6, 30_000, phase), 0, 400).toFixed(2)}%`
       return {
         data: {
-          containers: [
-            { id: 'a1b2c3d4e5f6', name: 'web', image: 'example/web:latest', state: 'running', status: 'Up 3 hours', stats: { cpu: cpu(4, 0), memory: '182MiB / 7.6GiB', memoryPercent: '2.34%', pids: '12', netIO: '48.2MB / 12.1MB', blockIO: '0B / 4.1MB' } },
-            { id: 'b2c3d4e5f6a1', name: 'db', image: 'postgres:16', state: 'running', status: 'Up 3 hours', stats: { cpu: cpu(1.5, 1), memory: '96MiB / 7.6GiB', memoryPercent: '1.23%', pids: '9', netIO: '3.4MB / 5.8MB', blockIO: '22MB / 61MB' } },
-            { id: 'c3d4e5f6a1b2', name: 'cache', image: 'redis:7', state: 'running', status: 'Up 3 hours', stats: { cpu: cpu(0.4, 2), memory: '12MiB / 7.6GiB', memoryPercent: '0.15%', pids: '5', netIO: '1.1MB / 0.9MB', blockIO: '0B / 0B' } },
-            { id: 'd4e5f6a1b2c3', name: 'worker', image: 'example/worker:latest', state: 'exited', status: 'Exited (0) 20 minutes ago', stats: null },
-          ],
+          containers: containers.map((c, i) => stopped.has(c.id)
+            ? { id: c.id, name: c.name, image: c.image, state: 'exited', status: 'Exited (0) 20 minutes ago', stats: null }
+            : { id: c.id, name: c.name, image: c.image, state: 'running', status: 'Up 3 hours', stats: { cpu: cpu(c.cpu, i), memory: c.memory, memoryPercent: c.memoryPercent, pids: c.pids, netIO: c.netIO, blockIO: c.blockIO } }),
+          actions: DOCKER_ACTIONS,
         },
         stale: false, error: null, updatedAt: t,
       }
     },
+  }
+}
+
+/**
+ * Fremdev's server list: three dev servers, the Storybook one restarted by Fremkit with its output.
+ * Behind `labs.fremdev` like the real one; every command answers `ok` and changes nothing.
+ */
+function serversProvider(now: () => number, config: () => Config): Provider<ServersSnapshot> {
+  const startedAt = now()
+  const row = (pid: number, port: number, project: string, tool: string, command: string, ageSec: number, cpu: number, rssKb: number): ServerRow => ({
+    id: `${pid}:Wed Oct 22 09:00:00 2026`, pid, ports: [port], project, tool, uptimeSec: ageSec, cpu, rssKb,
+    folder: `~/code/${project}`, command, dev: true, system: false, browser: false, docker: null,
+    managed: false, gone: false, state: 'up', portBusy: false, tab: null, log: [],
+  })
+  return {
+    channel: COMPANION_SERVERS_CHANNEL,
+    intervalMs: SERVERS_INTERVAL_MS,
+    poll: async () => {
+      if (!fremdevEnabled(config())) return { enabled: false, rows: [], canRestart: true }
+      const t = now()
+      const age = Math.round((t - startedAt) / 1000)
+      const cpu = (base: number, phase: number) => round1(clamp(wander(t, base, base * 0.8, 20_000, phase), 0, 100))
+      return {
+        enabled: true,
+        canRestart: true,
+        rows: [
+          { ...row(41_002, 3000, 'storefront', 'Next', 'node ~/code/storefront/node_modules/.bin/next dev', 7_200 + age, cpu(3, 0), 412_000), tab: 'orange' },
+          { ...row(41_010, 5173, 'dashboard', 'Vite', 'node ~/code/dashboard/node_modules/.bin/vite', 2_700 + age, cpu(1.2, 1), 168_000), tab: 'green' },
+          {
+            ...row(41_020, 6006, 'design-system', 'Storybook', 'node ~/code/design-system/node_modules/.bin/storybook dev -p 6006', 600 + age, cpu(2, 2), 296_000),
+            managed: true,
+            log: [
+              '@storybook/cli v8.4.2',
+              'info => Starting manager..',
+              'info => Starting preview..',
+              'info Using tsconfig paths for react-docgen',
+              '╭ Storybook 8.4.2 for react-vite started — Local: http://localhost:6006/',
+            ],
+          },
+        ],
+      }
+    },
+    commands: { kill: ACTED, restart: ACTED, open: ACTED, reveal: ACTED },
   }
 }
 

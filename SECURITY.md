@@ -350,6 +350,23 @@ files:
   `sha256`, which the extension checks before it sends its token in `hello`. The token must
   belong to that same record, whose origin *and* install id match what the socket presents, and
   the whole exchange must finish within five seconds; anything else is closed.
+- `POST /companion/dev/shot`, Fremdev's ⌃⇧S screenshot for the Mac's clipboard. It checks, in
+  order, before it reads past the headers or writes anything: a request from this Mac
+  (`isLocalRequest`, 404 otherwise), Companion's `Origin` (403), a bearer that is that extension's
+  own token, for a record of that same origin (401), and an install that can shoot right now —
+  `labs.fremdev` on (`fremdevEnabled`), its socket open, Fremdev on in it and
+  `fremdev.shot` among its modules (409). Then the body: at most 2 MiB (`SHOT_MAX_BYTES`, 413),
+  starting `FF D8 FF` like a JPEG (415), one at a time per device (429). The extension sends its token
+  there only while its socket is open and was greeted with Fremdev's yes: the socket's challenge has
+  then proved that the listener on 4242 is Fremkit, so the token is never shown to a port that has
+  not. The server writes the image to `shot-<uuid>.jpg` in the data folder (`mode: 0600`,
+  `flag: 'wx'`), runs `/usr/bin/osascript` with an argument list, a constant script and the file's
+  path as `argv` (never interpolated into the script), and removes the file in a `finally`, whether
+  osascript succeeded or not. The log names the device id, never the token or the path. The
+  capture sound a shot may ask for (`dev.shot` with `sound: true`, an extension option off by
+  default) runs `/usr/bin/afplay` with an argument list holding one constant, the system's
+  `Screen Capture.aif`: nothing from the message reaches the command line, at most once per second
+  per install, and a demo plays nothing.
 
 Refusing a request stays behind the secret and is local-only. None of these routes
 exists on the remote listener (4243). The `companion` channel the dashboard watches is built-in
@@ -393,6 +410,168 @@ isolated world (only YouTube's volume goes through the page's own), keeps its to
 limited to its own pages and worker (`TRUSTED_CONTEXTS`, available on every browser it installs on,
 Chrome 116 and later), where code it injects into a page cannot read it, and listens only to its own
 pages.
+
+**Fremdev, the extension's second module.** It watches dev tabs and reports them on `companion:dev`.
+It is behind its own experimental switch, Fremdev (`labs.fremdev`, read by `fremdevEnabled`); it is
+a product switch, not a security boundary, and the guards below hold either way. Fremplay and
+companion pairing are always on. A paired device's view of the config carries that one boolean and
+nothing else of `labs`. What it holds and what it can do:
+
+- *Permissions.* `webRequest` is optional and is requested, with the dev origins, in one prompt when
+  the user turns Fremdev on; there is no `webNavigation`, and an update adds nothing to the
+  install's permissions (a required new permission would disable the extension for every user,
+  Fremplay included, and the host grants are the consent). `webRequest` only observes: it never
+  blocks or rewrites a request, and a request is considered only when its tab is a watched dev tab
+  inside a granted origin. It also times them (`onBeforeRequest` to `onCompleted` or
+  `onErrorOccurred`, with Chrome's own timestamps, in the extension's memory only), never a
+  `websocket`. Requests to hosts that are not dev hosts are not seen.
+- *The MAIN-world hook* is registered for dev hosts only (`localhost`, `127.0.0.1`, `[::1]`,
+  `*.localhost`, `*.test` and the user's own patterns, which refuse wildcards over a common public
+  suffix (a short list; Chrome's own prompt names the hosts for any other) and over IP labels). It
+  calls the original `console.error` and never runs the page's getters or `toJSON`; the
+  `console.log`/`info`/`debug` wrappers read only a prefix of the first argument, joined with the
+  second when both are primitive strings (Vite's logger passes `"[vite]"` on its own), and send only
+  the kind, with the same guarantees. It sends events to a relay content script through a
+  `CustomEvent` carrying a string. A page can forge events, but only into its own row; the tab id
+  comes from Chrome. A `Proxy`'s introspection traps (`ownKeys`, `getOwnPropertyDescriptor`,
+  `getPrototypeOf`) may run, within the walk budget. Pages already loaded keep an inert hook after
+  Fremdev is turned off until they reload. The relay checks nothing the worker does not check again:
+  the worker decides whether a URL is a dev URL.
+- *The isolated-world readers.* Three more content scripts run in the extension's isolated world of
+  a dev tab, beside the relay, and call none of the page's code. `fremdev/kind.js` reads the page's
+  script tags' attributes to tell Vite, Next or webpack-dev-server apart (only the kind leaves the
+  extension; Vite's base path stays in it, and one with an empty or dot segment is refused).
+  `fremdev/build.js` reads a dev server's compile-error overlay: Vite's open shadow root through
+  `Element.prototype.shadowRoot`, Next's `nextjs-portal` shadow root, and webpack-dev-server's
+  same-origin overlay iframe through `contentDocument`, with `textContent` and attributes only,
+  never a property the page defined. `fremdev/perf.js` reads the performance timeline (navigation,
+  LCP, layout shifts, long tasks, `performance.memory`) and sends numbers only, bounded, which the
+  worker checks again.
+- *What leaves the tab:* the tab's row names it by the page's title (or its host:port when it has
+  none, clipped to 120 characters) and its host:port; then a kind and text clipped to 300
+  characters, for each of the tab's last 20 events (including `limited` entries for errors dropped
+  by the rate limit); an error's origin (its first frame as `file:line:col`, a path or `host/path`,
+  no query or fragment) and a request's method (a closed list); request URLs as their path only,
+  never query or fragment; nothing from bodies, headers or cookies. Each entry carries an id, a
+  number unique within the tab. A `build` entry carries the overlay's message (clipped to 300
+  characters) and the file it names, with a line and a column; a `slow` entry a method, a path and a
+  duration in ms; a `perf` entry a metric, its value and a ratio (or none), numbers only. The row
+  also carries the dev server's kind (`vite`, `next`, `webpack` or none), `inFlight` (a count, at
+  most 999) and `perf` (load, LCP, CLS, long tasks and heap, numbers only). **Every home folder is
+  written `~`**: `/Users/<name>/` becomes `~/` (and a percent-encoded `%2FUsers%2F<name>%2F` becomes
+  `%2F~%2F`) in the title, every text, origin, file, path and stack frame, on the wire, on the Edge,
+  in the report and in the popup, before anything is clipped (see *Open in editor* for the one
+  exception). The title, an error's own message and a build's message are free text, sent as the
+  page set or logged them (clipped), so one that quotes a secret shows it on the Edge. Fremkit's own
+  ports (4242, 4243) are never watched.
+- *Stacks.* An error's stack (at most 30 frames, 6000 characters, URLs without query or fragment)
+  stays in the extension and never travels in `dev.tabs`; it leaves the browser only in a bug
+  report the user asked for. The hook reads it with V8's native `stack` getter, captured at hook
+  start and called with `Reflect.apply`, only when `Error.prepareStackTrace` is absent or
+  `undefined` (checked by descriptor, so no page getter runs) and the error's `name` and `message`
+  are plain data strings; otherwise there is no stack. A build entry's code frame and stack, read
+  from the dev server's overlay as text (at most 20 and 30 lines of 300 characters, 6000 in all),
+  are kept the same way: not in `dev.tabs`, not in the session copy, only in a report with its
+  stack, home folders written `~`.
+- *The bug report.* The extension builds the text (at most 48 000 characters) and answers the
+  server's `dev.report.ask` with `dev.report`; the server waits 5 seconds, then writes it to the
+  clipboard through `pbcopy` with the text on stdin, never argv
+  (`server/src/providers/clipboard.ts`). At most 8 reports wait per install; a ninth is refused. The
+  `report` command is loopback-only like `focus` and `clear`, names only a tab id the install
+  reported, and is gated by `fremdevEnabled` (`labs.fremdev`); the module is
+  announced as `fremdev.report` only while Fremdev is on. The report reaches no one but the
+  clipboard, and what it quotes (error messages, titles) is as sensitive as on the Edge.
+- *Open in editor.* The `open` command (loopback-only, gated by `fremdevEnabled`, for an install
+  that lists `fremdev.open`) names a tab and an entry id; the server asks only when the install's
+  last `dev.tabs` listed that id for that tab, and nothing else reaches the extension: no path, no
+  URL. The extension looks the entry up in its own copy and builds the URL itself from the tab's own
+  origin and one endpoint per dev server kind: Vite's `<base>__open-in-editor?file=`, Next's
+  `/__nextjs_launch-editor?file=…&lineNumber=…&column=…&line1=…&column1=…` and webpack-dev-server's
+  `/webpack-dev-server/open-editor?fileName=` (`companion/lib/devopen.js`; the base is one the page
+  told, with no empty or dot segment). The file comes from the extension's own entry: a build
+  entry's overlay path, or a Vite error's same-origin script path (another origin's opens nothing).
+  The fetch is a `GET` with `credentials: 'omit'`, `cache: 'no-store'` and `redirect: 'error'`, its
+  body cancelled unread, given up after 5 seconds as the server's wait is. It is the only place a
+  home folder leaves in full, and only to the tab's own dev server. Its `{ ok }` says the server
+  answered 2xx, not that an editor opened: these endpoints answer whatever happens (Next 404s a
+  missing file). The editor that opens is the dev server's own launch-editor, configured by the
+  developer, as from its error overlay.
+- *The shot's thumbnail.* After a shot reached the clipboard, the extension draws a thumbnail of it
+  (at most 320 pixels, a JPEG of at most 40 000 characters) and shows it in the captured tab with a
+  function run in the isolated world (never the page's), inside a closed shadow root, decoded and
+  painted on a canvas so no URL is loaded; the page gets the thumbnail's pixels on screen, never the
+  shot. The same thumbnail goes to the Edge in `dev.shot`, which the server takes only from an
+  install that lists `fremdev.shotview`, for a tab it reported, with Fremdev enabled and on, and only
+  as `data:image/jpeg;base64,` followed by `/9j/` (FF D8 FF) and whole base64 quads; it shows on that
+  row of `companion:dev` for 3 seconds and is left out rather than trimming any row past 60 000 bytes.
+- *Server side.* Every `dev.tabs`, `modules`, `ping`, `dev.report`, `dev.open.done` and `dev.shot`
+  message is validated by a strict schema with bounded sizes, and publishing is capped at four per
+  second per install. After hello, one that fails is dropped (a `dev.tabs` row by row, keeping the rows that
+  parse) rather than closing the socket, which also carries Fremplay's share; every other message,
+  and the handshake, is still refused with 1008. Nothing of a dropped message is logged but a count.
+  `companion:dev` is in `LOCAL_ONLY_CHANNELS` and `BUILTIN_ONLY_CHANNELS`: paired devices and
+  registry widgets never get it, and the widget's focus, clear, reload, report and open commands are
+  loopback-only, gated by `fremdevEnabled`, and name only a tab id the install reported. The ⌃⇧S
+  screenshot is the one Fremdev feature that reaches the server outside the socket, through `POST
+  /companion/dev/shot` (above, under the routes that skip the secret): the extension captures only a
+  tab it has a row for, and the image reaches nothing but the clipboard. Fremdev is negotiated by
+  capability with the protocol still at 2, so it widens nothing for a 0.5.0 server. A page's own
+  text can be sensitive (an error message can quote data): it stays on this Mac, but it is displayed
+  on the Edge.
+- *The server list* (`server/src/companion/servers/`, channel `companion:servers`, docs/companion.md
+  *Dev servers*). It reads the Mac's processes and can signal some of them, so it is held tighter than
+  the rest of Fremdev. The channel is in the `companion` family: built-in widgets only, never a paired
+  device (`LOCAL_ONLY_CHANNELS` and `BUILTIN_ONLY_CHANNELS` name the family, and every command refuses
+  anything but `ctx.loopback`), gated by `fremdevEnabled`.
+  - *Programs run*, every one by absolute path through `execFile` with an argument list, a timeout, no
+    shell and `localEnv()` (a stripped environment with the system folders first in `PATH`, not the
+    server's own): `/usr/sbin/lsof` (this account's listeners; each pid's folder), `/bin/ps` with
+    `LC_ALL=C` (two calls: the numbers, and the command lines of the listeners and their parents),
+    `/usr/bin/open` (`http://localhost:<port>/`, or `-R <folder>`, built from the snapshot's port or
+    folder and never from a string a widget sent), `docker ps` through `resolveDockerBinary()` (only
+    while a Docker row exists), and `fremkit-scan procargs <pid>` by the path the helper passes in
+    `FREMKIT_SCANNER`, only for a restart. No command line carries a secret.
+  - *What counts as a dev row* (`isDevRuntime`). Dev rows get Restart and Finder and show their
+    arguments, so a program inside an app bundle (a path component ending in `.app`, `.sdPlugin`,
+    `.bundle` or `.plugin`) or whose working folder is under the home's `~/Library` is never one,
+    runtimes included: Stream Deck runs its plugins with its own node from there. The one exemption
+    is a `.app` directly in the `Resources` folder of a `*.framework` (a framework Python's
+    launcher).
+  - *A command names* a row id (`pid:start`) of the last snapshot, nothing else. Before a signal the
+    server runs `ps` again and refuses a pid whose start time changed or that is no longer listed.
+  - *Kill safety.* Only this account's processes; never Fremkit's tree, never any ancestor of Fremkit
+    (a root that contains Fremkit is narrowed toward the listener until it does not), never
+    `FremkitHelper`, never a program under `/System/`, `/usr/` (but `/usr/local/`), `/bin/`, `/sbin/`
+    or `/Library/Apple/`, never a Docker Desktop port holder, never a browser or its helpers (by
+    their app bundle, `isBrowser`); refused outright when Fremkit itself is
+    missing from `ps`. The launch root (`launchRoot`) is climbed only through package managers and
+    runners by their own name, or node/deno/bun by their script argument, never by a word elsewhere in
+    their arguments, so an editor, a terminal, tmux, launchd or an agent above a server is never taken
+    down. A process group is signalled only when it is the root's own job and holds nothing protected,
+    of the system or of another account; otherwise pid by pid. TERM, then KILL after 3 seconds. The
+    widget's two touches are a convenience: the server enforces all of this.
+  - *The environment of a restart.* `procargs` writes one JSON line (the executable, the exact argv
+    and the environment) on its standard output, never on a command line. It is read at the moment
+    of the restart, held in that call's variables for the one `spawn` (no shell, `argv0` kept, stdin
+    `/dev/null`) and dropped: never published, logged, put in `managed.json` or the log, or on argv,
+    and the scanner's errors name a code, not content. An environment macOS hides, or one that is
+    not valid text, refuses the restart rather than replaying a different one. `procargs` refuses
+    another account's process (`denied`), and Restart needs the same uid anyway.
+  - *Masking.* A published command line keeps the arguments of a dev row only, with the value of an
+    option or `KEY=value` argument named like `token`, `secret`, `key`, `password`, `pass`, `auth` or
+    `cred`, and a URL's credentials, replaced by `•••`; any other program shows its name alone. A log
+    line (the last 20, 300 characters each) is masked the same way, plus `Bearer`/`Basic` values and
+    `KEY: value` and JSON forms, since a dev server may print its environment. It is best effort on
+    free text, like a tab's console message: a secret of an unusual shape shows on the Edge. The home
+    folder reads `~`.
+  - *`<dataDir>/servers/`* holds the output of the servers Fremkit restarted, which is whatever they
+    print, and `managed.json` (pid, process start time, log path, ports, and the time Fremkit
+    started it). The folder is created 0700 and its files 0600; `tightenDataDir` walks the data
+    folder at start, including `servers/`, and strips group and other bits from anything older; the
+    child's umask is 022 only around its `spawn`, so its build output is not 0600. Logs of servers
+    that are gone are deleted after 24 hours, and a log past 1 MB is cut to its last 512 KB. The
+    folder is **not** in backups (`backup/routes.ts` packs the config, backgrounds and tile icons
+    only) nor in diagnostics, and no route serves it.
 
 **What a local program can do.** A process running as you can read the access secret and anything
 else; it is out of scope, as under *Known limits*. One running as another account, or anything that

@@ -14,8 +14,10 @@
  * then or later — a message that does not parse, an unknown type, a hello before the challenge
  * (a version 1 extension), a second challenge or hello — closes the socket with 1008, which the
  * extension does not take for an unpairing: a newer or older extension the server cannot read
- * keeps its token. A frame over the 64 KiB cap is refused by `ws` itself, with 1009, before any
- * of it is buffered.
+ * keeps its token. One exception, after hello only: a Fremdev message (`dev.tabs`, `modules`,
+ * `ping`) that fails its schema is dropped and the socket kept, a `dev.tabs` keeping the rows that
+ * do parse (`parseAfterHello`): the socket also carries Fremplay's share. A frame over the 64 KiB
+ * cap is refused by `ws` itself, with 1009, before any of it is buffered.
  *
  * An upgrade whose `Origin` is not an allowed extension's (`companionOrigins`) is answered 403
  * before any socket exists. Of the
@@ -31,7 +33,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import type { DeviceStore } from '../devices/store.js'
 import { isLocalRequest } from '../net/remote.js'
 import { DEVICE_CLOSE_CODE, DEVICE_TERMINATE_MS } from '../ws/hub.js'
-import { EXTENSION_ORIGIN_RE, parseExtensionMessage, proofMac, type ServerMessage } from './protocol.js'
+import { EXTENSION_ORIGIN_RE, parseAfterHello, parseExtensionMessage, proofMac, type ServerMessage } from './protocol.js'
 import type { CompanionSession } from './session.js'
 
 /** How long a new socket has to finish the handshake: challenge, then hello. */
@@ -204,7 +206,25 @@ export async function companionSocket(app: FastifyInstance, opts: CompanionSocke
     socket.on('message', (raw: Buffer, isBinary: boolean) => {
       if (closed) return
       if (isBinary) return refuse()
-      const msg = parseExtensionMessage(raw.toString('utf8'))
+      const text = raw.toString('utf8')
+
+      if (deviceId !== null) {
+        // After hello a Fremdev message that does not parse is dropped, the socket kept
+        // (`parseAfterHello`); anything else that does not parse closes it, as before.
+        const after = parseAfterHello(text)
+        if (after === null) return refuse()
+        // Never its content: a row is a page's title and errors.
+        if (after.dropped > 0) req.log.debug({ dropped: after.dropped }, 'companion: dropped a Fremdev message it could not read')
+        if (after.msg === null) return
+        const msg = after.msg
+        if (msg.type === 'hello' || msg.type === 'challenge') return refuse()
+        // A socket replaced by a newer one is no longer heard while it closes.
+        if (!sockets.isCurrent(deviceId, socket)) return
+        return session.onMessage(deviceId, msg)
+      }
+
+      // The handshake: strict, whatever the type.
+      const msg = parseExtensionMessage(text)
       if (msg === null) return refuse()
 
       if (challenged === null) {
@@ -218,30 +238,22 @@ export async function companionSocket(app: FastifyInstance, opts: CompanionSocke
         return
       }
 
-      if (deviceId === null) {
-        if (msg.type !== 'hello') return refuse()
-        // Never logged: the token, nor whose it might have been.
-        const record = store.findByToken(msg.token, 'extension')
-        if (
-          record === null || record.kind !== 'extension' || record.id !== challenged ||
-          record.origin !== origin || record.installId !== msg.installId
-        ) {
-          // No record for this extension: it was removed in Appareils (or never paired here).
-          return refuse(DEVICE_CLOSE_CODE)
-        }
-        clearTimeout(timer)
-        settle()
-        deviceId = record.id
-        sockets.attach(deviceId, socket)
-        store.touch(deviceId).catch(() => undefined)
-        session.connect(deviceId, record.name)
-        session.onMessage(deviceId, msg)
-        return
+      if (msg.type !== 'hello') return refuse()
+      // Never logged: the token, nor whose it might have been.
+      const record = store.findByToken(msg.token, 'extension')
+      if (
+        record === null || record.kind !== 'extension' || record.id !== challenged ||
+        record.origin !== origin || record.installId !== msg.installId
+      ) {
+        // No record for this extension: it was removed in Appareils (or never paired here).
+        return refuse(DEVICE_CLOSE_CODE)
       }
-
-      if (msg.type === 'hello' || msg.type === 'challenge') return refuse()
-      // A socket replaced by a newer one is no longer heard while it closes.
-      if (!sockets.isCurrent(deviceId, socket)) return
+      clearTimeout(timer)
+      settle()
+      deviceId = record.id
+      sockets.attach(deviceId, socket)
+      store.touch(deviceId).catch(() => undefined)
+      session.connect(deviceId, record.name)
       session.onMessage(deviceId, msg)
     })
   })

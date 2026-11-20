@@ -1,0 +1,18 @@
+<vite-error-overlay><template shadowrootmode="open"><div class="backdrop" part="backdrop"><div class="window" part="window"><pre class="message" part="message"><span class="plugin" part="plugin"></span><span class="message-body" part="message-body">[vue/compiler-sfc] Unexpected token (3:15)
+
+/Users/example/app/src/App.vue
+8  |  &lt;script setup&gt;
+9  |  const title = 'Scratch Vite'
+10 |  const broken = ;
+   |                 ^
+11 |  &lt;/script&gt;
+12 |</span></pre><pre class="file" part="file">unknown file:3:15</pre><pre class="frame" part="frame"></pre><pre class="stack" part="stack">    at constructor (<a class="file-link">/Users/example/app/node_modules/@babel/parser/lib/index.js:369:19</a>)
+    at Parser.raise (<a class="file-link">/Users/example/app/node_modules/@babel/parser/lib/index.js:6622:19</a>)
+    at Parser.unexpected (<a class="file-link">/Users/example/app/node_modules/@babel/parser/lib/index.js:6642:16</a>)
+    at Parser.parseExprAtom (<a class="file-link">/Users/example/app/node_modules/@babel/parser/lib/index.js:11473:22</a>)
+    at Parser.parseExprSubscripts (<a class="file-link">/Users/example/app/node_modules/@babel/parser/lib/index.js:11107:23</a>)
+    at Parser.parseUpdate (<a class="file-link">/Users/example/app/node_modules/@babel/parser/lib/index.js:11092:21</a>)
+    at Parser.parseMaybeUnary (<a class="file-link">/Users/example/app/node_modules/@babel/parser/lib/index.js:11072:23</a>)
+    at Parser.parseMaybeUnaryOrPrivate (<a class="file-link">/Users/example/app/node_modules/@babel/parser/lib/index.js:10925:61</a>)
+    at Parser.parseExprOps (<a class="file-link">/Users/example/app/node_modules/@babel/parser/lib/index.js:10930:23</a>)
+    at Parser.parseMaybeConditional (<a class="file-link">/Users/example/app/node_modules/@babel/parser/lib/index.js:10907:23</a>)</pre><div class="tip" part="tip">Click outside, press <kbd>Esc</kbd> key, or fix the code to dismiss.<br>You can also disable this overlay by setting <code part="config-option-name">server.hmr.overlay</code> to <code part="config-option-value">false</code> in <code part="config-file-name">vite.config.js</code>.</div></div></div></template></vite-error-overlay>
