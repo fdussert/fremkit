@@ -451,16 +451,25 @@ describe('what an archive or a PUT cannot change', () => {
   })
 
   it('restoring keeps this Mac\'s experimental features switches, and drops the former ones', async () => {
-    // A file written by 0.5.0 with both former switches on, then one written before they existed.
-    for (const labs of [{ labs: { devices: true, companion: true } }, {}]) {
-      const crafted = {
-        ...CONFIG, ...labs,
-        widgets: { ...CONFIG.widgets, 'fremplay-1': { widgetId: 'fremplay', showTitle: false, settings: {} } },
-        screens: [CONFIG.screens[0], { ...CONFIG.screens[0], id: 'second', name: 'Second' }],
+    for (const here of [true, false]) {
+      const current = (await app.inject({ url: '/api/config' })).json()
+      expect((await app.inject({ method: 'PUT', url: '/api/config', payload: { ...current, labs: { fremdev: here } } })).statusCode).toBe(200)
+      // A file stating the opposite with both former switches, then one written before any switch
+      // existed, with two screens, a Fremplay and a Fremdev widget.
+      for (const labs of [{ labs: { devices: true, companion: true, fremdev: !here } }, {}]) {
+        const crafted = {
+          ...CONFIG, ...labs,
+          widgets: {
+            ...CONFIG.widgets,
+            'fremplay-1': { widgetId: 'fremplay', showTitle: false, settings: {} },
+            'fremdev-1': { widgetId: 'fremdev', showTitle: false, settings: {} },
+          },
+          screens: [CONFIG.screens[0], { ...CONFIG.screens[0], id: 'second', name: 'Second' }],
+        }
+        const archive = writeZip([{ name: CONFIG_ENTRY, data: Buffer.from(JSON.stringify(crafted)) }])
+        expect((await post(archive)).statusCode).toBe(200)
+        expect((await app.inject({ url: '/api/config' })).json().labs, String(here)).toEqual({ fremdev: here })
       }
-      const archive = writeZip([{ name: CONFIG_ENTRY, data: Buffer.from(JSON.stringify(crafted)) }])
-      expect((await post(archive)).statusCode).toBe(200)
-      expect((await app.inject({ url: '/api/config' })).json().labs).toEqual({})
     }
   })
 
@@ -469,8 +478,24 @@ describe('what an archive or a PUT cannot change', () => {
     const { labs: _labs, ...without } = current
     for (const payload of [without, { ...current, labs: { devices: true, companion: false } }]) {
       expect((await app.inject({ method: 'PUT', url: '/api/config', payload })).statusCode).toBe(200)
-      expect((await app.inject({ url: '/api/config' })).json().labs).toEqual({})
+      expect((await app.inject({ url: '/api/config' })).json().labs).toEqual({ fremdev: false })
     }
+  })
+
+  it('PUT /api/config keeps labs.fremdev when the body has no boolean for it, and sets it when it has', async () => {
+    const current = (await app.inject({ url: '/api/config' })).json()
+    const put = async (labs: Record<string, boolean>) =>
+      expect((await app.inject({ method: 'PUT', url: '/api/config', payload: { ...current, labs } })).statusCode).toBe(200)
+    await put({ fremdev: true })
+    expect((await app.inject({ url: '/api/config' })).json().labs).toEqual({ fremdev: true })
+    // An older admin sending only the former switches leaves Fremdev's as it is.
+    await put({ devices: false, companion: true })
+    expect((await app.inject({ url: '/api/config' })).json().labs).toEqual({ fremdev: true })
+    const { labs: _labs, ...without } = current
+    expect((await app.inject({ method: 'PUT', url: '/api/config', payload: without })).statusCode).toBe(200)
+    expect((await app.inject({ url: '/api/config' })).json().labs).toEqual({ fremdev: true })
+    await put({ fremdev: false })
+    expect((await app.inject({ url: '/api/config' })).json().labs).toEqual({ fremdev: false })
   })
 
   it('PUT /api/config replays the current consent records', async () => {

@@ -18,6 +18,7 @@ import SettingsForm from './SettingsForm.vue'
 import { pick, useI18n } from '../shared/i18n'
 import { NAV_SLOTS, POPUP_SIZES, navItemsOf, type NavSlot, type PopupSize } from '../shared/types'
 import { useAdminStore } from './store'
+import { offeredManifests } from './labs'
 import { dropIndex } from './pageDrag'
 import { dropMarker } from './gifDrag'
 import { navStep } from './navOrder'
@@ -44,7 +45,7 @@ const POPUP_SIZE_OPTIONS = computed(() => [
 /** The arrows step along the bar and cross the dots, so they disable at the bar's two ends only. */
 const canStep = (id: string, delta: -1 | 1): boolean => navStep(navItemsOf(s.screen.value!), id, delta) !== null
 /** Only widgets with a compact rendering may go in the bar; the server refuses the others. */
-const addable = computed(() => Object.values(s.state.manifests).filter((m) => m.compact))
+const addable = computed(() => offeredManifests(s.state.config, s.state.manifests).filter((m) => m.compact))
 
 const manifestOf = (widgetId: string) => s.state.manifests[widgetId]
 const label = (widgetId: string): string => pick(manifestOf(widgetId)?.name) || widgetId

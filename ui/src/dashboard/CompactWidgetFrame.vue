@@ -13,6 +13,8 @@ import { compactWidth, mergeSettings, type Config, type NavItem, type WidgetInst
 /** `widgets` is where the item's widget and settings are read: a bar item names an instance, nothing more. */
 const props = defineProps<{
   item: NavItem; widgets: Config['widgets']; manifest?: WidgetManifest; cell: number; height: number; edit?: boolean
+  /** Its experimental feature is off: greyed and labelled, no frame running (the admin's canvas). */
+  off?: boolean
 }>()
 const emit = defineEmits<{ tap: [el: Element] }>()
 const iframe = ref<HTMLIFrameElement>()
@@ -79,10 +81,11 @@ const title = computed(() => pick(props.manifest?.name) || instance.value.widget
 </script>
 
 <template>
-  <div ref="root" class="compact" :class="{ edit }" :style="{ width: width + 'px' }">
-    <iframe v-if="manifest" ref="iframe" :src="`/widgets/${instance.widgetId}/index.html`" sandbox="allow-scripts" :title="title" />
+  <div ref="root" class="compact" :class="{ edit, off }" :style="{ width: width + 'px' }">
+    <div v-if="off" class="missing" data-test="feature-off">{{ t('dashboard.widget.featureOff') }}</div>
+    <iframe v-else-if="manifest" ref="iframe" :src="`/widgets/${instance.widgetId}/index.html`" sandbox="allow-scripts" :title="title" />
     <!-- One line of room here, so the words take the place of the id rather than joining it. -->
-    <div v-if="!manifest || state === 'error'" class="missing">{{ manifest ? title : t('dashboard.widget.notInstalled') }}</div>
+    <div v-if="!off && (!manifest || state === 'error')" class="missing">{{ manifest ? title : t('dashboard.widget.notInstalled') }}</div>
     <!-- Pointer events still bubble to the bar, so a swipe starting here keeps changing page. -->
     <div v-if="tappable" class="tap" :class="{ pressed }" @pointerdown="down" />
     <!-- The editor's right click must land on the bar, which opens the widget's menu. WebKit sends
@@ -103,6 +106,7 @@ iframe { width: 100%; height: 100%; border: 0; background: transparent; display:
   border-radius: var(--radius-sm, 6px); background: transparent; transition: background .1s; }
 .tap.pressed { background: rgba(255, 255, 255, .1); }
 .shield { position: absolute; inset: 0; z-index: 3; }
+.compact.off { filter: grayscale(1); opacity: .55; }
 .missing { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
   color: #5f6771; font-size: calc(13px * var(--nav-scale, 1)); white-space: nowrap; overflow: hidden; }
 </style>

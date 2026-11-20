@@ -30,12 +30,19 @@ describe('the companion extension', () => {
 
   it('the manifest asks for exactly the permitted permissions and no <all_urls>', () => {
     expect(manifest.manifest_version).toBe(3)
+    // Nothing new at install: an added permission with a warning disables the extension on a store
+    // update until the user accepts it again. Fremdev's webRequest is asked for when it is turned on.
     expect([...manifest.permissions].sort()).toEqual(['activeTab', 'offscreen', 'scripting', 'storage', 'tabCapture'])
     // Fremkit's port only (worker.js PORT): not every local server on the Mac.
     expect(manifest.host_permissions).toEqual(['http://127.0.0.1:4242/*'])
     expect([...manifest.optional_host_permissions].sort()).toEqual(['http://*/*', 'https://*/*'])
-    expect(manifest.optional_permissions).toBeUndefined()
+    expect(manifest.optional_permissions).toEqual(['webRequest'])
+    // webNavigation reports every site's navigations whatever the host grants: not asked for at all.
+    expect(JSON.stringify(manifest)).not.toContain('webNavigation')
+    // Fremdev's hooks are registered at run time on the dev origins the user granted, never declared.
     expect(manifest.content_scripts).toBeUndefined()
+    expect(manifest.web_accessible_resources).toBeUndefined()
+    expect(manifest.externally_connectable).toBeUndefined()
     expect(JSON.stringify(manifest)).not.toContain('<all_urls>')
     expect(manifest.background).toEqual({ service_worker: 'worker.js', type: 'module' })
     expect(manifest.action.default_popup).toBe('popup.html')
@@ -44,11 +51,91 @@ describe('the companion extension', () => {
     expect(manifest.commands['fremplay-toggle'].suggested_key.default).toBe('Ctrl+Shift+F')
     // Not ⌥: on a Mac, Option+Shift+letter types a character, and the browser let the page have it.
     expect(manifest.commands['fremplay-toggle'].suggested_key.mac).toBe('MacCtrl+Shift+F')
+    // Fremdev's shot: ⌃⇧S, the same family; the key press is the activeTab grant captureVisibleTab needs.
+    expect(manifest.commands['fremdev-shot'].suggested_key).toEqual({ default: 'Ctrl+Shift+S', mac: 'MacCtrl+Shift+S' })
+    expect(manifest.commands['fremdev-shot'].description).toBe('__MSG_commandShot__')
+    expect(Object.keys(manifest.commands).sort()).toEqual(['fremdev-shot', 'fremplay-toggle'])
+  })
+
+  it('is version 0.2.0, the first with Fremdev', () => {
+    expect(manifest.version).toBe('0.2.0')
+  })
+
+  it('hook and relay share the hot-reload prefixes', () => {
+    // hook.js runs in the page as a classic script and cannot import lib/devlog.js: it keeps a copy.
+    const lists = (text: string) => {
+      const out: Record<string, string[]> = {}
+      for (const m of text.matchAll(/const (DOWN|UP|HOT) = \[([\s\S]*?)\]$/gm)) {
+        out[m[1]] = [...m[2].matchAll(/'((?:[^'\\]|\\.)*)'/g)].map((s) => s[1])
+      }
+      return out
+    }
+    const hook = lists(read('fremdev/hook.js'))
+    const devlog = lists(read('lib/devlog.js'))
+    expect(Object.keys(devlog).sort()).toEqual(['DOWN', 'HOT', 'UP'])
+    for (const name of ['DOWN', 'UP', 'HOT']) {
+      expect(devlog[name].length, name).toBeGreaterThan(0)
+      expect(hook[name], name).toEqual(devlog[name])
+    }
   })
 
   it("the manifest's key is present and gives the store's extension id", () => {
     expect(typeof manifest.key).toBe('string')
     expect(extensionId(manifest.key)).toBe('lnckeodobpbbmfbdlpnegjpchgkehdlk')
+  })
+
+  it('names the shot command in both languages, and the options page shows both shortcuts', () => {
+    expect(messages('fr').commandShot.message).toBe('Fremdev : copier une capture de l’onglet de développement')
+    expect(messages('en').commandShot.message).toBe('Fremdev: copy a screenshot of the development tab')
+    expect(messages('fr').optShotShortcut.message).toBe('Capture Fremdev')
+    expect(messages('en').optShotShortcut.message).toBe('Fremdev screenshot')
+    const page = read('options.html')
+    expect(page).toContain('__MSG_optShortcut__')
+    expect(page).toContain('__MSG_optShotShortcut__')
+    const script = read('options.js')
+    expect(script).toContain("'fremplay-toggle'")
+    expect(script).toContain("'fremdev-shot'")
+    expect(script).toContain("chrome.tabs.create({ url: 'chrome://extensions/shortcuts' })")
+  })
+
+  it('runs the shot overlay and its dismissal in the isolated world only, never MAIN', () => {
+    const calls: string[] = []
+    for (const file of ['worker.js', 'popup.js']) {
+      const text = read(file)
+      // Every executeScript call that names one of the shot's functions, up to its closing `})`.
+      for (const m of text.matchAll(/executeScript\(\{[^]*?\}\)/g)) {
+        if (/func: (shotOverlay|dismissShotOverlay)\b/.test(m[0])) calls.push(`${file}: ${m[0]}`)
+      }
+    }
+    expect(calls.filter((c) => c.includes('func: shotOverlay'))).toHaveLength(1)
+    expect(calls.filter((c) => c.includes('func: dismissShotOverlay'))).toHaveLength(2)
+    // No `world` key: the default, ISOLATED. Naming 'ISOLATED' would do too; anything else would not.
+    for (const call of calls) expect(call.replace(/world: 'ISOLATED'/, ''), call).not.toMatch(/\bworld\b/)
+    expect(read('lib/shotview.js')).not.toMatch(/\bworld\s*:/)
+  })
+
+  it('dismisses the overlay with a self-contained function, under the overlay\'s own key', async () => {
+    // @ts-expect-error plain JS module
+    const { dismissShotOverlay, shotOverlay } = await import('../../companion/lib/shotview.js')
+    const text: string = dismissShotOverlay.toString()
+    expect(() => new Function(`return (${text})`)()).not.toThrow()
+    expect(text).toContain("'__fremkitShotOverlay'")
+    expect(shotOverlay.toString()).toContain("'__fremkitShotOverlay'")
+  })
+
+  it('offers the screenshot sound in both languages, off unless ticked, read by the worker under the same key', () => {
+    expect(messages('fr').optShotSound.message).toBe('Jouer le son de capture')
+    expect(messages('en').optShotSound.message).toBe('Play the screenshot sound')
+    const page = read('options.html')
+    expect(page).toMatch(/<input type="checkbox" id="shotsound">\s*__MSG_optShotSound__/)
+    expect(page).not.toMatch(/id="shotsound"[^>]*checked/)
+    const options = read('options.js')
+    const worker = read('worker.js')
+    for (const script of [options, worker]) expect(script).toContain("const SHOT_SOUND_KEY = 'fremdevShotSound'")
+    // Only a stored `true` turns it on: a fresh install has nothing stored.
+    expect(options).toContain("$('shotsound').checked = local[SHOT_SOUND_KEY] === true")
+    expect(worker).toContain('[SHOT_SOUND_KEY] === true')
+    expect(options).toContain('chrome.storage.local.set({ [SHOT_SOUND_KEY]: e.target.checked === true })')
   })
 
   it('fr and en messages have the same keys', () => {

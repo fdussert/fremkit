@@ -1,0 +1,516 @@
+// What the page's hooks report, made safe to send: bounded text, a path with no query, no noise.
+
+/** The longest error text or request path that leaves the tab. */
+export const MAX_TEXT = 300
+
+/** `s` cut to `max` UTF-16 units, never ending on half of a surrogate pair. */
+export function clip(s, max) {
+  const cut = s.slice(0, max)
+  const last = cut.charCodeAt(cut.length - 1)
+  return cut.length === max && last >= 0xd800 && last <= 0xdbff ? cut.slice(0, -1) : cut
+}
+
+/** A character that continues a path: `/Users/` after one is inside it (`/@fs/Users/…`). */
+const PATH_CHAR_RE = /[A-Za-z0-9._~@%+\-/]/
+
+/**
+ * `s` with every home folder written `~`: `/Users/<name>/` becomes `~/`, whatever the name holds
+ * but a slash or a line break (`/Users/Jane Example/` too), and a name cut by the end of `s` (a
+ * clipped text ending `/Users/Jane Ex`) or by a line break becomes `~`. Inside a path the slash
+ * before it stays: `/@fs/Users/<name>/a.js` becomes `/@fs/~/a.js`, and so does an encoded one
+ * (`%2FUsers%2F<name>%2F` becomes `%2F~%2F`). What leaves the extension (the wire, the Edge, the
+ * report, the popup) goes through this, before any clip; the extension keeps the full value.
+ */
+export function homePath(s) {
+  return String(s)
+    .replace(/\/Users\/[^/\n]+(\/|$|(?=\n))/g, (_, end, at, all) =>
+      (at > 0 && PATH_CHAR_RE.test(all[at - 1]) ? '/~' : '~') + end)
+    .replace(ENCODED_HOME_RE, '%2F~$1')
+}
+
+/**
+ * A home folder percent-encoded inside a URL (`/files/%2FUsers%2Fjane%2Fa.js`), either case of
+ * `%2F`: the encoded slash before it stays, like the plain one inside a path.
+ */
+const ENCODED_HOME_RE = /%2FUsers%2F(?:(?!%2F)[^/\n])+(%2F|\/|$|(?=\n))/gi
+
+// Taken once: errorText reads values with these alone, so a page that replaces them later runs no
+// code through it.
+const gopd = Object.getOwnPropertyDescriptor
+const getProto = Object.getPrototypeOf
+const isArray = Array.isArray
+const ownKeys = Reflect.ownKeys
+const quote = JSON.stringify
+const symbolDescription = gopd(Symbol.prototype, 'description').get
+// A DOMException's name and message are accessors on its prototype: their native getters, taken now.
+const domProto = typeof DOMException === 'function' ? DOMException.prototype : null
+const domName = domProto ? gopd(domProto, 'name')?.get : undefined
+const domMessage = domProto ? gopd(domProto, 'message')?.get : undefined
+const Url = URL
+const reflectApply = Reflect.apply
+const defineProp = Reflect.defineProperty
+const strSlice = String.prototype.slice
+const strIndexOf = String.prototype.indexOf
+const strCharCodeAt = String.prototype.charCodeAt
+const regexpExec = RegExp.prototype.exec
+const urlOrigin = gopd(URL.prototype, 'origin').get
+const urlHost = gopd(URL.prototype, 'host').get
+const urlPathname = gopd(URL.prototype, 'pathname').get
+const urlProtocol = gopd(URL.prototype, 'protocol').get
+
+// <errorText> This block is copied byte for byte into fremdev/hook.js, which cannot import it
+// (server/test/companion-fremdev-scripts.test.ts compares them). It never runs the logged value's
+// code: no getter, no toJSON, no toString, no Proxy `get` trap; only own data properties are read,
+// through property descriptors, within a depth, an item and a character budget.
+const WALK_DEPTH = 2
+const WALK_ITEMS = 20
+const WALK_PROTOS = 10
+/** Keys looked at in one object, shown or not (non-enumerable ones count too). */
+const WALK_KEYS = 50
+
+/** A data property of `o` or of its prototypes; an accessor reads as undefined, unrun. */
+function dataOf(o, key) {
+  let at = o
+  for (let i = 0; i < WALK_PROTOS && at !== null && (typeof at === 'object' || typeof at === 'function'); i++) {
+    const d = gopd(at, key)
+    if (d) return 'value' in d ? d.value : undefined
+    at = getProto(at)
+  }
+  return undefined
+}
+
+/** The name of a function, when it is a plain string. */
+function fnName(f) {
+  const d = gopd(f, 'name')
+  return d && typeof d.value === 'string' ? d.value : ''
+}
+
+/** The constructor's name of `o` (`Object`, `Map`, `HTMLDivElement`, a class), from data properties. */
+function classOf(o) {
+  const ctor = dataOf(o, 'constructor')
+  return (typeof ctor === 'function' && fnName(ctor)) || 'Object'
+}
+
+function inChain(o, proto) {
+  let at = getProto(o)
+  for (let i = 0; i < WALK_PROTOS && at !== null; i++) {
+    if (at === proto) return true
+    at = getProto(at)
+  }
+  return false
+}
+
+/** A native getter called on `o`; undefined when `o` is not what it reads (a brand check throws). */
+function nativeText(o, getter) {
+  if (typeof getter !== 'function') return undefined
+  try {
+    const v = reflectApply(getter, o, [])
+    return typeof v === 'string' ? v : undefined
+  } catch {
+    return undefined
+  }
+}
+
+function isErrorLike(o) {
+  let at = getProto(o)
+  for (let i = 0; i < WALK_PROTOS && at !== null; i++) {
+    const d = gopd(at, 'constructor')
+    if (d && typeof d.value === 'function' && fnName(d.value) === 'Error') return true
+    at = getProto(at)
+  }
+  return false
+}
+
+function walk(v, depth, budget) {
+  if (budget.left <= 0) return ''
+  let s
+  switch (typeof v) {
+    case 'string':
+      s = depth === 0 ? v : quote(v)
+      break
+    case 'number':
+    case 'boolean':
+    case 'undefined':
+      // Template conversion: a primitive needs no call, and the page's global String is never run.
+      s = `${v}`
+      break
+    case 'bigint':
+      s = `${v}n`
+      break
+    case 'symbol': {
+      const d = reflectApply(symbolDescription, v, [])
+      s = `Symbol(${typeof d === 'string' ? d : ''})`
+      break
+    }
+    case 'function': {
+      const name = fnName(v)
+      s = name ? `[Function: ${name}]` : '[Function]'
+      break
+    }
+    default:
+      // An object's leaves and keys were counted as it was walked.
+      if (v !== null) return walkObject(v, depth, budget)
+      s = 'null'
+  }
+  budget.left -= s.length
+  return s
+}
+
+function walkObject(o, depth, budget) {
+  const dom = domProto !== null && inChain(o, domProto)
+  if (dom || isErrorLike(o)) {
+    const name = dom ? nativeText(o, domName) : dataOf(o, 'name')
+    const message = dom ? nativeText(o, domMessage) : dataOf(o, 'message')
+    const head = typeof name === 'string' && name ? name : 'Error'
+    return typeof message === 'string' && message ? `${head}: ${message}` : head
+  }
+  if (isArray(o)) {
+    if (depth >= WALK_DEPTH) return '[Array]'
+    const len = gopd(o, 'length')
+    const n = len && typeof len.value === 'number' ? len.value : 0
+    let out = ''
+    let i = 0
+    for (; i < n && i < WALK_ITEMS && budget.left > 0; i++) {
+      const d = gopd(o, `${i}`)
+      out += (i > 0 ? ',' : '') + (!d ? '' : 'value' in d ? walk(d.value, depth + 1, budget) : '[Getter]')
+    }
+    return `[${out}${i < n ? (i > 0 ? ',…' : '…') : ''}]`
+  }
+  const name = classOf(o)
+  const plain = name === 'Object' || getProto(o) === null
+  if (depth >= WALK_DEPTH) return plain ? '{…}' : `[object ${name}]`
+  const keys = ownKeys(o)
+  let out = ''
+  let shown = 0
+  let more = false
+  for (let k = 0; k < keys.length; k++) {
+    const key = keys[k]
+    if (typeof key !== 'string') continue
+    if (k >= WALK_KEYS || shown >= WALK_ITEMS || budget.left <= 0) {
+      more = true
+      break
+    }
+    const d = gopd(o, key)
+    if (!d || !d.enumerable) continue
+    const value = 'value' in d ? walk(d.value, depth + 1, budget) : '[Getter]'
+    budget.left -= key.length + 4
+    out += `${shown > 0 ? ',' : ''}${quote(key)}:${value}`
+    shown += 1
+  }
+  if (!plain && shown === 0 && !more) return `[object ${name}]`
+  const body = `{${out}${more ? (shown > 0 ? ',…' : '…') : ''}}`
+  return plain ? body : `${name} ${body}`
+}
+
+/** The arguments of a `console.error` joined the way the console prints them. Never throws. */
+function errorText(args) {
+  const budget = { left: MAX_TEXT + 1 }
+  let out = ''
+  try {
+    const n = args && typeof args.length === 'number' ? args.length : 0
+    for (let i = 0; i < n && budget.left > 0; i++) {
+      let part
+      try {
+        part = walk(args[i], 0, budget)
+      } catch {
+        part = '[unprintable]'
+      }
+      out += (i > 0 ? ' ' : '') + part
+    }
+    return clip(out, MAX_TEXT)
+  } catch {
+    return ''
+  }
+}
+// </errorText>
+
+export { errorText }
+
+// <frames> This block is copied byte for byte into fremdev/hook.js, like <errorText> above. It reads
+// V8's stack text only: no source map is looked up and line numbers stay as Chrome reports them.
+// It calls only builtins taken at load and writes lists by definition, never by assignment: a page
+// that later puts an accessor on Array.prototype['0'] or replaces String.prototype.slice runs nothing.
+/** At most this many frames leave the tab, each this long, and this long joined by newlines. */
+const MAX_FRAMES = 30
+const MAX_FRAME = 300
+const MAX_STACK = 6000
+/** A line longer than this is not a frame worth parsing. */
+const MAX_LINE = 2000
+const FRAME = /^\s+at (?:(.+) \((.+):(\d+):(\d+)\)|(async )?(.+):(\d+):(\d+))$/
+
+/** `clip` with the builtins taken at load. */
+function cutText(s, max) {
+  const cut = reflectApply(strSlice, s, [0, max])
+  const last = reflectApply(strCharCodeAt, cut, [cut.length - 1])
+  return cut.length === max && last >= 0xd800 && last <= 0xdbff ? reflectApply(strSlice, cut, [0, -1]) : cut
+}
+
+/** Appends `value` to `list` as an own data property: no setter up the chain is called. */
+function append(list, value) {
+  defineProp(list, list.length, { __proto__: null, value, writable: true, enumerable: true, configurable: true })
+}
+
+/** The own data value at `i` in `list`, or undefined. */
+function itemOf(list, i) {
+  const d = gopd(list, i)
+  return d && 'value' in d ? d.value : undefined
+}
+
+/** Where a script lives: its path on the page's origin, `host/path` elsewhere, '' when unknown. */
+function framePlace(url, pageOrigin) {
+  if (typeof url !== 'string' || url === '') return ''
+  try {
+    const u = new Url(url)
+    const protocol = reflectApply(urlProtocol, u, [])
+    if (protocol === 'data:' || protocol === 'blob:' || protocol === 'javascript:' || protocol === 'about:') return ''
+    const path = reflectApply(urlPathname, u, [])
+    const same = reflectApply(urlOrigin, u, []) === pageOrigin
+    return cutText(same ? path : `${reflectApply(urlHost, u, [])}${path}`, MAX_FRAME)
+  } catch {
+    return ''
+  }
+}
+
+/** Frames clipped one by one, kept while there are no more than MAX_FRAMES and they fit MAX_STACK. */
+function boundFrames(frames) {
+  const out = []
+  let length = 0
+  for (let i = 0; i < frames.length && out.length < MAX_FRAMES; i++) {
+    const item = itemOf(frames, i)
+    if (typeof item !== 'string') break
+    const frame = cutText(item, MAX_FRAME)
+    const next = length + (out.length > 0 ? 1 : 0) + frame.length
+    if (next > MAX_STACK) break
+    append(out, frame)
+    length = next
+  }
+  return out
+}
+
+/**
+ * V8's `at fn (url:line:col)`, `at url:line:col` and `at async url:line:col` lines as
+ * `fn place:line:col` (`async place:line:col` for the last); the rest skipped.
+ */
+function parseStack(stack, pageOrigin) {
+  if (typeof stack !== 'string') return []
+  const frames = []
+  let start = 0
+  while (start < stack.length && frames.length < MAX_FRAMES) {
+    let end = reflectApply(strIndexOf, stack, ['\n', start])
+    if (end < 0) end = stack.length
+    const line = reflectApply(strSlice, stack, [start, end])
+    start = end + 1
+    if (line.length > MAX_LINE) continue
+    const m = reflectApply(regexpExec, FRAME, [line])
+    if (!m) continue
+    const named = itemOf(m, 1) !== undefined
+    const fn = named ? itemOf(m, 1) : itemOf(m, 5) !== undefined ? 'async' : ''
+    const place = framePlace(itemOf(m, named ? 2 : 6), pageOrigin)
+    if (!place) continue
+    const at = named ? `${itemOf(m, 3)}:${itemOf(m, 4)}` : `${itemOf(m, 7)}:${itemOf(m, 8)}`
+    append(frames, `${fn ? `${fn} ` : ''}${place}:${at}`)
+  }
+  return boundFrames(frames)
+}
+// </frames>
+
+export { boundFrames, framePlace, MAX_FRAME, MAX_FRAMES, MAX_STACK, parseStack }
+
+/** Whether `v` is a list of strings: a stack, a code frame. */
+export const isLines = (v) => Array.isArray(v) && v.every((l) => typeof l === 'string')
+
+/** A build entry's code frame and stack: at most this many lines, each this long, this long in all. */
+export const MAX_FRAME_LINES = 20
+export const MAX_STACK_LINES = 30
+export const MAX_BUILD_LINE = 300
+export const MAX_BUILD_EXTRA = 6_000
+
+/**
+ * `{ frame?, stack? }` of a build event within the bounds fremdev/build.js keeps too: each line
+ * clipped to MAX_BUILD_LINE, at most MAX_FRAME_LINES and MAX_STACK_LINES of them, and the frame then
+ * the stack kept while each line and its line break fit MAX_BUILD_EXTRA. An empty list is left out.
+ */
+export function boundBuildLines(frame, stack) {
+  const out = {}
+  let left = MAX_BUILD_EXTRA
+  const take = (lines, max) => {
+    const kept = []
+    for (const l of lines ?? []) {
+      if (kept.length >= max) break
+      const cut = clip(l, MAX_BUILD_LINE)
+      if (cut.length + 1 > left) break
+      kept.push(cut)
+      left -= cut.length + 1
+    }
+    return kept
+  }
+  const f = take(frame, MAX_FRAME_LINES)
+  if (f.length > 0) out.frame = f
+  const s = take(stack, MAX_STACK_LINES)
+  if (s.length > 0) out.stack = s
+  return out
+}
+
+/** A code frame's line (`12 |`, `> 3 |`) and a caret line under one (`   |   ^`, `   : ^^`). */
+const FRAME_LINE_RE = /^\s*>?\s*\d+\s*\|/
+const CARET_RE = /^[\s|:]*\^[\s^~]*$/
+const MAX_POS = 10_000_000
+const posOf = (s) => {
+  const n = Number(s)
+  return Number.isInteger(n) && n >= 1 && n <= MAX_POS ? n : undefined
+}
+
+/** A message's text the way fremdev/build.js cleans an overlay's: its first line, then up to a code frame, no caret line. */
+function cleanBuildText(s) {
+  const kept = []
+  for (const l of String(s).split('\n')) {
+    const first = !kept.some((k) => k.trim() !== '')
+    if (!first && FRAME_LINE_RE.test(l)) break
+    if (first || !CARET_RE.test(l)) kept.push(l)
+  }
+  return clip(kept.join('\n').replace(/\s+/g, ' ').trim(), MAX_TEXT)
+}
+
+/**
+ * webpack-dev-server 5's `formatProblem` header, then the message: `ERROR`, `ERROR in <module>`,
+ * `ERROR in <module> (<file>)`, each maybe followed by `<line>:<col>`.
+ */
+/**
+ * The prefixes of the dev server clients' own console lines, which fremdev/relay.js keeps out of
+ * the errors' rate limit (its copy is checked equal by server/test/companion-fremdev-scripts.test.ts).
+ */
+export const DEV_CLIENT_PREFIXES = ['[webpack-dev-server] ', '[HMR] ']
+/** The line webpack-dev-server's client logs before a failed compile's errors (client/index.js, errors()). */
+export const COMPILE_ERRORS = '[webpack-dev-server] Errors while compiling.'
+
+const WDS_ERROR_RE = /^\[webpack-dev-server\] ERROR(?: in (\S+)(?: \([^)\n]*\))?(?: (\d+):(\d+))?)?[^\n]*(?:\n([\s\S]*))?$/
+/**
+ * Next 15.5 (webpack) logs its build error in SWC's shape: `<file>\nError:   x <message>\n   ,-[<path>:<line>:<col>]…`.
+ * The `x` and the `,-[` line are required; the place may be cut off by the 300-character clip.
+ */
+const NEXT_BUILD_RE = /^(\.{0,2}\/[^\n]*)\nError:\s+x\s+([^\n]*)\n\s*,-\[/
+const NEXT_PLACE_RE = /,-\[[^\n]*?:(\d+):(\d+)\]/
+
+/**
+ * What a `console.error` text the dev server's own client logged says, or null for a runtime
+ * error: `'drop'` for a status line (webpack-dev-server's `Errors while compiling. Reload
+ * prevented.` and the like, `[HMR] …`), or a `build` event for a compile error it repeats from the
+ * overlay (webpack-dev-server's `ERROR in <file> <L:C>`, Next's `<file>\nError: x …`), its text,
+ * file and place read the way fremdev/build.js reads the overlay's, so the two fold into one entry
+ * (`fromConsole`, reduce in lib/devtabs.js). Vite's client logs none (checked on Vite 7). The rules
+ * follow the tab's dev server (`devServer`): webpack-dev-server's on a `webpack` tab, Next's on a
+ * `next` one, both while it is unknown (null), none on `vite`. Turbopack's console is not read.
+ */
+export function consoleBuild(text, devServer = null) {
+  if (typeof text !== 'string') return null
+  const webpack = devServer === 'webpack' || devServer === null
+  const nextjs = devServer === 'next' || devServer === null
+  const wds = webpack ? WDS_ERROR_RE.exec(text) : null
+  if (wds) {
+    const event = { kind: 'build', text: cleanBuildText(wds[4] ?? '') || 'ERROR', fromConsole: true }
+    if (wds[1] !== undefined) event.file = wds[1]
+    if (wds[2] !== undefined) {
+      const line = posOf(wds[2])
+      // webpack counts columns from 0, the editors (and build.js) from 1.
+      const col = posOf(Number(wds[3]) + 1)
+      if (line !== undefined) {
+        event.line = line
+        if (col !== undefined) event.col = col
+      }
+    }
+    return event
+  }
+  if (webpack && DEV_CLIENT_PREFIXES.some((p) => text.startsWith(p))) return 'drop'
+  const next = nextjs ? NEXT_BUILD_RE.exec(text) : null
+  if (next) {
+    const event = { kind: 'build', text: clip(next[2].trim(), MAX_TEXT) || 'Error', file: next[1].trim(), fromConsole: true }
+    const at = NEXT_PLACE_RE.exec(text)
+    if (at && posOf(at[1]) !== undefined) {
+      event.line = posOf(at[1])
+      if (posOf(at[2]) !== undefined) event.col = posOf(at[2])
+    }
+    return event
+  }
+  return null
+}
+
+/** The request methods reported as themselves; any other reads `OTHER`. The one list: devtabs.js reads it too. */
+export const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS']
+
+/** A request's method from the closed list, `OTHER` for anything else. */
+export function methodOf(m) {
+  if (typeof m !== 'string') return 'OTHER'
+  const upper = m.toUpperCase()
+  return METHODS.includes(upper) ? upper : 'OTHER'
+}
+
+const DOWN = ['[vite] server connection lost', '[webpack-dev-server] Disconnected!', '[WDS] Disconnected!']
+const UP = [
+  '[vite] connected.',
+  '[webpack-dev-server] Server started',
+  '[webpack-dev-server] Hot Module Replacement enabled',
+  '[webpack-dev-server] Live Reloading enabled',
+]
+const HOT = [
+  '[vite] hot updated:',
+  '[vite] css hot updated:',
+  '[HMR] App is up to date',
+  '[HMR] Updated modules',
+  '[Fast Refresh] done',
+]
+
+/**
+ * What a dev server's console line says about it: `down`, `up`, `hot` (a reload landed) or null.
+ * `second` is the call's second argument: Vite logs `console.debug("[vite]", "hot updated: …")`,
+ * read as one line when both are strings (fremdev/hook.js does the same).
+ */
+export function hotReloadSignal(first, second) {
+  if (typeof first !== 'string') return null
+  const text = typeof second === 'string' ? `${first} ${second}` : first
+  if (DOWN.some((p) => text.startsWith(p))) return 'down'
+  if (UP.some((p) => text.startsWith(p))) return 'up'
+  if (HOT.some((p) => text.startsWith(p))) return 'hot'
+  return null
+}
+
+/** The path of a URL, no query and no fragment; `/` when it does not parse. */
+export function pathOf(url) {
+  try {
+    const u = new URL(url)
+    // Only the schemes a page requests over; a `data:` URL's payload is not a path.
+    if (!['http:', 'https:', 'ws:', 'wss:'].includes(u.protocol)) return '/'
+    return clip(u.pathname, MAX_TEXT) || '/'
+  } catch {
+    return '/'
+  }
+}
+
+/** Requests the dev tooling makes for itself, and aborts the page caused: not counted. */
+export function isNoise(url, error) {
+  if (typeof error === 'string' && error.includes('net::ERR_ABORTED')) return true
+  const path = pathOf(url)
+  return (
+    path.endsWith('/favicon.ico') ||
+    path.startsWith('/@vite/') ||
+    path === '/__webpack_hmr' ||
+    path.startsWith('/sockjs-node/') ||
+    path.includes('.hot-update.')
+  )
+}
+
+/** At most `perSecond` passes in any sliding second; the caller keeps counting what it refuses. */
+export class RateLimiter {
+  constructor(perSecond = 10, now = Date.now) {
+    this.perSecond = perSecond
+    this.now = now
+    this.passed = []
+  }
+
+  allow() {
+    const t = this.now()
+    while (this.passed.length > 0 && t - this.passed[0] >= 1000) this.passed.shift()
+    if (this.passed.length >= this.perSecond) return false
+    this.passed.push(t)
+    return true
+  }
+}

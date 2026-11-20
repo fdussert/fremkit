@@ -228,6 +228,7 @@ let suites: [(String, () -> XCTestCase, [TestMethod])] = [
 
 var passed = 0
 var failed = 0
+var skipped = 0
 
 for (suiteName, make, methods) in suites + scanSuites + brightnessSuites {
     for (methodName, run) in methods {
@@ -241,6 +242,10 @@ for (suiteName, make, methods) in suites + scanSuites + brightnessSuites {
             try run(instance)
             instance.tearDown()
             try instance.tearDownWithError()
+        } catch let skip as XCTSkip {
+            skipped += 1
+            print("SKIP \(name): \(skip.reason)")
+            continue
         } catch {
             thrown = error
         }
@@ -260,5 +265,5 @@ for (suiteName, make, methods) in suites + scanSuites + brightnessSuites {
     }
 }
 
-print("\(passed) passed, \(failed) failed")
+print("\(passed) passed, \(failed) failed" + (skipped > 0 ? ", \(skipped) skipped" : ""))
 exit(failed == 0 ? 0 : 1)

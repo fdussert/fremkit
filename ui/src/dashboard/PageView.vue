@@ -16,7 +16,9 @@ const props = withDefaults(defineProps<{
   paintBackground?: boolean
   /** The admin's "Reload widget": a tile whose count changes gets a fresh frame. */
   reloads?: Record<string, number>
-}>(), { paintBackground: true, reloads: () => ({}) })
+  /** Instances whose experimental feature is off, drawn greyed (the admin's canvas). */
+  off?: ReadonlySet<string>
+}>(), { paintBackground: true, reloads: () => ({}), off: () => new Set<string>() })
 
 /** Each placement joined with the shared widget it names: the tile shape every frame and the bridge speak. */
 const tiles = computed(() => props.page.items.map((p) => tileOf(props.config, p)))
@@ -44,6 +46,7 @@ const style = computed(() => ({
       :manifest="manifests[w.widgetId]"
       :cell="display.cell"
       :edit="edit"
+      :off="off.has(w.instanceId)"
     />
   </div>
 </template>

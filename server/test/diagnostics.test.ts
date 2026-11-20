@@ -46,7 +46,7 @@ function config(): Config {
     connections: [{ id: 'my-nas', type: 'fake', name: 'Basement NAS', fields: { url: 'https://nas.example.com:5001' } }],
     secrets: { backend: 'file' },
     privacy: {} as Config['privacy'],
-    labs: {},
+    labs: { fremdev: false },
     marketplace: {} as Config['marketplace'],
     widgets: {
       a: { widgetId: 'clock', showTitle: true, settings: { secretNote: 'do-not-show' } },

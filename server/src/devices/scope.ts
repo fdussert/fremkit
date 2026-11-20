@@ -91,10 +91,14 @@ export function widgetInScope(config: Config, scope: ScreenScope, widgetId: stri
  * Never the connections (their non-secret fields name hosts and accounts), the secrets backend,
  * the marketplace records, the privacy switches, or any other screen and its widgets' settings.
  * A device with no screen gets no screen at all, which is what its page needs to say so.
- * Nor the experimental switches (`labs`): they are the admin's.
+ *
+ * Of the experimental switches, `labs.fremdev` alone: off is Fremdev off on every screen, so a
+ * device's page leaves those tiles out the way the Edge does, and shows them when it is on. One
+ * boolean, nothing else of `labs`.
  */
 export type DeviceConfigView = Pick<Config, 'version' | 'theme' | 'locale' | 'widgets' | 'screens'> & {
   themeSchedule?: { night: string }
+  labs: { fremdev: boolean }
 }
 
 export function deviceConfigView(config: Config, screenId: string | null): DeviceConfigView {
@@ -110,6 +114,7 @@ export function deviceConfigView(config: Config, screenId: string | null): Devic
     theme: config.theme,
     ...(config.themeSchedule ? { themeSchedule: { night: config.themeSchedule.night } } : {}),
     locale: config.locale,
+    labs: { fremdev: config.labs?.fremdev === true },
     widgets,
     screens: screen ? [screen] : [],
   }

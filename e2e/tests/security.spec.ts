@@ -9,7 +9,13 @@ const PUBLIC = new Set(['GET /auth', 'GET /auth/proof', 'GET /fremkit.js', 'GET 
  * The browser companion's routes skip the session too (`COMPANION_ROUTES` in the same file): an
  * extension cannot read the secret. Without an extension's `Origin` they answer 403 instead.
  */
-const COMPANION = new Set(['POST /api/companion/pair', 'POST /api/companion/pair/e2e', 'POST /api/companion/pair/e2e/confirm', 'GET /companion/ws'])
+const COMPANION = new Set([
+  'POST /api/companion/pair',
+  'POST /api/companion/pair/e2e',
+  'POST /api/companion/pair/e2e/confirm',
+  'GET /companion/ws',
+  'POST /companion/dev/shot',
+])
 
 /**
  * Every route the server registers, read from its sources, so a route added tomorrow is in this

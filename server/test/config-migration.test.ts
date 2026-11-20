@@ -53,7 +53,7 @@ describe('migrateConfig', () => {
       codexHistorySources: [],
     })
   })
-  describe('labs, with no flag left', () => {
+  describe('labs', () => {
     /** A v4 file holding these widgets, with `labs` as given (absent when undefined). */
     const v4 = (widgetIds: string[], labs?: Record<string, boolean>) => {
       const c = JSON.parse(JSON.stringify(migrateConfig(v1))) as Record<string, any>
@@ -65,17 +65,26 @@ describe('migrateConfig', () => {
       return c
     }
 
-    it('is empty in a fresh config and in an older file brought up to date', () => {
-      expect(DEFAULT_CONFIG.labs).toEqual({})
-      expect(migrateConfig(v1).labs).toEqual({})
+    it('holds Fremdev\'s switch alone, off, in a fresh config and in an older file brought up to date', () => {
+      expect(DEFAULT_CONFIG.labs).toEqual({ fremdev: false })
+      expect(migrateConfig(v1).labs).toEqual({ fremdev: false })
     })
     it('strips the former switches from a v4 file that still states them, on or off', () => {
       for (const on of [true, false]) {
-        expect(migrateConfig(v4(['clock'], { devices: on, companion: on })).labs, String(on)).toEqual({})
+        expect(migrateConfig(v4(['clock'], { devices: on, companion: on })).labs, String(on)).toEqual({ fremdev: false })
         // A Fremplay widget used to turn `companion` on for a file without it; nothing to decide now.
-        expect(migrateConfig(v4(['fremplay'], { devices: on })).labs, String(on)).toEqual({})
+        expect(migrateConfig(v4(['fremplay'], { devices: on })).labs, String(on)).toEqual({ fremdev: false })
       }
-      expect(migrateConfig(v4(['fremplay'])).labs).toEqual({})
+      expect(migrateConfig(v4(['fremplay'])).labs).toEqual({ fremdev: false })
+    })
+    it('keeps labs.fremdev only when the file states it on', () => {
+      expect(migrateConfig(v4(['fremdev'], { devices: true, companion: true, fremdev: true })).labs).toEqual({ fremdev: true })
+      expect(migrateConfig(v4(['clock'], { fremdev: true })).labs).toEqual({ fremdev: true })
+      expect(migrateConfig(v4(['fremdev'], { companion: true, fremdev: false })).labs).toEqual({ fremdev: false })
+    })
+    it('leaves labs.fremdev off for a file that places a Fremdev widget without stating it', () => {
+      expect(migrateConfig(v4(['clock', 'fremdev'])).labs).toEqual({ fremdev: false })
+      expect(migrateConfig(v4(['fremdev'], { devices: true, companion: true })).labs).toEqual({ fremdev: false })
     })
   })
   it('rejects an unknown version with a clear message', () => {
@@ -107,13 +116,14 @@ describe('ConfigStore migration', () => {
   it('loads a 0.5.0 file with labs.devices and labs.companion and saves it without them', async () => {
     for (const on of [true, false]) {
       const file = join(dir, `fremkit-${on}.json`)
-      const written = { ...migrateConfig(v1), labs: { devices: on, companion: !on } }
+      // As a Fremdev build before 0.5.1 wrote it: the two former switches and Fremdev's.
+      const written = { ...migrateConfig(v1), labs: { devices: on, companion: !on, fremdev: on } }
       await writeFile(file, JSON.stringify(written, null, 2))
       const store = new ConfigStore(file)
       const cfg = await store.load()
-      expect(cfg.labs, String(on)).toEqual({})
+      expect(cfg.labs, String(on)).toEqual({ fremdev: on })
       await store.save(cfg)
-      expect(JSON.parse(await readFile(file, 'utf8')).labs, String(on)).toEqual({})
+      expect(JSON.parse(await readFile(file, 'utf8')).labs, String(on)).toEqual({ fremdev: on })
     }
   })
   it('serves the defaults on an unknown version and leaves the file untouched', async () => {

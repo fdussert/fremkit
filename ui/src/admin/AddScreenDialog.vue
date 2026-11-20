@@ -17,6 +17,7 @@ import BaseInput from '../shared/ui/BaseInput.vue'
 import BaseIcon from '../shared/ui/BaseIcon.vue'
 import BaseSegmented from '../shared/ui/BaseSegmented.vue'
 import PageView from '../dashboard/PageView.vue'
+import { turnedOff } from '../shared/fremdevGate'
 import { pick, useI18n } from '../shared/i18n'
 import { DEVICE_CELL, DEVICE_NAV_HEIGHT, deviceGrid } from '../shared/screens'
 import { DEFAULT_NAV_HEIGHT, ROWS_BY_NAV_HEIGHT, type Display, type Screen } from '../shared/types'
@@ -29,6 +30,8 @@ const props = defineProps<{
 }>()
 const emit = defineEmits<{ close: []; created: [screenId: string] }>()
 const s = useAdminStore()
+/** Widgets whose experimental feature is off, greyed in the previews as on the canvas. */
+const off = computed(() => turnedOff(s.state.config))
 const { t } = useI18n()
 
 /** The Edge's grid, as `addScreen` builds it. */
@@ -163,7 +166,7 @@ function create(): void {
         <li v-for="p in arrangement.pages" :key="p.id">
           <div class="thumb" :style="{ width: grid.cols * DEVICE_CELL * thumbScale + 'px', height: grid.rows * DEVICE_CELL * thumbScale + 'px' }">
             <div class="scaled" :style="{ width: grid.cols * DEVICE_CELL + 'px', transform: `scale(${thumbScale})` }">
-              <PageView :page="p" :config="s.state.config!" :display="previewDisplay" :manifests="s.state.manifests" edit />
+              <PageView :page="p" :config="s.state.config!" :display="previewDisplay" :manifests="s.state.manifests" edit :off="off" />
             </div>
           </div>
           <span class="caption">{{ p.name }}</span>

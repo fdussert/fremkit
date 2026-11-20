@@ -16,6 +16,18 @@ function spy(name: string): ReturnType<typeof vi.fn> {
   spies[name] ??= boom(name)
   return spies[name]
 }
+/** What each build handed the companion: a demo's clipboards must be the demo's own. */
+const companionOpts = vi.hoisted(() => [] as Array<Record<string, unknown>>)
+vi.mock('../src/companion/index.js', async (orig) => {
+  const real = await orig<typeof import('../src/companion/index.js')>()
+  return {
+    ...real,
+    createCompanion: (opts: Parameters<typeof real.createCompanion>[0]) => {
+      companionOpts.push(opts as unknown as Record<string, unknown>)
+      return real.createCompanion(opts)
+    },
+  }
+})
 vi.mock('../src/providers/system.js', async (orig) => ({ ...(await orig<object>()), createSystemProvider: spy('system') }))
 vi.mock('../src/claude/providers.js', async (orig) => ({
   ...(await orig<object>()),
@@ -47,6 +59,7 @@ vi.mock('../src/net/private.js', async (orig) => {
 })
 vi.mock('../src/providers/shortcuts.js', async (orig) => ({ ...(await orig<object>()), createShortcutsProvider: spy('shortcuts') }))
 vi.mock('../src/providers/service-status.js', async (orig) => ({ ...(await orig<object>()), createServiceStatusProvider: spy('service-status') }))
+vi.mock('../src/companion/servers/provider.js', async (orig) => ({ ...(await orig<object>()), createServersProvider: spy('companion-servers') }))
 vi.mock('../src/brightness/provider.js', async (orig) => ({ ...(await orig<object>()), createBrightnessProvider: spy('brightness') }))
 vi.mock('../src/providers/calendar.js', async (orig) => ({ ...(await orig<object>()), createCalendarProvider: spy('calendar') }))
 vi.mock('../src/apps/icons.js', async (orig) => ({ ...(await orig<object>()), AppIcons: spy('app-icons') }))
@@ -101,6 +114,18 @@ describe('demo mode', () => {
     // And the limits widget shows them as two rows, by the names the seed gave them.
     const config = (await app.inject({ url: '/api/config' })).json()
     expect(Object.values(config.privacy.claudeAccountNames)).toEqual(['Personal', 'Work'])
+  })
+
+  it('keeps Fremdev\'s report and shot off the Mac\'s clipboard', async () => {
+    const { demoImageClipboard, demoPasteboard } = await import('../src/demo/clipboard.js')
+    app = await demoApp()
+    const opts = companionOpts.at(-1)!
+    expect(opts.pasteboard).toBe(demoPasteboard)
+    expect(opts.imageClipboard).toBe(demoImageClipboard)
+    // They take what they are given and do nothing with it.
+    await expect(demoPasteboard.write('report')).resolves.toBeUndefined()
+    await expect(demoPasteboard.read()).resolves.toBe('')
+    await expect(demoImageClipboard.writeJpeg(Buffer.from([0xff, 0xd8, 0xff]))).resolves.toBeUndefined()
   })
 
   it('the spies are live: a normal build trips them', async () => {
@@ -168,6 +193,23 @@ describe('demo mode', () => {
     const probe = await status.commands!.probe({ instanceId: 'service-status-1' }) as { ok: boolean; results: unknown[] }
     expect(probe.ok).toBe(true)
     expect(probe.results).toHaveLength(4)
+  })
+
+  it("acts out Fremdev's server list behind its switch, and its commands change nothing", async () => {
+    const off = ConfigSchema.parse(demoConfig())
+    const offServers = createDemoProviders({ config: () => off }).find((p) => p.channel === 'companion:servers')!
+    expect(await offServers.poll!()).toEqual({ enabled: false, rows: [], canRestart: true })
+    const config = ConfigSchema.parse({ ...demoConfig(), labs: { fremdev: true } })
+    const servers = createDemoProviders({ config: () => config }).find((p) => p.channel === 'companion:servers')!
+    type Snap = { enabled: boolean; canRestart: boolean; rows: Array<{ id: string; ports: number[]; tool: string; managed: boolean; log: string[] }> }
+    const before = (await servers.poll!()) as Snap
+    expect(before.enabled).toBe(true)
+    expect(before.canRestart).toBe(true)
+    expect(before.rows.map((r) => [r.ports[0], r.tool])).toEqual([[3000, 'Next'], [5173, 'Vite'], [6006, 'Storybook']])
+    expect(before.rows.find((r) => r.managed)!.log).toHaveLength(5)
+    const id = before.rows[0].id
+    for (const name of ['kill', 'restart', 'open', 'reveal']) expect(await servers.commands![name]({ id })).toEqual({ ok: true })
+    expect(((await servers.poll!()) as Snap).rows.map((r) => r.id)).toEqual(before.rows.map((r) => r.id))
   })
 
   it("acts out the Sietch widgets' channels: Codex, local models, MuteDeck", async () => {

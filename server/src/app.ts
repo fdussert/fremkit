@@ -3,7 +3,7 @@ import fastifyStatic from '@fastify/static'
 import fastifyWebsocket from '@fastify/websocket'
 import { homedir } from 'node:os'
 import { shippedPaths } from './paths.js'
-import { join } from 'node:path'
+import { isAbsolute, join } from 'node:path'
 import { access, mkdir, readFile } from 'node:fs/promises'
 import { ConfigStore } from './config/store.js'
 import { ConfigHistory } from './config/history.js'
@@ -97,6 +97,7 @@ import { deviceRoutes } from './devices/routes.js'
 import { REMOTE_PORT } from './devices/listener.js'
 import type { Advertiser } from './devices/bonjour.js'
 import { createCompanion, type Companion } from './companion/index.js'
+import { COMPANION_SERVERS_CHANNEL, createServersProvider } from './companion/servers/provider.js'
 import { PairingViewers } from './companion/viewers.js'
 import { COMPANION_CHANNEL } from './companion/provider.js'
 import type { Exec } from './secrets/keychain.js'
@@ -111,6 +112,7 @@ import { demoConnectionTypes } from './demo/connections.js'
 import { demoPublicFetch } from './demo/fetch.js'
 import { demoConnectionFetch } from './demo/declared.js'
 import { demoIcon } from './demo/icons.js'
+import { demoImageClipboard, demoPasteboard, demoShotSound } from './demo/clipboard.js'
 import { DEMO_APPS } from './demo/world.js'
 import { FileSecretStore } from './secrets/file.js'
 
@@ -363,6 +365,14 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     // A paired device may set only its own screen's brightness: see mayCommandBrightness. Read
     // at command time, so a device moved to another screen (or unpaired) is judged as it is now.
     registry.register(createBrightnessProvider(brightness, brightnessChanged, (id) => deviceService.deviceScreenOf(id)))
+    // Fremdev's server list. The companion is built further down: its tab lights are read lazily.
+    registry.register(createServersProvider({
+      config: () => store.get(),
+      dataDir: opts.dataDir,
+      scanner: process.env.FREMKIT_SCANNER && isAbsolute(process.env.FREMKIT_SCANNER) ? process.env.FREMKIT_SCANNER : null,
+      tabLights: () => companion?.tabLights() ?? new Map(),
+      refresh: () => registry.refresh(COMPANION_SERVERS_CHANNEL),
+    }))
   }
   if (demo) {
     // The demo has its own `brightness` channel; the service above still serves the routes and
@@ -671,8 +681,12 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   // the `companion` channel the dashboard watches. Closed with the app.
   // The pairing lock lives next to devices.json: a restart must not clear it.
   companion = await createCompanion({
-    app, store: devices, config: store, registry, lockPath: join(opts.dataDir, 'companion-lock.json'),
+    app, store: devices, config: store, registry,
+    lockPath: join(opts.dataDir, 'companion-lock.json'),
+    dataDir: opts.dataDir,
     seen: () => pairingViewers.seen(),
+    // A demo never writes this Mac's clipboard nor plays on it: Fremdev's report, shot and sound go nowhere.
+    ...(demo ? { pasteboard: demoPasteboard, imageClipboard: demoImageClipboard, shotSound: demoShotSound } : {}),
   })
 
   if (opts.uiDist && (await access(opts.uiDist).then(() => true, () => false))) {

@@ -17,6 +17,56 @@ tagged `vX.Y.Z`.
 - **iPad app 1.0.1: Forget this Mac.** The "Can't reach the Mac" screen has a **Forget this Mac**
   button, which asks first. An iPad paired with a Mac that is not coming back no longer stays on
   that screen for good: forget it, then pair with another.
+- **Fremdev**: a new widget lists the dev tabs the Fremkit Companion extension (0.2.0) watches (JS
+  errors, failed requests, dev server down), each with a red/orange/green light; tap a row to
+  unfold its last 20 errors and failed requests (time, repeat count, message, file:line where it
+  came from), bring the tab forward with Show tab, or mark its errors seen with one touch (the
+  light dims until a new error or a reload). Copy report puts a Markdown bug report for that tab on
+  the Mac's clipboard, ready to paste into a ticket, a chat or a coding agent; Copy with stack adds
+  each error's stack. Line numbers are those of the code the dev server sent. Experimental, behind
+  its own switch, **Fremdev**, under Experimental features. Fremkit's own ports are never watched.
+  Each row shows the page's title (or its host:port) and its host:port; request URLs are sent as
+  their path only (never query or fragment, nothing from bodies, headers or cookies); an error's
+  own message is sent as the page logged it, clipped to 300 characters. With no dev tab open the
+  widget says so rather than "Extension offline", and on a paired iPad it says it only shows on the
+  Mac's Edge.
+- **Fremdev in the extension**: turn Fremdev on from the Companion popup; Chrome asks once, in one
+  prompt, for the webRequest permission and access to your dev hosts (nothing new is asked when the
+  extension updates). Tabs already open are watched at once, no reload needed. Add your own dev
+  hosts (`bo-dev.example.com`, `*-dev.example.com`) on its options page; a wildcard over a common
+  public suffix such as `*.co.uk` or over an IP range is refused, and Chrome's prompt names the
+  hosts for any other. localhost, 127.0.0.1, `*.localhost` and `*.test` are always included. The
+  popup's Fremdev card lists your dev tabs, each with Copy report and a "with stack" option.
+  Fremkit 0.5.2 and earlier keep working with the new extension (Fremplay only); Fremdev needs
+  the next Fremkit, and the extension asks an older one again only every few minutes.
+- **Fremdev cockpit** (extension 0.2.0, experimental): a dev server's compile error overlay (Vite,
+  webpack, Next.js) turns the row red with a **Build** entry giving the message and the file, and
+  clears by itself once fixed; hot updates (Vite, Next Fast Refresh) now clear the row's earlier
+  errors without a reload. Tap an entry's file to open it in your editor at that line through the
+  dev server's own open-in-editor endpoint (Vite for runtime errors and build errors, Next and
+  webpack for build errors). **Reload** and **Reload without cache** buttons on an unfolded row.
+  Requests that took 1 s or more are listed (they never change the light) and the row shows how
+  many requests are in flight. Each tab shows its load time, LCP, CLS, long tasks and JS heap; a
+  load 1.5× slower than the last five (and 500 ms slower or more), or a poor LCP or CLS, lights the
+  row orange. **Copy screenshot** in the popup's card, and ⌃⇧S anywhere in the browser copies the
+  current dev tab's screenshot to the Mac's clipboard. Home-folder paths leave the extension as
+  `~/…`.
+- **Fremdev screenshot feedback** (experimental): a screenshot copied with ⌃⇧S or from the popup
+  now flashes the tab and shows its thumbnail in the corner for 3 seconds, and the Fremdev widget
+  shows it on that tab's row with "Copied". A new option of the extension plays the Mac's
+  screenshot sound (off by default).
+- **Fremdev reports carry the whole build error** (experimental): Copy with stack now includes a
+  build error's code frame and the stack the dev server's overlay shows (Vite, webpack, Next.js),
+  as a code block that keeps its alignment when pasted; a build error's text no longer ends with
+  the file path and a stray `12 |`; runtime errors keep up to 30 stack frames (Chrome records 10
+  unless the page raises `Error.stackTraceLimit`).
+- **Fremdev dev servers** (experimental, no extension change): the Fremdev widget gains a
+  **Servers** tab listing the dev servers listening on this Mac (port, project, tool, uptime, CPU,
+  memory, and the light of the tab open on it). Open one in the browser, show its folder in Finder,
+  stop it, or restart it: Fremkit then runs it and shows its last output lines on the Edge. Kill
+  and Restart take two touches; Fremkit never touches itself, macOS programs, browsers, Docker or
+  another account's processes, and secrets in command lines and output are masked. Restart needs
+  the Fremkit app (its helper).
 
 ### Fixed
 
@@ -35,6 +85,8 @@ tagged `vX.Y.Z`.
   extension called that refusal *Another pairing request is already waiting on the Edge*. It now
   says *Nobody would see the code: open the dashboard on the Edge, or Settings → Devices in
   Fremkit, then try again.* The Chrome Web Store updates the extension by itself.
+- **The clipboard widget keeps accents and symbols intact.** Under the Fremkit Helper, text with
+  an accent, a `·` or a `×` came out garbled in the clipboard history and when copied back from it.
 
 ## 0.5.2 — 2026-11-19
 

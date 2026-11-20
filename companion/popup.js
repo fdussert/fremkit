@@ -1,9 +1,13 @@
-// The toolbar popup: the Fremkit header with the link state, the Fremplay card, the modules to come,
+// The toolbar popup: the Fremkit header with the link state, the Fremplay and Fremdev cards,
 // and the pairing view while the browser is not linked. Everything it shows comes from
 // chrome.storage, which the worker writes; it asks the worker to act and re-renders on changes.
 
 import { localize, t } from './i18n.js'
 import { browserName } from './lib/browser.js'
+import { BUILTIN_PERMISSION_ORIGINS, parsePattern } from './lib/devhosts.js'
+import { homePath } from './lib/devlog.js'
+import { clearBeforeCapture, dataUrlBlob, thumbOf } from './lib/devshot.js'
+import { dismissShotOverlay } from './lib/shotview.js'
 import { fremplayBlocked, shareErrorKey } from './lib/errors.js'
 import { cleanFrames, embeddedPlayer, pickVideo, survey } from './lib/video.js'
 
@@ -53,6 +57,17 @@ let starting = false
 let shownError = null
 /** What the last typed code got, until the next try: `wrongCode`, `badCode`, … */
 let codeError = null
+/** Fremdev is being turned on or off; the key of the message under its card, if any. */
+let fremdevBusy = false
+let fremdevError = null
+/** tabId → 'done' | 'failed': what the last Copy report of that tab gave, shown for COPY_SHOWN_MS. */
+const copied = new Map()
+/** tabId → the timer that puts its button back. */
+const copyTimers = new Map()
+const COPY_SHOWN_MS = 2_000
+/** The same two maps for Copy screenshot. */
+const shotCopied = new Map()
+const shotTimers = new Map()
 
 const hostOf = (url) => {
   try {
@@ -172,13 +187,148 @@ function renderFremplay() {
   $('error').textContent = error ?? ''
 }
 
+const fremdevOn = () => local.fremdev?.on === true
+
+/** What Fremkit said of Fremdev (worker `fremdevSupport`): its line under the card, or none. */
+const FREMDEV_NOTES = { unsupported: 'fremdevUnsupported', disabled: 'fremdevDisabled' }
+
+/** A dev tab's light as the widget paints it (`stateOfTab` in widgets/fremdev/logic.js). */
+function lightOf(row) {
+  const open = (t) => (typeof t?.open === 'number' ? t.open : 0)
+  const unseen = (t) => Math.max(0, open(t) - (typeof t?.seen === 'number' ? t.seen : 0))
+  if (unseen(row.errors) > 0 || row.server === 'down') return 'red'
+  if (unseen(row.requests) > 0) return 'orange'
+  if (open(row.errors) > 0) return 'red seen'
+  if (open(row.requests) > 0) return 'orange seen'
+  return 'green'
+}
+
+/** Shows `outcome` on a tab's button for COPY_SHOWN_MS. One timer per tab and map: a second click restarts it. */
+function flash(map, timers, tabId, outcome) {
+  map.set(tabId, outcome)
+  render()
+  clearTimeout(timers.get(tabId))
+  timers.set(tabId, setTimeout(() => {
+    timers.delete(tabId)
+    map.delete(tabId)
+    render()
+  }, COPY_SHOWN_MS))
+}
+
+/** The report comes from the worker; the clipboard is written here, still within the click. */
+async function copyReport(tabId) {
+  const res = await ask('fremdevReport', { tabId, stack: $('fremdevstack').checked })
+  let outcome = 'failed'
+  if (res?.ok && typeof res.text === 'string') {
+    try {
+      await navigator.clipboard.writeText(res.text)
+      outcome = 'done'
+    } catch { /* the popup lost focus */ }
+  }
+  flash(copied, copyTimers, tabId, outcome)
+}
+
+/** The popup's own tab, captured as PNG: the activeTab grant of this popup covers it. */
+async function copyScreenshot(tabId) {
+  let outcome = 'failed'
+  try {
+    // The Blob is a promise handed to ClipboardItem, so the write is made inside the click.
+    // A thumbnail from a shot just before (⌃⇧S) leaves the tab first, so it is not in this one.
+    const shot = clearBeforeCapture(() => chrome.scripting.executeScript({ target: { tabId }, func: dismissShotOverlay }))
+      .then(() => chrome.tabs.captureVisibleTab(tab.windowId, { format: 'png' }))
+      .then(dataUrlBlob)
+    await navigator.clipboard.write([new ClipboardItem({ 'image/png': shot })])
+    outcome = 'done'
+    // On the clipboard: the worker shows it in the tab and on the Edge, from a thumbnail made here.
+    void thumbOf(await shot).then((thumb) => ask('fremdevShot', { tabId, thumb }))
+  } catch (err) {
+    // No capture right, or the popup lost focus. Only the reason is logged, never the image.
+    console.warn('Fremdev: copy screenshot failed:', err?.message ?? err)
+  }
+  flash(shotCopied, shotTimers, tabId, outcome)
+}
+
+/** tabId → its list item, kept across renders: the rows change every 500 ms under an error storm, and a button rebuilt mid-press loses the click. */
+const devItems = new Map()
+
+function devItem(tabId) {
+  let item = devItems.get(tabId)
+  if (item) return item
+  const li = document.createElement('li')
+  const light = document.createElement('span')
+  const title = document.createElement('span')
+  title.className = 'dtitle'
+  const button = document.createElement('button')
+  button.type = 'button'
+  button.addEventListener('click', () => void copyReport(tabId))
+  const shotButton = document.createElement('button')
+  shotButton.type = 'button'
+  shotButton.addEventListener('click', () => void copyScreenshot(tabId))
+  li.append(light, title, button, shotButton)
+  item = { li, light, title, button, shotButton }
+  devItems.set(tabId, item)
+  return item
+}
+
+function renderDevTabs(rows) {
+  const list = $('fremdevlist')
+  const ids = new Set(rows.map((r) => r.tabId))
+  for (const [id, item] of devItems) {
+    if (ids.has(id)) continue
+    item.li.remove()
+    devItems.delete(id)
+  }
+  rows.forEach((row, i) => {
+    const { li, light, title, button, shotButton } = devItem(row.tabId)
+    light.className = `light ${lightOf(row)}`
+    // The session copy keeps the page's own title: a home folder in it reads `~` here too.
+    title.textContent = homePath(row.title || row.host || '')
+    title.title = row.host || ''
+    const state = copied.get(row.tabId)
+    button.className = `ghost ${state ?? ''}`.trim()
+    button.textContent = state === 'done' ? t('fremdevCopied') : state === 'failed' ? t('fremdevCopyFailed') : t('fremdevCopy')
+    // Only the tab the popup was opened on can be captured (activeTab).
+    shotButton.hidden = row.tabId !== tab?.id
+    const shot = shotCopied.get(row.tabId)
+    shotButton.className = `ghost ${shot ?? ''}`.trim()
+    shotButton.textContent = shot === 'done' ? t('fremdevCopied') : shot === 'failed' ? t('fremdevCopyFailed') : t('fremdevShot')
+    if (list.children[i] !== li) list.insertBefore(li, list.children[i] ?? null)
+  })
+  list.hidden = rows.length === 0
+  $('fremdevstackrow').hidden = rows.length === 0
+}
+
+function renderFremdev() {
+  const on = fremdevOn()
+  const note = FREMDEV_NOTES[session.fremdevSupport] ?? null
+  const sw = $('fremdevswitch')
+  sw.setAttribute('aria-checked', String(on))
+  // Greyed while Fremkit cannot take it, but only while off: Fremdev left on before Fremkit was
+  // downgraded or its experimental switch turned off must still be turnable off from here, or its
+  // scripts would stay registered on the dev hosts with no way out but Chrome's settings.
+  sw.disabled = fremdevBusy || (Boolean(note) && !on)
+  $('fremdevicon').classList.toggle('on', on && !note)
+  const n = on && !note ? Object.keys(session.devTabs ?? {}).length : null
+  $('fremdevtabs').hidden = n === null
+  $('fremdevtabs').textContent = n === null ? '' : n === 0 ? t('fremdevTabsNone') : n === 1 ? t('fremdevTabsOne') : t('fremdevTabs', n)
+  // Latest first, as on the Edge.
+  const rows = n ? Object.values(session.devTabs).filter((r) => Number.isInteger(r?.tabId)).sort((a, b) => b.activity - a.activity) : []
+  renderDevTabs(rows)
+  $('fremdevnote').hidden = !note
+  $('fremdevnote').textContent = note ? t(note) : ''
+  $('fremdeverror').hidden = !fremdevError
+  $('fremdeverror').textContent = fremdevError ? t(fremdevError) : ''
+}
+
 function render() {
   const paired = isPaired()
   renderLink()
   $('menu').hidden = !paired
   $('pair').hidden = paired
-  if (paired) renderFremplay()
-  else renderPairing()
+  if (paired) {
+    renderFremplay()
+    renderFremdev()
+  } else renderPairing()
 }
 
 async function startHere() {
@@ -209,6 +359,45 @@ $('go').addEventListener('click', () => {
     },
     () => startHere(),
   )
+})
+
+$('fremdevswitch').addEventListener('click', () => {
+  if (fremdevBusy) return
+  fremdevError = null
+  if (fremdevOn()) {
+    // Off keeps webRequest and the dev origins: the next turn-on asks nothing.
+    fremdevBusy = true
+    render()
+    ask('fremdevOff').then(() => {
+      fremdevBusy = false
+      render()
+    })
+    return
+  }
+  // Asked here, within the click (the worker has no gesture): webRequest and every dev origin,
+  // the built-in hosts and the user's patterns, in one prompt.
+  const patterns = Array.isArray(local.fremdev?.patterns) ? local.fremdev.patterns : []
+  const origins = [...new Set([...BUILTIN_PERMISSION_ORIGINS, ...patterns.flatMap((p) => parsePattern(p)?.permissions ?? [])])]
+  // Chrome's prompt may close this popup before it can say `fremdevOn`: the worker is told first and
+  // turns Fremdev on itself when the grant lands (fremdev.js `expectGrant`); a start from both joins.
+  ask('expectFremdev')
+  const asked = chrome.permissions.request({ permissions: ['webRequest'], origins })
+  fremdevBusy = true
+  render()
+  asked
+    .then(
+      async (granted) => {
+        if (!granted) fremdevError = 'fremdevNeedsAccess'
+        else if (!(await ask('fremdevOn'))?.ok) fremdevError = 'fremdevFailed'
+      },
+      () => {
+        fremdevError = 'fremdevNeedsAccess'
+      },
+    )
+    .finally(() => {
+      fremdevBusy = false
+      render()
+    })
 })
 
 $('stop').addEventListener('click', async () => {

@@ -2,13 +2,13 @@
  * The admin's experimental features: what is hidden until a flag of `config.labs` turns it on,
  * and the gesture that shows the switches.
  *
- * There is no flag right now: iPad pairing and the browser companion both shipped for everyone.
- * The mechanism stays for the next one. To add a flag:
+ * One flag right now, `fremdev`; iPad pairing and the browser companion both shipped for everyone.
+ * To add a flag:
  *
  * 1. a key in `LabsSchema` (`server/src/config/schema.ts`), `name: z.boolean().default(false)`,
  *    and the same key in `Labs` (`ui/src/shared/types.ts`);
  * 2. one entry in `LAB_FLAGS` below with its label and hint keys, both locales;
- * 3. a reader here, `config?.labs?.name === true`, for what the flag hides.
+ * 3. a reader here, `config?.labs?.name === true`, for what the flag hides (as `labsFremdev`).
  *
  * PUT /api/config keeps a flag the admin does not send, a restore keeps this Mac's, and
  * `labsShown` reads every flag, so none of that needs a change. The switches sit in
@@ -16,7 +16,8 @@
  * developer options do.
  */
 import { ref } from 'vue'
-import type { Config, Labs } from '../shared/types'
+import type { Config, Labs, WidgetManifest } from '../shared/types'
+import { FREMDEV_WIDGET } from '../shared/fremdevGate'
 
 /** One switch of the experimental features block in Settings → About. */
 export interface LabFlag {
@@ -27,10 +28,32 @@ export interface LabFlag {
 }
 
 /**
- * The flags Settings → About offers, in order: none right now. An entry looks like
+ * The flags Settings → About offers, in order. An entry looks like
  * `{ key: 'name', label: 'admin.inspector.screen.labs.name', hint: 'admin.inspector.screen.labs.name.hint' }`.
  */
-export const LAB_FLAGS: readonly LabFlag[] = []
+export const LAB_FLAGS: readonly LabFlag[] = [
+  { key: 'fremdev', label: 'admin.inspector.screen.labs.fremdev', hint: 'admin.inspector.screen.labs.fremdev.hint' },
+]
+
+/** `labs.fremdev`: Fremdev, the companion's development-tabs module (docs/companion.md). */
+export function labsFremdev(config: Config | null | undefined): boolean {
+  return config?.labs?.fremdev === true
+}
+
+/**
+ * Whether a widget is offered to place (the library, the bar's list, the palette). Fremdev is left
+ * out while `labs.fremdev` is off; one already placed stays where it is, greyed on the canvas and
+ * not drawn on the dashboard (`shared/fremdevGate.ts`). Every other widget, Fremplay included, is
+ * always offered.
+ */
+export function widgetOffered(config: Config | null | undefined, widgetId: string): boolean {
+  return widgetId !== FREMDEV_WIDGET || labsFremdev(config)
+}
+
+/** The catalogue's manifests a widget list offers, per `widgetOffered`. */
+export function offeredManifests(config: Config | null | undefined, manifests: Record<string, WidgetManifest>): WidgetManifest[] {
+  return Object.values(manifests).filter((m) => widgetOffered(config, m.id))
+}
 
 /** Clicks on the version that reveal the switches. */
 export const REVEAL_TAPS = 7

@@ -146,6 +146,8 @@ export const COMPANION_ROUTES: ReadonlySet<string> = new Set([
   'POST /api/companion/pair/:requestId',
   'POST /api/companion/pair/:requestId/confirm',
   'GET /companion/ws',
+  // Fremdev's shot: the extension's own bearer and origin, checked by the route (companion/shot.ts).
+  'POST /companion/dev/shot',
 ])
 
 export function isCompanionRoute(method: string, routeUrl: string | undefined): boolean {
