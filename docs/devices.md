@@ -82,7 +82,12 @@ longer allowed"; **Pair again** leads to the welcome screen. **Remove every tabl
 all of them. **Reset the certificate** makes a new key, which removes every iPad too: each one
 shows "This Mac's key has changed" and must be paired again with **Pair again**. The app never
 forgets a pairing by itself, and keeps retrying meanwhile, so an iPad that only met another
-machine on the Mac's old address recovers on its own. Neither touches a linked browser extension
+machine on the Mac's old address recovers on its own. Deleting the app from the iPad does forget
+it, from version 1.0.1: a pairing is kept only for the installation that made it, or that first
+opened it when 1.0 made it (iOS keeps the keychain of a deleted app, and 1.0 found its old pairing
+again after a reinstall). So a pairing 1.0 made and 1.0.1 never opened still comes back once after
+a reinstall, where **Forget this Mac** removes it; and an iPad erased and restored without the
+app's data starts unpaired, as after a reinstall. Neither touches a linked browser extension
 ([docs/companion.md](companion.md)), which pins no key: it is removed from its own row. Turning the switch off
 closes the listener and the iPads show that the Mac is unreachable until it is back on.
 
@@ -98,11 +103,14 @@ closes the listener and the iPads show that the Mac is unreachable until it is b
 - **The Mac is not in the list.** The router or access point may not relay Bonjour (mDNS) between
   Ethernet and Wi-Fi, between bands, or between VLANs; or the Mac is connected to both Wi-Fi and
   Ethernet. Use the QR code, which works without Bonjour, or tap **Enter the Mac's address** under
-  the list (the Android app, and the iPad app from its next version) and type one of the addresses
+  the list (the Android app, and the iPad app from version 1.0.1) and type one of the addresses
   **Settings → Devices** shows beside the code: the app then shows the four words of whatever
   answers there, to compare as for a Mac in the list. Or put the Mac and the iPad on the same Wi-Fi.
 - **The app says it cannot reach the Mac.** The Mac is asleep, pairing is switched off, or the
-  Local Network permission was refused (above). The app retries by itself.
+  Local Network permission was refused (above). The app retries by itself. If that Mac is not
+  coming back (sold, erased, Fremkit removed from it), tap **Forget this Mac** on that screen
+  (iPad app 1.0.1 or later) and pair with another; scanning another Mac's QR code with the Camera
+  app works too, and asks before replacing the pairing.
 - **The app says "This Mac's key has changed".** The certificate was reset in Fremkit (or another
   machine answers at the Mac's address). Tap **Pair again** and pair as the first time; if you
   did not reset it, check that the iPad is on the right network.

@@ -58,10 +58,40 @@
   .tags{display:flex;align-items:baseline;gap:8px;min-width:0;max-width:100%}
   .client{font-size:calc(11px * var(--text-scale, 1));color:var(--text-muted, #8b93a0);border:1px solid var(--border-strong, #3a404a);border-radius:6px;padding:0 5px;white-space:nowrap}
   .group{grid-column:1/-1;font-size:calc(12px * var(--text-scale, 1));text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted, #8b93a0);padding:6px 2px 0}
+  /* Pinned sessions, kept at hand above the others: a name and the model's bar and nothing else,
+     so that six of them still leave the board to the sessions that are moving. Same columns as
+     the cards below, so the two line up. */
+  .pins{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));grid-auto-rows:max-content;gap:6px 8px;flex:0 0 auto;max-height:60%;overflow-y:auto;touch-action:pan-y;-webkit-overflow-scrolling:touch;padding-right:4px}
+  /* The narrow size: more pins on a row, no longer lined up with the cards under them. */
+  .pins.small{grid-template-columns:repeat(auto-fill,minmax(180px,1fr))}
+  /* No room there for the token count beside the bar: the bar and its percentage say it. */
+  .pins.small .foot .used,.pins.small .foot .used+.sep{display:none}
+  .card.pin{min-height:0;padding:6px 10px;gap:4px}
+  /* Most pinned sessions are idle; dimming every one of them would dim the whole row. */
+  .card.pin.idle{opacity:1}
+  .card.pin .title{font-size:calc(15px * var(--text-scale, 1))}
+  .card.pin .foot{margin-top:0;padding:3px 8px;font-size:calc(12px * var(--text-scale, 1))}
+  /* A pinned session that is working says so with three dots breathing in its corner: no room
+     for what it is doing, and no need — a touch opens it. */
+  .card.pin .busy{display:none;position:absolute;top:12px;right:10px;gap:4px;pointer-events:none}
+  .card.pin.working .busy{display:flex}
+  .card.pin.working .title{padding-right:38px}
+  .card.pin .busy>i{width:7px;height:7px;border-radius:50%;background:var(--accent, #d9b36a);animation:busy 1.2s ease-in-out infinite both}
+  .card.pin .busy>i:nth-child(2){animation-delay:.16s}
+  .card.pin .busy>i:nth-child(3){animation-delay:.32s}
+  html.accent-fill .card.pin .busy>i{background:var(--on-surface,#0b0d10)}
+  @keyframes busy{0%,70%,100%{opacity:.25;transform:translateY(0)}35%{opacity:1;transform:translateY(-3px)}}
+  @media (prefers-reduced-motion: reduce){.card.pin .busy>i{animation:none}}
+  /* A long press pins: the card gives under the finger while it is being held, and the text
+     must not get selected or call up the system's menu instead. */
+  .card{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;transition:transform .15s}
+  .card.holding{transform:scale(.96);transition:transform .5s}
+  /* A pin being dragged follows the finger exactly, above its neighbours. */
+  .card.pin.dragging{transition:none;z-index:3;box-shadow:0 10px 28px rgba(0,0,0,.55);cursor:grabbing}
   .q{font-size:calc(14px * var(--text-scale, 1));color:var(--text, #e6e8eb);white-space:normal}.q b{display:block;font-size:calc(12px * var(--text-scale, 1));color:#f0a020;text-transform:uppercase;letter-spacing:.06em}.q ul{margin:2px 0 0 16px;padding:0;color:#c3c8d0;font-size:calc(13px * var(--text-scale, 1))}
 </style>
 </head>
-<body><div class="wrap"><div class="hdr" id="hdr" hidden><span class="stats" id="stats"></span></div><div class="cards" id="cards"></div></div>
+<body><div class="wrap" id="wrap"><div class="hdr" id="hdr" hidden><span class="stats" id="stats"></span></div><div class="pins" id="pins" hidden></div><div class="cards" id="cards"></div></div>
 <script>
   var L = {
     working: { fr: 'en travail', en: 'working' },
@@ -128,7 +158,7 @@
     var model = s.modelId ? s.modelId.replace(/^claude-/, '') : s.model
     if (!model) return ''
     var html = '<span class="model">' + Fremkit.esc(model) + '</span>'
-    if (s.context) html += '<span class="sep">·</span><span>' + Fremkit.esc(Fremkit.t(L.contextUsed, { tokens: tokens(s.context.used) })) + '</span><span class="sep">·</span><span class="ctx"><i class="' + cls(s.context.pct) + '" style="width:' + Math.min(100, s.context.pct) + '%"></i></span><span>' + Fremkit.esc(Fremkit.t(L.percent, { n: Math.round(s.context.pct) })) + '</span>'
+    if (s.context) html += '<span class="sep">·</span><span class="used">' + Fremkit.esc(Fremkit.t(L.contextUsed, { tokens: tokens(s.context.used) })) + '</span><span class="sep">·</span><span class="ctx"><i class="' + cls(s.context.pct) + '" style="width:' + Math.min(100, s.context.pct) + '%"></i></span><span>' + Fremkit.esc(Fremkit.t(L.percent, { n: Math.round(s.context.pct) })) + '</span>'
     return html
   }
   function build(s) {
@@ -167,11 +197,42 @@
     }
     // A refusal to go to the window outlives the next render, which would otherwise erase it
     // within the second.
-    var line = (failedUntil[s.id] > now) ? Fremkit.t(L.noWindow) : lineFor(s, now), lineEl = card.querySelector('.line')
+    var line = (failedUntil[s.sessionId] > now) ? Fremkit.t(L.noWindow) : lineFor(s, now), lineEl = card.querySelector('.line')
     lineEl.textContent = line; lineEl.hidden = !line
     card.querySelector('.meta').innerHTML = metaFor(s, now)
     var footHtml = footFor(s), footEl = card.querySelector('.foot')
     footEl.innerHTML = footHtml; footEl.hidden = !footHtml
+  }
+  /** A pinned session's card: its name and the model's bar. The edge still says the state. */
+  function buildPin(s) {
+    var card = document.createElement('div')
+    card.setAttribute('data-id', s.sessionId)
+    card.innerHTML = '<span class="title"></span><span class="busy" aria-hidden="true"><i></i><i></i><i></i></span><div class="line" hidden></div><div class="foot"></div>'
+    return card
+  }
+  function updatePin(card, s, now) {
+    if (card.getAttribute('data-state') !== s.state) { card.className = 'card pin ' + s.state; card.setAttribute('data-state', s.state) }
+    card.querySelector('.title').textContent = s.title || s.repo || s.project
+    // The one line a pinned card can grow: that its window could not be found.
+    var lineEl = card.querySelector('.line'), failed = failedUntil[s.sessionId] > now
+    lineEl.textContent = failed ? Fremkit.t(L.noWindow) : ''; lineEl.hidden = !failed
+    var footHtml = footFor(s), footEl = card.querySelector('.foot')
+    footEl.innerHTML = footHtml; footEl.hidden = !footHtml
+  }
+  function isPinned(s) { return typeof s.pinnedAt === 'number' }
+  /** The pinned sessions, in the order they were pinned. No filter applies: a pin is a choice. */
+  function pinnedSessions() {
+    var list = sessions.filter(isPinned).sort(function (a, b) { return a.pinnedAt - b.pinnedAt || (a.sessionId < b.sessionId ? -1 : 1) })
+    if (!pinOrder) return list
+    // The order being dragged, or just dropped, holds until the server's own order says the same.
+    var ids = list.map(function (s) { return s.sessionId })
+    var mine = pinOrder.filter(function (id) { return ids.indexOf(id) >= 0 })
+    var theirs = ids.filter(function (id) { return pinOrder.indexOf(id) >= 0 })
+    if (!drag && (mine.join() === theirs.join() || Date.now() > pinOrderUntil)) { pinOrder = null; return list }
+    var rank = {}; pinOrder.forEach(function (id, i) { rank[id] = i })
+    // A session pinned from another tile meanwhile is in neither order: it goes last, as it would.
+    return list.map(function (s, i) { return { s: s, at: rank[s.sessionId] === undefined ? 1000 + i : rank[s.sessionId] } })
+      .sort(function (a, b) { return a.at - b.at }).map(function (x) { return x.s })
   }
   /** Only exactly one takes the singular: zero reads as a plural in both languages. */
   function plural(n, one, many) { return n === 1 ? Fremkit.t(one) : Fremkit.t(many, { n: n }) }
@@ -191,7 +252,8 @@
    * not about pretending the others are not running.
    */
   function visible(now) {
-    var out = sessions
+    // A pinned session is drawn above, once.
+    var out = sessions.filter(function (s) { return !isPinned(s) })
     if (onlyWaiting) out = out.filter(function (s) { return s.state === 'permission' })
     if (hideDone) out = out.filter(function (s) {
       return !((s.state === 'done' || s.state === 'idle') && now - s.lastEventAt > HIDE_AFTER_MS)
@@ -227,8 +289,18 @@
     // The count above keeps the real total; the list itself honours the filters and "max".
     var list = visible(now)
     if (maxShown > 0) list = list.slice(0, maxShown)
+    var pinned = pinnedSessions(), pinsEl = document.getElementById('pins')
+    pinsEl.hidden = !pinned.length
+    pinned.forEach(function (s, i) {
+      var key = 'p:' + s.sessionId, node = nodes[key]
+      if (!node) { node = buildPin(s); nodes[key] = node }
+      updatePin(node, s, now)
+      if (drag && drag.node === node) node.classList.add('dragging')
+      if (pinsEl.children[i] !== node) pinsEl.insertBefore(node, pinsEl.children[i] || null)
+      seen[key] = true
+    })
     var empty = document.getElementById('empty')
-    if (!list.length) {
+    if (!list.length && !pinned.length) {
       if (!empty) { empty = document.createElement('div'); empty.id = 'empty'; empty.className = 'muted'; el.appendChild(empty) }
       empty.textContent = Fremkit.t(L.empty)
     } else if (empty) { empty.remove() }
@@ -266,6 +338,136 @@
       refused()
     }, refused)
   }
+  /**
+   * Pin a session, or let a pinned one go.
+   *
+   * Drawn at once, because a card that stays put for a second after a long press reads as a
+   * press that did nothing; the server's next word replaces this guess either way, and a
+   * refusal puts the card back.
+   */
+  function togglePin(id) {
+    var s = sessions.filter(function (x) { return x.sessionId === id })[0]
+    if (!s) return
+    var pin = !isPinned(s), before = s.pinnedAt
+    function undo() { if (before === undefined) delete s.pinnedAt; else s.pinnedAt = before; render() }
+    if (pin) s.pinnedAt = Date.now(); else delete s.pinnedAt
+    render()
+    Fremkit.sendCommand('claude-sessions', 'pin', { sessionId: id, pinned: pin }).then(function (r) { if (!r || !r.ok) undo() }, undo)
+  }
+  /**
+   * The long press, which arrives three ways and is answered once.
+   *
+   * On the Edge it never arrives as a held button: the touch driver says nothing while the
+   * finger is down, and turns a press held past its threshold into a right click at the release
+   * (`GestureEngine.endPress`), so a timer started on `pointerdown` never completes there. In
+   * the helper's web view that right click raises no `contextmenu` either, so the right button
+   * itself is the signal (`ui/src/dashboard/longPress.ts` tells the whole story). `contextmenu`
+   * is what a browser sends for a long touch, and the timer is for a finger really held down:
+   * a paired tablet, a mouse.
+   *
+   * Where two of the three are real they both fire for one press, and pinning twice is not
+   * pinning: the first through wins and the rest of that gesture is silence (`PRESS_ECHO_MS`).
+   * A touch that moves is a scroll and one that lifts early is a tap; the tap that follows a
+   * press held to the end is swallowed, or pinning a card would also open it.
+   */
+  var HOLD_MS = 550, HOLD_SLOP = 10, PRESS_ECHO_MS = 700, hold = null, swallowClickUntil = 0
+  // Not 0: a press in the page's first 700 ms would look like the echo of one that never was.
+  var lastPressAt = -Infinity
+  function longPressed(card) {
+    endHold()
+    var now = Date.now()
+    if (now - lastPressAt < PRESS_ECHO_MS) return
+    lastPressAt = now
+    togglePin(card.getAttribute('data-id'))
+  }
+  function endHold() {
+    if (!hold) return
+    clearTimeout(hold.timer); hold.card.classList.remove('holding'); hold = null
+  }
+  function startHold(e) {
+    // A second button or finger during a drag starts nothing of its own.
+    if (drag) return
+    endHold()
+    var card = e.target.closest && e.target.closest('.card')
+    if (!card) return
+    // The driver's long press, already over by the time it is heard of.
+    if (e.button === 2) { longPressed(card); return }
+    if (e.button !== 0) return
+    hold = { card: card, x: e.clientX, y: e.clientY, pointerId: e.pointerId, timer: setTimeout(function () {
+      swallowClickUntil = Date.now() + 800; longPressed(card)
+    }, HOLD_MS) }
+    card.classList.add('holding')
+  }
+  function moveHold(e) {
+    if (drag) { moveDrag(e); return }
+    if (!hold || (Math.abs(e.clientX - hold.x) <= HOLD_SLOP && Math.abs(e.clientY - hold.y) <= HOLD_SLOP)) return
+    // A press that moves is a scroll on a card, and the start of a drag on a pin.
+    if (hold.card.classList.contains('pin') && pinnedSessions().length > 1) startDrag(e); else endHold()
+  }
+  /**
+   * Dragging a pin puts it somewhere else among the pins.
+   *
+   * The pin follows the pointer and takes the place of whichever pin the pointer is over, the
+   * others closing up, so what is on screen while dragging is what a release will leave. The
+   * order lives in `pinOrder` from the first move until the server's snapshot agrees with it:
+   * `render` runs every second and on every snapshot, and would otherwise put the pins back.
+   *
+   * On the Edge a drag is a press held a third of a second and then moved (`GestureEngine`): the
+   * driver then sends the button down at the place first touched and the moves after it, which
+   * is exactly this. A finger on a tablet has to set off sideways, the tile keeping vertical
+   * movement for scrolling (`touch-action: pan-y`).
+   *
+   * A slide across a tile is also how the dashboard's page is turned, hence `holdSwipe()` on
+   * every move.
+   *
+   * The pointer is captured by the wrapper and not by the pin: the pin is moved in the document
+   * as it changes place, and an element taken out, even to be put straight back, loses capture.
+   */
+  var drag = null, pinOrder = null, pinOrderUntil = 0
+  function startDrag(e) {
+    var card = hold.card, x = hold.x, y = hold.y, pointerId = hold.pointerId, wrap = document.getElementById('wrap')
+    endHold()
+    card.classList.add('dragging')
+    // Read once the card is at rest: it was giving under the finger a moment ago.
+    var r = card.getBoundingClientRect()
+    drag = { id: card.getAttribute('data-id'), node: card, pointerId: pointerId, offX: x - r.left, offY: y - r.top, captured: false }
+    pinOrder = pinnedSessions().map(function (s) { return s.sessionId })
+    try { wrap.setPointerCapture(drag.pointerId); drag.captured = true } catch (err) { /* followed while it stays inside the tile */ }
+    moveDrag(e)
+  }
+  function moveDrag(e) {
+    // A slide across a widget turns the dashboard's page, unless the widget says it is its own.
+    Fremkit.holdSwipe()
+    var node = drag.node, pins = document.getElementById('pins').children, over = null
+    for (var i = 0; i < pins.length; i++) {
+      if (pins[i] === node) continue
+      var b = pins[i].getBoundingClientRect()
+      if (e.clientX >= b.left && e.clientX <= b.right && e.clientY >= b.top && e.clientY <= b.bottom) { over = pins[i].getAttribute('data-id'); break }
+    }
+    if (over) {
+      var to = pinOrder.indexOf(over)
+      pinOrder.splice(pinOrder.indexOf(drag.id), 1)
+      pinOrder.splice(to, 0, drag.id)
+      render()
+    }
+    // Its slot, read without the offset that makes it follow the pointer.
+    node.style.transform = ''
+    var r = node.getBoundingClientRect()
+    node.style.transform = 'translate(' + (e.clientX - drag.offX - r.left) + 'px,' + (e.clientY - drag.offY - r.top) + 'px)'
+  }
+  function endDrag(commit) {
+    var node = drag.node, order = pinOrder.slice()
+    try { document.getElementById('wrap').releasePointerCapture(drag.pointerId) } catch (err) { /* was not captured */ }
+    node.classList.remove('dragging'); node.style.transform = ''
+    drag = null
+    // The release of a drag is not a touch on the card it ends over.
+    swallowClickUntil = Date.now() + 800
+    if (!commit) { pinOrder = null; render(); return }
+    pinOrderUntil = Date.now() + 4000
+    function undo() { pinOrder = null; render() }
+    Fremkit.sendCommand('claude-sessions', 'reorder', { order: order }).then(function (r) { if (!r || !r.ok) undo() }, undo)
+    render()
+  }
   var maxShown = 0, onlyWaiting = false, hideDone = true, groupByClient = false, showCount = true, showStats = true, sortRecent = false, showCost = true
   /** The title note last sent, so a render that changes nothing sends nothing. */
   var lastNote = null
@@ -280,6 +482,7 @@
     showCount = s.showCount !== false
     showStats = s.showStats !== false
     showCost = s.showCost !== false
+    document.getElementById('pins').classList.toggle('small', s.pinSize === 'small')
   }
   Fremkit.whenReady(function () {
     document.documentElement.lang = Fremkit.locale
@@ -288,7 +491,22 @@
     Fremkit.onLocale(function (locale) { document.documentElement.lang = locale; render() })
     Fremkit.subscribe('claude-sessions', function (d) { if (d.error) return; sessions = d.sessions || []; today = d.today || null; render() })
     setInterval(render, 1000)
-    document.getElementById('cards').addEventListener('click', function (e) {
+    var wrap = document.getElementById('wrap')
+    wrap.addEventListener('pointerdown', startHold)
+    wrap.addEventListener('pointermove', moveHold)
+    wrap.addEventListener('pointerup', function () { if (drag) endDrag(true); else endHold() })
+    wrap.addEventListener('pointercancel', function () { if (drag) endDrag(false); else endHold() })
+    // A captured pointer does not leave. One that could not be captured takes the release with
+    // it when it leaves the tile, so the drag ends here, where the pin is.
+    wrap.addEventListener('pointerleave', function () { if (drag) { if (!drag.captured) endDrag(true) } else endHold() })
+    // A browser's long touch, and a mouse's right click after its button event: no menu over
+    // the card, and the press is answered if nothing answered it yet.
+    wrap.addEventListener('contextmenu', function (e) {
+      var card = e.target.closest('.card'); if (!card) return
+      e.preventDefault(); longPressed(card)
+    })
+    wrap.addEventListener('click', function (e) {
+      if (Date.now() < swallowClickUntil) { swallowClickUntil = 0; return }
       var card = e.target.closest('.card'); if (!card) return
       // A touch anywhere on any card goes to the session; the server finds its window from the
       // hook's report or, failing that, from the process tree.

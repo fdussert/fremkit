@@ -25,22 +25,16 @@ beforeEach(async () => {
 afterEach(() => app.close())
 
 describe('GET /api/claude/accounts', () => {
-  it('lists the learnt folders and the default one, each described', async () => {
-    const { ClaudeConfigDirs, defaultConfigDir } = await import('../src/claude/configDirs.js')
-    const dirs = new ClaudeConfigDirs()
-    dirs.note('/u/profile/projects/-p/1.jsonl')
+  it('lists the accounts the limits widget shows, for the settings window to name them', async () => {
+    const accounts = [{ uuid: '00000000-0000-4000-8000-00000000000a', plan: 'Max', org: 'Example Corp', lastSeen: 2000 }]
     const local = Fastify()
-    await local.register(claudeRoutes, {
-      tracker, usage, configDirs: dirs, describe: async (d) => ({ dir: d, plan: 'max', org: null }),
-      // The learnt profile's sign-in lapsed; the default one says nothing about its expiry.
-      expiry: async (d) => (d === '/u/profile' ? 1000 : null), now: () => 2000,
-    })
+    await local.register(claudeRoutes, { tracker, usage, accounts: async () => accounts })
     const res = await local.inject({ method: 'GET', url: '/api/claude/accounts' })
-    expect(res.json()).toEqual({ accounts: [
-      { dir: '/u/profile', plan: 'max', org: null, expired: true },
-      { dir: defaultConfigDir(), plan: 'max', org: null, expired: false },
-    ] })
+    expect(res.json()).toEqual({ accounts })
     await local.close()
+  })
+  it('lists none when nothing provides them', async () => {
+    expect((await app.inject({ method: 'GET', url: '/api/claude/accounts' })).json()).toEqual({ accounts: [] })
   })
 })
 
@@ -66,6 +60,39 @@ describe('POST /api/hooks/claude', () => {
 })
 
 describe('providers', () => {
+  it('reorders the pins as a tile really asks, and refuses what is not a list of ids', async () => {
+    const tracker = new ClaudeTracker()
+    for (const id of ['x', 'y']) tracker.handle({ hook_event_name: 'SessionStart', session_id: id, cwd: '/p/a' })
+    const p = createClaudeSessionsProvider(tracker, { listProcesses: async () => null })
+    await p.commands!.pin({ sessionId: 'x', pinned: true })
+    await new Promise((r) => setTimeout(r, 3))
+    await p.commands!.pin({ sessionId: 'y', pinned: true })
+    // With the host's stamp, as every command a tile sends carries it.
+    await expect(p.commands!.reorder({ order: ['y', 'x'], instanceId: 'claude-sessions-1' })).resolves.toEqual({ ok: true })
+    const polled = (await p.poll!()) as { sessions: { sessionId: string; pinnedAt?: number }[] }
+    const at = (id: string) => polled.sessions.find((s) => s.sessionId === id)!.pinnedAt!
+    expect(at('y')).toBeLessThan(at('x'))
+    for (const bad of [{}, { order: 'y,x' }, { order: [1, 2] }, { order: [''] }, { order: Array.from({ length: 25 }, (_, i) => `s${i}`) }, null]) {
+      await expect(p.commands!.reorder(bad), JSON.stringify(bad)).rejects.toThrow(/session/)
+    }
+  })
+
+  it('pins a session on a card\'s word, and answers a refusal instead of throwing it', async () => {
+    const p = createClaudeSessionsProvider(tracker, { listProcesses: async () => null })
+    tracker.handle({ hook_event_name: 'Stop', session_id: 'z', cwd: '/p/z' })
+    await expect(p.commands!.pin({ sessionId: 'z', pinned: true })).resolves.toEqual({ ok: true })
+    const polled = (await p.poll!()) as { sessions: { sessionId: string; pinnedAt?: number }[] }
+    expect(polled.sessions[0].pinnedAt).toEqual(expect.any(Number))
+    await expect(p.commands!.pin({ sessionId: 'z', pinned: false })).resolves.toEqual({ ok: true })
+    await expect(p.commands!.pin({ sessionId: 'nobody', pinned: true })).resolves.toEqual({ ok: false, reason: 'unknownSession' })
+    // As a tile really sends it: the host stamps every widget command with the frame's instance
+    // id (`stampInstance`), which the command has no use for and must not choke on.
+    await expect(p.commands!.pin({ sessionId: 'z', pinned: true, instanceId: 'claude-sessions-1' })).resolves.toEqual({ ok: true })
+    // A payload without a session and a yes or no is refused, without echoing it.
+    for (const bad of [{ sessionId: 'z' }, { sessionId: 'z', pinned: 'yes' }, { sessionId: '', pinned: true }, null]) {
+      await expect(p.commands!.pin(bad), JSON.stringify(bad)).rejects.toThrow(/session/)
+    }
+  })
   it('sessions provider polls the tracker and exposes dismiss', async () => {
     // No real listProcesses here: this test must stay deterministic regardless of
     // what Claude Code processes happen to be open on the machine running it.

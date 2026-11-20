@@ -7,9 +7,11 @@ import { buildView, findNode, type DiskNode } from '../providers/disk-map-tree.j
 import { codexProviders } from './codex.js'
 import { fremdevEnabled } from '../companion/dev.js'
 import { COMPANION_SERVERS_CHANNEL, SERVERS_INTERVAL_MS, type ServerRow, type ServersSnapshot } from '../companion/servers/provider.js'
+import { createHash } from 'node:crypto'
 import { tr } from '../i18n.js'
+import type { AccountSummary } from '../claude/account.js'
 import {
-  DEMO_APPS, DEMO_CLIPBOARD, DEMO_PROCESSES, DEMO_SESSIONS, DEMO_TRACKS,
+  DEMO_APPS, DEMO_CLAUDE_ACCOUNTS, DEMO_CLIPBOARD, DEMO_PROCESSES, DEMO_SESSIONS, DEMO_TRACKS,
   clamp, coverArt, round1, wander,
 } from './world.js'
 import { DEMO_GIF_COLOUR_BARS, DEMO_GIF_MANDELBROT, DEMO_GIF_RGB_BARS, DEMO_GIF_TEST_PATTERN } from './gif-samples.js'
@@ -43,6 +45,11 @@ export interface DemoProviderOptions {
 
 /** What a demo command answers when it would have acted on the Mac. */
 const ACTED = async (): Promise<{ ok: true }> => ({ ok: true })
+
+/** The demo's Claude accounts as the settings window lists them: both seen a minute ago. */
+export function demoClaudeAccounts(t = Date.now()): AccountSummary[] {
+  return DEMO_CLAUDE_ACCOUNTS.map((a) => ({ uuid: a.uuid, plan: a.plan, org: a.org, lastSeen: t - 60_000 }))
+}
 
 export function createDemoProviders(opts: DemoProviderOptions): Provider[] {
   const now = opts.now ?? Date.now
@@ -436,6 +443,9 @@ function diskMapProvider(now: () => number): Provider {
 
 function claudeProviders(now: () => number, config: () => Config): Provider[] {
   const dismissed = new Set<string>()
+  // One session starts pinned, so the board shows what a pin looks like; a long press moves it.
+  const pinned = new Map<string, number>()
+  DEMO_SESSIONS.forEach((s, i) => { if ('pinned' in s) pinned.set(`demo-session-${i + 1}`, i + 1) })
   const sessions = (): unknown[] => {
     const t = now()
     // The working session moves on to another file every twenty seconds.
@@ -463,6 +473,7 @@ function claudeProviders(now: () => number, config: () => Config): Provider[] {
         context: { used: Math.round(size * s.pct / 100), size, pct: s.pct },
         costUsd: round1(s.pct / 9),
         client: { kind: i % 2 ? 'terminal' : 'vscode', label: i % 2 ? 'Terminal' : 'VS Code' },
+        ...(pinned.has(sessionId) ? { pinnedAt: pinned.get(sessionId) } : {}),
       }
     }).filter((s) => !dismissed.has(s.sessionId))
   }
@@ -479,6 +490,22 @@ function claudeProviders(now: () => number, config: () => Config): Provider[] {
       commands: {
         focus: ACTED,
         preview: ACTED,
+        pin: async (payload) => {
+          const p = payload as { sessionId?: unknown; pinned?: unknown } | null
+          if (typeof p?.sessionId !== 'string' || typeof p.pinned !== 'boolean') return { ok: false, reason: 'unknownSession' }
+          if (p.pinned) { if (!pinned.has(p.sessionId)) pinned.set(p.sessionId, now()) } else pinned.delete(p.sessionId)
+          return { ok: true }
+        },
+        // The real tracker's rule: the ids named take, in that order, the times they held.
+        reorder: async (payload) => {
+          const order = (payload as { order?: unknown } | null)?.order
+          if (!Array.isArray(order)) return { ok: true }
+          const ids = [...new Set(order)].filter((id): id is string => typeof id === 'string' && pinned.has(id))
+          const times = ids.map((id) => pinned.get(id)!).sort((a, b) => a - b)
+          for (let i = 1; i < times.length; i++) if (times[i] <= times[i - 1]) times[i] = times[i - 1] + 1
+          ids.forEach((id, i) => pinned.set(id, times[i]))
+          return { ok: true }
+        },
         dismiss: async (payload) => {
           const id = (payload as { sessionId?: unknown } | null)?.sessionId
           if (typeof id === 'string') dismissed.add(id)
@@ -509,25 +536,23 @@ function claudeProviders(now: () => number, config: () => Config): Provider[] {
     },
     {
       channel: 'claude-account',
-      intervalMs: 60_000,
+      intervalMs: 20_000,
       poll: async () => {
         const t = now()
-        if (!config().privacy.claudeAccountUsage) {
-          return { available: false, stale: false, error: 'disabled', updatedAt: null, fiveHour: null, sevenDay: null, limits: [], breakdown: [] }
-        }
+        const on = config().privacy.claudeAccountUsage
+        const names = config().privacy.claudeAccountNames
         const five = Math.round(wander(t, 38, 6, 600_000))
-        return {
-          available: true, stale: false, updatedAt: t,
-          fiveHour: { pct: five, resetsAt: resetIn(t, 2.3) },
-          sevenDay: { pct: 61, resetsAt: resetIn(t, 76) },
-          limits: [
-            // Named as the real provider names them, in the user's language.
-            { kind: 'session', name: tr(undefined, 'claude.limit.session'), percent: five, resetsAt: resetIn(t, 2.3), active: true },
-            { kind: 'weekly_all', name: tr(undefined, 'claude.limit.weeklyAll'), percent: 61, resetsAt: resetIn(t, 76), active: true },
-            { kind: 'seven_day_opus', name: 'Opus', percent: 44, resetsAt: resetIn(t, 76), active: true },
-          ],
-          breakdown: [{ name: 'Opus', percent: 72 }, { name: 'Sonnet', percent: 28 }],
-        }
+        // Two accounts, one with room and one near its 5-hour limit: what the rows are for.
+        const windows = [
+          { fiveHour: { pct: five, resetsAt: resetIn(t, 2.3) }, sevenDay: { pct: 61, resetsAt: resetIn(t, 76) } },
+          { fiveHour: { pct: 91, resetsAt: resetIn(t, 0.6) }, sevenDay: { pct: 47, resetsAt: resetIn(t, 101) } },
+        ]
+        const accounts = DEMO_CLAUDE_ACCOUNTS.map((a, i) => ({
+          key: createHash('sha256').update(a.uuid).digest('hex').slice(0, 16),
+          name: names[a.uuid] || a.plan, named: Boolean(names[a.uuid]), plan: a.plan,
+          ...windows[i], available: true, stale: false, updatedAt: t,
+        }))
+        return on ? { source: 'account', accounts } : { source: 'status-line', accounts, error: 'disabled' }
       },
     },
     {

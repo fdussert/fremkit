@@ -40,6 +40,15 @@ export const DEMO_CALENDARS = [
 /** The Synology NAS the demo dashboard is connected to. Never contacted: its channel is invented. */
 export const DEMO_NAS = { id: 'demo-nas', name: 'NAS', host: '192.0.2.10', account: 'fremkit' } as const
 
+/**
+ * The two claude.ai accounts a demo Mac runs Claude Code on, as the Claude limits widget shows
+ * them: placeholder uuids, the names the seed gives them, a personal plan and a team one.
+ */
+export const DEMO_CLAUDE_ACCOUNTS = [
+  { uuid: '00000000-0000-4000-8000-00000000d001', plan: 'Max', org: null, name: { fr: 'Perso', en: 'Personal' } },
+  { uuid: '00000000-0000-4000-8000-00000000d002', plan: 'Team', org: 'Example Corp', name: { fr: 'Boulot', en: 'Work' } },
+] as const
+
 /** Hours after local midnight, and how long, for each calendar's recurring events. */
 const WORK_EVENTS = [
   { title: 'Weekly sync', at: 9.5, minutes: 30, location: 'Room 2' },
@@ -171,5 +180,5 @@ export const DEMO_SESSIONS = [
   { project: 'website', title: 'Settings page', branch: 'feature/settings', state: 'working', tool: 'Edit', toolDetail: 'src/pages/settings.vue', model: 'Opus', minutesAgo: 3, pct: 41 },
   { project: 'api', title: 'Rate limits', branch: 'feature/rate-limit', state: 'permission', tool: 'Bash', toolDetail: 'pnpm test', model: 'Sonnet', minutesAgo: 1, pct: 63 },
   { project: 'docs', repo: 'website', place: 'docs', title: 'Quick start', branch: 'main', state: 'done', model: 'Opus', minutesAgo: 12, pct: 28, lastMessage: 'The quick start now covers the three install paths.' },
-  { project: 'mobile-app', repo: 'mobile-app', branch: 'hotfix/login', state: 'idle', model: 'Sonnet', minutesAgo: 40, pct: 12 },
+  { project: 'mobile-app', repo: 'mobile-app', title: 'Flaky login', branch: 'hotfix/login', state: 'idle', model: 'Sonnet', minutesAgo: 40, pct: 12, pinned: true },
 ] as const

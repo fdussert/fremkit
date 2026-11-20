@@ -74,7 +74,7 @@ export const SETTINGS_INDEX: readonly SettingsEntry[] = [
   },
   {
     pane: 'privacy', id: 'screen.privacy', title: 'admin.inspector.screen.privacy',
-    labels: ['admin.inspector.screen.claudeUsage', 'admin.inspector.screen.claudeAccount', 'admin.inspector.screen.accountEmail', 'admin.inspector.screen.codexAccount',
+    labels: ['admin.inspector.screen.claudeUsage', 'admin.inspector.screen.claudeAccounts', 'admin.inspector.screen.accountEmail', 'admin.inspector.screen.codexAccount',
       'admin.inspector.screen.codexSources', 'admin.inspector.screen.macmonTemperature'],
   },
   {

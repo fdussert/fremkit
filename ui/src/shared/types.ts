@@ -146,6 +146,8 @@ export interface Privacy {
   claudeAccountUsage: boolean
   /** Whose usage: `auto` (the token refreshed last) or one Claude Code configuration folder. */
   claudeAccountDir?: string
+  /** The user's name for each Claude account, by account uuid; the limits widget's row titles. */
+  claudeAccountNames?: Record<string, string>
   /**
    * Let account providers publish the account's e-mail address. Off, the server leaves it out
    * of every snapshot, so no widget and no screen ever sees it.

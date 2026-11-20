@@ -12,8 +12,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let poster = EventPoster()
     private var driver: TouchDriver?
     private var fence: MouseFence?
-    /// A future window fence can register here and share the dashboard visibility rule.
+    /// A fence registers here and shares the dashboard visibility rule.
     private var fenceUpdates: [(Bool) -> Void] = []
+    private var windows: WindowFence?
     private var dockBadges: DockBadges?
     private var brightness: BrightnessController?
     private var watcher: EdgeDisplay.Watcher?
@@ -78,6 +79,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.driver = driver
 
         let fence = MouseFence(edge: nil)
+        // The driver parks the cursor on the panel for the length of a gesture and restores it
+        // itself; the patrol stands back while that is happening.
+        fence.cursorIsDriven = { [poster] in poster.isDrivingCursor }
         fence.onStateChange = { [weak self] state in
             self?.menu?.update { $0.fence = state }
         }
@@ -85,6 +89,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         fenceUpdates.append { [weak fence] active in
             if active { _ = fence?.start() }
             else { fence?.stop() }
+        }
+
+        let windows = WindowFence(edge: nil)
+        self.windows = windows
+        fenceUpdates.append { [weak windows] active in
+            if active { windows?.start() } else { windows?.stop() }
         }
 
         // Made first: the server, the Dock reader and both web windows present this secret.
@@ -185,6 +195,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         server?.stopAndWait(timeout: 2)
         driver?.stop()
         fence?.stop()
+        windows?.stop()
         dockBadges?.stop()
         brightness?.stop()
         kiosk?.close()
@@ -379,6 +390,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.edge = edge
         driver?.displayBounds = edge
         fence?.edge = edge
+        windows?.edge = edge
         brightness?.displayDidChange(edge == nil ? nil : EdgeDisplay.findID(width: config.display.width, height: config.display.height))
 
         if let edge {

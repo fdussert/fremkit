@@ -97,7 +97,10 @@ describe('disk-map provider', () => {
     provider = make()
   })
   afterEach(async () => {
-    await rm(dataDir, { recursive: true, force: true })
+    // A scan that finished is saved after the provider answered, so a test can end while the
+    // file is still being written into `dataDir`: removing the folder under that write failed
+    // with ENOTEMPTY about one run in twenty. The retries wait the write out.
+    await rm(dataDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 20 })
     await rm(home, { recursive: true, force: true })
   })
 

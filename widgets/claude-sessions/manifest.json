@@ -1,6 +1,6 @@
 { "id": "claude-sessions",
   "name": { "fr": "Sessions Claude", "en": "Claude sessions" },
-  "version": "1.4.0", "sdk": 5, "preview": "preview.webp",
+  "version": "1.7.0", "sdk": 5, "preview": "preview.webp",
   "description": { "fr": "Sessions Claude Code en direct", "en": "Live Claude Code sessions" },
   "category": "ai",
   "icon": "message-square", "minSize": [16, 4], "defaultSize": [16, 8],
@@ -15,6 +15,11 @@
       "options": [
         { "value": "state", "label": { "fr": "Par état (celles qui t’attendent d’abord)", "en": "By state (those waiting for you first)" } },
         { "value": "recent", "label": { "fr": "Par dernière activité", "en": "By last activity" } }
+      ] },
+    "pinSize": { "type": "enum", "label": { "fr": "Taille des sessions épinglées", "en": "Size of pinned sessions" }, "default": "card",
+      "options": [
+        { "value": "card", "label": { "fr": "Largeur d’une carte", "en": "As wide as a card" } },
+        { "value": "small", "label": { "fr": "Étroites (davantage par rangée)", "en": "Narrow (more on a row)" } }
       ] },
     "showCost": { "type": "boolean", "label": { "fr": "Afficher le coût", "en": "Show cost" }, "default": true },
     "groupByClient": { "type": "boolean", "label": { "fr": "Grouper par application", "en": "Group by application" }, "default": false },

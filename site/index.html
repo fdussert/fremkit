@@ -24,7 +24,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="style.css?v=88119219cf">
 </head>
 <body>
 
@@ -65,6 +65,11 @@
         <a class="btn ghost" href="#install" data-i18n="hero.install">Install guide</a>
       </div>
       <p class="fine" data-i18n="hero.fine">Free and open source · MIT · macOS 13+ on Apple silicon</p>
+      <p class="hero-also">
+        <span data-i18n="hero.also">Beyond the strip:</span>
+        <a href="#tablets" data-i18n="hero.alsoTab">iPad &amp; Android app</a>
+        <a href="#companion" data-i18n="hero.alsoComp">Browser extension</a>
+      </p>
     </div>
   </div>
 
@@ -237,7 +242,7 @@
     <p class="sub" data-i18n="be.sub">The Edge stays the heart of it. Free add-ons take the dashboard a little further, never off your own network.</p>
 
     <div class="beyond">
-      <article class="card wide addon tablet">
+      <article class="card wide addon tablet" id="tablets">
         <figure class="addon-shot ipad"><img src="assets/ipad.webp" alt="The Fremkit app on an iPad, with sample data: clocks, weather, the day's events, Spotify, Dock badges, Claude Code sessions and limits" width="900" height="1200" loading="lazy"></figure>
         <div class="addon-text">
           <p class="tag" data-i18n="tag.tablet">IPAD · ANDROID</p>
@@ -261,7 +266,7 @@
         </div>
       </article>
 
-      <article class="card wide addon companion">
+      <article class="card wide addon companion" id="companion">
         <figure class="addon-shot"><img src="assets/fremplay.webp" alt="The Fremplay widget on the Edge: a browser tab's video with touch buttons to seek ten seconds, pause, change the volume, fill the tile, go back to the tab and stop" width="1200" height="638" loading="lazy"><figcaption class="credit" data-i18n-html="be.compCredit"><a href="https://peach.blender.org" target="_blank" rel="noopener">Big Buck Bunny</a> © Blender Foundation, <span class="nw">CC BY 3.0</span></figcaption></figure>
         <div class="addon-text">
           <p class="tag" data-i18n="tag.comp">BROWSER</p>
@@ -369,7 +374,7 @@
       <a class="soon-card live" href="https://github.com/fdussert/fremkit/releases/latest/download/Fremkit.dmg">
         <span class="soon-ic" aria-hidden="true">⬇</span>
         <span class="soon-txt"><b data-i18n="i.dmg">Download for macOS</b><small data-i18n="i.dmgSub">Signed and notarised .dmg · updates itself</small></span>
-        <span class="soon-tag">v<span data-fremkit-version>0.5.1</span></span>
+        <span class="soon-tag">v<span data-fremkit-version>0.5.2</span></span>
       </a>
       <div class="soon-card live" data-copy="brew install --cask fdussert/fremkit/fremkit">
         <span class="soon-ic mono" aria-hidden="true">$</span>
@@ -382,7 +387,7 @@
         <div class="win-bar"><i></i><i></i><i></i><span>zsh</span></div>
 <pre><code><span class="prompt">$</span> brew install --cask fdussert/fremkit/fremkit
 <span class="c">==&gt;</span> Tapping fdussert/fremkit
-<span class="c">==&gt;</span> Downloading Fremkit-<span data-fremkit-version>0.5.1</span>.dmg
+<span class="c">==&gt;</span> Downloading Fremkit-<span data-fremkit-version>0.5.2</span>.dmg
 <span class="c">==&gt;</span> Installing Cask fremkit
 <span class="c">==&gt;</span> Moving App 'Fremkit.app' to '/Applications/Fremkit.app'
 <span class="ok">🍺</span>  fremkit was successfully installed!</code></pre>
@@ -465,6 +470,6 @@
   </div>
 </footer>
 
-<script src="main.js"></script>
+<script src="main.js?v=78d820871d"></script>
 </body>
 </html>

@@ -118,6 +118,19 @@ describe('buildDiagnostics', () => {
     expect(text).toContain('read ~/Library/x')
   })
 
+  it('names no Claude account: neither its uuid nor the name the user gave it', async () => {
+    const UUID = '00000000-0000-4000-8000-00000000000a'
+    const text = await buildDiagnostics(deps({
+      config: () => ({ ...config(), privacy: { claudeAccountNames: { [UUID]: 'Side project' } } as unknown as Config['privacy'] }),
+      channels: () => [{ channel: 'claude-account', watched: true, lastError: 'partial-1' }],
+      log: async () => ({ kind: 'memory', lines: [`{"level":30,"msg":"account ${UUID} (Side project) polled"}`] }),
+    }))
+    // How many accounts fail is a count, and that is all the report says about them.
+    expect(text).toContain('| claude-account | yes | error: partial-1 |')
+    expect(text).not.toContain(UUID)
+    expect(text).not.toContain('Side project')
+  })
+
   it('reports the ticked recent-projects sources by count, never by path', async () => {
     const text = await buildDiagnostics(deps({
       recentProjects: () => [

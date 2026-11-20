@@ -22,7 +22,7 @@ server/    Fastify 5 server on 127.0.0.1:4242 — config, widget catalog, provid
            the secret store, the widget bridge and the WebSocket
 ui/        Vue 3: the dashboard (src/dashboard), the admin (src/admin), shared code (src/shared)
 e2e/       Playwright: end-to-end tests of the admin and the dashboard against a real server
-native/    The Swift helper: kiosk window, HID touch driver, mouse fence, admin window,
+native/    The Swift helper: kiosk window, HID touch driver, Edge fence, admin window,
            Dock badges, server supervision, `fremkit-scan` (the disk map's scanner)
 widgets/   One folder per widget
 themes/    One folder per theme — see themes.md
@@ -212,7 +212,7 @@ run:
 | `port` | `4242` | port watched to decide whether a server is already up |
 | `display` | `2560 × 720` | the Edge's size, used to find the display |
 | `touch` | `true` | the native touch driver |
-| `fence` | `true` | keep the mouse cursor out of the Edge |
+| `fence` | `true` | keep the mouse cursor out of the Edge, and move other applications' windows off it |
 | `manageServer` | `true` | start and restart the server |
 | `launchAtLogin` | `false` | login item |
 | `scrollInvert` | `false` | flip the touch scroll direction |

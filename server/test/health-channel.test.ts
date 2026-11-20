@@ -71,6 +71,18 @@ describe('the health channel', () => {
     registry.stop()
   })
 
+  it('carries how many Claude accounts fail, and nothing about which', async () => {
+    const { registry, sent, stop } = setup({
+      'claude-account': async () => ({ source: 'account', error: 'partial-1', accounts: [{ key: '0123456789abcdef', name: 'Work', error: 'unauthorized' }, { key: 'fedcba9876543210', name: 'Personal' }] }),
+    })
+    registry.addSubscriber('claude-account')
+    await vi.advanceTimersByTimeAsync(60)
+    expect(sent.at(-1)).toEqual({ channels: { 'claude-account': 'partial-1' } })
+    expect(JSON.stringify(sent)).not.toMatch(/Work|Personal|0123456789abcdef/)
+    stop()
+    registry.stop()
+  })
+
   it('forgets a channel whose provider went away', async () => {
     const { registry, sent, stop } = setup({ 'github:gh-1': async () => ({ error: 'unauthorized' }) })
     registry.addSubscriber('github:gh-1')

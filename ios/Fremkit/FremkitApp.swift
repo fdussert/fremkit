@@ -13,7 +13,10 @@ struct FremkitApp: App {
     init() {
         let network = LocalNetwork()
         let meter = ViewportMeter()
-        let model = AppModel(store: KeychainCredentialStore(), discovered: {
+        // The keychain keeps the pairing when the app is deleted; the installation id in the
+        // container is what lets a reinstalled app start unpaired.
+        let store = InstallBoundCredentialStore(vault: KeychainVault(), marker: FileInstallMarker.inApplicationSupport())
+        let model = AppModel(store: store, discovered: {
             network.refresh()
             return network.addresses
         })

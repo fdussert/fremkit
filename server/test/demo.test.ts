@@ -38,7 +38,6 @@ vi.mock('../src/claude/providers.js', async (orig) => ({
 vi.mock('../src/claude/identity.js', async (orig) => ({
   ...(await orig<object>()),
   createClaudeIdentityProvider: spy('claude-identity'),
-  describeConfigDir: spy('claude-describe-config-dir'),
 }))
 vi.mock('../src/providers/codex.js', async (orig) => ({ ...(await orig<object>()), createCodexProvider: spy('codex') }))
 vi.mock('../src/dock/provider.js', async (orig) => ({ ...(await orig<object>()), createDockProvider: spy('dock') }))
@@ -106,10 +105,15 @@ describe('demo mode', () => {
     app = await demoApp()
     for (const [name, fn] of Object.entries(spies)) expect(fn, name).not.toHaveBeenCalled()
     expect((await app.inject({ url: '/api/demo' })).json()).toEqual({ demo: true })
-    // The Claude account picker lists a made-up account: a demo never runs the Claude CLI.
+    // The settings window names two made-up accounts: a demo reads no Claude Code folder.
     const accounts = await app.inject({ url: '/api/claude/accounts' })
     expect(accounts.statusCode).toBe(200)
-    expect(accounts.json().accounts).toEqual([expect.objectContaining({ plan: 'max', org: null })])
+    expect(accounts.json().accounts).toEqual([
+      expect.objectContaining({ plan: 'Max', org: null }), expect.objectContaining({ plan: 'Team', org: 'Example Corp' }),
+    ])
+    // And the limits widget shows them as two rows, by the names the seed gave them.
+    const config = (await app.inject({ url: '/api/config' })).json()
+    expect(Object.values(config.privacy.claudeAccountNames)).toEqual(['Personal', 'Work'])
   })
 
   it('keeps Fremdev\'s report and shot off the Mac\'s clipboard', async () => {
@@ -232,6 +236,16 @@ describe('demo mode', () => {
     const providers = createDemoProviders({ config: () => config })
     expect(((await providers.find((p) => p.channel === 'codex')!.poll!()) as { error: string }).error).toBe('unconfigured')
     expect(((await providers.find((p) => p.channel === 'codex-live')!.poll!()) as { error: string }).error).toBe('unconfigured')
+  })
+
+  it('shows two Claude accounts with distinct names, as the limits widget draws them', async () => {
+    const config = ConfigSchema.parse(demoConfig('fr'))
+    const providers = createDemoProviders({ config: () => config })
+    const snap = (await providers.find((p) => p.channel === 'claude-account')!.poll!()) as { source: string; accounts: { name: string; key: string; fiveHour: unknown }[] }
+    expect(snap.source).toBe('account')
+    expect(snap.accounts.map((a) => a.name)).toEqual(['Perso', 'Boulot'])
+    expect(new Set(snap.accounts.map((a) => a.key)).size).toBe(2)
+    expect(JSON.stringify(snap)).not.toMatch(/00000000-0000/)
   })
 
   it('publishes a Synology snapshot for the seeded NAS', async () => {

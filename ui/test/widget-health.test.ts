@@ -126,6 +126,20 @@ describe('a widget’s health', () => {
       .toMatchObject({ level: 'warning', action: { kind: 'screen' } })
   })
 
+  it('warns, with a count and never which, when some of several accounts fail', () => {
+    const usageTile = { widgetId: 'usage', showTitle: false, settings: {} }
+    const partial = one(usageTile, { channels: { 'claude-account': 'partial-2' } })
+    expect(partial.level).toBe('warning')
+    expect(partial.problems[0]).toMatchObject({ level: 'warning', code: 'partial', detail: '2' })
+    expect(describeProblem(partial.problems[0])).toContain('2')
+    // Every account failing is the accounts' own error, as with one account.
+    expect(one(usageTile, { channels: { 'claude-account': 'unauthorized' } }).problems[0]).toMatchObject({ level: 'error', code: 'unauthorized' })
+    // No Claude account in use on this Mac: nothing the editor can fix.
+    expect(one(usageTile, { channels: { 'claude-account': 'no-account' } }).problems[0]).toMatchObject({ level: 'warning', code: 'unavailable' })
+    // Not a count: an unknown code, named as such.
+    expect(one(usageTile, { channels: { 'claude-account': 'partial-x' } }).problems[0]).toMatchObject({ code: 'failing' })
+  })
+
   it('says a connection field left empty, and offers to create one when none exists', () => {
     const empty = { widgetId: 'gh', showTitle: false, settings: {} }
     expect(one(empty).problems[0]).toMatchObject({ level: 'warning', code: 'connectionUnset', detail: 'Account', action: { kind: 'settings', field: 'connection' } })

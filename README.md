@@ -4,11 +4,17 @@
 
 **[fremkit.app](https://fremkit.app)** · [Download](https://github.com/fdussert/fremkit/releases/latest) · `brew install --cask fdussert/fremkit/fremkit`
 
+![Fremkit in thirty seconds: widgets answering a touch on the Edge, Claude Code sessions pinned and reordered, a bar widget unfolding above the bar, a page swipe, a page built in the editor, a theme change](docs/images/tour.gif)
+
 Fremkit turns the Corsair Xeneon Edge — a 2560 × 720 touch strip — into a widget dashboard for
 your Mac. Pages of tiles show the clock, the machine's load, your calendar, your build pipelines,
 your 3D printer, your smart home; you arrange them by dragging them around in a browser-based
 admin, and you drive them by touch through a native macOS helper. Widgets are plain HTML folders,
 so writing one takes a manifest and an `index.html` — no build step, no framework.
+
+What goes on it is yours to choose: a developer's side screen (Claude Code sessions and limits,
+pipelines, containers), a smart home panel (Homey devices and flows), a 3D printer's job and its
+camera, a NAS's volumes and load.
 
 **No iCUE, no third-party driver, no kernel extension.** The helper talks to the Edge's touch
 panel over USB HID itself. Quit iCUE and Touchscreen Gestures if you run them — Fremkit
@@ -26,12 +32,14 @@ The name is the Fremen survival kit from *Dune*.
   auto-rotation.
 - **A live editor** at `/admin`: the real page rendered with real widgets, drag and resize with
   snapping, overlap refused, keyboard nudges, undo/redo and autosave.
-- **Thirty-nine widgets** — clock, weather, a pomodoro timer, CPU, memory, disks, a disk map, network
+- **Forty-one widgets** — clock, weather, a pomodoro timer, CPU, memory, disks, a disk map, network
   throughput, batteries, processes, volume, Spotify, Dock badges, a clipboard history, shortcut
-  buttons, service status checks, published calendars, Claude Code sessions and limits; and,
+  buttons, service status checks, published calendars, a board of GIFs, recent projects, Claude Code
+  sessions and limits; and,
   *from the registry*, meeting controls, CleanShot X actions, Azure DevOps builds, GitHub
-  notifications and Actions, a Bambu Lab printer, Homey devices and flows, a Synology NAS.
-  Twenty-two ship with Fremkit; the rest are one press away in the admin.
+  notifications and Actions, a Bambu Lab printer, Homey devices and flows, a Synology NAS, Codex
+  sessions and limits, Docker containers, an Elgato Key Light.
+  Twenty-four ship with Fremkit; the rest are one press away in the admin.
 - **An iPad app**, [on the App Store](https://apps.apple.com/app/id6824504862), that shows a screen
   of the dashboard from your Mac over the local network, paired by QR code and revocable from the
   admin. See [docs/devices.md](docs/devices.md).
@@ -42,8 +50,8 @@ The name is the Fremen survival kit from *Dune*.
 - **Connections** — named credential sets for outside services, with secrets kept in the macOS
   keychain rather than in the config file.
 - **A native helper** — a menu bar app that drives the Edge's touch panel with its own HID
-  driver, fences the mouse out of the display, shows the dashboard in a kiosk window and
-  supervises the server.
+  driver, keeps the mouse and other applications' windows off the display, shows the dashboard
+  in a kiosk window and supervises the server.
 - **An Android app** for a spare tablet, the iPad app's counterpart: the same pairing by QR code
   or typed code, the same pinned key, a screen of its own. An APK attached to each release (no
   Play Store, nothing from Google Play inside), its signing fingerprint published. See
@@ -177,7 +185,7 @@ admin window: an older copy ignores it.
 
 The dashboard then opens by itself on the Edge. If you would rather not run the helper at all,
 `pnpm start` serves everything and `pnpm kiosk` opens a full-screen Chrome window on the Edge,
-signed in through a one-time link — you lose the touch driver, the mouse fence and the Dock
+signed in through a one-time link — you lose the touch driver, the Edge fence and the Dock
 badges.
 
 ## First run
@@ -305,9 +313,8 @@ button so the admin shortcut remains available.
 you set, as many as fit beside the page buttons. The screen's settings list them as the bar reads,
 left of the dots then right of them; drag one to move it, to the other side too. A compact rendering is one readable line, as wide
 as the widget's manifest asks for and as tall as the bar; the bar is its surface, so it has no
-title and no tile of its own. Ten of the built-ins have one: `clock`, `weather`, `pomodoro`,
-`cpu`, `memory`, `network`, `battery`, `calendar`, `claude-usage` and `service-status`. Registry
-widgets bring their own — `github-inbox`, `homey-devices` and the two Synology ones have one too.
+title and no tile of its own. Most of the built-ins have one and registry widgets bring their
+own: the *Compact* column of the tables under [Widgets](#widgets) marks them.
 
 **Full widget on touch.** A bar widget can be marked for a popover: touching it opens the same
 widget at its full default size above the bar, in one of three shapes: *Standard*, *Low and wide*
@@ -319,7 +326,7 @@ on a page change, or after fifteen seconds.
 ![The Screen dialog: language, bar height and opacity, and the widgets in the bar](docs/images/admin-screen.png)
 
 **Connections.** A widget that talks to an outside service — Azure DevOps, GitHub, a Bambu
-printer, a Homey, a NAS, a published calendar — reads its credentials from a named *connection*,
+printer, a NAS, a published calendar — reads its credentials from a named *connection*,
 configured once in the admin and referenced by the widget. The connection types are part of
 Fremkit; the widgets for these live on the registry, which is why creating one lists them.
 Several widgets can share one, and one service can have several. Non-secret fields live in `data/fremkit.json`; secrets go to the macOS **keychain**
@@ -343,12 +350,13 @@ the widget library and the widgets themselves, live, without a reload.
 
 **The helper, or a browser.** The dashboard is a web page: any browser can show it. The native
 helper adds what a browser cannot — its own HID driver for the Edge's touch panel, a fence that
-keeps the mouse cursor on your other displays, a kiosk window with no chrome and no cursor, the
-Dock's notification badges, the brightness of the Edge (DDC/CI), and supervision of the server. Its menu bar **F** shows what is
-running: *Open the admin*, *Admin in the browser*, *Hide the dashboard* / *Show the dashboard*,
-*Reload the dashboard*, a brightness slider for the kiosk's display, the *Touch* / *Mouse fence* / *Notifications* / *Manage the server* /
-*Launch at login* toggles, *Log…* and *Quit*,
-above state lines such as "Server: running" and "Touch: active".
+keeps the mouse cursor and other applications' windows on your other displays, a kiosk window
+with no chrome and no cursor, the Dock's notification badges, the brightness of the Edge
+(DDC/CI), and supervision of the server. Its menu bar **F** shows what is running: *Open the
+admin*, *Admin in the browser*, *Hide the dashboard* / *Show the dashboard*, *Reload the
+dashboard*, a brightness slider for the kiosk's display, the *Touch* / *Edge fence* /
+*Notifications* / *Manage the server* / *Launch at login* toggles, *Log…* and *Quit*, above state
+lines such as "Server: running" and "Touch: active".
 
 ## Widgets
 
@@ -364,12 +372,15 @@ above state lines such as "Server: running" and "Touch: active".
 | `cpu` | CPU load and temperature | — | ● |
 | `disk` | Disk usage and available space | — | — |
 | `disk-map` | What fills the disk, as rings you drill into; long press shows it in Finder | — | ● |
+| `fremplay` | The video of a Chrome tab, sent by the Fremkit Companion extension, with touch controls | — | ● |
+| `gif-board` | Favourite GIFs in groups; a touch copies one, ready to paste animated into a chat | Giphy, for its search only | ● |
 | `memory` | Memory usage, available RAM and swap | — | ● |
 | `uptime` | Time since the Mac last booted | — | — |
 | `network` | Live network throughput, with a sparkline | — | ● |
 | `notifications` | Unread badges read from the Dock | — | — |
 | `pomodoro` | A work and break timer, driven by touch | — | ● |
 | `processes` | Top processes | — | — |
+| `recent-projects` | The folders you worked in lately, one tap away | — | ● |
 | `service-status` | A green, amber or red dot per service it pings | — | ● |
 | `shortcuts` | Big touch buttons that open apps, links and shortcuts | — | — |
 | `spotify` | Current track and transport | — | — |
@@ -379,9 +390,10 @@ above state lines such as "Server: running" and "Touch: active".
 ### On the sietch
 
 Published on the [widget registry](https://github.com/fdussert/fremkit-sietch) rather than
-shipped, because each one only does anything with a printer, a hub, a NAS or an account behind
-it. Install them from **Sietch** in the admin’s top bar; the provider or connection type each
-one reads is already part of Fremkit, so there is nothing else to set up. A tile placed on a
+shipped, because each one only does anything with a printer, a hub, a NAS, an account or another
+application behind it. Install them from **Sietch** in the admin’s top bar; the provider or connection type each
+one reads is already part of Fremkit, or declared by the widget itself, so there is nothing else
+to set up. A tile placed on a
 screen whose widget is not installed offers the install where it stands.
 
 | Widget | Shows | Connection | Compact |
@@ -389,11 +401,18 @@ screen whose widget is not installed offers the install where it stands.
 | `ado-pipelines` | Azure DevOps runs in progress and recent history | Azure DevOps | — |
 | `bambu-job` | A printer's current job, AMS and chamber camera | Bambu Lab | — |
 | `cleanshot` | Big touch buttons for captures, needs [CleanShot X](https://cleanshot.com) with its URL scheme API allowed | — | — |
+| `codex-sessions` | Codex sessions by directory, with their models, turn durations and subagents | — | ● |
+| `codex-usage` | Codex account quotas and usage | — | ● |
+| `docker-containers` | Local Docker containers: state, CPU, memory and I/O, read-only | — | — |
 | `github-actions` | Running and finished GitHub Actions workflows | GitHub | — |
 | `github-inbox` | GitHub notifications, review requests and pull requests | GitHub | ● |
-| `homey-devices` | Lights, plugs and sensors of a Homey Pro | Homey Pro | ● |
-| `homey-flows` | Buttons that run a Homey Pro's flows | Homey Pro | — |
+| `homey-devices` | Lights, plugs and sensors of a Homey Pro | its own: the Homey's address and an API key | ● |
+| `homey-flows` | Buttons that run a Homey Pro's flows | its own, shared with `homey-devices` | — |
+| `key-light` | An Elgato Key Light, switched on or off and adjusted | its own: the light's address | ● |
+| `local-models` | Installed and loaded Ollama models, and MLX processes | — | — |
+| `mac-temperatures` | The CPU temperature, measured by macmon or the system | — | ● |
 | `mutedeck` | Meeting controls through MuteDeck | — | — |
+| `rtk-gain` | The tokens RTK saved, today and overall | — | ● |
 | `synology-storage` | Volumes, disk health and temperature of a NAS | Synology | ● |
 | `synology-system` | CPU, memory, network and uptime of a NAS | Synology | ● |
 
@@ -412,11 +431,15 @@ What the installer checks, what a consent record is and how an update asks again
 |---|---|---|
 | Azure DevOps | organisation, project, a personal access token with Build (read) | `ado-pipelines` (from the registry) |
 | Bambu Lab | IP address, serial number, LAN access code | `bambu-job` (from the registry) |
+| Giphy | an API key | `gif-board`, for its search in the admin |
 | GitHub | a personal access token — classic for the notifications, fine-grained enough for reviews, pull requests and Actions — optionally an Enterprise API host | `github-inbox`, `github-actions` (from the registry) |
-| Homey Pro | the Homey's address, an API key with Devices and Flows in read and control | `homey-devices`, `homey-flows` (from the registry) |
 | ICS calendar | the published calendar address, a colour | `calendar` |
 | Synology | the NAS address, a dedicated DSM account in the administrators group (no shared folder, DSM application only) and its password | `synology-storage`, `synology-system` (from the registry) |
 ![The Connections dialog](docs/images/admin-connections.png)
+
+A registry widget can also declare the connection it needs in its own manifest, as the Homey and
+Key Light ones do: the form, the keychain and the **Test** button are the same, and the widget
+reaches only the address you typed.
 
 How to obtain each credential, what is stored where, and what is never logged:
 **[docs/connections.md](docs/connections.md)**.
@@ -546,7 +569,7 @@ bash scripts/build-app.sh   # native/dist/Fremkit.app: the self-contained app, s
 | `server/` | Fastify 5 on 127.0.0.1:4242 — config, widget catalog, providers, connections, secrets, the bridge, the WebSocket |
 | `ui/` | Vue 3 — the dashboard, the admin, and the code they share |
 | `e2e/` | Playwright end-to-end tests of the admin and the dashboard, each worker on a throwaway server |
-| `native/` | The Swift helper — kiosk window, HID touch driver, mouse fence, admin window, Dock badges, server supervision, and `fremkit-scan`, the disk map's scanner |
+| `native/` | The Swift helper — kiosk window, HID touch driver, Edge fence, admin window, Dock badges, server supervision, and `fremkit-scan`, the disk map's scanner |
 | `widgets/` | One folder per widget |
 | `scripts/` | Setup, dev, the helper's build and tests, the app's build, notarization and release, the signing identity, kiosk, the Claude Code hooks |
 | `packaging/` | The Homebrew cask and Sparkle's public key |

@@ -14,6 +14,9 @@ tagged `vX.Y.Z`.
 
 ### Added
 
+- **iPad app 1.0.1: Forget this Mac.** The "Can't reach the Mac" screen has a **Forget this Mac**
+  button, which asks first. An iPad paired with a Mac that is not coming back no longer stays on
+  that screen for good: forget it, then pair with another.
 - **Fremdev**: a new widget lists the dev tabs the Fremkit Companion extension (0.2.0) watches (JS
   errors, failed requests, dev server down), each with a red/orange/green light; tap a row to
   unfold its last 20 errors and failed requests (time, repeat count, message, file:line where it
@@ -34,7 +37,7 @@ tagged `vX.Y.Z`.
   public suffix such as `*.co.uk` or over an IP range is refused, and Chrome's prompt names the
   hosts for any other. localhost, 127.0.0.1, `*.localhost` and `*.test` are always included. The
   popup's Fremdev card lists your dev tabs, each with Copy report and a "with stack" option.
-  Fremkit 0.5.1 and earlier keep working with the new extension (Fremplay only); Fremdev needs
+  Fremkit 0.5.2 and earlier keep working with the new extension (Fremplay only); Fremdev needs
   the next Fremkit, and the extension asks an older one again only every few minutes.
 - **Fremdev cockpit** (extension 0.2.0, experimental): a dev server's compile error overlay (Vite,
   webpack, Next.js) turns the row red with a **Build** entry giving the message and the file, and
@@ -67,8 +70,74 @@ tagged `vX.Y.Z`.
 
 ### Fixed
 
+- **iPad app 1.0.1: deleting the app forgets its Mac.** iOS keeps an app's keychain after the app
+  is deleted, so a reinstalled app found its old pairing again and could not be reset that way.
+  A pairing made or first opened with 1.0.1 now goes with the installation; updating the app
+  keeps it. One made with 1.0 and never opened with 1.0.1 still comes back once after a
+  reinstall: **Forget this Mac** removes it.
+- **Claude sessions: a session keeps its card, and its pin, when it works in a subfolder.** A
+  session whose commands had moved into another folder was taken for closed at the next check: its
+  card came back a moment later as a new one, unpinned, beside a nameless card for the same
+  terminal. A session is now followed by its own process, wherever it has gone; two sessions
+  started in the same folder no longer swap processes either.
+- **Fremkit Companion 0.1.1: the popup says why a pairing request was not taken.** Fremkit takes
+  a request only while the dashboard or **Settings → Devices** is open to show its code, and the
+  extension called that refusal *Another pairing request is already waiting on the Edge*. It now
+  says *Nobody would see the code: open the dashboard on the Edge, or Settings → Devices in
+  Fremkit, then try again.* The Chrome Web Store updates the extension by itself.
 - **The clipboard widget keeps accents and symbols intact.** Under the Fremkit Helper, text with
   an accent, a `·` or a `×` came out garbled in the clipboard history and when copied back from it.
+
+## 0.5.2 — 2026-11-19
+
+### Added
+
+- **Claude sessions: pin the ones to keep at hand.** A long press on a session's card pins it to
+  the top of the tile as a small card, its name and the model's context bar, so that half a dozen
+  pinned sessions still leave room for the ones that are moving. A pinned session stays on the
+  board however long it has been quiet and whatever the tile's filters say, turns orange when it
+  waits for you, and keeps its pin through `/clear`. A long press on it lets it go. On the Edge,
+  hold for a second and lift. Three dots move in the corner of a pinned session for as long as it
+  is working. Drag a pin onto another to put it in that place, the others closing up (on the
+  Edge, hold the pin for a moment before sliding, as for anything dragged there). And a new
+  setting, *Size of pinned sessions*, makes pins narrower than a card, so that more of them fit
+  on a row.
+
+- **A window that lands on the Edge comes back.** Another application could place a window on the
+  Edge display, where the kiosk covers it: the window was focused, it took the keyboard, and it
+  was invisible, with nothing to click to get it back. Safari or the Finder restoring a frame
+  saved before the Edge was plugged in is enough to fall into it. The helper now moves any such
+  window (a reminder or an alert that floats above the others included) back to the middle of
+  the display you work on within about two seconds, under the same switch that keeps the mouse
+  out; several windows brought back together are staggered rather than stacked. A window you are dragging is left alone until you let go, and one that its application
+  keeps putting back on the Edge is moved three times and then left there, until it has stayed
+  away for half a minute. The switch is called *Edge fence* now, since it fences more than the
+  pointer. It needs the Accessibility permission (@mcouzinet, #7).
+
+### Changed
+
+- **Claude limits: one row per account.** When Claude Code runs on several claude.ai accounts at
+  once (one per profile folder, as a terminal with profiles does), the tile shows each account on
+  its own row: its name, then its 5-hour and 7-day gauges side by side with their reset times, so
+  you can see which account still has room. In the navigation bar, two stacked mini-rows. Each
+  account's numbers are read with that account's own sign-in, so they never swap between rows. An
+  account with no session running keeps its last numbers, dimmed, with the time they were read;
+  Fremkit never renews its sign-in. Name each account in **Settings → Privacy**; without a name a
+  row shows the plan (Max, Team…), never an e-mail address. The per-model limits and the weekly
+  breakdown line are no longer drawn, and the account picker is gone: every account is shown.
+  With a single account the tile reads as before.
+
+### Fixed
+
+- **Claude sessions: "cannot find its window" stays readable.** The message a card shows when
+  its session's window could not be raised was erased within the second.
+- **The pointer no longer gets stranded on the Edge.** The fence only ever acted on a pointer
+  that moved, so a cursor warped there by an application, or left behind by a display being
+  rearranged, simply stayed: the next click or scroll went to the dashboard instead of the window
+  you were looking at. The fence now also checks where the pointer really is, five times a
+  second, and pushes it back onto a display you can see, while leaving it alone during a touch on
+  the panel. That half works even without the Accessibility permission, since moving the cursor
+  needs none (@mcouzinet, #9).
 
 ## 0.5.1 — 2026-11-18
 

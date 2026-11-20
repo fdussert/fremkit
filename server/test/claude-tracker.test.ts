@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { ClaudeTracker, MAX_SESSIONS } from '../src/claude/tracker.js'
+import { ClaudeTracker, MAX_PINS, MAX_SESSIONS } from '../src/claude/tracker.js'
 import { summarizeTool } from '../src/claude/tool-summary.js'
 
 function make(start = 1_000_000) {
@@ -300,6 +300,45 @@ describe('ClaudeTracker', () => {
       tracker.syncProcesses(procs([[9, '/p/other']]))
       expect(tracker.snapshot().sessions.map((x) => x.sessionId)).toEqual(['proc:9'])
     })
+    it('keeps a session that went into a subfolder, on the word of its own hook', () => {
+      // `claude` itself stays in the folder it was started from; the session's cwd follows every
+      // `cd`. A pinned session used to vanish at the next scan after one.
+      const events: { what: string }[] = []
+      const tracker = new ClaudeTracker({ now: () => 1_000_000, onPin: (e) => events.push(e) })
+      tracker.handle({ hook_event_name: 'SessionStart', session_id: 's1', cwd: '/p/a', client: { pid: 7 } })
+      tracker.pin('s1', true)
+      tracker.handle({ hook_event_name: 'PreToolUse', session_id: 's1', cwd: '/p/a/demo/v2', tool_name: 'Bash', client: { pid: 7 } })
+      tracker.syncProcesses(procs([[7, '/p/a']]))
+      const s = tracker.snapshot().sessions
+      // Neither dropped, nor doubled by a placeholder for the process it "left behind".
+      expect(s.map((x) => x.sessionId)).toEqual(['s1'])
+      expect(s[0].pinnedAt).toBe(1_000_000); expect(s[0].pid).toBe(7)
+      expect(events.map((e) => e.what)).toEqual(['pinned'])
+    })
+    it('drops a session whose own process is gone, wherever it had gone', () => {
+      const { tracker } = make()
+      tracker.handle({ hook_event_name: 'SessionStart', session_id: 's1', cwd: '/p/a/demo/v2', client: { pid: 7 } })
+      tracker.syncProcesses(procs([[9, '/p/a']]))
+      expect(tracker.snapshot().sessions.map((x) => x.sessionId)).toEqual(['proc:9'])
+    })
+    it('gives each session of a folder the process its hook named', () => {
+      const { tracker } = make()
+      tracker.handle({ hook_event_name: 'SessionStart', session_id: 's2', cwd: '/p/a', client: { pid: 2 } })
+      tracker.handle({ hook_event_name: 'SessionStart', session_id: 's1', cwd: '/p/a', client: { pid: 1 } })
+      tracker.handle({ hook_event_name: 'SessionStart', session_id: 'old', cwd: '/p/a' }) // a hook that names no process
+      tracker.syncProcesses(procs([[1, '/p/a'], [2, '/p/a'], [3, '/p/a']]))
+      const pids = Object.fromEntries(tracker.snapshot().sessions.map((x) => [x.sessionId, x.pid]))
+      expect(pids).toEqual({ s1: 1, s2: 2, old: 3 })
+    })
+    it('lets the session heard from last keep a process two of them name', () => {
+      // A `/clear` whose SessionEnd never arrived: the old id still names the pid the new one has.
+      const { tracker, tick } = make()
+      tracker.handle({ hook_event_name: 'SessionStart', session_id: 'before', cwd: '/p/a', client: { pid: 5 } })
+      tick(1000)
+      tracker.handle({ hook_event_name: 'SessionStart', session_id: 'after', cwd: '/p/a', client: { pid: 5 } })
+      tracker.syncProcesses(procs([[5, '/p/a']]))
+      expect(tracker.snapshot().sessions.map((x) => x.sessionId)).toEqual(['after'])
+    })
     it('dismiss ignores discovered sessions', () => {
       const { tracker } = make()
       tracker.syncProcesses(procs([[1, '/p/a']]))
@@ -324,5 +363,198 @@ describe('the number of sessions held', () => {
     // The newest survived and the oldest went.
     expect(ids).toContain(`s-${MAX_SESSIONS + 49}`)
     expect(ids).not.toContain('s-0')
+  })
+})
+
+/**
+ * Pinned sessions.
+ *
+ * A pin says "keep this one at hand", and the sessions kept at hand are the quiet ones: the
+ * rules that forget a session for being quiet must not apply, and a `/clear`, which gives the
+ * same terminal a new session id, must not lose it.
+ */
+describe('pinned sessions', () => {
+  const HOUR = 60 * 60_000
+  const start = (id: string, pid?: number) => ({ hook_event_name: 'SessionStart', session_id: id, cwd: '/p/a', ...(pid ? { client: { pid } } : {}) })
+  const pins = (tracker: ClaudeTracker) => tracker.snapshot().sessions.filter((s) => s.pinnedAt !== undefined).map((s) => s.sessionId)
+
+  it('puts the pins in the order asked for, by dealing their times out again', () => {
+    const { tracker, tick } = make()
+    for (const id of ['a', 'b', 'c', 'd']) { tracker.handle(start(id)); tracker.pin(id, true); tick(1000) }
+    const times = () => Object.fromEntries(tracker.snapshot().sessions.map((s) => [s.sessionId, s.pinnedAt]))
+    const before = times()
+    const order = () => tracker.snapshot().sessions.filter((s) => s.pinnedAt !== undefined).sort((x, y) => x.pinnedAt! - y.pinnedAt!).map((s) => s.sessionId)
+    tracker.reorderPins(['c', 'a', 'b', 'd'])
+    expect(order()).toEqual(['c', 'a', 'b', 'd'])
+    // The same four times, held by other sessions: nothing about when a pin was set is invented.
+    expect(Object.values(times()).sort()).toEqual(Object.values(before).sort())
+  })
+
+  it('reorders only what it is told about, and only pinned sessions', () => {
+    const { tracker, tick } = make()
+    for (const id of ['a', 'b', 'c']) { tracker.handle(start(id)); tracker.pin(id, true); tick(1000) }
+    tracker.handle(start('loose'))
+    const order = () => tracker.snapshot().sessions.filter((s) => s.pinnedAt !== undefined).sort((x, y) => x.pinnedAt! - y.pinnedAt!).map((s) => s.sessionId)
+    // `b` is left out and keeps its place; an unpinned session and an unknown id are skipped,
+    // and a repeated id counts once.
+    tracker.reorderPins(['c', 'loose', 'nobody', 'a', 'c'])
+    expect(order()).toEqual(['c', 'b', 'a'])
+    expect(tracker.snapshot().sessions.find((s) => s.sessionId === 'loose')!.pinnedAt).toBeUndefined()
+    tracker.reorderPins(['a'])
+    expect(order()).toEqual(['c', 'b', 'a'])
+  })
+
+  it('says what happens to a pin, naming the session by the start of its id only', () => {
+    const events: unknown[] = []
+    let t = 1_000_000
+    const tracker = new ClaudeTracker({ now: () => t, onPin: (e) => events.push(e) })
+    const long = 'abcdefgh-1111-2222-3333-444444444444'
+    tracker.handle({ hook_event_name: 'SessionStart', session_id: long, cwd: '/p/a', client: { pid: 7 } })
+    tracker.pin(long, true)
+    tracker.pin(long, true) // already pinned: nothing happened, nothing said
+    tracker.handle({ hook_event_name: 'SessionEnd', session_id: long, cwd: '/p/a', client: { pid: 7 } })
+    t += 1000
+    tracker.handle({ hook_event_name: 'SessionStart', session_id: 'successor-xyz', cwd: '/p/a', client: { pid: 7 } })
+    tracker.pin('successor-xyz', false)
+    expect(events).toEqual([
+      { what: 'pinned', session: 'abcdefgh' },
+      { what: 'waiting', session: 'abcdefgh', why: 'session ended' },
+      { what: 'adopted', session: 'successo', why: 'from abcdefgh' },
+      { what: 'unpinned', session: 'successo' },
+    ])
+  })
+
+  it('says so when the process scan takes a pinned session away', () => {
+    const events: { what: string; why?: string }[] = []
+    const tracker = new ClaudeTracker({ now: () => 1_000_000, onPin: (e) => events.push(e) })
+    tracker.handle(start('a')); tracker.pin('a', true)
+    tracker.syncProcesses([])
+    expect(events.map((e) => e.what)).toEqual(['pinned', 'dropped'])
+    expect(events[1].why).toMatch(/process/)
+  })
+
+  it('pins and unpins a session, and says so when it does not know it', () => {
+    const { tracker, tick } = make()
+    tracker.handle(start('a')); tracker.handle(start('b'))
+    expect(tracker.pin('a', true)).toBe('ok')
+    tick(1000)
+    expect(tracker.pin('b', true)).toBe('ok')
+    const [a, b] = ['a', 'b'].map((id) => tracker.snapshot().sessions.find((s) => s.sessionId === id)!)
+    // The order of pinning is the order of the pinned cards.
+    expect(a.pinnedAt).toBeLessThan(b.pinnedAt!)
+    // Pinning again keeps its place.
+    tick(1000)
+    expect(tracker.pin('a', true)).toBe('ok')
+    expect(tracker.snapshot().sessions.find((s) => s.sessionId === 'a')!.pinnedAt).toBe(a.pinnedAt)
+    expect(tracker.pin('a', false)).toBe('ok')
+    expect(pins(tracker)).toEqual(['b'])
+    expect(tracker.pin('nobody', true)).toBe('unknownSession')
+  })
+
+  it('refuses one pin too many', () => {
+    const { tracker } = make()
+    for (let i = 0; i <= MAX_PINS; i++) tracker.handle(start(`s${i}`))
+    for (let i = 0; i < MAX_PINS; i++) expect(tracker.pin(`s${i}`, true)).toBe('ok')
+    expect(tracker.pin(`s${MAX_PINS}`, true)).toBe('tooMany')
+    // One let go makes room.
+    tracker.pin('s0', false)
+    expect(tracker.pin(`s${MAX_PINS}`, true)).toBe('ok')
+  })
+
+  it('keeps a pinned session past the TTL, and forgets the others', () => {
+    const { tracker, tick } = make()
+    tracker.handle(start('kept')); tracker.handle(start('quiet'))
+    tracker.pin('kept', true)
+    tick(5 * HOUR)
+    expect(tracker.snapshot().sessions.map((s) => s.sessionId)).toEqual(['kept'])
+  })
+
+  it('drops a pinned session whose process is gone', () => {
+    const { tracker } = make()
+    tracker.handle(start('kept'))
+    tracker.pin('kept', true)
+    tracker.syncProcesses([])
+    expect(tracker.snapshot().sessions).toEqual([])
+  })
+
+  it('keeps pinned sessions when the cap is reached', () => {
+    let t = 1_000_000
+    const tracker = new ClaudeTracker({ now: () => t })
+    tracker.handle(start('kept'))
+    tracker.pin('kept', true)
+    for (let i = 0; i < MAX_SESSIONS + 5; i++) { t += 1000; tracker.handle(start(`s-${i}`)) }
+    expect(tracker.snapshot().sessions.length).toBeLessThanOrEqual(MAX_SESSIONS)
+    expect(pins(tracker)).toEqual(['kept'])
+  })
+
+  it('survives a restart, however long the session has been quiet', async () => {
+    const file = join(dir, 'sessions.json')
+    let t = 1_000_000
+    const first = new ClaudeTracker({ now: () => t, filePath: file })
+    first.handle(start('kept')); first.handle(start('quiet'))
+    first.pin('kept', true)
+    await first.flush()
+    t += 5 * HOUR
+    const second = new ClaudeTracker({ now: () => t, filePath: file })
+    await second.load()
+    expect(second.snapshot().sessions.map((s) => [s.sessionId, s.pinnedAt])).toEqual([['kept', 1_000_000]])
+  })
+
+  it('keeps the pin set on a placeholder when its first hook arrives', () => {
+    const { tracker } = make()
+    tracker.syncProcesses([{ pid: 7, cwd: '/p/a', startedAt: 1 }])
+    tracker.pin('proc:7', true)
+    tracker.handle(start('real', 7))
+    expect(pins(tracker)).toEqual(['real'])
+  })
+
+  describe('across /clear', () => {
+    const end = (id: string, pid: number) => ({ hook_event_name: 'SessionEnd', session_id: id, cwd: '/p/a', client: { pid } })
+
+    it('hands the pin to the session that starts in the same process', () => {
+      const { tracker, tick } = make()
+      tracker.handle(start('old', 42))
+      tracker.pin('old', true)
+      const at = tracker.snapshot().sessions[0].pinnedAt
+      tick(100)
+      tracker.handle(end('old', 42))
+      expect(tracker.snapshot().sessions).toEqual([])
+      tick(100)
+      tracker.handle(start('new', 42))
+      // Same pin, same place among the pinned.
+      expect(tracker.snapshot().sessions.map((s) => [s.sessionId, s.pinnedAt])).toEqual([['new', at]])
+    })
+
+    it('does so when the new session is heard first', () => {
+      const { tracker } = make()
+      tracker.handle(start('old', 42))
+      tracker.pin('old', true)
+      tracker.handle(start('new', 42))
+      tracker.handle(end('old', 42))
+      expect(pins(tracker)).toEqual(['new'])
+    })
+
+    it('gives it to no other process, and not to a late hook of the session that ended', () => {
+      const { tracker } = make()
+      tracker.handle(start('old', 42)); tracker.handle(start('other', 43))
+      tracker.pin('old', true)
+      tracker.handle(end('old', 42))
+      tracker.handle({ hook_event_name: 'UserPromptSubmit', session_id: 'other', cwd: '/p/a', client: { pid: 43 } })
+      tracker.handle({ hook_event_name: 'PostToolUse', session_id: 'old', cwd: '/p/a', client: { pid: 42 } })
+      expect(pins(tracker)).toEqual([])
+      tracker.handle(start('new', 42))
+      expect(pins(tracker)).toEqual(['new'])
+    })
+
+    it('lets the pin go when nothing takes its place', () => {
+      const { tracker, tick } = make()
+      tracker.handle(start('old', 42))
+      tracker.pin('old', true)
+      tracker.handle(end('old', 42))
+      // Long after the terminal closed, another `claude` gets the same pid.
+      tick(60_000)
+      tracker.handle(start('unrelated', 42))
+      expect(pins(tracker)).toEqual([])
+    })
   })
 })

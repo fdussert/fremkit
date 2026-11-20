@@ -239,6 +239,25 @@ describe('privacy settings on an older config', () => {
   })
 })
 
+describe('privacy.claudeAccountNames', () => {
+  const UUID = '00000000-0000-4000-8000-00000000000a'
+  it('reads a config written before the names existed as naming no account', () => {
+    expect(DEFAULT_CONFIG.privacy.claudeAccountNames).toEqual({})
+    expect(migrateConfig({ ...DEFAULT_CONFIG, privacy: { claudeAccountUsage: true } }).privacy.claudeAccountNames).toEqual({})
+    expect(migrateConfig({ version: 1, pages: [{ id: 'p', name: 'P', widgets: [] }] }).privacy.claudeAccountNames).toEqual({})
+    expect(migrateConfig(realFixture).privacy.claudeAccountNames).toEqual({})
+  })
+  it('keeps a name per account uuid, trimmed and short', () => {
+    const cfg = migrateConfig({ ...DEFAULT_CONFIG, privacy: { claudeAccountNames: { [UUID]: '  Work  ' } } })
+    expect(cfg.privacy.claudeAccountNames).toEqual({ [UUID]: 'Work' })
+    expect(PrivacySchema.safeParse({ claudeAccountNames: { [UUID]: 'x'.repeat(25) } }).success).toBe(false)
+    expect(PrivacySchema.safeParse({ claudeAccountNames: { [UUID]: '   ' } }).success).toBe(false)
+    expect(PrivacySchema.safeParse({ claudeAccountNames: { 'not a uuid': 'Work' } }).success).toBe(false)
+    const many = Object.fromEntries(Array.from({ length: 33 }, (_, i) => [`00000000-0000-4000-8000-${String(i).padStart(12, '0')}`, 'n']))
+    expect(PrivacySchema.safeParse({ claudeAccountNames: many }).success).toBe(false)
+  })
+})
+
 describe('privacy.showAccountEmail on an older config', () => {
   const page = (widgets: object[]) => ({ id: 'home', name: 'Accueil', widgets })
   const widget = (widgetId: string) => ({ instanceId: 'a', widgetId, x: 0, y: 0, w: 8, h: 4 })
