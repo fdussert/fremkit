@@ -12,6 +12,7 @@
 
     <string name="unreachable_title">Can’t reach the Mac</string>
     <string name="unreachable_hint">Check that it is on, on the same network, and that “Allow a tablet on the local network” is turned on in Fremkit.</string>
+    <string name="unreachable_forget">Forget this Mac</string>
     <string name="try_again">Try again</string>
 
     <string name="unauthorized_title">This tablet is no longer allowed</string>

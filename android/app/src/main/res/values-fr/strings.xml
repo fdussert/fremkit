@@ -12,6 +12,7 @@
 
     <string name="unreachable_title">Le Mac n’est pas joignable</string>
     <string name="unreachable_hint">Vérifiez qu’il est allumé, sur le même réseau, et que « Autoriser une tablette sur le réseau local » est activé dans Fremkit.</string>
+    <string name="unreachable_forget">Oublier ce Mac</string>
     <string name="try_again">Réessayer</string>
 
     <string name="unauthorized_title">Cette tablette n’est plus autorisée</string>
