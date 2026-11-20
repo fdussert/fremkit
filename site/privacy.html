@@ -19,16 +19,17 @@
   <p class="eyebrow"><span class="dot"></span><span>Privacy</span></p>
   <h1>Your data <em>stays on your Mac.</em></h1>
   <p class="lede">Fremkit runs on your Mac and keeps your data there. It has no account, no analytics and no advertising, and the developer receives nothing from it.</p>
-  <p class="updated">Last updated 19 October 2026 · <a href="#fr" lang="fr">Version française</a></p>
+  <p class="updated">Last updated 20 November 2026 · <a href="#fr" lang="fr">Version française</a></p>
 
   <section>
     <h2>Fremkit Companion</h2>
-    <p>The browser extension sends the video of a tab you choose to your Fremkit dashboard.</p>
+    <p>The browser extension sends the video of a tab you choose to your Fremkit dashboard (Fremplay) and, if you turn it on, reports on your development tabs (Fremdev).</p>
     <ul>
-      <li><strong>What it reads.</strong> In the tab you send, and only when you send it: where the main video sits on the page, its title, its playback state and the site’s host name.</li>
+      <li><strong>What Fremplay reads.</strong> In the tab you send, and only when you send it: where the main video sits on the page, its title, its playback state and the site’s host name.</li>
       <li><strong>Where it goes.</strong> Only to the Fremkit app on the same Mac, at 127.0.0.1. The picture travels straight from the browser to your dashboard over a local connection. Nothing is sent to the developer or to anyone else, and nothing is recorded. The sound stays in the browser.</li>
       <li><strong>What it keeps.</strong> A pairing token issued by your Fremkit app and a random install identifier, in the browser’s extension storage on this device. Removing the extension, or removing it in Fremkit’s admin under Devices, ends the pairing.</li>
-      <li><strong>Permissions.</strong> Used only when you send a tab, and only for that tab, plus, if you allow it, the site of a video player embedded in that tab.</li>
+      <li><strong>What Fremdev reads.</strong> Nothing until you turn Fremdev on in the extension. Then, in your development tabs only (localhost, 127.0.0.1, *.localhost, *.test and the hosts you add): each tab’s title and host, its JavaScript errors (message, file, line and stack), the dev server’s build errors, failed and slow requests (method, path, status and duration) and page timings, sent only to the Fremkit app on the same Mac. Never query strings, fragments, request bodies, headers or cookies. An error’s message is clipped to 300 characters, and its stack stays in the browser until you copy a bug report. A screenshot of a tab is taken only when you ask for one, and goes to your Mac’s clipboard.</li>
+      <li><strong>Permissions.</strong> Fremplay’s are used only when you send a tab, and only for that tab, plus, if you allow it, the site of a video player embedded in that tab. Fremdev’s (observing your development tabs’ requests, and access to your development hosts) are asked for once, when you turn it on, and for each host you add; removing a host gives its access back.</li>
     </ul>
   </section>
 
@@ -37,6 +38,7 @@
     <ul>
       <li>Your dashboard, settings and the connections you configure are stored on your Mac. Passwords and tokens are kept in the macOS keychain.</li>
       <li>The app contacts only what you set up: the services your widgets use (a calendar, a printer, a weather forecast, your Claude account’s usage, …), the widget registry when you browse it, site icons for the links you add, and the update feed when it checks for a new version.</li>
+      <li>With Fremdev turned on, the app lists the programs listening on your Mac’s ports, with their folder and command line (secrets in it hidden). A server you restart from the dashboard keeps its output in the app’s data folder on your Mac. None of this leaves your Mac.</li>
       <li>The local server listens on 127.0.0.1 only. A paired iPad reaches it over your local network, encrypted, and only after you approve it.</li>
     </ul>
   </section>
@@ -61,15 +63,17 @@
     <p>Fremkit tourne sur votre Mac et y garde vos données. Pas de compte, pas de statistiques, pas de publicité, et le développeur n’en reçoit rien.</p>
     <h3>Fremkit Companion</h3>
     <ul>
-      <li><strong>Ce qu’elle lit.</strong> Dans l’onglet que vous envoyez, et seulement à ce moment-là : la position de la vidéo principale dans la page, son titre, son état de lecture et le nom du site.</li>
+      <li><strong>Ce que Fremplay lit.</strong> Dans l’onglet que vous envoyez, et seulement à ce moment-là : la position de la vidéo principale dans la page, son titre, son état de lecture et le nom du site.</li>
       <li><strong>Où ça va.</strong> Uniquement vers l’app Fremkit du même Mac, en 127.0.0.1. L’image passe directement du navigateur à votre tableau de bord par une connexion locale. Rien n’est envoyé au développeur ni à quiconque, rien n’est enregistré. Le son reste dans le navigateur.</li>
       <li><strong>Ce qu’elle garde.</strong> Un jeton d’appairage délivré par votre app Fremkit et un identifiant d’installation aléatoire, dans le stockage de l’extension sur cet appareil. Supprimer l’extension, ou la retirer dans l’admin de Fremkit sous Appareils, met fin à l’appairage.</li>
-      <li><strong>Permissions.</strong> Utilisées seulement quand vous envoyez un onglet, et seulement pour cet onglet, plus, si vous l’autorisez, le site d’un lecteur vidéo intégré à cet onglet.</li>
+      <li><strong>Ce que Fremdev lit.</strong> Rien tant que vous n’activez pas Fremdev dans l’extension. Ensuite, dans vos seuls onglets de développement (localhost, 127.0.0.1, *.localhost, *.test et les hôtes que vous ajoutez) : le titre et l’hôte de chaque onglet, ses erreurs JavaScript (message, fichier, ligne et pile), les erreurs de compilation du serveur de dev, les requêtes en échec ou lentes (méthode, chemin, statut et durée) et les temps de chargement, envoyés uniquement à l’app Fremkit du même Mac. Jamais les paramètres d’URL, les fragments, les corps de requêtes, les en-têtes ni les cookies. Le message d’une erreur est limité à 300 caractères, et sa pile reste dans le navigateur tant que vous ne copiez pas un rapport de bug. Une capture d’onglet n’est prise que quand vous la demandez, et va dans le presse-papiers de votre Mac.</li>
+      <li><strong>Permissions.</strong> Celles de Fremplay ne servent que quand vous envoyez un onglet, et seulement pour cet onglet, plus, si vous l’autorisez, le site d’un lecteur vidéo intégré à cet onglet. Celles de Fremdev (observer les requêtes de vos onglets de développement, et l’accès à vos hôtes de dev) sont demandées une fois, quand vous l’activez, puis pour chaque hôte que vous ajoutez ; retirer un hôte rend son accès.</li>
     </ul>
     <h3>Fremkit, l’app</h3>
     <ul>
       <li>Votre tableau de bord, vos réglages et les connexions que vous configurez sont stockés sur votre Mac. Mots de passe et jetons sont rangés dans le trousseau macOS.</li>
       <li>L’app ne contacte que ce que vous configurez : les services de vos widgets (un calendrier, une imprimante, la météo, l’usage de votre compte Claude, …), le catalogue de widgets quand vous le parcourez, les icônes des sites que vous ajoutez, et le flux de mises à jour quand elle en cherche une.</li>
+      <li>Avec Fremdev activé, l’app liste les programmes qui écoutent sur les ports de votre Mac, avec leur dossier et leur ligne de commande (les secrets y sont masqués). Un serveur que vous relancez depuis le tableau de bord garde sa sortie dans le dossier de données de l’app, sur votre Mac. Rien de tout cela ne quitte votre Mac.</li>
       <li>Le serveur local n’écoute qu’en 127.0.0.1. Un iPad appairé y accède par votre réseau local, chiffré, et seulement après votre accord.</li>
     </ul>
     <h3>Fremkit pour iPad</h3>
