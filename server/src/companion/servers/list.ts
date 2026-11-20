@@ -169,6 +169,7 @@ const RUNTIMES = /^(node|bun|deno|python(\d+(\.\d+)*)?|ruby|php|java|dotnet|go)$
  */
 export function isDevRuntime(p: ProcInfo, cwd: string | null, home: string): boolean {
   if (inBundle(p.comm) || (cwd !== null && underLibrary(cwd, home))) return false
+  if (isBuildDaemon(p.args, cwd, home)) return false
   if (RUNTIMES.test(basename(p.comm))) return true
   if (knownTool(p.args, p.comm) !== null) return true
   return builtInFolder(p.comm, cwd)
@@ -181,6 +182,20 @@ function inBundle(comm: string): boolean {
     const frameworkLauncher = /\.app$/i.test(part) && parts[i - 1] === 'Resources' && parts.slice(0, i - 1).some((x) => /\.framework$/i.test(x))
     return !frameworkLauncher
   })
+}
+
+/**
+ * A build tool's daemon, kept warm between builds: Gradle's (which works in `~/.gradle/daemon/<v>`)
+ * and the Kotlin compiler's it starts. Both run on `java` and listen on loopback ports of their own,
+ * which a browser has nothing to open, so they are not dev servers; a server Gradle runs (`bootRun`)
+ * is its own `java` with its own main class and stays one.
+ */
+const BUILD_DAEMON_CLASSES = /(?:^|\s)(?:org\.gradle\.launcher\.daemon\.bootstrap\.GradleDaemon|org\.jetbrains\.kotlin\.daemon\.KotlinCompileDaemon)(?:\s|$)/
+
+function isBuildDaemon(args: string, cwd: string | null, home: string): boolean {
+  if (BUILD_DAEMON_CLASSES.test(args)) return true
+  const gradle = `${home.replace(/\/+$/, '')}/.gradle`
+  return cwd !== null && (cwd === gradle || cwd.startsWith(gradle + '/'))
 }
 
 function underLibrary(cwd: string, home: string): boolean {
