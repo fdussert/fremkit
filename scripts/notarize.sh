@@ -5,7 +5,9 @@
 #
 # Needs an app built by scripts/build-app.sh with the Developer ID identity, and the notarytool
 # keychain profile "fremkit-notary" (created once by the owner with `xcrun notarytool
-# store-credentials`; this script never sees the Apple ID or its password).
+# store-credentials … --keychain <the login keychain>`; this script never sees the Apple ID or
+# its password). scripts/lib/notary.sh says why the login keychain, and checks the profile
+# answers before anything is submitted.
 #
 # Environment:
 #   FREMKIT_NOTARY_PROFILE   keychain profile name. Default: fremkit-notary.
@@ -14,9 +16,10 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 APP="native/dist/Fremkit.app"
-PROFILE="${FREMKIT_NOTARY_PROFILE:-fremkit-notary}"
 # shellcheck source=lib/pins.sh
 source scripts/lib/pins.sh
+# shellcheck source=lib/notary.sh
+source scripts/lib/notary.sh
 WORK="native/.build/notarize"
 
 if [ ! -d "$APP" ]; then
@@ -41,6 +44,8 @@ if [ -z "$IDENTITY" ]; then
     exit 1
 fi
 
+notary_check
+
 rm -rf "$WORK"
 mkdir -p "$WORK"
 
@@ -48,7 +53,7 @@ mkdir -p "$WORK"
 notarize() {
     local file="$1" result="$WORK/$(basename "$1").json"
     echo "==> notarizing $(basename "$file") (this takes a few minutes)"
-    xcrun notarytool submit "$file" --keychain-profile "$PROFILE" --wait \
+    xcrun notarytool submit "$file" "${NOTARY_AUTH[@]}" --wait \
         --output-format json > "$result" || true
     local status id
     status="$(plutil -extract status raw -o - "$result" 2>/dev/null || echo unknown)"
@@ -58,7 +63,7 @@ notarize() {
         cat "$result" >&2
         if [ -n "$id" ]; then
             echo "==> notarytool log $id" >&2
-            xcrun notarytool log "$id" --keychain-profile "$PROFILE" >&2 || true
+            xcrun notarytool log "$id" "${NOTARY_AUTH[@]}" >&2 || true
         fi
         exit 1
     fi

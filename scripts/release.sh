@@ -95,6 +95,15 @@ if [ -z "$({ grep -v '^#' packaging/sparkle/public-key.txt || true; } | tr -d '[
     exit 1
 fi
 
+# The notarytool profile, now rather than after the build: one that macOS will not open (a locked
+# screen, see lib/notary.sh) or that Apple no longer accepts fails here, within seconds, instead
+# of at the notarization step ten minutes in.
+# shellcheck source=lib/pins.sh
+source scripts/lib/pins.sh
+# shellcheck source=lib/notary.sh
+source scripts/lib/notary.sh
+notary_check
+
 # --- Android -----------------------------------------------------------------------------------
 # First, while the tree is still clean (build-android.sh refuses a dirty one, and the Homebrew step
 # below edits the cask), and so a refused key fails the release before the Mac's long build. The
@@ -127,8 +136,6 @@ cp "$DMG" "$LATEST_DMG"
 ZIP="$DIST/Fremkit-$VERSION.zip"
 rm -f "$ZIP"
 ditto -c -k --sequesterRsrc --keepParent "$APP" "$ZIP"
-# shellcheck source=lib/pins.sh
-source scripts/lib/pins.sh
 SIGN_UPDATE="$SPARKLE_DIR/bin/sign_update"
 if [ -n "${FREMKIT_SPARKLE_KEY_FILE:-}" ]; then
     signed="$("$SIGN_UPDATE" --ed-key-file "$FREMKIT_SPARKLE_KEY_FILE" "$ZIP")"

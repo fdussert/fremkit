@@ -34,8 +34,16 @@ the script, and never committed. Bumping either means changing the version *and*
 Done already:
 
 - the **Developer ID Application** certificate of team `874TMS6WBS`, in the login keychain;
-- the notarytool keychain profile **`fremkit-notary`**
-  (`xcrun notarytool store-credentials fremkit-notary --apple-id … --team-id 874TMS6WBS`).
+- the notarytool keychain profile **`fremkit-notary`**, in the login keychain
+  (`xcrun notarytool store-credentials fremkit-notary --apple-id … --team-id 874TMS6WBS
+  --keychain ~/Library/Keychains/login.keychain-db`). The `--keychain` matters: without it
+  notarytool files the profile in the data protection keychain, which macOS opens only while the
+  session is unlocked. A release started with the screen locked, or locked while it runs, then
+  fails at notarization with *No Keychain password item found for profile*, exactly as if the
+  profile had been deleted, when it has not. The login keychain, where the Developer ID identity
+  and Sparkle's key already are, stays open behind a locked screen. `release.sh` asks Apple for
+  the submission history with the profile before it builds anything, and warns when the profile
+  is still in the other keychain.
 - **Sparkle's EdDSA keys**: the private key in the login keychain (item "Private key for signing
   Sparkle updates", account `ed25519`), the public key in `packaging/sparkle/public-key.txt`.
   `native/.build/app/sparkle-2.10.0/bin/generate_keys` created them, after a
