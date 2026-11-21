@@ -10,7 +10,7 @@ Anything that changes what the dashboard, the admin or a widget can do gets a li
 (`package.json`, `server/package.json`, `ui/package.json`, `server/src/version.ts`) and is
 tagged `vX.Y.Z`.
 
-## Unreleased
+## 0.5.3 — 2026-11-21
 
 ### Added
 
@@ -46,7 +46,7 @@ tagged `vX.Y.Z`.
   hosts for any other. localhost, 127.0.0.1, `*.localhost` and `*.test` are always included. The
   popup's Fremdev card lists your dev tabs, each with Copy report and a "with stack" option.
   Fremkit 0.5.2 and earlier keep working with the new extension (Fremplay only); Fremdev needs
-  the next Fremkit, and the extension asks an older one again only every few minutes.
+  Fremkit 0.5.3, and the extension asks an older one again only every few minutes.
 - **Fremdev cockpit** (extension 0.2.0, experimental): a dev server's compile error overlay (Vite,
   webpack, Next.js) turns the row red with a **Build** entry giving the message and the file, and
   clears by itself once fixed; hot updates (Vite, Next Fast Refresh) now clear the row's earlier
